@@ -10,11 +10,11 @@ SRC     = src
 BUILD   = build
 
 # Flags
-CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2
+CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 -I$(SRC)
 LDFLAGS = -T linker.ld -nostdlib
 
 # Source files → object files in build/
-OBJS    = $(BUILD)/startup.o $(BUILD)/main.o
+OBJS    = $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/uart.o
 
 # Default target
 all: $(BUILD)/hello.bin
@@ -36,6 +36,10 @@ $(BUILD)/%.o: $(SRC)/%.c
 
 # Assemble → object
 $(BUILD)/%.o: $(SRC)/%.s
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Compile drivers
+$(BUILD)/%.o: $(SRC)/drivers/%.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Inspection
