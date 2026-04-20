@@ -10,7 +10,7 @@ SRC     = src
 BUILD   = build
 
 # Flags
-CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 -I$(BUILD) -I$(SRC)
+CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 -I$(BUILD) -I$(SRC) -save-temps=obj
 LDFLAGS = -T linker.ld -nostdlib
 
 # Source files → object files in build/

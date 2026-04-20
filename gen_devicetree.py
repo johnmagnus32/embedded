@@ -204,6 +204,11 @@ def generate_header(nodes, labels):
         lines.append(f"/* compatible = \"{compat}\" — {len(instances)} instance(s) */")
         lines.append(f"#define DT_INST_{compat_c}_NUM_INSTANCES {len(instances)}")
 
+        # Emit FOREACH macro: expands fn(0) fn(1) ... for each instance
+        # This is what DT_INST_FOREACH_STATUS_OKAY dispatches to
+        foreach_args = " ".join(f"fn({idx})" for idx in range(len(instances)))
+        lines.append(f"#define DT_INST_{compat_c}_FOREACH(fn) {foreach_args}")
+
         for idx, (path, node) in enumerate(instances):
             prefix = f"DT_INST_{compat_c}_{idx}"
             props = node['props']
@@ -242,6 +247,8 @@ def generate_header(nodes, labels):
             if label:
                 lines.append(f"#define DT_NODELABEL_{label.upper()}_INST_IDX {idx}")
                 lines.append(f"#define DT_NODELABEL_{label.upper()}_COMPAT {compat_c}")
+                # Reverse mapping: instance → label (for FOREACH to create named devices)
+                lines.append(f"#define DT_INST_{compat_c}_{idx}_LABEL {label}")
 
         lines.append("")
 

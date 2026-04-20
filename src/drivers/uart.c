@@ -91,7 +91,9 @@ static const struct uart_driver_api uart_stm32_api = {
 #define _DT_INST_REG(compat, n) DT_INST_##compat##_##n##_REG_ADDR
 #define _DT_INST_CLK(compat, n, f) DT_INST_##compat##_##n##_CLK_##f
 
-#define STM32_UART_DEFINE(n, label)                                     \
+#define _DT_INST_LABEL(compat, n) DT_INST_##compat##_##n##_LABEL
+
+#define STM32_UART_DEFINE(n)                                            \
     static const struct uart_stm32_config uart_cfg_##n = {              \
         .base         = _DT_INST_REG(ST_STM32_USART, n),               \
         .baudrate     = _DT_INST(ST_STM32_USART, n, BAUDRATE),         \
@@ -101,12 +103,17 @@ static const struct uart_driver_api uart_stm32_api = {
         .gpio_clk_bit = _DT_INST(ST_STM32_USART, n, GPIO_CLK_BIT),    \
         .uart_clk_bit = _DT_INST_CLK(ST_STM32_USART, n, BIT),         \
     };                                                                  \
-    DEVICE_DT_DEFINE(label, uart_stm32_init, NULL, &uart_cfg_##n,       \
-                     &uart_stm32_api)
+    DEVICE_DT_DEFINE(_DT_INST_LABEL(ST_STM32_USART, n),                \
+                     uart_stm32_init, NULL, &uart_cfg_##n,              \
+                     &uart_stm32_api);
 
 /*
- * Instantiate for each USART in the device tree.
- * In Zephyr this would be: DT_INST_FOREACH_STATUS_OKAY(STM32_UART_INIT)
- * We do it manually since we have one instance.
+ * Instantiate for EVERY st,stm32-usart node with status="okay".
+ *
+ * The code generator emits:
+ *   #define DT_INST_ST_STM32_USART_FOREACH(fn) fn(0)
+ *
+ * So this expands to: STM32_UART_DEFINE(0)
+ * If there were 3 USARTs: STM32_UART_DEFINE(0) STM32_UART_DEFINE(1) STM32_UART_DEFINE(2)
  */
-STM32_UART_DEFINE(0, usart2);
+DT_INST_FOREACH_STATUS_OKAY(ST_STM32_USART, STM32_UART_DEFINE)

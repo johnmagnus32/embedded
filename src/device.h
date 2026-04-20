@@ -35,7 +35,7 @@ struct device {
  * can find and init all devices. Same pattern as your module_init()
  * in test-modules.
  */
-#define DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api) \
+#define _DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api) \
     const struct device __device_##label                        \
         __attribute__((used, section("device_area"))) = {       \
             .name = #label,                                     \
@@ -44,15 +44,32 @@ struct device {
             .api = (_api),                                      \
             .init = (init_fn),                                  \
         }
+/* Extra indirection so macro-expanded labels get pasted correctly */
+#define DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api) \
+    _DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api)
 
 /*
  * DEVICE_DT_GET(label) — get a pointer to the device struct.
  * Resolves at compile time, no runtime lookup.
  */
-#define DEVICE_DT_GET(label) (&__device_##label)
+#define _DEVICE_DT_GET(label) (&__device_##label)
+#define DEVICE_DT_GET(label) _DEVICE_DT_GET(label)
 
 /* Declare an extern device (for use in other files) */
-#define DEVICE_DT_DECLARE(label) \
+#define _DEVICE_DT_DECLARE(label) \
     extern const struct device __device_##label
+#define DEVICE_DT_DECLARE(label) _DEVICE_DT_DECLARE(label)
+
+/*
+ * DT_INST_FOREACH_STATUS_OKAY(compat, macro)
+ *
+ * Calls macro(n) for each instance of a compatible with status="okay".
+ * C macros can't loop, so we use a dispatch trick: the code generator
+ * emits DT_INST_<compat>_FOREACH which expands to macro(0) macro(1) ...
+ *
+ * Zephyr does the same thing with UTIL_LISTIFY and a max instance count.
+ */
+#define DT_INST_FOREACH_STATUS_OKAY(compat, macro) \
+    DT_INST_##compat##_FOREACH(macro)
 
 #endif
