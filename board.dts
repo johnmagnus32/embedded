@@ -31,6 +31,12 @@
             clocks = <&rcc 0 0>;  /* AHB1, bit 0 */
         };
 
+        gpioc: gpio@40020800 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020800>;
+            clocks = <&rcc 0 2>;  /* AHB1, bit 2 */
+        };
+
         usart2: serial@40004400 {
             compatible = "st,stm32-usart";
             reg = <0x40004400>;
@@ -41,6 +47,19 @@
             baudrate = <115200>;
             status = "okay";
         };
+    };
+
+    buttons: buttons {
+        compatible = "gpio-keys";
+        gpio-port = <&gpioc>;
+        /* pin numbers for each button (active low, internal pull-up) */
+        pin-up = <0>;
+        pin-down = <1>;
+        pin-left = <2>;
+        pin-right = <3>;
+        pin-a = <4>;
+        pin-b = <5>;
+        status = "okay";
     };
 
     chosen {

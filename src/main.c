@@ -1,35 +1,37 @@
 /*
- * main.c — Application code
- *
- * No register addresses. No config structs. Just:
- *   1. Get the device by its DT label
- *   2. Call the driver API
- *
- * Compare to a Zephyr app:
- *   const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
- *   uart_poll_out(uart, 'H');
+ * main.c — Application: print button state over UART
  */
 
 #include "device.h"
 #include "drivers/uart.h"
+#include "drivers/buttons.h"
 
-/* Declare the device created by the driver (in uart.c) */
 DEVICE_DT_DECLARE(usart2);
+DEVICE_DT_DECLARE(buttons);
+
+static const char *btn_names[] = {"UP", "DOWN", "LEFT", "RIGHT", "A", "B"};
 
 int main(void)
 {
-    /* Get the console UART — resolved at compile time, no lookup */
     const struct device *console = DEVICE_DT_GET(usart2);
+    const struct device *btns = DEVICE_DT_GET(buttons);
 
-    /* Init the device (in Zephyr this happens automatically at boot) */
     console->init(console);
+    btns->init(btns);
 
     uart_puts(console, "Hello from bare metal STM32F411RE!\n");
-    uart_puts(console, "Device tree + driver model + auto config.\n");
+    uart_puts(console, "Press buttons on GPIOC pins 0-5.\n\n");
 
     while (1) {
-        uart_puts(console, "tick\n");
-        for (volatile int i = 0; i < 1600000; i++)
+        for (int i = 0; i < BTN_COUNT; i++) {
+            if (button_is_pressed(btns, i)) {
+                uart_puts(console, btn_names[i]);
+                uart_puts(console, " ");
+            }
+        }
+        uart_puts(console, "\r");
+
+        for (volatile int i = 0; i < 400000; i++)
             ;
     }
 }
