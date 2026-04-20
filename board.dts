@@ -49,17 +49,34 @@
         };
     };
 
-    buttons: buttons {
+    buttons: gpio-keys {
         compatible = "gpio-keys";
-        gpio-port = <&gpioc>;
-        /* pin numbers for each button (active low, internal pull-up) */
-        pin-up = <0>;
-        pin-down = <1>;
-        pin-left = <2>;
-        pin-right = <3>;
-        pin-a = <4>;
-        pin-b = <5>;
         status = "okay";
+
+        button-up {
+            gpios = <&gpioc 0>;
+            code = <103>;
+        };
+        button-down {
+            gpios = <&gpioc 1>;
+            code = <108>;
+        };
+        button-left {
+            gpios = <&gpioc 2>;
+            code = <105>;
+        };
+        button-right {
+            gpios = <&gpioc 3>;
+            code = <106>;
+        };
+        button-a {
+            gpios = <&gpioc 4>;
+            code = <30>;
+        };
+        button-b {
+            gpios = <&gpioc 5>;
+            code = <48>;
+        };
     };
 
     chosen {

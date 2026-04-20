@@ -250,6 +250,47 @@ def generate_header(nodes, labels):
                 # Reverse mapping: instance → label (for FOREACH to create named devices)
                 lines.append(f"#define DT_INST_{compat_c}_{idx}_LABEL {label}")
 
+            # Handle child nodes (e.g., gpio-keys children)
+            # Find all nodes whose path starts with this node's path
+            children = []
+            for cpath, cnode in sorted(nodes.items()):
+                if cpath.startswith(path + "/") and cpath.count("/") == path.count("/") + 1:
+                    children.append((cpath, cnode))
+
+            if children:
+                lines.append(f"#define {prefix}_NUM_CHILDREN {len(children)}")
+                for cidx, (cpath, cnode) in enumerate(children):
+                    cprefix = f"{prefix}_CHILD_{cidx}"
+                    cprops = cnode['props']
+                    # Extract child name from path
+                    cname = cpath.rsplit("/", 1)[1]
+                    cname_c = cname.replace("-", "_").upper()
+                    lines.append(f"#define {prefix}_CHILD_{cidx}_NAME \"{cname}\"")
+
+                    # gpios = <&label pin> → resolve to GPIO base + pin
+                    if 'gpios' in cprops:
+                        gpios = cprops['gpios']
+                        if isinstance(gpios, list) and len(gpios) >= 2:
+                            ref = gpios[0]
+                            pin = gpios[1]
+                            lines.append(f"#define {cprefix}_PIN {pin}")
+                            if isinstance(ref, str) and ref.startswith('&'):
+                                gpio_path = labels.get(ref[1:])
+                                if gpio_path and gpio_path in nodes:
+                                    gpio_reg = nodes[gpio_path]['props'].get('reg', 0)
+                                    lines.append(f"#define {cprefix}_GPIO_BASE 0x{gpio_reg:08X}")
+                                    gpio_clk = nodes[gpio_path]['props'].get('clocks')
+                                    if isinstance(gpio_clk, list) and len(gpio_clk) >= 3:
+                                        lines.append(f"#define {cprefix}_GPIO_CLK_BIT {gpio_clk[2]}")
+
+                    # Other child properties (code, etc.)
+                    for pname, pval in cprops.items():
+                        if pname in ('gpios',):
+                            continue
+                        cpname = pname.replace('-', '_').replace(',', '_').upper()
+                        if isinstance(pval, int):
+                            lines.append(f"#define {cprefix}_{cpname} {pval}")
+
         lines.append("")
 
     # Chosen
