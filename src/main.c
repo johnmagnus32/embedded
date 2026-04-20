@@ -9,7 +9,7 @@
  *   devicetree.h  →  DEVICE_DT_DEFINE populates config  →  driver uses config
  */
 
-#include "devicetree.h"
+#include "devicetree.h"       /* auto-generated from board.dts */
 #include "drivers/uart.h"
 
 /* Populate driver config from device tree — like Zephyr's DEVICE_DT_DEFINE */
