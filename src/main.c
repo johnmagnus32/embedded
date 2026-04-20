@@ -1,38 +1,34 @@
 /*
- * main.c — Bare-metal hello world using device tree + UART driver
+ * main.c — Application code
  *
- * main.c knows WHAT to talk to (from devicetree.h)
- * uart.c knows HOW to talk to it (register-level driver)
- * Neither has hardcoded addresses — they meet through uart_config.
+ * No register addresses. No config structs. Just:
+ *   1. Get the device by its DT label
+ *   2. Call the driver API
  *
- * This is the same pattern as Zephyr:
- *   devicetree.h  →  DEVICE_DT_DEFINE populates config  →  driver uses config
+ * Compare to a Zephyr app:
+ *   const struct device *uart = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+ *   uart_poll_out(uart, 'H');
  */
 
-#include "devicetree.h"       /* auto-generated from board.dts */
+#include "device.h"
 #include "drivers/uart.h"
 
-/* Populate driver config from device tree — like Zephyr's DEVICE_DT_DEFINE */
-static const struct uart_config console_cfg = {
-    .base         = DT_USART2_BASE,
-    .baudrate     = DT_USART2_BAUDRATE,
-    .clk_hz       = DT_SYSCLK_HZ,
-    .gpio_base    = DT_USART2_TX_PORT_BASE,
-    .tx_pin       = DT_USART2_TX_PIN,
-    .tx_af        = DT_USART2_TX_AF,
-    .gpio_clk_bit = DT_USART2_GPIO_CLK_BIT,
-    .uart_clk_bit = DT_USART2_CLK_BIT,
-};
+/* Declare the device created by the driver (in uart.c) */
+DEVICE_DT_DECLARE(usart2);
 
 int main(void)
 {
-    uart_init(&console_cfg);
+    /* Get the console UART — resolved at compile time, no lookup */
+    const struct device *console = DEVICE_DT_GET(usart2);
 
-    uart_puts(&console_cfg, "Hello from bare metal STM32F411RE!\n");
-    uart_puts(&console_cfg, "Now with device tree + UART driver.\n");
+    /* Init the device (in Zephyr this happens automatically at boot) */
+    console->init(console);
+
+    uart_puts(console, "Hello from bare metal STM32F411RE!\n");
+    uart_puts(console, "Device tree + driver model + auto config.\n");
 
     while (1) {
-        uart_puts(&console_cfg, "tick\n");
+        uart_puts(console, "tick\n");
         for (volatile int i = 0; i < 1600000; i++)
             ;
     }

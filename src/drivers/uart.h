@@ -1,29 +1,34 @@
 /*
- * uart.h — UART driver API
+ * uart.h — UART driver API (Zephyr-style)
  *
- * Like Zephyr's struct uart_driver_api, the driver exposes a clean
- * interface. The caller doesn't need to know register addresses.
+ * Application code calls these through the struct device,
+ * never touching hardware directly.
  */
 
 #ifndef DRIVERS_UART_H
 #define DRIVERS_UART_H
 
-#include <stddef.h>
+#include "device.h"
 
-/* Configuration from device tree (passed to uart_init) */
-struct uart_config {
-    unsigned long base;       /* USART peripheral base address */
-    unsigned long baudrate;   /* desired baud rate */
-    unsigned long clk_hz;     /* input clock frequency */
-    unsigned long gpio_base;  /* TX pin GPIO port base */
-    unsigned int  tx_pin;     /* TX pin number */
-    unsigned int  tx_af;      /* TX pin alternate function */
-    unsigned int  gpio_clk_bit; /* GPIO port clock enable bit (AHB1ENR) */
-    unsigned int  uart_clk_bit; /* UART clock enable bit (APB1ENR) */
+/* Driver API — like Zephyr's struct uart_driver_api */
+struct uart_driver_api {
+    void (*poll_out)(const struct device *dev, char c);
 };
 
-void uart_init(const struct uart_config *cfg);
-void uart_putc(const struct uart_config *cfg, char c);
-void uart_puts(const struct uart_config *cfg, const char *s);
+/* Convenience wrappers */
+static inline void uart_poll_out(const struct device *dev, char c)
+{
+    const struct uart_driver_api *api = dev->api;
+    api->poll_out(dev, c);
+}
+
+static inline void uart_puts(const struct device *dev, const char *s)
+{
+    while (*s) {
+        if (*s == '\n')
+            uart_poll_out(dev, '\r');
+        uart_poll_out(dev, *s++);
+    }
+}
 
 #endif

@@ -2,46 +2,39 @@
 """
 gen_devicetree.py — Parse a .dts file and generate devicetree.h
 
-Simplified version of Zephyr's gen_defines.py + edtlib.py.
-Zephyr's version handles the full DT spec (includes, overlays, bindings,
-phandle resolution across files). Ours handles a single self-contained .dts.
+Emits:
+  - DT_<LABEL>_<PROP> defines for each labeled node
+  - DT_INST_<compat>_<N>_<PROP> defines for driver instance macros
+  - DT_CHOSEN_<name> aliases
 """
 
 import re
 import sys
 
-def parse_dts(text):
-    """Parse DTS text into a tree of nodes.
 
-    Returns dict: { path: { 'props': {name: value}, 'label': str|None } }
-    """
-    # Strip C-style comments
+def parse_dts(text):
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
     text = re.sub(r'//.*', '', text)
 
     nodes = {}
-    labels = {}  # label -> path
+    labels = {}
 
     def parse_node(src, path):
-        """Parse the contents between { } for a node at the given path."""
         props = {}
         pos = 0
 
         while pos < len(src):
-            # Skip whitespace
             m = re.match(r'\s+', src[pos:])
             if m:
                 pos += m.end()
                 continue
-
             if pos >= len(src):
                 break
 
-            # Child node: [label:] name[@addr] { ... };
             m = re.match(
-                r'(?:(\w+)\s*:\s*)?'     # optional label
-                r'([\w,.-]+)'            # node name
-                r'(?:@([0-9a-fA-F]+))?'  # optional @address
+                r'(?:(\w+)\s*:\s*)?'
+                r'([\w,.-]+)'
+                r'(?:@([0-9a-fA-F]+))?'
                 r'\s*\{',
                 src[pos:]
             )
@@ -52,20 +45,15 @@ def parse_dts(text):
                 node_name = f"{name}@{addr}" if addr else name
                 child_path = f"{path}/{node_name}" if path != "/" else f"/{node_name}"
 
-                # Find matching closing brace
                 brace_start = pos + m.end()
                 depth = 1
                 i = brace_start
                 while i < len(src) and depth > 0:
-                    if src[i] == '{':
-                        depth += 1
-                    elif src[i] == '}':
-                        depth -= 1
+                    if src[i] == '{': depth += 1
+                    elif src[i] == '}': depth -= 1
                     i += 1
 
                 child_body = src[brace_start:i - 1]
-
-                # Skip the }; after
                 pos = i
                 m2 = re.match(r'\s*;', src[pos:])
                 if m2:
@@ -73,17 +61,14 @@ def parse_dts(text):
 
                 if label:
                     labels[label] = child_path
-
                 parse_node(child_body, child_path)
                 continue
 
-            # Property: name = <value> | "string" | [...];
             m = re.match(r'([\w,#.-]+)\s*=\s*', src[pos:])
             if m:
                 prop_name = m.group(1)
                 pos += m.end()
 
-                # Angle-bracket value: <0x1234> or <&label bus bit>
                 m2 = re.match(r'<([^>]*)>\s*;', src[pos:])
                 if m2:
                     raw = m2.group(1).strip()
@@ -91,32 +76,26 @@ def parse_dts(text):
                     pos += m2.end()
                     continue
 
-                # String value: "..."
                 m2 = re.match(r'"([^"]*)"\s*;', src[pos:])
                 if m2:
                     props[prop_name] = m2.group(1)
                     pos += m2.end()
                     continue
 
-            # Boolean property (no value): name;
             m = re.match(r'([\w,.-]+)\s*;', src[pos:])
             if m:
                 props[m.group(1)] = True
                 pos += m.end()
                 continue
 
-            # Skip anything else
             pos += 1
 
         nodes[path] = {'props': props, 'label': None}
-
-        # Assign labels
         for lbl, lpath in labels.items():
             if lpath in nodes:
                 nodes[lpath]['label'] = lbl
 
     def parse_angle_value(raw):
-        """Parse contents of < >. Returns int, list, or phandle ref string."""
         tokens = raw.split()
         if len(tokens) == 1:
             return parse_token(tokens[0])
@@ -124,47 +103,28 @@ def parse_dts(text):
 
     def parse_token(t):
         if t.startswith('&'):
-            return t  # phandle reference, resolve later
+            return t
         if t.startswith('0x') or t.startswith('0X'):
             return int(t, 16)
         return int(t)
 
-    # Find the root node: / { ... };
     m = re.search(r'/\s*\{', text)
     if not m:
-        print("Error: no root node found", file=sys.stderr)
-        sys.exit(1)
+        sys.exit("Error: no root node found")
 
     brace_start = m.end()
     depth = 1
     i = brace_start
     while i < len(text) and depth > 0:
-        if text[i] == '{':
-            depth += 1
-        elif text[i] == '}':
-            depth -= 1
+        if text[i] == '{': depth += 1
+        elif text[i] == '}': depth -= 1
         i += 1
 
-    root_body = text[brace_start:i - 1]
-    parse_node(root_body, "/")
-
+    parse_node(text[brace_start:i - 1], "/")
     return nodes, labels
 
 
-def resolve_phandle(val, labels, nodes):
-    """Resolve &label to the node's reg address."""
-    if isinstance(val, str) and val.startswith('&'):
-        label = val[1:]
-        path = labels.get(label)
-        if path and path in nodes:
-            reg = nodes[path]['props'].get('reg')
-            if isinstance(reg, int):
-                return reg
-    return val
-
-
 def generate_header(nodes, labels):
-    """Generate devicetree.h from parsed nodes."""
     lines = [
         "/* AUTO-GENERATED by gen_devicetree.py from board.dts — DO NOT EDIT */",
         "#ifndef DEVICETREE_H",
@@ -172,7 +132,7 @@ def generate_header(nodes, labels):
         "",
     ]
 
-    # Find the clock frequency
+    # Sysclk
     for path, node in nodes.items():
         if node['props'].get('compatible') == 'fixed-clock':
             freq = node['props'].get('clock-frequency')
@@ -180,7 +140,7 @@ def generate_header(nodes, labels):
                 lines.append(f"#define DT_SYSCLK_HZ {freq}")
                 lines.append("")
 
-    # Emit defines for each labeled node
+    # Per-label defines
     for label, path in sorted(labels.items()):
         node = nodes.get(path)
         if not node:
@@ -188,23 +148,17 @@ def generate_header(nodes, labels):
 
         prefix = f"DT_{label.upper()}"
         props = node['props']
-
         lines.append(f"/* {path} */")
 
-        # reg property → BASE address
-        if 'reg' in props:
-            reg = props['reg']
-            addr = reg if isinstance(reg, int) else reg
-            lines.append(f"#define {prefix}_BASE 0x{addr:08X}")
+        if 'reg' in props and isinstance(props['reg'], int):
+            lines.append(f"#define {prefix}_BASE 0x{props['reg']:08X}")
 
-        # clocks = <&rcc bus bit> → CLK_BUS and CLK_BIT
         if 'clocks' in props:
             clk = props['clocks']
             if isinstance(clk, list) and len(clk) >= 3:
                 lines.append(f"#define {prefix}_CLK_BUS {clk[1]}")
                 lines.append(f"#define {prefix}_CLK_BIT {clk[2]}")
 
-        # Emit all simple integer and string properties
         skip = {'compatible', 'reg', 'clocks', 'status', 'tx-port'}
         for pname, pval in props.items():
             if pname in skip:
@@ -215,12 +169,10 @@ def generate_header(nodes, labels):
             elif isinstance(pval, str) and not pval.startswith('&'):
                 lines.append(f"#define {prefix}_{cname} \"{pval}\"")
 
-        # tx-port phandle → resolve to GPIO base and clock bit
         if 'tx-port' in props:
             ref = props['tx-port']
             if isinstance(ref, str) and ref.startswith('&'):
-                gpio_label = ref[1:]
-                gpio_path = labels.get(gpio_label)
+                gpio_path = labels.get(ref[1:])
                 if gpio_path and gpio_path in nodes:
                     gpio = nodes[gpio_path]
                     gpio_reg = gpio['props'].get('reg', 0)
@@ -231,27 +183,80 @@ def generate_header(nodes, labels):
 
         lines.append("")
 
-    # Chosen aliases
-    chosen_path = "/"
-    chosen_node = None
+    # Instance defines: group nodes by compatible, assign instance numbers
+    # This is what DT_INST_REG_ADDR(n) and DT_INST_PROP(n, prop) resolve to
+    compat_instances = {}
+    for path, node in nodes.items():
+        compat = node['props'].get('compatible')
+        if not compat or not isinstance(compat, str):
+            continue
+        if node['props'].get('status', 'okay') != 'okay':
+            continue
+        if compat not in compat_instances:
+            compat_instances[compat] = []
+        compat_instances[compat].append((path, node))
+
+    lines.append("/* ---- Instance defines (for DT_INST macros in drivers) ---- */")
+    lines.append("")
+
+    for compat, instances in sorted(compat_instances.items()):
+        compat_c = compat.replace(',', '_').replace('-', '_').upper()
+        lines.append(f"/* compatible = \"{compat}\" — {len(instances)} instance(s) */")
+        lines.append(f"#define DT_INST_{compat_c}_NUM_INSTANCES {len(instances)}")
+
+        for idx, (path, node) in enumerate(instances):
+            prefix = f"DT_INST_{compat_c}_{idx}"
+            props = node['props']
+
+            if 'reg' in props and isinstance(props['reg'], int):
+                lines.append(f"#define {prefix}_REG_ADDR 0x{props['reg']:08X}")
+
+            if 'clocks' in props:
+                clk = props['clocks']
+                if isinstance(clk, list) and len(clk) >= 3:
+                    lines.append(f"#define {prefix}_CLK_BUS {clk[1]}")
+                    lines.append(f"#define {prefix}_CLK_BIT {clk[2]}")
+
+            skip = {'compatible', 'reg', 'clocks', 'status', 'tx-port'}
+            for pname, pval in props.items():
+                if pname in skip:
+                    continue
+                cname = pname.replace('-', '_').replace(',', '_').upper()
+                if isinstance(pval, int):
+                    lines.append(f"#define {prefix}_PROP_{cname} {pval}")
+
+            if 'tx-port' in props:
+                ref = props['tx-port']
+                if isinstance(ref, str) and ref.startswith('&'):
+                    gpio_path = labels.get(ref[1:])
+                    if gpio_path and gpio_path in nodes:
+                        gpio = nodes[gpio_path]
+                        gpio_reg = gpio['props'].get('reg', 0)
+                        lines.append(f"#define {prefix}_PROP_TX_PORT_BASE 0x{gpio_reg:08X}")
+                        gpio_clk = gpio['props'].get('clocks')
+                        if isinstance(gpio_clk, list) and len(gpio_clk) >= 3:
+                            lines.append(f"#define {prefix}_PROP_GPIO_CLK_BIT {gpio_clk[2]}")
+
+            # Map label → instance for DEVICE_DT_GET
+            label = node.get('label')
+            if label:
+                lines.append(f"#define DT_NODELABEL_{label.upper()}_INST_IDX {idx}")
+                lines.append(f"#define DT_NODELABEL_{label.upper()}_COMPAT {compat_c}")
+
+        lines.append("")
+
+    # Chosen
     for path, node in nodes.items():
         if path.endswith("/chosen"):
-            chosen_node = node
-            break
-
-    if chosen_node:
-        lines.append("/* chosen aliases */")
-        for pname, pval in chosen_node['props'].items():
-            ref = pval if isinstance(pval, str) else (pval[0] if isinstance(pval, list) else None)
-            if isinstance(ref, str) and ref.startswith('&'):
-                alias_label = ref[1:]
-                alias_path = labels.get(alias_label)
-                if alias_path and alias_path in nodes:
+            lines.append("/* chosen aliases */")
+            for pname, pval in node['props'].items():
+                ref = pval if isinstance(pval, str) else (pval[0] if isinstance(pval, list) else None)
+                if isinstance(ref, str) and ref.startswith('&'):
+                    alias_label = ref[1:]
                     alias_prefix = f"DT_{alias_label.upper()}"
                     cname = pname.replace('-', '_').upper()
-                    lines.append(f"#define DT_{cname}_BASE {alias_prefix}_BASE")
-                    lines.append(f"#define DT_{cname}_BAUDRATE {alias_prefix}_BAUDRATE")
-        lines.append("")
+                    lines.append(f"#define DT_CHOSEN_{cname}_LABEL {alias_label.upper()}")
+            lines.append("")
 
     lines.append("#endif")
     return "\n".join(lines) + "\n"
@@ -259,8 +264,7 @@ def generate_header(nodes, labels):
 
 def main():
     if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <input.dts> <output.h>", file=sys.stderr)
-        sys.exit(1)
+        sys.exit(f"Usage: {sys.argv[0]} <input.dts> <output.h>")
 
     with open(sys.argv[1]) as f:
         text = f.read()
