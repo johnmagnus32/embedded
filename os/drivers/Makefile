@@ -1,8 +1,8 @@
-# STM32 drivers (only compiled when their CONFIG is set)
-obj-$(CONFIG_CLOCK_STM32)  += clock.o
-obj-$(CONFIG_UART_STM32)   += uart.o
-obj-$(CONFIG_GPIO_STM32)   += gpio.o
-obj-$(CONFIG_SPI_STM32)    += spi.o
+# STM32 drivers
+obj-$(CONFIG_CLOCK_STM32)  += clock_stm32.o
+obj-$(CONFIG_UART_STM32)   += uart_stm32.o
+obj-$(CONFIG_GPIO_STM32)   += gpio_stm32.o
+obj-$(CONFIG_SPI_STM32)    += spi_stm32.o
 obj-$(CONFIG_FLASH)        += flash.o
 obj-$(CONFIG_GPIO_KEYS)    += gpio_keys.o
 obj-$(CONFIG_GPIO_LEDS)    += gpio_leds.o
