@@ -5,41 +5,71 @@ SIZE    = $(TC)-size
 OBJDUMP = $(TC)-objdump
 NM      = $(TC)-nm
 
-# Directories
 SRC     = src
 BUILD   = build
 
-# Include paths: generated headers, public API, all subsystems
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
           -I$(BUILD) -I$(SRC)/include -I$(SRC)/kernel -I$(SRC)/lib \
           -I$(SRC)/fs -I$(SRC)/drivers -I$(SRC)
 LDFLAGS = -T linker.ld -nostdlib
 
-# Source files organized by subsystem
-OBJS    = $(BUILD)/startup.o $(BUILD)/systick.o \
-          $(BUILD)/sched.o $(BUILD)/sync.o $(BUILD)/msgq.o \
-          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/log.o \
-          $(BUILD)/fs.o $(BUILD)/tinyfs.o \
-          $(BUILD)/clock.o $(BUILD)/uart.o $(BUILD)/gpio.o \
-          $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o \
-          $(BUILD)/spi.o $(BUILD)/flash.o \
-          $(BUILD)/main.o
+# Include generated config (CONFIG_X := y|n)
+-include $(BUILD)/config.mk
+
+# ---- Conditional object list (like Zephyr's CMakeLists + Kconfig) ----
+
+# Always included
+OBJS    = $(BUILD)/startup.o $(BUILD)/main.o
+
+# Drivers
+OBJS-$(CONFIG_CLOCK)      += $(BUILD)/clock.o
+OBJS-$(CONFIG_UART)       += $(BUILD)/uart.o
+OBJS-$(CONFIG_GPIO)       += $(BUILD)/gpio.o
+OBJS-$(CONFIG_GPIO_KEYS)  += $(BUILD)/gpio_keys.o
+OBJS-$(CONFIG_GPIO_LEDS)  += $(BUILD)/gpio_leds.o
+OBJS-$(CONFIG_SPI)        += $(BUILD)/spi.o
+OBJS-$(CONFIG_FLASH)      += $(BUILD)/flash.o
+
+# Kernel
+OBJS-$(CONFIG_SCHED)      += $(BUILD)/sched.o
+OBJS-$(CONFIG_SYSTICK)    += $(BUILD)/systick.o
+OBJS-$(CONFIG_SYNC)       += $(BUILD)/sync.o
+OBJS-$(CONFIG_MSGQ)       += $(BUILD)/msgq.o
+
+# Libraries
+OBJS-$(CONFIG_HEAP)       += $(BUILD)/heap.o
+OBJS-$(CONFIG_MEMSLAB)    += $(BUILD)/memslab.o
+OBJS-$(CONFIG_LOG)        += $(BUILD)/log.o
+
+# Filesystem
+OBJS-$(CONFIG_FS)         += $(BUILD)/fs.o
+OBJS-$(CONFIG_TINYFS)     += $(BUILD)/tinyfs.o
+
+# Collect all enabled objects
+OBJS += $(OBJS-y)
 
 # Default target
 all: $(BUILD)/hello.bin
 	@$(SIZE) $(BUILD)/hello.elf
 	@echo ""
+	@echo "Enabled: $(words $(OBJS)) objects from .config"
 	@echo "Flash with: st-flash write $(BUILD)/hello.bin 0x08000000"
+
+# Generate config.h and config.mk from .config
+$(BUILD)/config.h $(BUILD)/config.mk: .config gen_config.py
+	python3 gen_config.py $< $(BUILD)/config.h $(BUILD)/config.mk
 
 # Generate devicetree.h from board.dts
 $(BUILD)/devicetree.h: board.dts gen_devicetree.py
 	python3 gen_devicetree.py $< $@
 
+# All C objects depend on both generated headers
+GENERATED = $(BUILD)/config.h $(BUILD)/devicetree.h
+
 # Link
 $(BUILD)/hello.elf: $(OBJS) linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-# Raw binary
 $(BUILD)/hello.bin: $(BUILD)/hello.elf
 	$(OBJCOPY) -O binary $< $@
 
@@ -47,22 +77,22 @@ $(BUILD)/hello.bin: $(BUILD)/hello.elf
 $(BUILD)/%.o: $(SRC)/arch/arm/%.s
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/arch/arm/%.c $(BUILD)/devicetree.h
+$(BUILD)/%.o: $(SRC)/arch/arm/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/kernel/%.c $(BUILD)/devicetree.h
+$(BUILD)/%.o: $(SRC)/kernel/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/lib/%.c $(BUILD)/devicetree.h
+$(BUILD)/%.o: $(SRC)/lib/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/fs/%.c $(BUILD)/devicetree.h
+$(BUILD)/%.o: $(SRC)/fs/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/drivers/%.c $(BUILD)/devicetree.h
+$(BUILD)/%.o: $(SRC)/drivers/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/%.c $(BUILD)/devicetree.h
+$(BUILD)/%.o: $(SRC)/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Inspection

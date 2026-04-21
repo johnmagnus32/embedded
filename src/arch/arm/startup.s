@@ -37,7 +37,19 @@
 .word pendsv_handler    /* 0x38: PendSV — context switch */
 .word systick_handler   /* 0x3C: SysTick — timer tick */
 
+/*
+ * Weak default handlers — overridden by systick.c when CONFIG_SYSTICK=y.
+ * Without these, the linker fails when systick.c isn't compiled.
+ */
 .section .text
+.weak pendsv_handler
+.weak systick_handler
+.thumb_func
+pendsv_handler:
+.thumb_func
+systick_handler:
+    bx lr
+
 .global reset_handler
 .thumb_func
 reset_handler:

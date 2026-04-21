@@ -9,47 +9,90 @@
  *   idle_task   — WFI
  */
 
+#include "config.h"
 #include "devicetree.h"
 #include "device.h"
+
+#ifdef CONFIG_UART
 #include "drivers/uart.h"
+#endif
+#ifdef CONFIG_GPIO_KEYS
 #include "drivers/gpio_keys.h"
+#endif
+#ifdef CONFIG_GPIO_LEDS
 #include "drivers/gpio_leds.h"
+#endif
+#ifdef CONFIG_FLASH
 #include "drivers/flash.h"
+#endif
+#ifdef CONFIG_SCHED
 #include "sched.h"
+#endif
+#ifdef CONFIG_SYNC
 #include "sync.h"
+#endif
+#ifdef CONFIG_MSGQ
 #include "msgq.h"
+#endif
+#ifdef CONFIG_HEAP
 #include "heap.h"
+#endif
+#ifdef CONFIG_MEMSLAB
 #include "memslab.h"
+#endif
+#ifdef CONFIG_FS
 #include "fs.h"
+#endif
 
+#ifdef CONFIG_SYSTICK
 extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
+#endif
 
+#ifdef CONFIG_HEAP
 extern uint8_t _heap_start[];
 extern uint32_t _heap_size;
+#endif
 
 DEVICE_DT_DECLARE(DT_CHOSEN_CONSOLE);
 DEVICE_DT_DECLARE(rcc);
+#ifdef CONFIG_GPIO_KEYS
 DEVICE_DT_DECLARE(buttons);
+#endif
+#ifdef CONFIG_GPIO_LEDS
 DEVICE_DT_DECLARE(leds);
+#endif
+#ifdef CONFIG_SPI
 DEVICE_DT_DECLARE(spi1);
+#endif
+#ifdef CONFIG_FLASH
 DEVICE_DT_DECLARE(flash0);
+#endif
 
 /* Sync primitives */
+#ifdef CONFIG_SYNC
 static struct mutex uart_mutex = MUTEX_INIT;
 static struct semaphore btn_event = SEM_INIT(0);
+#endif
 
+#ifdef CONFIG_MSGQ
 struct btn_msg { char name[16]; };
 static struct msgq btn_msgq = MSGQ_INIT(sizeof(struct btn_msg));
+#endif
 
+#ifdef CONFIG_MEMSLAB
 struct led_event { uint8_t led_index; uint8_t on; };
 static uint8_t led_slab_buf[8 * sizeof(struct led_event)];
 static struct memslab led_slab;
+#endif
 
+#ifdef CONFIG_SCHED
 static const struct { int code; const char *name; } keymap[] = {
     { KEY_UP, "UP" }, { KEY_DOWN, "DOWN" }, { KEY_LEFT, "LEFT" },
     { KEY_RIGHT, "RIGHT" }, { KEY_A, "A" }, { KEY_B, "B" },
 };
+#endif
 
+#ifdef CONFIG_SCHED
 /* --- Input task --- */
 
 static void input_task(void)
@@ -187,35 +230,54 @@ static void idle_task(void)
 {
     while (1) { __asm volatile("wfi"); }
 }
+#endif /* CONFIG_SCHED */
 
 /* --- Boot --- */
 
 int main(void)
 {
     const struct device *console = DEVICE_DT_GET(DT_CHOSEN_CONSOLE);
-    const struct device *keys = DEVICE_DT_GET(buttons);
-    const struct device *led_dev = DEVICE_DT_GET(leds);
-    const struct device *spi = DEVICE_DT_GET(spi1);
-    const struct device *flash = DEVICE_DT_GET(flash0);
-
     console->init(console);
-    keys->init(keys);
-    led_dev->init(led_dev);
-    spi->init(spi);       /* SPI bus must init before flash */
-    flash->init(flash);
+
+#ifdef CONFIG_GPIO_KEYS
+    DEVICE_DT_GET(buttons)->init(DEVICE_DT_GET(buttons));
+#endif
+#ifdef CONFIG_GPIO_LEDS
+    DEVICE_DT_GET(leds)->init(DEVICE_DT_GET(leds));
+#endif
+#ifdef CONFIG_SPI
+    DEVICE_DT_GET(spi1)->init(DEVICE_DT_GET(spi1));
+#endif
+#ifdef CONFIG_FLASH
+    DEVICE_DT_GET(flash0)->init(DEVICE_DT_GET(flash0));
+#endif
 
     uart_puts(console, "Booting...\n");
 
+#ifdef CONFIG_HEAP
     heap_init(_heap_start, (size_t)&_heap_size);
+#endif
+#ifdef CONFIG_MEMSLAB
     memslab_init(&led_slab, led_slab_buf, sizeof(struct led_event), 8);
+#endif
 
+#ifdef CONFIG_SCHED
     sched_create_task(input_task, "input");
     sched_create_task(led_task, "led");
     sched_create_task(log_msg_task, "log");
+#ifdef CONFIG_FS
     sched_create_task(flash_task, "flash");
+#endif
     sched_create_task(idle_task, "idle");
 
     uart_puts(console, "Starting scheduler.\n");
+#ifdef CONFIG_SYSTICK
     systick_init(DT_SYSCLK_HZ, 1000);
+#endif
     sched_start();
+#else
+    /* No scheduler — just loop */
+    uart_puts(console, "No scheduler, halting.\n");
+    while (1) {}
+#endif
 }
