@@ -1,3 +1,13 @@
+# Top-level Makefile
+#
+# Builds a sample application against the OS, like:
+#   make SAMPLE=sample-stm32f411re
+#
+# The OS is in os/ (like the Zephyr repo).
+# The sample provides: main.c, board.dts, .config, linker.ld
+
+SAMPLE ?= sample-stm32f411re
+
 TC      = /home/johmagnu/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi
 CC      = $(TC)-gcc
 OBJCOPY = $(TC)-objcopy
@@ -5,51 +15,47 @@ SIZE    = $(TC)-size
 OBJDUMP = $(TC)-objdump
 NM      = $(TC)-nm
 
-SRC     = src
+OS      = os
+APP     = $(SAMPLE)
 BUILD   = build
 
+# Include paths: generated headers, OS headers, all subsystems
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
-          -I$(BUILD) -I$(SRC)/include -I$(SRC)/kernel -I$(SRC)/lib \
-          -I$(SRC)/fs -I$(SRC)/drivers -I$(SRC)
-LDFLAGS = -T linker.ld -nostdlib
+          -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
+          -I$(OS)/fs -I$(OS)/drivers -I$(OS)
+LDFLAGS = -T $(APP)/linker.ld -nostdlib
 
-# ---- Load .config ----
+# ---- Load .config from the sample ----
 -include $(BUILD)/config.mk
 
-# ---- Collect objects from subdirectory Makefiles ----
-# Each subdir Makefile sets obj-y and obj-$(CONFIG_X).
-# We include them one at a time, collecting results.
+# ---- Collect objects from OS subdirectory Makefiles ----
 
 OBJS := $(BUILD)/main.o
 
-# arch/arm
+# OS subsystems
 obj-y :=
 obj-n :=
-include $(SRC)/arch/arm/Makefile
+include $(OS)/arch/arm/Makefile
 OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
-# kernel
 obj-y :=
 obj-n :=
-include $(SRC)/kernel/Makefile
+include $(OS)/kernel/Makefile
 OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
-# lib
 obj-y :=
 obj-n :=
-include $(SRC)/lib/Makefile
+include $(OS)/lib/Makefile
 OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
-# fs
 obj-y :=
 obj-n :=
-include $(SRC)/fs/Makefile
+include $(OS)/fs/Makefile
 OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
-# drivers
 obj-y :=
 obj-n :=
-include $(SRC)/drivers/Makefile
+include $(OS)/drivers/Makefile
 OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
 # ---- Generated headers ----
@@ -60,42 +66,45 @@ GENERATED = $(BUILD)/config.h $(BUILD)/devicetree.h
 all: $(BUILD)/hello.bin
 	@$(SIZE) $(BUILD)/hello.elf
 	@echo ""
+	@echo "Sample: $(SAMPLE)"
 	@echo "Enabled: $(words $(OBJS)) objects"
 	@echo "Flash with: st-flash write $(BUILD)/hello.bin 0x08000000"
 
-$(BUILD)/config.h $(BUILD)/config.mk: .config gen_config.py
-	python3 gen_config.py $< $(BUILD)/config.h $(BUILD)/config.mk
+$(BUILD)/config.h $(BUILD)/config.mk: $(APP)/.config $(OS)/gen_config.py
+	python3 $(OS)/gen_config.py $(APP)/.config $(BUILD)/config.h $(BUILD)/config.mk
 
-$(BUILD)/devicetree.h: board.dts gen_devicetree.py
-	python3 gen_devicetree.py $< $@
+$(BUILD)/devicetree.h: $(APP)/board.dts $(OS)/gen_devicetree.py
+	python3 $(OS)/gen_devicetree.py $< $@
 
-$(BUILD)/hello.elf: $(OBJS) linker.ld
+$(BUILD)/hello.elf: $(OBJS) $(APP)/linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
 $(BUILD)/hello.bin: $(BUILD)/hello.elf
 	$(OBJCOPY) -O binary $< $@
 
-# ---- Pattern rules (one per source directory) ----
+# ---- Pattern rules ----
 
-$(BUILD)/%.o: $(SRC)/arch/arm/%.s
+# Application source
+$(BUILD)/%.o: $(APP)/src/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/arch/arm/%.c $(GENERATED)
+# OS sources
+$(BUILD)/%.o: $(OS)/arch/arm/%.s
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/kernel/%.c $(GENERATED)
+$(BUILD)/%.o: $(OS)/arch/arm/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/lib/%.c $(GENERATED)
+$(BUILD)/%.o: $(OS)/kernel/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/fs/%.c $(GENERATED)
+$(BUILD)/%.o: $(OS)/lib/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/drivers/%.c $(GENERATED)
+$(BUILD)/%.o: $(OS)/fs/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(SRC)/%.c $(GENERATED)
+$(BUILD)/%.o: $(OS)/drivers/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # ---- Inspection ----
@@ -109,7 +118,16 @@ sections: $(BUILD)/hello.elf
 symbols: $(BUILD)/hello.elf
 	$(NM) -n $<
 
+# Generate .config from Kconfig
+menuconfig:
+	python3 $(OS)/gen_kconfig.py $(OS)/Kconfig --interactive
+	cp .config $(APP)/.config
+
+defconfig:
+	python3 $(OS)/gen_kconfig.py $(OS)/Kconfig
+	cp .config $(APP)/.config
+
 clean:
 	rm -f $(BUILD)/*
 
-.PHONY: all clean disasm sections symbols
+.PHONY: all clean disasm sections symbols menuconfig defconfig
