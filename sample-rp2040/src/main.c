@@ -98,6 +98,16 @@ int main(void)
 #ifdef CONFIG_SYSTICK
     systick_init(DT_SYSCLK_HZ, 1000);
 #endif
+
+#ifdef CONFIG_SMP
+    /* Boot core 1 — it will run sched_start() and pick tasks */
+    extern void smp_boot_core1(void);
+    uart_puts(console, "Booting core 1...\n");
+    smp_boot_core1();
+    uart_puts(console, "Core 1 running.\n");
+#endif
+
+    /* Core 0 starts its scheduler */
     sched_start();
 #else
     uart_puts(console, "No scheduler. Halting.\n");

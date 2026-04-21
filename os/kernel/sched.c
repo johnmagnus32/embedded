@@ -1,16 +1,19 @@
 /*
- * sched.c — Preemptive scheduler with wait queues
+ * sched.c — Preemptive scheduler with SMP support
  *
- * Key change from before: tasks can be BLOCKED on a wait queue.
- * Blocked tasks are skipped by pick_next() — they consume zero CPU.
- * sched_wake() moves a task from BLOCKED → READY.
+ * SMP changes from single-core:
+ *   1. current_task is per-CPU (each core runs a different task)
+ *   2. Ready queue protected by spinlock (not just irq_lock)
+ *   3. pick_next() must skip tasks running on OTHER cores
+ *   4. get_cpu_id() determines which core we're on
  *
- * Before: sem_take → spin: check → yield → check → yield → ...
- * After:  sem_take → block → (not scheduled at all) → wake → run
+ * On single-core (CONFIG_SMP=n), spinlock degrades to irq_lock
+ * and there's only one current_task — no overhead.
  */
 
 #include "sched.h"
 #include "config.h"
+#include "spinlock.h"
 #include <stddef.h>
 
 extern uint32_t systick_get_ticks(void);
@@ -18,16 +21,26 @@ extern uint32_t systick_get_ticks(void);
 #define SCB_ICSR   (*(volatile uint32_t *)0xE000ED04)
 #define ICSR_PENDSVSET  (1 << 28)
 
+#ifndef CONFIG_SMP_NUM_CPUS
+#define CONFIG_SMP_NUM_CPUS 1
+#endif
+
 struct task_tcb {
     uint32_t *sp;
     const char *name;
     enum task_state state;
     uint32_t wake_tick;
+    int running_on_cpu;     /* which CPU is running this (-1 = none) */
 };
 
 static struct task_tcb tasks[MAX_TASKS];
 static int num_tasks;
-static int current_task;
+
+/* Per-CPU state */
+static int current_task_per_cpu[CONFIG_SMP_NUM_CPUS];
+
+/* Spinlock protecting the ready queue (SMP-safe) */
+static struct spinlock sched_lock = SPINLOCK_INIT(0);
 
 static uint8_t task_stacks[MAX_TASKS][TASK_STACK_SIZE]
     __attribute__((aligned(8)));
@@ -36,17 +49,11 @@ static uint32_t *task_stack_init(uint8_t *stack_base, task_fn fn)
 {
     uint32_t *sp = (uint32_t *)(stack_base + TASK_STACK_SIZE);
 
-    /* Hardware exception frame */
-    *(--sp) = (1 << 24);       /* xPSR — Thumb bit */
+    *(--sp) = (1 << 24);       /* xPSR */
     *(--sp) = (uint32_t)fn;    /* PC */
     *(--sp) = 0;               /* LR */
     *(--sp) = 0;               /* R12 */
-    *(--sp) = 0;               /* R3 */
-    *(--sp) = 0;               /* R2 */
-    *(--sp) = 0;               /* R1 */
-    *(--sp) = 0;               /* R0 */
-
-    /* Software-saved registers */
+    *(--sp) = 0; *(--sp) = 0; *(--sp) = 0; *(--sp) = 0;  /* R3-R0 */
     *(--sp) = 0; *(--sp) = 0; *(--sp) = 0; *(--sp) = 0;  /* R11-R8 */
     *(--sp) = 0; *(--sp) = 0; *(--sp) = 0; *(--sp) = 0;  /* R7-R4 */
 
@@ -55,55 +62,85 @@ static uint32_t *task_stack_init(uint8_t *stack_base, task_fn fn)
 
 int sched_create_task(task_fn fn, const char *name)
 {
-    if (num_tasks >= MAX_TASKS) return -1;
+    uint32_t key = spin_lock(&sched_lock);
+    if (num_tasks >= MAX_TASKS) {
+        spin_unlock(&sched_lock, key);
+        return -1;
+    }
     int id = num_tasks++;
     tasks[id].sp = task_stack_init(task_stacks[id], fn);
     tasks[id].name = name;
     tasks[id].state = TASK_READY;
     tasks[id].wake_tick = 0;
+    tasks[id].running_on_cpu = -1;
+    spin_unlock(&sched_lock, key);
     return id;
 }
 
 const char *sched_current_name(void)
 {
-    return tasks[current_task].name;
+    return tasks[current_task_per_cpu[get_cpu_id()]].name;
 }
 
 int sched_current_id(void)
 {
-    return current_task;
+    return current_task_per_cpu[get_cpu_id()];
 }
 
-/* Pick next READY task (skip BLOCKED and SLEEPING) */
-static int pick_next(void)
+/*
+ * Pick next READY task for this CPU.
+ * Must be called with sched_lock held.
+ * Skips tasks that are BLOCKED, SLEEPING, or running on another CPU.
+ */
+static int pick_next(int cpu)
 {
+    int cur = current_task_per_cpu[cpu];
     uint32_t now = systick_get_ticks();
 
     for (int i = 1; i <= num_tasks; i++) {
-        int c = (current_task + i) % num_tasks;
+        int c = (cur + i) % num_tasks;
         struct task_tcb *t = &tasks[c];
 
-        /* Wake sleeping tasks whose timeout expired */
         if (t->state == TASK_SLEEPING && now >= t->wake_tick) {
             t->state = TASK_READY;
             t->wake_tick = 0;
         }
 
+        /* Skip tasks running on another CPU */
+        if (t->running_on_cpu >= 0 && t->running_on_cpu != cpu)
+            continue;
+
         if (t->state == TASK_READY)
             return c;
     }
-    return current_task;  /* nothing else ready */
+    return cur;
 }
 
+/*
+ * Called by PendSV on each core.
+ * Lock the scheduler, switch tasks, unlock.
+ */
 uint32_t *sched_preempt(uint32_t *old_sp)
 {
-    tasks[current_task].sp = old_sp;
-    if (tasks[current_task].state == TASK_RUNNING)
-        tasks[current_task].state = TASK_READY;
+    int cpu = get_cpu_id();
+    int old_task = current_task_per_cpu[cpu];
 
-    current_task = pick_next();
-    tasks[current_task].state = TASK_RUNNING;
-    return tasks[current_task].sp;
+    uint32_t key = spin_lock(&sched_lock);
+
+    tasks[old_task].sp = old_sp;
+    if (tasks[old_task].state == TASK_RUNNING) {
+        tasks[old_task].state = TASK_READY;
+        tasks[old_task].running_on_cpu = -1;
+    }
+
+    int next = pick_next(cpu);
+    current_task_per_cpu[cpu] = next;
+    tasks[next].state = TASK_RUNNING;
+    tasks[next].running_on_cpu = cpu;
+
+    spin_unlock(&sched_lock, key);
+
+    return tasks[next].sp;
 }
 
 void sched_yield(void)
@@ -113,37 +150,29 @@ void sched_yield(void)
 
 void sched_sleep_ms(uint32_t ms)
 {
-    uint32_t key;
-    __asm volatile("mrs %0, primask\n cpsid i" : "=r"(key));
-
-    tasks[current_task].wake_tick = systick_get_ticks() + ms;
-    tasks[current_task].state = TASK_SLEEPING;
-
-    __asm volatile("msr primask, %0" :: "r"(key));
+    uint32_t key = spin_lock(&sched_lock);
+    int cpu = get_cpu_id();
+    int id = current_task_per_cpu[cpu];
+    tasks[id].wake_tick = systick_get_ticks() + ms;
+    tasks[id].state = TASK_SLEEPING;
+    tasks[id].running_on_cpu = -1;
+    spin_unlock(&sched_lock, key);
     sched_yield();
 }
 
-/*
- * Block current task on a wait queue.
- * The task will NOT be scheduled until sched_wake() is called.
- * Must be called with interrupts locked by the caller.
- */
 void sched_block(struct wait_queue *wq)
 {
-    int id = current_task;
+    /* Must be called with sched_lock held by caller */
+    int cpu = get_cpu_id();
+    int id = current_task_per_cpu[cpu];
     tasks[id].state = TASK_BLOCKED;
+    tasks[id].running_on_cpu = -1;
     wq->waiters |= (1 << id);
-    /* Caller must call sched_yield() after unlocking IRQs */
 }
 
-/*
- * Wake one task from a wait queue (the first one found).
- * Safe to call from ISR context.
- */
 void sched_wake(struct wait_queue *wq)
 {
     if (wq->waiters == 0) return;
-
     for (int i = 0; i < num_tasks; i++) {
         if (wq->waiters & (1 << i)) {
             wq->waiters &= ~(1 << i);
@@ -156,9 +185,8 @@ void sched_wake(struct wait_queue *wq)
 void sched_wake_all(struct wait_queue *wq)
 {
     for (int i = 0; i < num_tasks; i++) {
-        if (wq->waiters & (1 << i)) {
+        if (wq->waiters & (1 << i))
             tasks[i].state = TASK_READY;
-        }
     }
     wq->waiters = 0;
 }
@@ -167,16 +195,15 @@ void sched_start(void)
 {
     if (num_tasks == 0) return;
 
-    current_task = 0;
+    int cpu = get_cpu_id();
+    current_task_per_cpu[cpu] = 0;
     tasks[0].state = TASK_RUNNING;
+    tasks[0].running_on_cpu = cpu;
     uint32_t *sp = tasks[0].sp;
 
 #ifdef CONFIG_CPU_CORTEX_M0PLUS
-    /* M0+: can't ldmia r8-r11 directly */
     __asm volatile(
-        /* Load r4-r7 */
         "ldmia %0!, {r4-r7}        \n"
-        /* Load r8-r11 via r0-r3 (clobber is ok, we're switching) */
         "ldmia %0!, {r0-r3}        \n"
         "mov   r8, r0              \n"
         "mov   r9, r1              \n"

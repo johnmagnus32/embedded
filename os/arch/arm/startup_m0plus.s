@@ -16,6 +16,8 @@
 .thumb
 
 .section .vector_table, "a"
+.global __vector_table
+__vector_table:
 .word _stack_top
 .word reset_handler
 .word 0                 /* NMI */
