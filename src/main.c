@@ -2,12 +2,13 @@
  * main.c — Press a button, light the corresponding LED
  */
 
+#include "devicetree.h"
 #include "device.h"
 #include "drivers/uart.h"
 #include "drivers/gpio_keys.h"
 #include "drivers/gpio_leds.h"
 
-DEVICE_DT_DECLARE(usart2);
+DEVICE_DT_DECLARE(DT_CHOSEN_CONSOLE);
 DEVICE_DT_DECLARE(buttons);
 DEVICE_DT_DECLARE(leds);
 
@@ -23,7 +24,7 @@ static const int key_to_led[] = {
 
 int main(void)
 {
-    const struct device *console = DEVICE_DT_GET(usart2);
+    const struct device *console = DEVICE_DT_GET(DT_CHOSEN_CONSOLE);
     const struct device *keys = DEVICE_DT_GET(buttons);
     const struct device *led_dev = DEVICE_DT_GET(leds);
 

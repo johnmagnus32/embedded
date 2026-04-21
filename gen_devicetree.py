@@ -303,7 +303,7 @@ def generate_header(nodes, labels):
                     alias_label = ref[1:]
                     alias_prefix = f"DT_{alias_label.upper()}"
                     cname = pname.replace('-', '_').upper()
-                    lines.append(f"#define DT_CHOSEN_{cname}_LABEL {alias_label.upper()}")
+                    lines.append(f"#define DT_CHOSEN_{cname} {alias_label}")
             lines.append("")
 
     lines.append("#endif")
