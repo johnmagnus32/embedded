@@ -93,6 +93,11 @@ const char *sched_current_name(void)
     return tasks[current_task].name;
 }
 
+int sched_current_id(void)
+{
+    return current_task;
+}
+
 /* Pick the next ready task (round-robin, skip sleeping tasks) */
 static int pick_next(void)
 {

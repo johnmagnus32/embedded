@@ -30,6 +30,9 @@ uint32_t *sched_preempt(uint32_t *old_sp);
 /* Get current task name. */
 const char *sched_current_name(void);
 
+/* Get current task ID. */
+int sched_current_id(void);
+
 /* Sleep for ms milliseconds (blocks current task). */
 void sched_sleep_ms(uint32_t ms);
 
