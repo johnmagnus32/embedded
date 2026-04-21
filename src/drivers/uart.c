@@ -13,6 +13,7 @@
 #include "device.h"
 #include "drivers/uart.h"
 #include "drivers/clock.h"
+#include "sync.h"
 
 #define USART_SR   0x00
 #define USART_DR   0x04
@@ -21,6 +22,9 @@
 
 #define GPIO_MODER  0x00
 #define GPIO_AFRL   0x20
+
+/* NVIC registers for enabling IRQs */
+#define NVIC_ISER1  (*(volatile uint32_t *)0xE000E104)  /* IRQs 32-63 */
 
 #define REG(base, off) (*(volatile uint32_t *)((base) + (off)))
 
@@ -33,6 +37,15 @@ struct uart_stm32_config {
     uint8_t  uart_clk_bus;
     uint8_t  uart_clk_bit;
 };
+
+/* RX ring buffer (filled by ISR, read by poll_in) */
+#define RX_BUF_SIZE 64
+static volatile char rx_buf[RX_BUF_SIZE];
+static volatile uint8_t rx_head;
+static volatile uint8_t rx_tail;
+
+/* Semaphore signaled by ISR when data arrives */
+struct semaphore uart_rx_sem = SEM_INIT(0);
 
 DEVICE_DT_DECLARE(rcc);
 
@@ -51,9 +64,35 @@ static int uart_stm32_init(const struct device *dev)
     *afrl  |=  (cfg->tx_af << (cfg->tx_pin * 4));
 
     REG(cfg->base, USART_BRR) = (DT_SYSCLK_HZ + cfg->baudrate / 2) / cfg->baudrate;
-    REG(cfg->base, USART_CR1) = (1 << 13) | (1 << 3) | (1 << 2);  /* UE + TE + RE */
+    /* UE + TE + RE + RXNEIE (RX interrupt enable) */
+    REG(cfg->base, USART_CR1) = (1 << 13) | (1 << 3) | (1 << 2) | (1 << 5);
+
+    /* Enable USART2 IRQ in NVIC (IRQ 38 → ISER1 bit 6) */
+    NVIC_ISER1 = (1 << (38 - 32));
 
     return 0;
+}
+
+/*
+ * USART2 ISR — called by hardware when a byte is received.
+ * Puts the byte in the ring buffer and signals the semaphore.
+ * The shell task (blocked on sem_take) gets woken up.
+ */
+void usart2_isr(void)
+{
+    /* Read SR first (clears flags), then DR */
+    uint32_t base = DT_USART2_BASE;  /* ISR needs to know the base */
+    uint32_t sr = REG(base, USART_SR);
+
+    if (sr & (1 << 5)) {  /* RXNE — data available */
+        char c = (char)REG(base, USART_DR);
+        uint8_t next = (rx_head + 1) % RX_BUF_SIZE;
+        if (next != rx_tail) {  /* not full */
+            rx_buf[rx_head] = c;
+            rx_head = next;
+        }
+        sem_give(&uart_rx_sem);  /* wake whoever is waiting for input */
+    }
 }
 
 static void uart_stm32_poll_out(const struct device *dev, char c)
@@ -67,11 +106,12 @@ static void uart_stm32_poll_out(const struct device *dev, char c)
 
 static int uart_stm32_poll_in(const struct device *dev, char *c)
 {
-    const struct uart_stm32_config *cfg = dev->config;
-
-    if (!(REG(cfg->base, USART_SR) & (1 << 5)))  /* RXNE */
-        return -1;
-    *c = (char)REG(cfg->base, USART_DR);
+    (void)dev;
+    /* Read from ISR-filled ring buffer */
+    if (rx_tail == rx_head)
+        return -1;  /* empty */
+    *c = rx_buf[rx_tail];
+    rx_tail = (rx_tail + 1) % RX_BUF_SIZE;
     return 0;
 }
 

@@ -1,8 +1,13 @@
 /*
- * sched.h — Preemptive round-robin scheduler
+ * sched.h — Preemptive scheduler with wait queues
  *
- * Tasks are preempted by SysTick → PendSV every tick.
- * Tasks can also yield voluntarily with sched_yield().
+ * Tasks can be in one of three states:
+ *   READY    — in the ready queue, will be scheduled
+ *   RUNNING  — currently executing on the CPU
+ *   BLOCKED  — on a wait queue, will NOT be scheduled until woken
+ *   SLEEPING — waiting for a timeout
+ *
+ * This is how Zephyr/Linux work — blocked tasks don't waste CPU.
  */
 
 #ifndef SCHED_H
@@ -15,25 +20,42 @@
 
 typedef void (*task_fn)(void);
 
-/* Create a task. Returns task ID or -1 on failure. */
-int sched_create_task(task_fn fn, const char *name);
+/* Task states */
+enum task_state {
+    TASK_READY,
+    TASK_RUNNING,
+    TASK_BLOCKED,
+    TASK_SLEEPING,
+};
 
-/* Start the scheduler. Never returns. */
+/*
+ * Wait queue — a list of tasks waiting for something.
+ * Like Zephyr's _wait_q_t / Linux's wait_queue_head_t.
+ */
+struct wait_queue {
+    uint8_t waiters;  /* bitmask of task IDs waiting */
+};
+
+#define WAIT_QUEUE_INIT { .waiters = 0 }
+
+int  sched_create_task(task_fn fn, const char *name);
 void sched_start(void);
-
-/* Yield the CPU to the next ready task (cooperative). */
 void sched_yield(void);
+void sched_sleep_ms(uint32_t ms);
 
-/* Called by PendSV: save old_sp, return new_sp (for preemption). */
+/* Block current task on a wait queue (called with IRQs locked) */
+void sched_block(struct wait_queue *wq);
+
+/* Wake one task from a wait queue (callable from ISR) */
+void sched_wake(struct wait_queue *wq);
+
+/* Wake all tasks from a wait queue */
+void sched_wake_all(struct wait_queue *wq);
+
+/* Called by PendSV */
 uint32_t *sched_preempt(uint32_t *old_sp);
 
-/* Get current task name. */
 const char *sched_current_name(void);
-
-/* Get current task ID. */
 int sched_current_id(void);
-
-/* Sleep for ms milliseconds (blocks current task). */
-void sched_sleep_ms(uint32_t ms);
 
 #endif

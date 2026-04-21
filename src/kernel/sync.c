@@ -1,19 +1,15 @@
 /*
- * sync.c — Mutex and semaphore implementation
+ * sync.c — Mutex and semaphore with proper blocking
  *
- * These are blocking primitives — if a task can't proceed, it yields
- * and retries on the next schedule. A real RTOS (Zephyr) would put
- * the task on a wait queue and only wake it when the resource is
- * available. We spin-yield for simplicity.
+ * Before: sem_take → check → yield → check → yield → ... (wastes CPU)
+ * After:  sem_take → block → (not scheduled) → sem_give wakes us → run
  *
- * We disable interrupts briefly (PRIMASK) to make check-and-modify
- * atomic. Same approach as Zephyr's k_spin_lock.
+ * This is how Zephyr's k_sem_take and Linux's down() work.
  */
 
 #include "sync.h"
 #include "sched.h"
 
-/* Disable/enable interrupts for critical sections */
 static inline uint32_t irq_lock(void)
 {
     uint32_t key;
@@ -33,15 +29,14 @@ void mutex_lock(struct mutex *m)
     while (1) {
         uint32_t key = irq_lock();
         if (m->owner < 0) {
-            /* Unlocked — claim it */
-            extern int sched_current_id(void);
             m->owner = sched_current_id();
             irq_unlock(key);
             return;
         }
+        /* Block on the mutex's wait queue */
+        sched_block(&m->wq);
         irq_unlock(key);
-        /* Owned by someone else — yield and retry */
-        sched_yield();
+        sched_yield();  /* trigger PendSV — we won't be scheduled */
     }
 }
 
@@ -49,6 +44,7 @@ void mutex_unlock(struct mutex *m)
 {
     uint32_t key = irq_lock();
     m->owner = -1;
+    sched_wake(&m->wq);  /* wake one waiter if any */
     irq_unlock(key);
 }
 
@@ -58,6 +54,7 @@ void sem_give(struct semaphore *s)
 {
     uint32_t key = irq_lock();
     s->count++;
+    sched_wake(&s->wq);  /* wake one blocked taker */
     irq_unlock(key);
 }
 
@@ -70,6 +67,8 @@ void sem_take(struct semaphore *s)
             irq_unlock(key);
             return;
         }
+        /* Block until sem_give wakes us */
+        sched_block(&s->wq);
         irq_unlock(key);
         sched_yield();
     }

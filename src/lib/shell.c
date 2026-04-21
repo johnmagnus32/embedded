@@ -15,6 +15,10 @@
 #ifdef CONFIG_SCHED
 #include "sched.h"
 #endif
+#ifdef CONFIG_SYNC
+#include "sync.h"
+extern struct semaphore uart_rx_sem;
+#endif
 #include <stdint.h>
 
 DEVICE_DT_DECLARE(DT_CHOSEN_CONSOLE);
@@ -114,8 +118,12 @@ void shell_task(void)
     prompt();
 
     while (1) {
+        /* Block until UART ISR signals data available */
+#ifdef CONFIG_SYNC
+        sem_take(&uart_rx_sem);
+#endif
         char c;
-        if (uart_poll_in(con(), &c) == 0) {
+        while (uart_poll_in(con(), &c) == 0) {
             if (c == '\r' || c == '\n') {
                 uart_poll_out(con(), '\r');
                 uart_poll_out(con(), '\n');
@@ -155,8 +163,5 @@ void shell_task(void)
                 uart_poll_out(con(), c);  /* echo */
             }
         }
-#ifdef CONFIG_SCHED
-        sched_yield();
-#endif
     }
 }

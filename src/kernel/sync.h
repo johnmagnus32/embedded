@@ -1,28 +1,25 @@
 /*
- * sync.h — Mutex and semaphore
+ * sync.h — Mutex and semaphore with wait queues
  *
- * Mutex: mutual exclusion, only one task can hold it.
- *   Like Zephyr's k_mutex — tasks that try to lock a held mutex
- *   sleep until it's released.
- *
- * Semaphore: counting semaphore for signaling.
- *   Like Zephyr's k_sem — give() increments, take() decrements
- *   or sleeps if count is 0.
+ * sem_take() now BLOCKS (task removed from ready queue) instead of
+ * spin-yielding. The task consumes zero CPU while waiting.
+ * sem_give() wakes one blocked task.
  */
 
 #ifndef SYNC_H
 #define SYNC_H
 
 #include <stdint.h>
+#include "sched.h"
 
 /* --- Mutex --- */
 
 struct mutex {
-    volatile int8_t owner;   /* task ID that holds it, -1 = unlocked */
-    volatile uint8_t waiters; /* bitmask of tasks waiting */
+    volatile int8_t owner;
+    struct wait_queue wq;
 };
 
-#define MUTEX_INIT { .owner = -1, .waiters = 0 }
+#define MUTEX_INIT { .owner = -1, .wq = WAIT_QUEUE_INIT }
 
 void mutex_lock(struct mutex *m);
 void mutex_unlock(struct mutex *m);
@@ -31,15 +28,13 @@ void mutex_unlock(struct mutex *m);
 
 struct semaphore {
     volatile int16_t count;
-    volatile uint8_t waiters;
+    struct wait_queue wq;
 };
 
-#define SEM_INIT(initial) { .count = (initial), .waiters = 0 }
+#define SEM_INIT(initial) { .count = (initial), .wq = WAIT_QUEUE_INIT }
 
 void sem_give(struct semaphore *s);
 void sem_take(struct semaphore *s);
-
-/* Try to take without blocking. Returns 0 on success, -1 if would block. */
-int sem_try_take(struct semaphore *s);
+int  sem_try_take(struct semaphore *s);
 
 #endif
