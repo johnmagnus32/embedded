@@ -147,7 +147,7 @@ static void flash_task(void)
     uart_puts(console, "[fs] mounting filesystem on flash...\n");
     mutex_unlock(&uart_mutex);
 
-    fs_mount(&mnt, flash);
+    fs_mount(&mnt, flash, &tinyfs_ops);
 
     /* Create and write a file */
     struct fs_file f;

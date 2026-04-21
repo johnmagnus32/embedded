@@ -12,13 +12,14 @@ BUILD   = build
 # Include paths: generated headers, public API, all subsystems
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
           -I$(BUILD) -I$(SRC)/include -I$(SRC)/kernel -I$(SRC)/lib \
-          -I$(SRC)/drivers -I$(SRC)
+          -I$(SRC)/fs -I$(SRC)/drivers -I$(SRC)
 LDFLAGS = -T linker.ld -nostdlib
 
 # Source files organized by subsystem
 OBJS    = $(BUILD)/startup.o $(BUILD)/systick.o \
           $(BUILD)/sched.o $(BUILD)/sync.o $(BUILD)/msgq.o \
-          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/log.o $(BUILD)/fs.o \
+          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/log.o \
+          $(BUILD)/fs.o $(BUILD)/tinyfs.o \
           $(BUILD)/clock.o $(BUILD)/uart.o $(BUILD)/gpio.o \
           $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o \
           $(BUILD)/spi.o $(BUILD)/flash.o \
@@ -53,6 +54,9 @@ $(BUILD)/%.o: $(SRC)/kernel/%.c $(BUILD)/devicetree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/%.o: $(SRC)/lib/%.c $(BUILD)/devicetree.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(SRC)/fs/%.c $(BUILD)/devicetree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/%.o: $(SRC)/drivers/%.c $(BUILD)/devicetree.h
