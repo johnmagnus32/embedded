@@ -45,6 +45,10 @@ SECTIONS
         _bss_end = .;
     } > RAM
 
+    /* Heap: everything between end of BSS and stack */
+    _heap_start = .;
+    _heap_size = _stack_top - 1024 - _heap_start;  /* leave 1KB for MSP stack */
+
     /* Top of RAM = initial stack pointer */
     _stack_top = ORIGIN(RAM) + LENGTH(RAM);
 }
