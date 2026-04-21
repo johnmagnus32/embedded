@@ -19,6 +19,10 @@
 #include "sync.h"
 extern struct semaphore uart_rx_sem;
 #endif
+#ifdef CONFIG_ELFLOADER
+#include "elfloader.h"
+#include "fs.h"
+#endif
 #include <stdint.h>
 
 DEVICE_DT_DECLARE(DT_CHOSEN_CONSOLE);
@@ -96,6 +100,58 @@ static int cmd_threads(int argc, char **argv)
 }
 #endif
 
+#ifdef CONFIG_ELFLOADER
+/*
+ * "run <filename>" — load an ELF from the filesystem and run it as a task.
+ * Like Linux's execve() but simpler: doesn't replace the current task,
+ * creates a new one.
+ */
+extern struct fs_mount mnt;  /* from main.c */
+
+static int cmd_run(int argc, char **argv)
+{
+    if (argc < 2) {
+        print("Usage: run <filename>\n");
+        return -1;
+    }
+
+    /* Read ELF from filesystem into a buffer */
+    struct fs_file f;
+    if (fs_open(&f, &mnt, argv[1]) < 0) {
+        print("File not found: ");
+        print(argv[1]);
+        print("\n");
+        return -1;
+    }
+
+    /* Allocate buffer and read the whole file */
+    uint8_t elf_buf[2048];  /* max program size */
+    int size = fs_read(&f, elf_buf, sizeof(elf_buf));
+    fs_close(&f);
+
+    if (size <= 0) {
+        print("Empty file\n");
+        return -1;
+    }
+
+    print("Loading ");
+    print(argv[1]);
+    print("...\n");
+
+    /* Load and run */
+    int rc = elf_load_and_run(elf_buf, (uint32_t)size, argv[1], 4);
+    if (rc < 0) {
+        print("Failed to load ELF\n");
+        return -1;
+    }
+
+    print("Started task: ");
+    print(argv[1]);
+    print("\n");
+    return 0;
+}
+#endif
+
 /* ---- Shell task ---- */
 
 static void prompt(void)
@@ -112,6 +168,9 @@ void shell_task(void)
     shell_register("help", cmd_help, "Show available commands");
 #ifdef CONFIG_SCHED
     shell_register("threads", cmd_threads, "Show thread info");
+#endif
+#ifdef CONFIG_ELFLOADER
+    shell_register("run", cmd_run, "Load and run ELF: run <filename>");
 #endif
 
     print("\n\nsimple-stm32 shell\nType 'help' for commands.\n\n");

@@ -19,4 +19,11 @@ config USERSPACE
     default n
     depends on SCHED
 
+config ELFLOADER
+    bool "ELF program loader"
+    default n
+    depends on SCHED && HEAP
+    help
+      Load and execute ELF binaries from the filesystem.
+
 endmenu

@@ -178,7 +178,7 @@ static void ls_print(const char *name, uint32_t size)
 
 /* --- Flash task: mount filesystem, create and read files --- */
 
-static struct fs_mount mnt;
+struct fs_mount mnt;
 
 static void flash_task(void)
 {
