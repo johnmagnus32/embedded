@@ -9,15 +9,20 @@ NM      = $(TC)-nm
 SRC     = src
 BUILD   = build
 
-# Flags
-CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 -I$(BUILD) -I$(SRC) -save-temps=obj
+# Include paths: generated headers, public API, all subsystems
+CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
+          -I$(BUILD) -I$(SRC)/include -I$(SRC)/kernel -I$(SRC)/lib \
+          -I$(SRC)/drivers -I$(SRC)
 LDFLAGS = -T linker.ld -nostdlib
 
-# Source files → object files in build/
-OBJS    = $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/clock.o $(BUILD)/uart.o \
-          $(BUILD)/gpio.o $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o \
-          $(BUILD)/spi.o $(BUILD)/flash.o $(BUILD)/sched.o $(BUILD)/systick.o \
-          $(BUILD)/sync.o $(BUILD)/msgq.o $(BUILD)/heap.o $(BUILD)/memslab.o
+# Source files organized by subsystem
+OBJS    = $(BUILD)/startup.o $(BUILD)/systick.o \
+          $(BUILD)/sched.o $(BUILD)/sync.o $(BUILD)/msgq.o \
+          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/log.o \
+          $(BUILD)/clock.o $(BUILD)/uart.o $(BUILD)/gpio.o \
+          $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o \
+          $(BUILD)/spi.o $(BUILD)/flash.o \
+          $(BUILD)/main.o
 
 # Default target
 all: $(BUILD)/hello.bin
@@ -25,28 +30,35 @@ all: $(BUILD)/hello.bin
 	@echo ""
 	@echo "Flash with: st-flash write $(BUILD)/hello.bin 0x08000000"
 
-# Generate devicetree.h from board.dts (like Zephyr's gen_defines.py)
+# Generate devicetree.h from board.dts
 $(BUILD)/devicetree.h: board.dts gen_devicetree.py
 	python3 gen_devicetree.py $< $@
 
-# Link all objects into ELF
+# Link
 $(BUILD)/hello.elf: $(OBJS) linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-# Raw binary for flashing
+# Raw binary
 $(BUILD)/hello.bin: $(BUILD)/hello.elf
 	$(OBJCOPY) -O binary $< $@
 
-# Compile C → object (depends on generated devicetree.h)
-$(BUILD)/%.o: $(SRC)/%.c $(BUILD)/devicetree.h
+# Pattern rules for each source directory
+$(BUILD)/%.o: $(SRC)/arch/arm/%.s
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Assemble → object
-$(BUILD)/%.o: $(SRC)/%.s
+$(BUILD)/%.o: $(SRC)/arch/arm/%.c $(BUILD)/devicetree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Compile drivers
+$(BUILD)/%.o: $(SRC)/kernel/%.c $(BUILD)/devicetree.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(SRC)/lib/%.c $(BUILD)/devicetree.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
 $(BUILD)/%.o: $(SRC)/drivers/%.c $(BUILD)/devicetree.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(SRC)/%.c $(BUILD)/devicetree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Inspection
