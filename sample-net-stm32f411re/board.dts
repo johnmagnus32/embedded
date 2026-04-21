@@ -1,0 +1,63 @@
+/ {
+    compatible = "st,nucleo-f411re";
+    model = "STM32F411RE + ENC28J60 Ethernet";
+
+    clocks {
+        hsi: hsi {
+            compatible = "fixed-clock";
+            clock-frequency = <16000000>;
+        };
+    };
+
+    soc {
+        rcc: rcc@40023800 {
+            compatible = "st,stm32-rcc";
+            reg = <0x40023800>;
+        };
+
+        gpioa: gpio@40020000 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020000>;
+            clocks = <&rcc 0 0>;
+        };
+
+        usart2: serial@40004400 {
+            compatible = "st,stm32-usart";
+            reg = <0x40004400>;
+            clocks = <&rcc 1 17>;
+            tx-pin = <2>;
+            tx-af = <7>;
+            tx-port = <&gpioa>;
+            baudrate = <115200>;
+            status = "okay";
+        };
+
+        spi1: spi@40013000 {
+            compatible = "st,stm32-spi";
+            reg = <0x40013000>;
+            clocks = <&rcc 2 12>;
+            sck-port = <&gpioa>;
+            sck-pin = <5>;
+            sck-af = <5>;
+            miso-port = <&gpioa>;
+            miso-pin = <6>;
+            miso-af = <5>;
+            mosi-port = <&gpioa>;
+            mosi-pin = <7>;
+            mosi-af = <5>;
+            status = "okay";
+
+            eth0: enc28j60@0 {
+                compatible = "microchip,enc28j60";
+                reg = <0>;
+                cs-port = <&gpioa>;
+                cs-pin = <4>;
+                status = "okay";
+            };
+        };
+    };
+
+    chosen {
+        console = <&usart2>;
+    };
+};

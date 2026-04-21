@@ -14,3 +14,6 @@ obj-$(CONFIG_GPIO_RP2040)  += gpio_rp2040.o
 
 # IPC drivers
 obj-$(CONFIG_IPC_STM32H745) += ipc_stm32h745.o
+
+# Ethernet drivers
+obj-$(CONFIG_ETH_ENC28J60) += eth_enc28j60.o

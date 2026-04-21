@@ -1,0 +1,5 @@
+menu "Networking"
+
+# NET config is in drivers/Kconfig (depends on driver availability)
+
+endmenu
