@@ -1,54 +1,77 @@
 /*
- * sched.c — Cooperative round-robin scheduler
+ * sched.c — Preemptive round-robin scheduler
  *
- * Context switch saves r4-r11 + sp into the task's TCB, then
- * restores the next task's registers. This is the same set of
- * registers that Zephyr's z_arm_pendsv saves/restores.
+ * Two context switch paths:
+ *   1. Preemptive: SysTick → PendSV → sched_preempt()
+ *      PendSV saves r4-r11 to PSP, calls us, we return new PSP
+ *   2. Cooperative: task calls sched_yield() → triggers PendSV
  *
- * On Cortex-M, r0-r3 and r12 are caller-saved (the C compiler
- * handles them), and lr/pc are managed by BL/BX instructions.
- * We only need to save the callee-saved set: r4-r11 + sp.
+ * Tasks run using PSP (process stack pointer).
+ * ISRs use MSP (main stack pointer) — set up by the vector table.
  */
 
 #include "sched.h"
 #include <stddef.h>
 
+/* Forward declare systick_get_ticks */
+extern uint32_t systick_get_ticks(void);
+
+/* SCB register for pending PendSV */
+#define SCB_ICSR   (*(volatile uint32_t *)0xE000ED04)
+#define ICSR_PENDSVSET  (1 << 28)
+
 struct task_tcb {
-    uint32_t *sp;           /* saved stack pointer */
+    uint32_t *sp;
     const char *name;
     uint8_t active;
+    uint32_t wake_tick;     /* 0 = ready, >0 = sleeping until this tick */
 };
 
 static struct task_tcb tasks[MAX_TASKS];
 static int num_tasks;
-static int current_task = -1;
+static int current_task;
 
-/* Stack memory for all tasks (in .bss — zeroed at boot) */
 static uint8_t task_stacks[MAX_TASKS][TASK_STACK_SIZE]
     __attribute__((aligned(8)));
 
 /*
- * Set up initial stack frame so the task "returns" into its entry function.
- * We fake a context that sched_switch_to will restore:
- *   - r4-r11 = 0 (don't care)
- *   - lr = task entry point (so the "return" from switch jumps to the task)
- *   - sp points to the saved registers
+ * Initial stack frame for a new task.
+ *
+ * When PendSV restores this task for the first time, it will:
+ *   1. ldmia r0!, {r4-r11}  — pop our fake r4-r11 (zeros)
+ *   2. msr psp, r0          — set PSP to point at the exception frame
+ *   3. bx 0xFFFFFFFD        — return from exception using PSP
+ *
+ * The CPU then pops the exception frame: r0-r3, r12, lr, pc, xPSR
+ * and jumps to pc = task entry function.
+ *
+ * So we need to set up both:
+ *   - r4-r11 (popped by our PendSV code)
+ *   - exception frame (popped by hardware on exception return)
  */
 static uint32_t *task_stack_init(uint8_t *stack_base, task_fn fn)
 {
-    /* Stack grows down — start at the top */
     uint32_t *sp = (uint32_t *)(stack_base + TASK_STACK_SIZE);
 
-    /* Push fake context: r4, r5, r6, r7, r8, r9, r10, r11, lr */
-    *(--sp) = (uint32_t)fn;   /* lr — "return address" = task entry */
-    *(--sp) = 0;              /* r11 */
-    *(--sp) = 0;              /* r10 */
-    *(--sp) = 0;              /* r9 */
-    *(--sp) = 0;              /* r8 */
-    *(--sp) = 0;              /* r7 */
-    *(--sp) = 0;              /* r6 */
-    *(--sp) = 0;              /* r5 */
-    *(--sp) = 0;              /* r4 */
+    /* Hardware exception frame (popped by CPU on exception return) */
+    *(--sp) = (1 << 24);       /* xPSR — Thumb bit must be set */
+    *(--sp) = (uint32_t)fn;    /* PC — task entry point */
+    *(--sp) = 0;               /* LR */
+    *(--sp) = 0;               /* R12 */
+    *(--sp) = 0;               /* R3 */
+    *(--sp) = 0;               /* R2 */
+    *(--sp) = 0;               /* R1 */
+    *(--sp) = 0;               /* R0 */
+
+    /* Software-saved registers (popped by our PendSV handler) */
+    *(--sp) = 0;               /* R11 */
+    *(--sp) = 0;               /* R10 */
+    *(--sp) = 0;               /* R9 */
+    *(--sp) = 0;               /* R8 */
+    *(--sp) = 0;               /* R7 */
+    *(--sp) = 0;               /* R6 */
+    *(--sp) = 0;               /* R5 */
+    *(--sp) = 0;               /* R4 */
 
     return sp;
 }
@@ -61,73 +84,92 @@ int sched_create_task(task_fn fn, const char *name)
     tasks[id].sp = task_stack_init(task_stacks[id], fn);
     tasks[id].name = name;
     tasks[id].active = 1;
+    tasks[id].wake_tick = 0;
     return id;
 }
 
 const char *sched_current_name(void)
 {
-    if (current_task < 0) return "boot";
     return tasks[current_task].name;
 }
 
-/*
- * Assembly context switch.
- * Saves r4-r11 + lr to *from_sp, loads from *to_sp.
- *
- * void sched_context_switch(uint32_t **from_sp, uint32_t **to_sp);
- */
-__attribute__((naked))
-void sched_context_switch(uint32_t **from_sp, uint32_t **to_sp)
+/* Pick the next ready task (round-robin, skip sleeping tasks) */
+static int pick_next(void)
 {
-    __asm volatile(
-        /* Save current context */
-        "push {r4-r11, lr}      \n"
-        "str  sp, [r0]          \n"  /* *from_sp = current sp */
+    uint32_t now = systick_get_ticks();
 
-        /* Load next context */
-        "ldr  sp, [r1]          \n"  /* sp = *to_sp */
-        "pop  {r4-r11, lr}      \n"
-        "bx   lr                \n"  /* "return" into the new task */
-    );
-}
+    for (int i = 1; i <= num_tasks; i++) {
+        int candidate = (current_task + i) % num_tasks;
+        struct task_tcb *t = &tasks[candidate];
 
-static void schedule_next(void)
-{
-    int prev = current_task;
-    int next = (current_task + 1) % num_tasks;
+        if (!t->active) continue;
 
-    /* Round-robin: find next active task */
-    for (int i = 0; i < num_tasks; i++) {
-        int candidate = (current_task + 1 + i) % num_tasks;
-        if (tasks[candidate].active) {
-            next = candidate;
-            break;
+        /* Wake up if sleep expired */
+        if (t->wake_tick && now >= t->wake_tick) {
+            t->wake_tick = 0;
+        }
+
+        if (t->wake_tick == 0) {
+            return candidate;
         }
     }
-
-    if (next == prev) return;  /* only one task, no switch needed */
-
-    current_task = next;
-    sched_context_switch(&tasks[prev].sp, &tasks[next].sp);
-}
-
-void sched_yield(void)
-{
-    schedule_next();
+    return current_task;  /* no other task ready — stay on current */
 }
 
 /*
- * Start the scheduler by switching to the first task.
- * We fake a "previous task" context on the current (boot) stack.
+ * Called by PendSV handler (from ISR context).
+ * Saves old_sp into current TCB, picks next task, returns its sp.
+ */
+uint32_t *sched_preempt(uint32_t *old_sp)
+{
+    tasks[current_task].sp = old_sp;
+    current_task = pick_next();
+    return tasks[current_task].sp;
+}
+
+/* Cooperative yield: just pend PendSV */
+void sched_yield(void)
+{
+    SCB_ICSR = ICSR_PENDSVSET;
+}
+
+/* Sleep: mark task as sleeping, then yield */
+void sched_sleep_ms(uint32_t ms)
+{
+    tasks[current_task].wake_tick = systick_get_ticks() + ms;
+    sched_yield();
+}
+
+/*
+ * Start the scheduler.
+ * Switch from MSP (boot stack) to PSP (task stacks).
+ * Load the first task's context and "return" into it.
  */
 void sched_start(void)
 {
     if (num_tasks == 0) return;
 
-    /* Create a dummy TCB for the boot context (we'll never return to it) */
-    static uint32_t *boot_sp;
     current_task = 0;
-    sched_context_switch(&boot_sp, &tasks[0].sp);
+    uint32_t *sp = tasks[0].sp;
+
+    __asm volatile(
+        /* Restore r4-r11 from first task's stack */
+        "ldmia %0!, {r4-r11}       \n"
+
+        /* Set PSP to the exception frame */
+        "msr   psp, %0             \n"
+
+        /* Switch to PSP for thread mode (set CONTROL.SPSEL = 1) */
+        "movs  r0, #2              \n"
+        "msr   control, r0         \n"
+        "isb                       \n"
+
+        /* Return to thread mode using PSP — CPU pops exception frame */
+        "ldr   r0, =0xFFFFFFFD     \n"
+        "bx    r0                  \n"
+        :
+        : "r" (sp)
+    );
 
     /* Never reached */
     while (1) {}

@@ -107,20 +107,23 @@ void log_init(void)
     log_tail = 0;
 }
 
-/* Log task: drain ring buffer to UART, yield when empty */
+/* Log task: drain ring buffer to UART, sleep when empty */
 void log_task(void)
 {
     const struct device *console = DEVICE_DT_GET(DT_CHOSEN_CONSOLE);
     char c;
 
     while (1) {
-        /* Drain up to 32 chars per timeslice, then yield */
         int count = 0;
-        while (buf_get(&c) && count < 32) {
+        while (buf_get(&c) && count < 64) {
             if (c == '\n') uart_poll_out(console, '\r');
             uart_poll_out(console, c);
             count++;
         }
-        sched_yield();
+        if (count == 0) {
+            sched_sleep_ms(5);  /* nothing to send, sleep 5ms */
+        } else {
+            sched_yield();      /* more might be pending, yield but stay ready */
+        }
     }
 }

@@ -2,13 +2,40 @@
 .cpu cortex-m4
 .thumb
 
-/* Vector table — must be at 0x08000000 */
+/*
+ * Vector table — must be at 0x08000000
+ *
+ * Cortex-M vector table layout:
+ *   Offset 0x00: Initial SP
+ *   Offset 0x04: Reset
+ *   Offset 0x08: NMI
+ *   Offset 0x0C: HardFault
+ *   Offset 0x10: MemManage
+ *   Offset 0x14: BusFault
+ *   Offset 0x18: UsageFault
+ *   Offset 0x1C-0x28: Reserved
+ *   Offset 0x2C: SVCall
+ *   Offset 0x30-0x34: Reserved
+ *   Offset 0x38: PendSV        ← context switch happens here
+ *   Offset 0x3C: SysTick       ← timer interrupt
+ */
 .section .vector_table, "a"
-.word _stack_top        /* Initial stack pointer */
-.word reset_handler     /* Reset handler */
-.word 0                 /* NMI */
-.word 0                 /* HardFault */
-/* ... rest are 0 (unused for this simple example) */
+.word _stack_top        /* 0x00: Initial stack pointer */
+.word reset_handler     /* 0x04: Reset */
+.word 0                 /* 0x08: NMI */
+.word 0                 /* 0x0C: HardFault */
+.word 0                 /* 0x10: MemManage */
+.word 0                 /* 0x14: BusFault */
+.word 0                 /* 0x18: UsageFault */
+.word 0                 /* 0x1C: Reserved */
+.word 0                 /* 0x20: Reserved */
+.word 0                 /* 0x24: Reserved */
+.word 0                 /* 0x28: Reserved */
+.word 0                 /* 0x2C: SVCall */
+.word 0                 /* 0x30: Reserved */
+.word 0                 /* 0x34: Reserved */
+.word pendsv_handler    /* 0x38: PendSV — context switch */
+.word systick_handler   /* 0x3C: SysTick — timer tick */
 
 .section .text
 .global reset_handler
