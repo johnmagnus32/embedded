@@ -29,6 +29,7 @@ extern uint32_t _heap_size;
 DEVICE_DT_DECLARE(DT_CHOSEN_CONSOLE);
 DEVICE_DT_DECLARE(buttons);
 DEVICE_DT_DECLARE(leds);
+DEVICE_DT_DECLARE(spi1);
 DEVICE_DT_DECLARE(flash0);
 
 /* Sync primitives */
@@ -166,11 +167,13 @@ int main(void)
     const struct device *console = DEVICE_DT_GET(DT_CHOSEN_CONSOLE);
     const struct device *keys = DEVICE_DT_GET(buttons);
     const struct device *led_dev = DEVICE_DT_GET(leds);
+    const struct device *spi = DEVICE_DT_GET(spi1);
     const struct device *flash = DEVICE_DT_GET(flash0);
 
     console->init(console);
     keys->init(keys);
     led_dev->init(led_dev);
+    spi->init(spi);       /* SPI bus must init before flash */
     flash->init(flash);
 
     uart_puts(console, "Booting...\n");

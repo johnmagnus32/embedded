@@ -36,7 +36,6 @@ struct uart_stm32_config {
     uint32_t gpio_base;
     uint8_t  tx_pin;
     uint8_t  tx_af;
-    uint8_t  gpio_clk_bit;
     uint8_t  uart_clk_bit;
 };
 
@@ -46,7 +45,8 @@ static int uart_stm32_init(const struct device *dev)
 {
     const struct uart_stm32_config *cfg = dev->config;
 
-    RCC_AHB1ENR |= (1 << cfg->gpio_clk_bit);
+    /* Enable GPIO and UART clocks */
+    RCC_AHB1ENR |= 0x07;  /* enable GPIOA/B/C (simplified) */
     RCC_APB1ENR |= (1 << cfg->uart_clk_bit);
 
     volatile uint32_t *moder = (volatile uint32_t *)(cfg->gpio_base + GPIO_MODER);
@@ -100,7 +100,6 @@ static const struct uart_driver_api uart_stm32_api = {
         .gpio_base    = _DT_INST(ST_STM32_USART, n, TX_PORT_BASE),     \
         .tx_pin       = _DT_INST(ST_STM32_USART, n, TX_PIN),           \
         .tx_af        = _DT_INST(ST_STM32_USART, n, TX_AF),            \
-        .gpio_clk_bit = _DT_INST(ST_STM32_USART, n, GPIO_CLK_BIT),    \
         .uart_clk_bit = _DT_INST_CLK(ST_STM32_USART, n, BIT),         \
     };                                                                  \
     DEVICE_DT_DEFINE(_DT_INST_LABEL(ST_STM32_USART, n),                \

@@ -54,15 +54,28 @@
             status = "okay";
         };
 
-        quadspi: qspi@a0001000 {
-            compatible = "st,stm32-qspi";
-            reg = <0xa0001000>;
-            clocks = <&rcc 0 1>;  /* AHB3, bit 1 (simplified) */
+        spi1: spi@40013000 {
+            compatible = "st,stm32-spi";
+            reg = <0x40013000>;
+            clocks = <&rcc 2 12>;  /* APB2, bit 12 */
+            /* Pin config: SCK=PA5(AF5), MISO=PA6(AF5), MOSI=PA7(AF5) */
+            sck-port = <&gpioa>;
+            sck-pin = <5>;
+            sck-af = <5>;
+            miso-port = <&gpioa>;
+            miso-pin = <6>;
+            miso-af = <5>;
+            mosi-port = <&gpioa>;
+            mosi-pin = <7>;
+            mosi-af = <5>;
             status = "okay";
 
             flash0: w25q128@0 {
                 compatible = "jedec,spi-nor";
                 reg = <0>;
+                spi-bus = <&spi1>;
+                cs-port = <&gpioa>;
+                cs-pin = <4>;
                 jedec-id = <0xef 0x40 0x18>;
                 size = <134217728>;  /* 128 Mbit = 16 MB */
                 page-size = <256>;

@@ -222,25 +222,23 @@ def generate_header(nodes, labels):
                     lines.append(f"#define {prefix}_CLK_BUS {clk[1]}")
                     lines.append(f"#define {prefix}_CLK_BIT {clk[2]}")
 
-            skip = {'compatible', 'reg', 'clocks', 'status', 'tx-port'}
+            skip = {'compatible', 'reg', 'clocks', 'status'}
             for pname, pval in props.items():
                 if pname in skip:
                     continue
                 cname = pname.replace('-', '_').replace(',', '_').upper()
                 if isinstance(pval, int):
                     lines.append(f"#define {prefix}_PROP_{cname} {pval}")
-
-            if 'tx-port' in props:
-                ref = props['tx-port']
-                if isinstance(ref, str) and ref.startswith('&'):
-                    gpio_path = labels.get(ref[1:])
-                    if gpio_path and gpio_path in nodes:
-                        gpio = nodes[gpio_path]
-                        gpio_reg = gpio['props'].get('reg', 0)
-                        lines.append(f"#define {prefix}_PROP_TX_PORT_BASE 0x{gpio_reg:08X}")
-                        gpio_clk = gpio['props'].get('clocks')
-                        if isinstance(gpio_clk, list) and len(gpio_clk) >= 3:
-                            lines.append(f"#define {prefix}_PROP_GPIO_CLK_BIT {gpio_clk[2]}")
+                elif isinstance(pval, str) and pval.startswith('&'):
+                    # Phandle reference — resolve to target's reg address
+                    ref_label = pval[1:]
+                    ref_path = labels.get(ref_label)
+                    if ref_path and ref_path in nodes:
+                        ref_reg = nodes[ref_path]['props'].get('reg', 0)
+                        if isinstance(ref_reg, int):
+                            lines.append(f"#define {prefix}_PROP_{cname}_BASE 0x{ref_reg:08X}")
+                elif isinstance(pval, str):
+                    lines.append(f"#define {prefix}_PROP_{cname} \"{pval}\"")
 
             # Map label → instance for DEVICE_DT_GET
             label = node.get('label')
@@ -283,13 +281,20 @@ def generate_header(nodes, labels):
                                     if isinstance(gpio_clk, list) and len(gpio_clk) >= 3:
                                         lines.append(f"#define {cprefix}_GPIO_CLK_BIT {gpio_clk[2]}")
 
-                    # Other child properties (code, etc.)
+                    # Other child properties
                     for pname, pval in cprops.items():
                         if pname in ('gpios',):
                             continue
                         cpname = pname.replace('-', '_').replace(',', '_').upper()
                         if isinstance(pval, int):
                             lines.append(f"#define {cprefix}_{cpname} {pval}")
+                        elif isinstance(pval, str) and pval.startswith('&'):
+                            ref_label = pval[1:]
+                            ref_path = labels.get(ref_label)
+                            if ref_path and ref_path in nodes:
+                                ref_reg = nodes[ref_path]['props'].get('reg', 0)
+                                if isinstance(ref_reg, int):
+                                    lines.append(f"#define {cprefix}_{cpname}_BASE 0x{ref_reg:08X}")
 
         lines.append("")
 
