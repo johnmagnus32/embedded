@@ -257,6 +257,12 @@ int main(void)
 
     uart_puts(console, "Booting...\n");
 
+#ifdef CONFIG_MPU
+    extern void mpu_init(void);
+    mpu_init();
+    uart_puts(console, "MPU enabled.\n");
+#endif
+
 #ifdef CONFIG_HEAP
     heap_init(_heap_start, (size_t)&_heap_size);
 #endif

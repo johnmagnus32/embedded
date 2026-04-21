@@ -12,6 +12,14 @@ config SYSTICK
     bool "SysTick timer"
     default y
 
+config MPU
+    bool "MPU stack protection"
+    default n
+    depends on CPU_CORTEX_M4
+    help
+      Use the Memory Protection Unit to isolate task stacks.
+      A task writing outside its stack triggers a MemManage fault.
+
 config SMP
     bool "Symmetric multiprocessing"
     default n

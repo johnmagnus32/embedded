@@ -14,7 +14,7 @@
 .word reset_handler     /* 0x04: Reset */
 .word 0                 /* 0x08: NMI */
 .word 0                 /* 0x0C: HardFault */
-.word 0                 /* 0x10: MemManage */
+.word memmanage_handler /* 0x10: MemManage ← MPU fault */
 .word 0                 /* 0x14: BusFault */
 .word 0                 /* 0x18: UsageFault */
 .word 0                 /* 0x1C: Reserved */
@@ -75,12 +75,15 @@
 .weak pendsv_handler
 .weak systick_handler
 .weak usart2_isr
+.weak memmanage_handler
 .thumb_func
 pendsv_handler:
 .thumb_func
 systick_handler:
 .thumb_func
 usart2_isr:
+.thumb_func
+memmanage_handler:
     bx lr
 
 .global reset_handler

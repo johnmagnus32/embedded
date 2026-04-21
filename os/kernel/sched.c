@@ -137,7 +137,6 @@ static int pick_next(int cpu)
 
 /*
  * Called by PendSV on each core.
- * Lock the scheduler, switch tasks, unlock.
  */
 uint32_t *sched_preempt(uint32_t *old_sp)
 {
@@ -156,6 +155,11 @@ uint32_t *sched_preempt(uint32_t *old_sp)
     current_task_per_cpu[cpu] = next;
     tasks[next].state = TASK_RUNNING;
     tasks[next].running_on_cpu = cpu;
+
+#ifdef CONFIG_MPU
+    extern void mpu_switch_task(uint32_t stack_base, uint32_t stack_size);
+    mpu_switch_task((uint32_t)task_stacks[next], TASK_STACK_SIZE);
+#endif
 
     spin_unlock(&sched_lock, key);
 
