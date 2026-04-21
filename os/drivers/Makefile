@@ -11,3 +11,6 @@ obj-$(CONFIG_GPIO_LEDS)    += gpio_leds.o
 obj-$(CONFIG_CLOCK_RP2040) += clock_rp2040.o
 obj-$(CONFIG_UART_PL011)   += uart_pl011.o
 obj-$(CONFIG_GPIO_RP2040)  += gpio_rp2040.o
+
+# IPC drivers
+obj-$(CONFIG_IPC_STM32H745) += ipc_stm32h745.o

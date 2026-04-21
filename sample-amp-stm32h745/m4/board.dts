@@ -36,4 +36,12 @@
     chosen {
         console = <&uart7>;
     };
+
+    mailbox: ipc@38000000 {
+        compatible = "shared-memory-ipc";
+        reg = <0x38000000>;
+        tx-channel = <1>;   /* M4 sends on channel 1 */
+        rx-channel = <0>;   /* M4 receives on channel 0 */
+        status = "okay";
+    };
 };

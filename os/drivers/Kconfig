@@ -48,4 +48,10 @@ config GPIO_LEDS
     default y
     depends on GPIO
 
+config IPC_STM32H745
+    bool "STM32H745 shared memory IPC"
+    default n
+    help
+      Inter-processor mailbox for STM32H745 AMP (M7↔M4).
+
 endmenu
