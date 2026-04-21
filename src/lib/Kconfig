@@ -19,4 +19,11 @@ config LOG
     help
       Ring buffer logging with background UART output.
 
+config SHELL
+    bool "Interactive shell"
+    default y
+    depends on UART && SCHED
+    help
+      UART command shell for debugging and inspection.
+
 endmenu

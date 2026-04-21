@@ -43,6 +43,9 @@
 #ifdef CONFIG_FS
 #include "fs.h"
 #endif
+#ifdef CONFIG_SHELL
+#include "shell.h"
+#endif
 
 #ifdef CONFIG_SYSTICK
 extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
@@ -267,6 +270,9 @@ int main(void)
     sched_create_task(log_msg_task, "log");
 #ifdef CONFIG_FS
     sched_create_task(flash_task, "flash");
+#endif
+#ifdef CONFIG_SHELL
+    sched_create_task(shell_task, "shell");
 #endif
     sched_create_task(idle_task, "idle");
 

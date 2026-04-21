@@ -51,7 +51,7 @@ static int uart_stm32_init(const struct device *dev)
     *afrl  |=  (cfg->tx_af << (cfg->tx_pin * 4));
 
     REG(cfg->base, USART_BRR) = (DT_SYSCLK_HZ + cfg->baudrate / 2) / cfg->baudrate;
-    REG(cfg->base, USART_CR1) = (1 << 13) | (1 << 3);
+    REG(cfg->base, USART_CR1) = (1 << 13) | (1 << 3) | (1 << 2);  /* UE + TE + RE */
 
     return 0;
 }
@@ -65,10 +65,19 @@ static void uart_stm32_poll_out(const struct device *dev, char c)
     REG(cfg->base, USART_DR) = c;
 }
 
-/* ---- Driver API ops struct ---- */
+static int uart_stm32_poll_in(const struct device *dev, char *c)
+{
+    const struct uart_stm32_config *cfg = dev->config;
+
+    if (!(REG(cfg->base, USART_SR) & (1 << 5)))  /* RXNE */
+        return -1;
+    *c = (char)REG(cfg->base, USART_DR);
+    return 0;
+}
 
 static const struct uart_driver_api uart_stm32_api = {
     .poll_out = uart_stm32_poll_out,
+    .poll_in = uart_stm32_poll_in,
 };
 
 /* ---- Instantiation macro (like Zephyr's DT_INST_FOREACH_STATUS_OKAY) ----
