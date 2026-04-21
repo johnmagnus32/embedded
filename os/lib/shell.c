@@ -89,13 +89,48 @@ static int cmd_help(int argc, char **argv)
 }
 
 #ifdef CONFIG_SCHED
+static const char *state_names[] = {"READY", "RUN  ", "BLOCK", "SLEEP"};
+
+static void print_num(uint32_t val)
+{
+    if (val == 0) { print("0"); return; }
+    char buf[12]; int n = 0;
+    while (val > 0) { buf[n++] = '0' + val % 10; val /= 10; }
+    while (n > 0) { char c[2] = {buf[--n], 0}; print(c); }
+}
+
 static int cmd_threads(int argc, char **argv)
 {
     (void)argc; (void)argv;
-    /* sched doesn't expose thread list yet — just show current */
-    print("Current task: ");
-    print(sched_current_name());
-    print("\n");
+    print("  Name         Prio  State  Ticks\n");
+    print("  ----         ----  -----  -----\n");
+
+    int count = sched_get_task_count();
+    for (int i = 0; i < count; i++) {
+        struct task_stats st;
+        sched_get_task_stats(i, &st);
+
+        print("  ");
+        print(st.name);
+        /* Pad name to 13 chars */
+        int len = 0;
+        const char *p = st.name;
+        while (*p++) len++;
+        for (int j = len; j < 13; j++) print(" ");
+
+        /* Priority */
+        char prio[2] = {'0' + st.priority, 0};
+        print(prio);
+        print("     ");
+
+        /* State */
+        print(state_names[st.state]);
+        print("  ");
+
+        /* Ticks */
+        print_num(st.total_ticks);
+        print("\n");
+    }
     return 0;
 }
 #endif

@@ -31,7 +31,10 @@ struct task_tcb {
     enum task_state state;
     uint32_t wake_tick;
     int running_on_cpu;
-    uint8_t priority;       /* 0 = highest, 7 = lowest */
+    uint8_t priority;
+    /* Runtime stats */
+    uint32_t total_ticks;
+    uint32_t last_switch_in;
 };
 
 static struct task_tcb tasks[MAX_TASKS];
@@ -89,6 +92,21 @@ int sched_current_id(void)
     return current_task_per_cpu[get_cpu_id()];
 }
 
+int sched_get_task_count(void)
+{
+    return num_tasks;
+}
+
+int sched_get_task_stats(int id, struct task_stats *stats)
+{
+    if (id < 0 || id >= num_tasks) return -1;
+    stats->name = tasks[id].name;
+    stats->priority = tasks[id].priority;
+    stats->state = (uint8_t)tasks[id].state;
+    stats->total_ticks = tasks[id].total_ticks;
+    return 0;
+}
+
 /*
  * Pick the highest-priority READY task for this CPU.
  * Must be called with sched_lock held.
@@ -142,8 +160,12 @@ uint32_t *sched_preempt(uint32_t *old_sp)
 {
     int cpu = get_cpu_id();
     int old_task = current_task_per_cpu[cpu];
+    uint32_t now = systick_get_ticks();
 
     uint32_t key = spin_lock(&sched_lock);
+
+    /* Account CPU time to outgoing task */
+    tasks[old_task].total_ticks += now - tasks[old_task].last_switch_in;
 
     tasks[old_task].sp = old_sp;
     if (tasks[old_task].state == TASK_RUNNING) {
@@ -155,6 +177,7 @@ uint32_t *sched_preempt(uint32_t *old_sp)
     current_task_per_cpu[cpu] = next;
     tasks[next].state = TASK_RUNNING;
     tasks[next].running_on_cpu = cpu;
+    tasks[next].last_switch_in = now;
 
 #ifdef CONFIG_MPU
     extern void mpu_switch_task(uint32_t stack_base, uint32_t stack_size);

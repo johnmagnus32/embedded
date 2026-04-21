@@ -66,4 +66,14 @@ uint32_t *sched_preempt(uint32_t *old_sp);
 const char *sched_current_name(void);
 int sched_current_id(void);
 
+/* Runtime stats */
+struct task_stats {
+    const char *name;
+    uint8_t priority;
+    uint8_t state;
+    uint32_t total_ticks;
+};
+int sched_get_task_count(void);
+int sched_get_task_stats(int id, struct task_stats *stats);
+
 #endif
