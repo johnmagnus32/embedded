@@ -14,7 +14,8 @@ CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 -I$(BUILD) 
 LDFLAGS = -T linker.ld -nostdlib
 
 # Source files → object files in build/
-OBJS    = $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/uart.o $(BUILD)/gpio.o $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o
+OBJS    = $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/uart.o $(BUILD)/gpio.o \
+          $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o $(BUILD)/sched.o $(BUILD)/log.o
 
 # Default target
 all: $(BUILD)/hello.bin
