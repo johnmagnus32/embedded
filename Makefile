@@ -18,7 +18,7 @@ LDFLAGS = -T linker.ld -nostdlib
 # Source files organized by subsystem
 OBJS    = $(BUILD)/startup.o $(BUILD)/systick.o \
           $(BUILD)/sched.o $(BUILD)/sync.o $(BUILD)/msgq.o \
-          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/log.o \
+          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/log.o $(BUILD)/fs.o \
           $(BUILD)/clock.o $(BUILD)/uart.o $(BUILD)/gpio.o \
           $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o \
           $(BUILD)/spi.o $(BUILD)/flash.o \

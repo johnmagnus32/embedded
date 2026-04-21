@@ -20,6 +20,7 @@
 #include "msgq.h"
 #include "heap.h"
 #include "memslab.h"
+#include "fs.h"
 
 extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
 
@@ -117,40 +118,66 @@ static void log_msg_task(void)
     }
 }
 
-/* --- Flash task: write and read back from NOR flash --- */
+/* --- FS list callback --- */
+
+static const struct device *_ls_console;
+static void ls_print(const char *name, uint32_t size)
+{
+    mutex_lock(&uart_mutex);
+    uart_puts(_ls_console, "  ");
+    uart_puts(_ls_console, name);
+    uart_puts(_ls_console, "\n");
+    mutex_unlock(&uart_mutex);
+}
+
+/* --- Flash task: mount filesystem, create and read files --- */
+
+static struct fs_mount mnt;
 
 static void flash_task(void)
 {
     const struct device *console = DEVICE_DT_GET(DT_CHOSEN_CONSOLE);
     const struct device *flash = DEVICE_DT_GET(flash0);
+    _ls_console = console;
 
-    sched_sleep_ms(100);  /* let boot messages finish */
+    sched_sleep_ms(100);
 
-    /* Erase sector 0 */
+    /* Mount filesystem on NOR flash */
     mutex_lock(&uart_mutex);
-    uart_puts(console, "[flash] erasing sector 0...\n");
-    mutex_unlock(&uart_mutex);
-    flash_erase(flash, 0, 4096);
-
-    /* Write some data */
-    const char *msg = "Hello from NOR flash!";
-    flash_write(flash, 0, msg, 22);
-
-    mutex_lock(&uart_mutex);
-    uart_puts(console, "[flash] wrote 22 bytes at offset 0\n");
+    uart_puts(console, "[fs] mounting filesystem on flash...\n");
     mutex_unlock(&uart_mutex);
 
-    /* Read it back */
+    fs_mount(&mnt, flash);
+
+    /* Create and write a file */
+    struct fs_file f;
+    fs_open(&f, &mnt, "hello.txt");
+    fs_write(&f, "Hello from TinyFS!", 18);
+    fs_close(&f);
+
+    /* Create another file */
+    fs_open(&f, &mnt, "count.txt");
+    fs_write(&f, "42", 2);
+    fs_close(&f);
+
+    /* List files */
+    mutex_lock(&uart_mutex);
+    uart_puts(console, "[fs] files:\n");
+    mutex_unlock(&uart_mutex);
+    fs_ls(&mnt, ls_print);
+
+    /* Read back hello.txt */
     char buf[32] = {0};
-    flash_read(flash, 0, buf, 22);
+    fs_open(&f, &mnt, "hello.txt");
+    fs_read(&f, buf, sizeof(buf) - 1);
+    fs_close(&f);
 
     mutex_lock(&uart_mutex);
-    uart_puts(console, "[flash] read back: ");
+    uart_puts(console, "[fs] read hello.txt: ");
     uart_puts(console, buf);
     uart_puts(console, "\n");
     mutex_unlock(&uart_mutex);
 
-    /* Done — sleep forever */
     while (1) sched_sleep_ms(10000);
 }
 
