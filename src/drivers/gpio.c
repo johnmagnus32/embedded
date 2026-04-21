@@ -14,6 +14,7 @@
 #define GPIO_MODER   0x00
 #define GPIO_PUPDR   0x0C
 #define GPIO_IDR     0x10
+#define GPIO_BSRR    0x18
 
 #define RCC_BASE     0x40023800
 #define RCC_AHB1ENR  (*(volatile uint32_t *)(RCC_BASE + 0x30))
@@ -29,19 +30,19 @@ static int gpio_stm32_pin_configure(const struct device *dev, uint8_t pin, uint8
 {
     const struct gpio_stm32_config *cfg = dev->config;
 
-    /* Enable port clock */
     RCC_AHB1ENR |= (1 << cfg->clk_bit);
 
-    if (flags & GPIO_INPUT) {
-        /* Set pin to input mode (MODER = 00) */
-        REG(cfg->base, GPIO_MODER) &= ~(3U << (pin * 2));
+    REG(cfg->base, GPIO_MODER) &= ~(3U << (pin * 2));
 
-        /* Configure pull-up if requested */
-        if (flags & GPIO_PULL_UP) {
-            REG(cfg->base, GPIO_PUPDR) &= ~(3U << (pin * 2));
-            REG(cfg->base, GPIO_PUPDR) |=  (1U << (pin * 2));  /* 01 = pull-up */
-        }
+    if (flags & GPIO_OUTPUT) {
+        REG(cfg->base, GPIO_MODER) |= (1U << (pin * 2));  /* 01 = output */
     }
+
+    if (flags & GPIO_PULL_UP) {
+        REG(cfg->base, GPIO_PUPDR) &= ~(3U << (pin * 2));
+        REG(cfg->base, GPIO_PUPDR) |=  (1U << (pin * 2));
+    }
+
     return 0;
 }
 
@@ -51,9 +52,19 @@ static int gpio_stm32_pin_get(const struct device *dev, uint8_t pin)
     return (REG(cfg->base, GPIO_IDR) >> pin) & 1;
 }
 
+static void gpio_stm32_pin_set(const struct device *dev, uint8_t pin, int value)
+{
+    const struct gpio_stm32_config *cfg = dev->config;
+    if (value)
+        REG(cfg->base, GPIO_BSRR) = (1 << pin);        /* set */
+    else
+        REG(cfg->base, GPIO_BSRR) = (1 << (pin + 16));  /* reset */
+}
+
 static const struct gpio_driver_api gpio_stm32_api = {
     .pin_configure = gpio_stm32_pin_configure,
     .pin_get = gpio_stm32_pin_get,
+    .pin_set = gpio_stm32_pin_set,
 };
 
 /* ---- DT_INST instantiation ---- */

@@ -31,6 +31,12 @@
             clocks = <&rcc 0 0>;  /* AHB1, bit 0 */
         };
 
+        gpiob: gpio@40020400 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020400>;
+            clocks = <&rcc 0 1>;  /* AHB1, bit 1 */
+        };
+
         gpioc: gpio@40020800 {
             compatible = "st,stm32-gpio";
             reg = <0x40020800>;
@@ -81,5 +87,17 @@
 
     chosen {
         console = <&usart2>;
+    };
+
+    leds: gpio-leds {
+        compatible = "gpio-leds";
+        status = "okay";
+
+        led-up    { gpios = <&gpiob 0>; };
+        led-down  { gpios = <&gpiob 1>; };
+        led-left  { gpios = <&gpiob 2>; };
+        led-right { gpios = <&gpiob 3>; };
+        led-a     { gpios = <&gpiob 4>; };
+        led-b     { gpios = <&gpiob 5>; };
     };
 };
