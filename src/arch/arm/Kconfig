@@ -1,0 +1,10 @@
+menu "Architecture"
+
+config SYSTICK
+    bool "SysTick timer"
+    default y
+    help
+      Enable the ARM SysTick timer for preemptive scheduling.
+      Provides 1ms tick and PendSV context switch.
+
+endmenu

@@ -1,0 +1,22 @@
+menu "Libraries"
+
+config HEAP
+    bool "Heap allocator"
+    default y
+    help
+      First-fit heap with coalescing (malloc/free).
+
+config MEMSLAB
+    bool "Memory slab allocator"
+    default y
+    help
+      Fixed-size block allocator. O(1) alloc and free.
+
+config LOG
+    bool "Deferred logging"
+    default y
+    depends on SCHED
+    help
+      Ring buffer logging with background UART output.
+
+endmenu

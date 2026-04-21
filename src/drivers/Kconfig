@@ -1,0 +1,51 @@
+menu "Drivers"
+
+config CLOCK
+    bool "Clock control (RCC)"
+    default y
+    help
+      STM32 RCC clock driver. Required by all other drivers.
+
+config UART
+    bool "UART serial driver"
+    default y
+    depends on CLOCK
+    help
+      STM32 USART driver for console output.
+
+config GPIO
+    bool "GPIO driver"
+    default y
+    depends on CLOCK
+    help
+      STM32 GPIO input/output driver.
+
+config SPI
+    bool "SPI bus driver"
+    default y
+    depends on CLOCK
+    help
+      STM32 SPI master driver.
+
+config FLASH
+    bool "W25Q128 NOR flash driver"
+    default y
+    depends on SPI
+    help
+      SPI NOR flash driver for Winbond W25Q128.
+
+config GPIO_KEYS
+    bool "GPIO keys (button input)"
+    default y
+    depends on GPIO
+    help
+      Button driver using gpio-keys device tree binding.
+
+config GPIO_LEDS
+    bool "GPIO LEDs (LED output)"
+    default y
+    depends on GPIO
+    help
+      LED driver using gpio-leds device tree binding.
+
+endmenu

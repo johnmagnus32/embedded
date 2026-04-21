@@ -1,0 +1,23 @@
+menu "Kernel"
+
+config SCHED
+    bool "Scheduler"
+    default y
+    help
+      Cooperative and preemptive round-robin task scheduler.
+
+config SYNC
+    bool "Synchronization primitives"
+    default y
+    depends on SCHED
+    help
+      Mutex and semaphore support.
+
+config MSGQ
+    bool "Message queues"
+    default y
+    depends on SCHED
+    help
+      Fixed-size message queue for inter-task communication.
+
+endmenu

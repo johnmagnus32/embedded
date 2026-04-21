@@ -1,0 +1,7 @@
+mainmenu "simple-stm32 RTOS Configuration"
+
+source "src/arch/arm/Kconfig"
+source "src/kernel/Kconfig"
+source "src/lib/Kconfig"
+source "src/fs/Kconfig"
+source "src/drivers/Kconfig"

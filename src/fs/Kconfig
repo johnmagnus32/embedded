@@ -1,0 +1,17 @@
+menu "Filesystems"
+
+config FS
+    bool "Virtual filesystem layer"
+    default y
+    depends on FLASH
+    help
+      VFS dispatch layer for filesystem operations.
+
+config TINYFS
+    bool "TinyFS filesystem"
+    default y
+    depends on FS
+    help
+      Simple flat filesystem. 15 files, 4KB each, on NOR flash.
+
+endmenu
