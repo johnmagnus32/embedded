@@ -15,9 +15,9 @@ LDFLAGS = -T linker.ld -nostdlib
 
 # Source files → object files in build/
 OBJS    = $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/uart.o $(BUILD)/gpio.o \
-          $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o $(BUILD)/sched.o \
+          $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o $(BUILD)/flash.o $(BUILD)/sched.o \
           $(BUILD)/systick.o $(BUILD)/sync.o $(BUILD)/msgq.o \
-          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/net.o
+          $(BUILD)/heap.o $(BUILD)/memslab.o
 
 # Default target
 all: $(BUILD)/hello.bin

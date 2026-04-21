@@ -53,6 +53,23 @@
             baudrate = <115200>;
             status = "okay";
         };
+
+        quadspi: qspi@a0001000 {
+            compatible = "st,stm32-qspi";
+            reg = <0xa0001000>;
+            clocks = <&rcc 0 1>;  /* AHB3, bit 1 (simplified) */
+            status = "okay";
+
+            flash0: w25q128@0 {
+                compatible = "jedec,spi-nor";
+                reg = <0>;
+                jedec-id = <0xef 0x40 0x18>;
+                size = <134217728>;  /* 128 Mbit = 16 MB */
+                page-size = <256>;
+                sector-size = <4096>;
+                status = "okay";
+            };
+        };
     };
 
     buttons: gpio-keys {
