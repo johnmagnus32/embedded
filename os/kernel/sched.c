@@ -245,7 +245,11 @@ void sched_start(void)
     __asm volatile(
         "ldmia %0!, {r4-r11}       \n"
         "msr   psp, %0             \n"
-        "movs  r0, #2              \n"
+#ifdef CONFIG_USERSPACE
+        "movs  r0, #3              \n"  /* SPSEL=1 (PSP) + nPRIV=1 (unprivileged) */
+#else
+        "movs  r0, #2              \n"  /* SPSEL=1 (PSP) only */
+#endif
         "msr   control, r0         \n"
         "isb                       \n"
         "ldr   r0, =0xFFFFFFFD     \n"

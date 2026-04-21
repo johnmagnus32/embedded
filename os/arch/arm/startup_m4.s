@@ -21,7 +21,7 @@
 .word 0                 /* 0x20: Reserved */
 .word 0                 /* 0x24: Reserved */
 .word 0                 /* 0x28: Reserved */
-.word 0                 /* 0x2C: SVCall */
+.word svc_handler       /* 0x2C: SVCall ← syscall entry */
 .word 0                 /* 0x30: Reserved */
 .word 0                 /* 0x34: Reserved */
 .word pendsv_handler    /* 0x38: PendSV */
@@ -76,6 +76,7 @@
 .weak systick_handler
 .weak usart2_isr
 .weak memmanage_handler
+.weak svc_handler
 .thumb_func
 pendsv_handler:
 .thumb_func
@@ -84,6 +85,8 @@ systick_handler:
 usart2_isr:
 .thumb_func
 memmanage_handler:
+.thumb_func
+svc_handler:
     bx lr
 
 .global reset_handler

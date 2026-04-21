@@ -56,6 +56,7 @@
 #define SIZE_128KB    (16 << 1)
 #define SIZE_512KB    (18 << 1)
 #define SIZE_1MB      (19 << 1)
+#define SIZE_512MB    (28 << 1)
 
 static void mpu_set_region(uint8_t region, uint32_t base, uint32_t rasr)
 {
@@ -66,11 +67,9 @@ static void mpu_set_region(uint8_t region, uint32_t base, uint32_t rasr)
 
 void mpu_init(void)
 {
-    /* Check MPU exists */
     uint32_t regions = (MPU_TYPE >> 8) & 0xFF;
-    if (regions == 0) return;  /* no MPU */
+    if (regions == 0) return;
 
-    /* Disable MPU while configuring */
     MPU_CTRL = 0;
 
     /* Region 0: Flash — read-only, executable */
@@ -81,17 +80,32 @@ void mpu_init(void)
     mpu_set_region(1, 0x20000000,
         AP_PRIV_ONLY | XN | SIZE_128KB | REGION_ENABLE);
 
-    /* Region 2: will be set per-task on context switch */
-    mpu_set_region(2, 0, 0);  /* disabled initially */
+    /* Region 2: per-task stack (switched on context switch) */
+    mpu_set_region(2, 0, 0);
+
+    /* Region 3: .data + .bss — read-write for all tasks
+     * Tasks need access to global variables (sync primitives, etc.) */
+    extern uint8_t _data_start[];
+    mpu_set_region(3, (uint32_t)_data_start,
+        AP_FULL | XN | SIZE_1KB | REGION_ENABLE);
+
+    /* Region 4: Heap — read-write for all tasks */
+    extern uint8_t _heap_start[];
+    mpu_set_region(4, (uint32_t)_heap_start,
+        AP_FULL | XN | SIZE_128KB | REGION_ENABLE);
+
+    /* Region 5: Peripherals (0x40000000-0x5FFFFFFF) — read-write for tasks
+     * Needed for UART poll_out etc. In a real system, only specific
+     * peripherals would be exposed. */
+    mpu_set_region(5, 0x40000000,
+        AP_FULL | XN | SIZE_512MB | REGION_ENABLE);
 
     /* Enable MemManage fault handler */
-    SCB_SHCSR |= (1 << 16);  /* MEMFAULTENA */
+    SCB_SHCSR |= (1 << 16);
 
-    /* Enable MPU: PRIVDEFENA=1 (privileged code can access everything),
-     * ENABLE=1 */
+    /* Enable MPU: PRIVDEFENA=1, ENABLE=1 */
     MPU_CTRL = (1 << 2) | (1 << 0);
 
-    /* Memory barrier to ensure MPU config takes effect */
     __asm volatile("dsb\n isb");
 }
 
