@@ -12,12 +12,12 @@ SIZE    = $(TC)-size
 OBJDUMP = $(TC)-objdump
 NM      = $(TC)-nm
 
-OS      = ../os
+OS      = ../../os
 BUILD   = build
 
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
           -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
-          -I$(OS)/fs -I$(OS)/drivers -I$(OS)
+          -I$(OS)/fs -I$(OS)/drivers -I$(OS) -I..
 LDFLAGS = -T linker.ld -nostdlib
 
 # ---- Load .config ----
