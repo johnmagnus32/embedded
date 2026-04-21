@@ -1,42 +1,41 @@
 /*
  * gpio.c — STM32 GPIO driver
  *
- * Supports input with pull-up and reading pin state.
- * Config comes from device tree via DT_INST macros.
+ * Uses the clock driver to enable port clocks.
+ * No hardcoded RCC address.
  */
 
 #include <stdint.h>
 #include "devicetree.h"
 #include "device.h"
 #include "drivers/gpio.h"
+#include "drivers/clock.h"
 
-/* STM32 GPIO register offsets */
 #define GPIO_MODER   0x00
 #define GPIO_PUPDR   0x0C
 #define GPIO_IDR     0x10
 #define GPIO_BSRR    0x18
 
-#define RCC_BASE     0x40023800
-#define RCC_AHB1ENR  (*(volatile uint32_t *)(RCC_BASE + 0x30))
-
 #define REG(base, off) (*(volatile uint32_t *)((base) + (off)))
 
 struct gpio_stm32_config {
     uint32_t base;
+    uint8_t  clk_bus;
     uint8_t  clk_bit;
 };
+
+DEVICE_DT_DECLARE(rcc);
 
 static int gpio_stm32_pin_configure(const struct device *dev, uint8_t pin, uint8_t flags)
 {
     const struct gpio_stm32_config *cfg = dev->config;
 
-    RCC_AHB1ENR |= (1 << cfg->clk_bit);
+    clock_on(DEVICE_DT_GET(rcc), cfg->clk_bus, cfg->clk_bit);
 
     REG(cfg->base, GPIO_MODER) &= ~(3U << (pin * 2));
 
-    if (flags & GPIO_OUTPUT) {
-        REG(cfg->base, GPIO_MODER) |= (1U << (pin * 2));  /* 01 = output */
-    }
+    if (flags & GPIO_OUTPUT)
+        REG(cfg->base, GPIO_MODER) |= (1U << (pin * 2));
 
     if (flags & GPIO_PULL_UP) {
         REG(cfg->base, GPIO_PUPDR) &= ~(3U << (pin * 2));
@@ -56,9 +55,9 @@ static void gpio_stm32_pin_set(const struct device *dev, uint8_t pin, int value)
 {
     const struct gpio_stm32_config *cfg = dev->config;
     if (value)
-        REG(cfg->base, GPIO_BSRR) = (1 << pin);        /* set */
+        REG(cfg->base, GPIO_BSRR) = (1 << pin);
     else
-        REG(cfg->base, GPIO_BSRR) = (1 << (pin + 16));  /* reset */
+        REG(cfg->base, GPIO_BSRR) = (1 << (pin + 16));
 }
 
 static const struct gpio_driver_api gpio_stm32_api = {
@@ -67,17 +66,13 @@ static const struct gpio_driver_api gpio_stm32_api = {
     .pin_set = gpio_stm32_pin_set,
 };
 
-/* ---- DT_INST instantiation ---- */
-
-#define CONCAT3(a, b, c) a##b##c
-#define _GPIO_INST_REG(n) DT_INST_ST_STM32_GPIO_##n##_REG_ADDR
-#define _GPIO_INST_CLK(n) DT_INST_ST_STM32_GPIO_##n##_CLK_BIT
 #define _GPIO_INST_LABEL(n) DT_INST_ST_STM32_GPIO_##n##_LABEL
 
 #define STM32_GPIO_DEFINE(n)                                        \
     static const struct gpio_stm32_config gpio_cfg_##n = {          \
-        .base    = _GPIO_INST_REG(n),                               \
-        .clk_bit = _GPIO_INST_CLK(n),                               \
+        .base    = DT_INST_ST_STM32_GPIO_##n##_REG_ADDR,           \
+        .clk_bus = DT_INST_ST_STM32_GPIO_##n##_CLK_BUS,            \
+        .clk_bit = DT_INST_ST_STM32_GPIO_##n##_CLK_BIT,            \
     };                                                              \
     DEVICE_DT_DEFINE(_GPIO_INST_LABEL(n),                           \
                      NULL, NULL, &gpio_cfg_##n, &gpio_stm32_api);

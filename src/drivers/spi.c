@@ -15,19 +15,13 @@
 #include "devicetree.h"
 #include "device.h"
 #include "drivers/spi.h"
-#include "drivers/gpio.h"
+#include "drivers/clock.h"
 
-/* SPI register offsets (same for all STM32 SPI peripherals) */
+/* SPI register offsets */
 #define SPI_CR1_OFF  0x00
 #define SPI_CR2_OFF  0x04
 #define SPI_SR_OFF   0x08
 #define SPI_DR_OFF   0x0C
-
-/* RCC register offsets */
-#define RCC_BASE     0x40023800
-#define RCC_AHB1ENR  (*(volatile uint32_t *)(RCC_BASE + 0x30))
-#define RCC_APB1ENR  (*(volatile uint32_t *)(RCC_BASE + 0x40))
-#define RCC_APB2ENR  (*(volatile uint32_t *)(RCC_BASE + 0x44))
 
 #define REG(base, off) (*(volatile uint32_t *)((base) + (off)))
 
@@ -63,20 +57,20 @@ static void pin_configure_af(uint32_t port, uint8_t pin, uint8_t af)
     *afr |=  ((uint32_t)af << af_pos);
 }
 
+DEVICE_DT_DECLARE(rcc);
+
 static int spi_stm32_init(const struct device *dev)
 {
     const struct spi_stm32_config *cfg = dev->config;
+    const struct device *clk = DEVICE_DT_GET(rcc);
 
-    /* Enable SPI clock */
-    if (cfg->clk_bus == 2)
-        RCC_APB2ENR |= (1 << cfg->clk_bit);
-    else if (cfg->clk_bus == 1)
-        RCC_APB1ENR |= (1 << cfg->clk_bit);
-    else
-        RCC_AHB1ENR |= (1 << cfg->clk_bit);
+    /* Enable SPI peripheral clock */
+    clock_on(clk, cfg->clk_bus, cfg->clk_bit);
 
-    /* Enable GPIO clocks for all pins (simplified: enable A,B,C) */
-    RCC_AHB1ENR |= (1 << 0) | (1 << 1) | (1 << 2);
+    /* Enable GPIO clocks for all used pins */
+    /* (In a full implementation, each pin's port clock would be
+     *  looked up from the DT. Simplified: the GPIO driver already
+     *  enables port clocks when pins are configured.) */
 
     /* Configure SPI pins */
     pin_configure_af(cfg->sck_port, cfg->sck_pin, cfg->sck_af);

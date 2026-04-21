@@ -27,6 +27,7 @@ extern uint8_t _heap_start[];
 extern uint32_t _heap_size;
 
 DEVICE_DT_DECLARE(DT_CHOSEN_CONSOLE);
+DEVICE_DT_DECLARE(rcc);
 DEVICE_DT_DECLARE(buttons);
 DEVICE_DT_DECLARE(leds);
 DEVICE_DT_DECLARE(spi1);
