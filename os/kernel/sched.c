@@ -10,6 +10,7 @@
  */
 
 #include "sched.h"
+#include "config.h"
 #include <stddef.h>
 
 extern uint32_t systick_get_ticks(void);
@@ -170,6 +171,27 @@ void sched_start(void)
     tasks[0].state = TASK_RUNNING;
     uint32_t *sp = tasks[0].sp;
 
+#ifdef CONFIG_CPU_CORTEX_M0PLUS
+    /* M0+: can't ldmia r8-r11 directly */
+    __asm volatile(
+        /* Load r4-r7 */
+        "ldmia %0!, {r4-r7}        \n"
+        /* Load r8-r11 via r0-r3 (clobber is ok, we're switching) */
+        "ldmia %0!, {r0-r3}        \n"
+        "mov   r8, r0              \n"
+        "mov   r9, r1              \n"
+        "mov   r10, r2             \n"
+        "mov   r11, r3             \n"
+        "msr   psp, %0             \n"
+        "movs  r0, #2              \n"
+        "msr   control, r0         \n"
+        "isb                       \n"
+        "ldr   r0, =0xFFFFFFFD     \n"
+        "bx    r0                  \n"
+        :
+        : "r" (sp)
+    );
+#else
     __asm volatile(
         "ldmia %0!, {r4-r11}       \n"
         "msr   psp, %0             \n"
@@ -181,5 +203,6 @@ void sched_start(void)
         :
         : "r" (sp)
     );
+#endif
     while (1) {}
 }

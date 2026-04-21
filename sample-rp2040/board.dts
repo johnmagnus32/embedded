@@ -1,0 +1,83 @@
+/*
+ * Raspberry Pi Pico (RP2040) device tree
+ *
+ * RP2040: 2× Cortex-M0+, 264KB SRAM, no internal flash
+ * External QSPI flash (W25Q16 2MB on Pico board)
+ * UART0 on GP0(TX)/GP1(RX) — exposed on Pico pins
+ */
+
+/ {
+    compatible = "raspberrypi,pico";
+    model = "Raspberry Pi Pico (RP2040)";
+
+    clocks {
+        xosc: xosc {
+            compatible = "fixed-clock";
+            clock-frequency = <125000000>;  /* 125MHz after PLL */
+        };
+    };
+
+    soc {
+        compatible = "raspberrypi,rp2040";
+
+        resets: resets@4000c000 {
+            compatible = "raspberrypi,rp2040-resets";
+            reg = <0x4000c000>;
+        };
+
+        gpio0: gpio@40014000 {
+            compatible = "raspberrypi,rp2040-gpio";
+            reg = <0x40014000>;
+            sio-reg = <0xd0000000>;
+            pads-reg = <0x4001c000>;
+        };
+
+        uart0: serial@40034000 {
+            compatible = "arm,pl011";
+            reg = <0x40034000>;
+            tx-pin = <0>;
+            rx-pin = <1>;
+            baudrate = <115200>;
+            status = "okay";
+        };
+
+        spi0: spi@4003c000 {
+            compatible = "arm,pl022";
+            reg = <0x4003c000>;
+            sck-pin = <18>;
+            mosi-pin = <19>;
+            miso-pin = <16>;
+            status = "okay";
+
+            flash0: w25q16@0 {
+                compatible = "jedec,spi-nor";
+                reg = <0>;
+                cs-pin = <17>;
+                jedec-id = <0xef 0x40 0x15>;
+                size = <16777216>;  /* 16 Mbit = 2 MB */
+                page-size = <256>;
+                sector-size = <4096>;
+                status = "okay";
+            };
+        };
+
+        sio: sio@d0000000 {
+            compatible = "raspberrypi,rp2040-sio";
+            reg = <0xd0000000>;
+        };
+    };
+
+    /* RP2040 SMP: two identical Cortex-M0+ cores */
+    cpus {
+        cpu0: cpu@0 {
+            compatible = "arm,cortex-m0plus";
+        };
+        cpu1: cpu@1 {
+            compatible = "arm,cortex-m0plus";
+        };
+    };
+
+    chosen {
+        console = <&uart0>;
+    };
+};

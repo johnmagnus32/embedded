@@ -1,51 +1,51 @@
 menu "Drivers"
 
 config CLOCK
-    bool "Clock control (RCC)"
+    bool "Clock control"
     default y
-    help
-      STM32 RCC clock driver. Required by all other drivers.
+
+config CLOCK_RP2040
+    bool "RP2040 resets driver"
+    default n
+    depends on CLOCK
 
 config UART
     bool "UART serial driver"
     default y
     depends on CLOCK
-    help
-      STM32 USART driver for console output.
+
+config UART_PL011
+    bool "ARM PL011 UART (RP2040)"
+    default n
+    depends on UART
 
 config GPIO
     bool "GPIO driver"
     default y
-    depends on CLOCK
-    help
-      STM32 GPIO input/output driver.
+
+config GPIO_RP2040
+    bool "RP2040 GPIO driver"
+    default n
+    depends on GPIO
 
 config SPI
     bool "SPI bus driver"
     default y
     depends on CLOCK
-    help
-      STM32 SPI master driver.
 
 config FLASH
-    bool "W25Q128 NOR flash driver"
+    bool "W25Q NOR flash driver"
     default y
     depends on SPI
-    help
-      SPI NOR flash driver for Winbond W25Q128.
 
 config GPIO_KEYS
     bool "GPIO keys (button input)"
     default y
     depends on GPIO
-    help
-      Button driver using gpio-keys device tree binding.
 
 config GPIO_LEDS
     bool "GPIO LEDs (LED output)"
     default y
     depends on GPIO
-    help
-      LED driver using gpio-leds device tree binding.
 
 endmenu

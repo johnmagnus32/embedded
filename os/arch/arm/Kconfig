@@ -1,10 +1,24 @@
 menu "Architecture"
 
+config CPU_CORTEX_M4
+    bool "ARM Cortex-M4"
+    default y
+
+config CPU_CORTEX_M0PLUS
+    bool "ARM Cortex-M0+"
+    default n
+
 config SYSTICK
     bool "SysTick timer"
     default y
-    help
-      Enable the ARM SysTick timer for preemptive scheduling.
-      Provides 1ms tick and PendSV context switch.
+
+config SMP
+    bool "Symmetric multiprocessing"
+    default n
+    depends on CPU_CORTEX_M0PLUS
+
+config SMP_NUM_CPUS
+    int "Number of CPUs"
+    default 1
 
 endmenu
