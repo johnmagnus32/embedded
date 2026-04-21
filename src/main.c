@@ -16,6 +16,7 @@
 #include "msgq.h"
 #include "heap.h"
 #include "memslab.h"
+#include "net.h"
 
 extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
 
@@ -137,6 +138,55 @@ static void log_msg_task(void)
     }
 }
 
+/* --- Net sender task: sends a message every 500ms on port 1000 --- */
+
+static void net_sender_task(void)
+{
+    int sock = net_socket_open(1000);
+    int seq = 0;
+
+    while (1) {
+        char msg[32];
+        /* Build "ping #N" */
+        char *p = msg;
+        const char *prefix = "ping #";
+        while (*prefix) *p++ = *prefix++;
+        /* itoa for seq */
+        if (seq == 0) { *p++ = '0'; }
+        else {
+            char digits[10]; int n = 0; int v = seq;
+            while (v > 0) { digits[n++] = '0' + v % 10; v /= 10; }
+            while (n > 0) *p++ = digits[--n];
+        }
+        *p = '\0';
+
+        net_send(sock, 2000, msg, (size_t)(p - msg));
+        seq++;
+        sched_sleep_ms(500);
+    }
+}
+
+/* --- Net receiver task: listens on port 2000, logs received messages --- */
+
+static void net_receiver_task(void)
+{
+    const struct device *console = DEVICE_DT_GET(DT_CHOSEN_CONSOLE);
+    int sock = net_socket_open(2000);
+    char buf[NET_BUF_SIZE];
+
+    while (1) {
+        int len = net_recv(sock, buf, sizeof(buf) - 1);
+        if (len > 0) {
+            buf[len] = '\0';
+            mutex_lock(&uart_mutex);
+            uart_puts(console, "[net] received: ");
+            uart_puts(console, buf);
+            uart_puts(console, "\n");
+            mutex_unlock(&uart_mutex);
+        }
+    }
+}
+
 /* --- Idle task --- */
 
 static void idle_task(void)
@@ -165,9 +215,14 @@ int main(void)
     memslab_init(&led_slab, led_slab_buf,
                  sizeof(struct led_event), 8);
 
+    /* Init network stack */
+    net_init();
+
     sched_create_task(input_task, "input");
     sched_create_task(led_task, "led");
     sched_create_task(log_msg_task, "log");
+    sched_create_task(net_sender_task, "netsend");
+    sched_create_task(net_receiver_task, "netrecv");
     sched_create_task(idle_task, "idle");
 
     uart_puts(console, "Starting scheduler.\n");

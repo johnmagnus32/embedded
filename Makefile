@@ -17,7 +17,7 @@ LDFLAGS = -T linker.ld -nostdlib
 OBJS    = $(BUILD)/startup.o $(BUILD)/main.o $(BUILD)/uart.o $(BUILD)/gpio.o \
           $(BUILD)/gpio_keys.o $(BUILD)/gpio_leds.o $(BUILD)/sched.o \
           $(BUILD)/systick.o $(BUILD)/sync.o $(BUILD)/msgq.o \
-          $(BUILD)/heap.o $(BUILD)/memslab.o
+          $(BUILD)/heap.o $(BUILD)/memslab.o $(BUILD)/net.o
 
 # Default target
 all: $(BUILD)/hello.bin
