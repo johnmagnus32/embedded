@@ -80,8 +80,7 @@ static int uart_stm32_init(const struct device *dev)
  */
 void usart2_isr(void)
 {
-    /* Read SR first (clears flags), then DR */
-    uint32_t base = DT_USART2_BASE;  /* ISR needs to know the base */
+    uint32_t base = DT_CONSOLE_BASE;
     uint32_t sr = REG(base, USART_SR);
 
     if (sr & (1 << 5)) {  /* RXNE — data available */

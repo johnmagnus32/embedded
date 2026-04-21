@@ -309,6 +309,12 @@ def generate_header(nodes, labels):
                     alias_prefix = f"DT_{alias_label.upper()}"
                     cname = pname.replace('-', '_').upper()
                     lines.append(f"#define DT_CHOSEN_{cname} {alias_label}")
+                    # Also emit convenience BASE alias
+                    alias_path = labels.get(alias_label)
+                    if alias_path and alias_path in nodes:
+                        alias_reg = nodes[alias_path]['props'].get('reg')
+                        if isinstance(alias_reg, int):
+                            lines.append(f"#define DT_{cname}_BASE 0x{alias_reg:08X}")
             lines.append("")
 
     lines.append("#endif")
