@@ -257,6 +257,13 @@ int main(void)
 
     uart_puts(console, "Booting...\n");
 
+#ifdef CONFIG_ELFLOADER
+    extern void env_set(const char *key, const char *value);
+    env_set("BOARD", "stm32f411re");
+    env_set("OS", "simple-rtos");
+    env_set("VERSION", "1.0");
+#endif
+
 #ifdef CONFIG_MPU
     extern void mpu_init(void);
     mpu_init();

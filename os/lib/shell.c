@@ -102,6 +102,45 @@ static int cmd_threads(int argc, char **argv)
 
 #ifdef CONFIG_ELFLOADER
 /*
+ * "env" — show all environment variables
+ * "env KEY=VALUE" — set an environment variable
+ */
+static int cmd_env(int argc, char **argv)
+{
+    if (argc < 2) {
+        /* Show all env vars */
+        extern char *os_environ[];
+        for (int i = 0; os_environ[i]; i++) {
+            print("  ");
+            print(os_environ[i]);
+            print("\n");
+        }
+        return 0;
+    }
+
+    /* Parse KEY=VALUE */
+    char *eq = argv[1];
+    while (*eq && *eq != '=') eq++;
+    if (!*eq) {
+        /* Just a key — show its value */
+        const char *val = env_get(argv[1]);
+        if (val) {
+            print(val);
+            print("\n");
+        } else {
+            print("(not set)\n");
+        }
+        return 0;
+    }
+
+    /* Split at '=' and set */
+    *eq = '\0';
+    env_set(argv[1], eq + 1);
+    *eq = '=';  /* restore */
+    return 0;
+}
+
+/*
  * "run <filename>" — load an ELF from the filesystem and run it as a task.
  * Like Linux's execve() but simpler: doesn't replace the current task,
  * creates a new one.
@@ -138,8 +177,14 @@ static int cmd_run(int argc, char **argv)
     print(argv[1]);
     print("...\n");
 
-    /* Load and run */
-    int rc = elf_load_and_run(elf_buf, (uint32_t)size, argv[1], 4);
+    /* Load and run — pass remaining args as program's argc/argv
+     * "run hello.elf foo bar" → program gets argc=2, argv=["foo","bar"]
+     */
+    int prog_argc = argc - 2;
+    char **prog_argv = (prog_argc > 0) ? &argv[2] : (char **)0;
+
+    int rc = elf_load_and_run(elf_buf, (uint32_t)size, argv[1], 4,
+                              prog_argc, prog_argv);
     if (rc < 0) {
         print("Failed to load ELF\n");
         return -1;
@@ -170,7 +215,8 @@ void shell_task(void)
     shell_register("threads", cmd_threads, "Show thread info");
 #endif
 #ifdef CONFIG_ELFLOADER
-    shell_register("run", cmd_run, "Load and run ELF: run <filename>");
+    shell_register("run", cmd_run, "Load and run ELF: run <file> [args...]");
+    shell_register("env", cmd_env, "Set/show env: env [KEY=VALUE]");
 #endif
 
     print("\n\nsimple-stm32 shell\nType 'help' for commands.\n\n");
