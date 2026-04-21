@@ -124,10 +124,10 @@ int main(void)
              IP_ADDR(255, 255, 255, 0),    /* netmask */
              IP_ADDR(192, 168, 1, 1));     /* gateway */
 
-    sched_create_task(net_rx_task, "net_rx");
-    sched_create_task(echo_task, "echo");
-    sched_create_task(sender_task, "sender");
-    sched_create_task(idle_task, "idle");
+    sched_create_task(net_rx_task, "net_rx", 1);
+    sched_create_task(echo_task, "echo", 3);
+    sched_create_task(sender_task, "sender", 4);
+    sched_create_task(idle_task, "idle", 7);
 
     systick_init(DT_SYSCLK_HZ, 1000);
     sched_start();

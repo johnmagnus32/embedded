@@ -89,8 +89,8 @@ int main(void)
 #endif
 
 #ifdef CONFIG_SCHED
-    sched_create_task(app_task, "app");
-    sched_create_task(idle_task, "idle");
+    sched_create_task(app_task, "app", 3);
+    sched_create_task(idle_task, "idle", 7);
 #ifdef CONFIG_SYSTICK
     systick_init(DT_SYSCLK_HZ, 1000);
 #endif

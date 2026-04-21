@@ -89,11 +89,11 @@ int main(void)
 #endif
 
 #ifdef CONFIG_SCHED
-    sched_create_task(blink_task, "blink");
+    sched_create_task(blink_task, "blink", 3);
 #ifdef CONFIG_SHELL
-    sched_create_task(shell_task, "shell");
+    sched_create_task(shell_task, "shell", 6);
 #endif
-    sched_create_task(idle_task, "idle");
+    sched_create_task(idle_task, "idle", 7);
 
 #ifdef CONFIG_SYSTICK
     systick_init(DT_SYSCLK_HZ, 1000);

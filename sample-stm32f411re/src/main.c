@@ -265,16 +265,16 @@ int main(void)
 #endif
 
 #ifdef CONFIG_SCHED
-    sched_create_task(input_task, "input");
-    sched_create_task(led_task, "led");
-    sched_create_task(log_msg_task, "log");
+    sched_create_task(input_task, "input", 1);
+    sched_create_task(led_task, "led", 2);
+    sched_create_task(log_msg_task, "log", 4);
 #ifdef CONFIG_FS
-    sched_create_task(flash_task, "flash");
+    sched_create_task(flash_task, "flash", 5);
 #endif
 #ifdef CONFIG_SHELL
-    sched_create_task(shell_task, "shell");
+    sched_create_task(shell_task, "shell", 6);
 #endif
-    sched_create_task(idle_task, "idle");
+    sched_create_task(idle_task, "idle", 7);
 
     uart_puts(console, "Starting scheduler.\n");
 #ifdef CONFIG_SYSTICK

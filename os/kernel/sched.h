@@ -38,7 +38,15 @@ struct wait_queue {
 
 #define WAIT_QUEUE_INIT { .waiters = 0 }
 
-int  sched_create_task(task_fn fn, const char *name);
+/*
+ * Priority: lower number = higher priority (like Zephyr).
+ *   0 = highest (motor control, ISR bottom halves)
+ *   7 = lowest (idle task)
+ */
+#define TASK_PRIORITY_HIGHEST 0
+#define TASK_PRIORITY_LOWEST  7
+
+int  sched_create_task(task_fn fn, const char *name, uint8_t priority);
 void sched_start(void);
 void sched_yield(void);
 void sched_sleep_ms(uint32_t ms);

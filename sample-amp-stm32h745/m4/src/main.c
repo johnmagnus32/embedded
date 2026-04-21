@@ -88,8 +88,8 @@ int main(void)
 #endif
 
 #ifdef CONFIG_SCHED
-    sched_create_task(sensor_task, "sensor");
-    sched_create_task(idle_task, "idle");
+    sched_create_task(sensor_task, "sensor", 1);
+    sched_create_task(idle_task, "idle", 7);
 #ifdef CONFIG_SYSTICK
     systick_init(DT_SYSCLK_HZ, 1000);
 #endif

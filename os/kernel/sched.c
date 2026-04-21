@@ -30,7 +30,8 @@ struct task_tcb {
     const char *name;
     enum task_state state;
     uint32_t wake_tick;
-    int running_on_cpu;     /* which CPU is running this (-1 = none) */
+    int running_on_cpu;
+    uint8_t priority;       /* 0 = highest, 7 = lowest */
 };
 
 static struct task_tcb tasks[MAX_TASKS];
@@ -60,7 +61,7 @@ static uint32_t *task_stack_init(uint8_t *stack_base, task_fn fn)
     return sp;
 }
 
-int sched_create_task(task_fn fn, const char *name)
+int sched_create_task(task_fn fn, const char *name, uint8_t priority)
 {
     uint32_t key = spin_lock(&sched_lock);
     if (num_tasks >= MAX_TASKS) {
@@ -73,6 +74,7 @@ int sched_create_task(task_fn fn, const char *name)
     tasks[id].state = TASK_READY;
     tasks[id].wake_tick = 0;
     tasks[id].running_on_cpu = -1;
+    tasks[id].priority = priority;
     spin_unlock(&sched_lock, key);
     return id;
 }
@@ -88,19 +90,32 @@ int sched_current_id(void)
 }
 
 /*
- * Pick next READY task for this CPU.
+ * Pick the highest-priority READY task for this CPU.
  * Must be called with sched_lock held.
- * Skips tasks that are BLOCKED, SLEEPING, or running on another CPU.
+ *
+ * Before (round-robin):
+ *   Scan from current+1, pick first READY task.
+ *   All tasks get equal time regardless of importance.
+ *
+ * After (priority):
+ *   Scan ALL tasks, pick the one with lowest priority number.
+ *   A priority-0 motor task always preempts a priority-5 shell task.
+ *   Among equal priorities, round-robin by starting from current+1.
+ *
+ * This is how Zephyr works — highest priority ready thread always runs.
  */
 static int pick_next(int cpu)
 {
-    int cur = current_task_per_cpu[cpu];
     uint32_t now = systick_get_ticks();
+    int best = -1;
+    uint8_t best_prio = 255;
 
-    for (int i = 1; i <= num_tasks; i++) {
-        int c = (cur + i) % num_tasks;
+    for (int i = 0; i < num_tasks; i++) {
+        /* Start scanning from current+1 for round-robin among equal priorities */
+        int c = (current_task_per_cpu[cpu] + 1 + i) % num_tasks;
         struct task_tcb *t = &tasks[c];
 
+        /* Wake sleeping tasks */
         if (t->state == TASK_SLEEPING && now >= t->wake_tick) {
             t->state = TASK_READY;
             t->wake_tick = 0;
@@ -110,10 +125,14 @@ static int pick_next(int cpu)
         if (t->running_on_cpu >= 0 && t->running_on_cpu != cpu)
             continue;
 
-        if (t->state == TASK_READY)
-            return c;
+        /* Pick highest priority (lowest number) ready task */
+        if (t->state == TASK_READY && t->priority < best_prio) {
+            best = c;
+            best_prio = t->priority;
+        }
     }
-    return cur;
+
+    return best >= 0 ? best : current_task_per_cpu[cpu];
 }
 
 /*
