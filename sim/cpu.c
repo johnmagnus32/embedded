@@ -1017,5 +1017,27 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
                 if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
             }
         }
+
+        /* Check step/next */
+        if (c->step_mode) {
+            extern const char *line_lookup(uint32_t pc, int *line_out);
+            int cur_line;
+            line_lookup(c->r[REG_PC], &cur_line);
+            if (cur_line > 0 && cur_line != c->step_line) {
+                if (c->step_mode == 1) {
+                    /* step: any line change stops */
+                    c->bp_hit = 1; c->step_mode = 0; return;
+                } else {
+                    /* next: only stop if we're in the same function */
+                    extern const char *sym_lookup(uint32_t, uint32_t *);
+                    uint32_t off;
+                    sym_lookup(c->r[REG_PC], &off);
+                    uint32_t fn_addr = c->r[REG_PC] - off;
+                    if (fn_addr == c->step_fn_addr) {
+                        c->bp_hit = 1; c->step_mode = 0; return;
+                    }
+                }
+            }
+        }
     }
 }

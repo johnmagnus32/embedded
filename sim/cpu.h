@@ -27,6 +27,12 @@ struct cpu_state {
     uint32_t breakpoints[32];
     int nbp;
     int bp_hit;           /* set to 1 when a breakpoint is hit */
+
+    /* Step/next */
+    int step_mode;        /* 0=run, 1=step (any line), 2=next (same function) */
+    int step_line;        /* source line we're stepping from */
+    uint32_t step_fn_addr; /* function start addr for next (stay in same function) */
+
     uint64_t cycle_count;
 };
 
