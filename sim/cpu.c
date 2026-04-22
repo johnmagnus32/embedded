@@ -527,6 +527,20 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         return 0;
     }
 
+    /* B.W (wide unconditional branch, no link) */
+    if ((hi & 0xF800) == 0xF000 && (lo & 0xD000) == 0x9000) {
+        int s = (hi >> 10) & 1;
+        int j1 = (lo >> 13) & 1;
+        int j2 = (lo >> 11) & 1;
+        int i1 = ~(j1 ^ s) & 1;
+        int i2 = ~(j2 ^ s) & 1;
+        int32_t offset = (s << 24) | (i1 << 23) | (i2 << 22) |
+                         ((hi & 0x3FF) << 12) | ((lo & 0x7FF) << 1);
+        if (s) offset |= 0xFE000000;
+        c->r[REG_PC] = (pc + 4 + offset) & ~1u;
+        return 0;
+    }
+
     /* LDR/STR immediate (Thumb-2 wide encoding) */
     if ((hi & 0xFFF0) == 0xF8D0) { /* LDR.W Rt, [Rn, #imm12] */
         int rn = hi & 0xF;

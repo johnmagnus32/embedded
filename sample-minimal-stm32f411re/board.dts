@@ -1,0 +1,39 @@
+/* Minimal STM32F411RE — just enough for UART */
+
+/ {
+    clocks {
+        hsi: hsi {
+            compatible = "fixed-clock";
+            clock-frequency = <16000000>;
+        };
+    };
+
+    chosen {
+        console = <&usart2>;
+    };
+
+    soc {
+        rcc: rcc@40023800 {
+            compatible = "st,stm32-rcc";
+            reg = <0x40023800>;
+        };
+
+        gpioa: gpio@40020000 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020000>;
+            clocks = <&rcc 0 0>;
+            status = "okay";
+        };
+
+        usart2: serial@40004400 {
+            compatible = "st,stm32-usart";
+            reg = <0x40004400>;
+            clocks = <&rcc 1 17>;
+            tx-pin = <2>;
+            tx-af = <7>;
+            tx-port = <&gpioa>;
+            baudrate = <115200>;
+            status = "okay";
+        };
+    };
+};
