@@ -28,6 +28,7 @@
 #include "elf_sym.h"
 
 extern void mem_set_uart_fd(int fd);
+extern void mem_set_uart_suppress(int s);
 
 #define MAX_BP 32
 #define PROMPT "\033[33m(dbg) \033[0m"
@@ -89,6 +90,9 @@ int main(int argc, char **argv)
         free(flash); free(ram);
         return 0;
     }
+
+    if (vis_mode || debug_mode)
+        mem_set_uart_suppress(1);
 
     if (vis_mode && !debug_mode) {
         /* Event-driven vis mode (old behavior) */

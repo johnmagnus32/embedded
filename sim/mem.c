@@ -16,8 +16,9 @@
 
 /* UART state */
 static int uart_fifo_fd = -1;
-
+static int uart_suppress_stdout = 0;
 void mem_set_uart_fd(int fd) { uart_fifo_fd = fd; }
+void mem_set_uart_suppress(int s) { uart_suppress_stdout = s; }
 
 /* SysTick state */
 static uint32_t systick_csr = 0;
@@ -94,7 +95,7 @@ void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
         char c = (char)(val & 0xFF);
         if (uart_fifo_fd >= 0) {
             write(uart_fifo_fd, &c, 1);
-        } else {
+        } else if (!uart_suppress_stdout) {
             putchar(c);
             fflush(stdout);
         }
