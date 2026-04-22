@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "cpu.h"
+#include "vis.h"
 
 extern void mem_set_uart_fd(int fd);
 
@@ -69,7 +70,28 @@ int main(int argc, char **argv)
     printf("Starting emulation at PC=0x%08X, SP=0x%08X\n", cpu.r[REG_PC], cpu.r[REG_SP]);
     printf("--- UART output ---\n");
 
-    cpu_run(&cpu, flash, ram, 100000000);  /* run up to 100M instructions */
+    /* Check for --vis flag */
+    int vis_enabled = 0;
+    int vis_interval = 10000;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--vis") == 0) vis_enabled = 1;
+        if (strcmp(argv[i], "--vis-interval") == 0 && i + 1 < argc)
+            vis_interval = atoi(argv[i + 1]);
+    }
+
+    if (vis_enabled) {
+        extern void vis_dump(FILE *, struct cpu_state *, uint8_t *, uint8_t *);
+        /* Run with periodic visualization */
+        while (cpu.running && cpu.cycle_count < 100000000) {
+            for (int i = 0; i < vis_interval && cpu.running; i++)
+                cpu_step(&cpu, flash, ram);
+            vis_dump(stderr, &cpu, flash, ram);
+            /* Small delay so terminal can render */
+            usleep(50000);  /* 50ms */
+        }
+    } else {
+        cpu_run(&cpu, flash, ram, 100000000);
+    }
 
     printf("\n--- Emulation ended after %llu cycles ---\n", (unsigned long long)cpu.cycle_count);
     if (!cpu.running)

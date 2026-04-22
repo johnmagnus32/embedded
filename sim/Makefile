@@ -1,10 +1,10 @@
 CC = gcc
 CFLAGS = -Wall -O2 -g
 
-sim: main.o cpu.o mem.o
+sim: main.o cpu.o mem.o vis.o
 	$(CC) -o $@ $^
 
-%.o: %.c cpu.h
+%.o: %.c cpu.h vis.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
@@ -18,4 +18,10 @@ run: sim
 run-fifo: sim
 	./sim ../sample-stm32f411re/build/hello.bin --fifo /tmp/uart
 
-.PHONY: clean run run-fifo
+# Run with visualization (UART to stdout, vis to stderr)
+# Use: make run-vis 2>/dev/tty  (vis on current terminal)
+# Or:  make run-vis 2>/tmp/vis.txt  (vis to file, tail -f /tmp/vis.txt)
+run-vis: sim
+	./sim ../sample-stm32f411re/build/hello.bin --vis
+
+.PHONY: clean run run-fifo run-vis
