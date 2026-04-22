@@ -6,8 +6,9 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
+#include <stdarg.h>
 #include <unistd.h>
 #include "cpu.h"
 #include "vis.h"
@@ -60,7 +61,6 @@ static void printat(FILE *f, int row, int col, int width, const char *fmt, ...)
     for (int i = n; i < width; i++) fputc(' ', f);
 }
 
-#include <stdarg.h>
 
 #define LEFT 2       /* left column start */
 #define MID 44       /* divider column */
