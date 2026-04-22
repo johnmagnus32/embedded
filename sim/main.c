@@ -18,35 +18,38 @@
 #include <sys/stat.h>
 #include "cpu.h"
 #include "vis.h"
+#include "elf_sym.h"
 
 extern void mem_set_uart_fd(int fd);
 
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <firmware.bin> [--fifo <path>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <firmware.elf|.bin> [--vis] [--fifo <path>]\n", argv[0]);
         return 1;
     }
-
-    /* Load firmware binary */
-    FILE *f = fopen(argv[1], "rb");
-    if (!f) { perror("open firmware"); return 1; }
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    printf("Loading %s (%ld bytes)\n", argv[1], size);
 
     /* Allocate flash and RAM */
     uint8_t *flash = calloc(1, FLASH_SIZE);
     uint8_t *ram = calloc(1, RAM_SIZE);
 
-    if (size > FLASH_SIZE) {
-        fprintf(stderr, "Firmware too large (%ld > %d)\n", size, FLASH_SIZE);
-        return 1;
+    /* Try loading as ELF first, fall back to raw binary */
+    if (elf_load(argv[1], flash, ram) == 0) {
+        printf("Loaded ELF %s\n", argv[1]);
+    } else {
+        FILE *f = fopen(argv[1], "rb");
+        if (!f) { perror("open firmware"); return 1; }
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (size > FLASH_SIZE) {
+            fprintf(stderr, "Firmware too large (%ld > %d)\n", size, FLASH_SIZE);
+            return 1;
+        }
+        fread(flash, 1, size, f);
+        fclose(f);
+        printf("Loaded raw binary %s (%ld bytes)\n", argv[1], size);
     }
-    fread(flash, 1, size, f);
-    fclose(f);
 
     /* Optional FIFO for UART output */
     if (argc >= 4 && strcmp(argv[2], "--fifo") == 0) {

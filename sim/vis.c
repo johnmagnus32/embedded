@@ -14,6 +14,7 @@
 #include <sys/ioctl.h>
 #include "cpu.h"
 #include "vis.h"
+#include "elf_sym.h"
 
 /* ── UART console ring buffer ── */
 #define CON_LINES 32
@@ -134,8 +135,15 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
 
     /* ── Registers ── */
     row++;
+    uint32_t sym_off;
+    const char *fn = sym_lookup(pc, &sym_off);
     cell(row, 2, lw, fmt("  PC  " CYAN "0x%08X" RESET "  %s",
          pc, cpu->in_handler ? YELLOW "[HANDLER]" RESET : GREEN "[THREAD]" RESET));
+    row++;
+    if (fn)
+        cell(row, 2, lw, fmt("      " GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn, sym_off));
+    else
+        cell(row, 2, lw, "");
     row++;
     cell(row, 2, lw, fmt("  PSP " CYAN "0x%08X" RESET "  MSP " CYAN "0x%08X" RESET, psp, msp));
     row++;
@@ -151,7 +159,7 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     cell(row, 2, lw, "             ├────────────────────┤");
     row++;
     if (in_flash)
-        cell(row, 2, lw, fmt("  " CYAN "PC →" RESET "     │ .text " CYAN "0x%08X" RESET " │", pc));
+        cell(row, 2, lw, fmt("  " CYAN "PC →" RESET "     │ " CYAN "%-16s" RESET " │", fn ? fn : ".text"));
     else
         cell(row, 2, lw, "             │ .text              │");
     row++;
