@@ -1028,12 +1028,13 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
                     /* step: any line change stops */
                     c->bp_hit = 1; c->step_mode = 0; return;
                 } else {
-                    /* next: only stop if we're in the same function */
+                    /* next: stop if same function AND line moved forward
+                     * (skip backward bounces from compiler instruction scheduling) */
                     extern const char *sym_lookup(uint32_t, uint32_t *);
                     uint32_t off;
                     sym_lookup(c->r[REG_PC], &off);
                     uint32_t fn_addr = c->r[REG_PC] - off;
-                    if (fn_addr == c->step_fn_addr) {
+                    if (fn_addr == c->step_fn_addr && cur_line > c->step_line) {
                         c->bp_hit = 1; c->step_mode = 0; return;
                     }
                 }
