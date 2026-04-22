@@ -69,7 +69,7 @@ int main(int argc, char **argv)
     printf("Starting emulation at PC=0x%08X, SP=0x%08X\n", cpu.r[REG_PC], cpu.r[REG_SP]);
     printf("--- UART output ---\n");
 
-    cpu_run(&cpu, flash, ram, 10000000);  /* run up to 10M instructions */
+    cpu_run(&cpu, flash, ram, 100000000);  /* run up to 100M instructions */
 
     printf("\n--- Emulation ended after %llu cycles ---\n", (unsigned long long)cpu.cycle_count);
     if (!cpu.running)

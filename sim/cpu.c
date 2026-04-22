@@ -101,8 +101,9 @@ void cpu_reset(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     c->running = 1;
 }
 
-/* Forward declaration */
+/* Forward declarations */
 static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t insn);
+static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret);
 
 int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 {
@@ -245,7 +246,12 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
             if (insn & 0x80) { /* BLX */
                 c->r[REG_LR] = c->r[REG_PC] | 1;
             }
-            c->r[REG_PC] = c->r[rm] & ~1u;
+            /* Check for EXC_RETURN (magic values 0xFFFFFFF*) */
+            if ((c->r[rm] & 0xFFFFFFF0) == 0xFFFFFFF0) {
+                exc_return(c, flash, ram, c->r[rm]);
+            } else {
+                c->r[REG_PC] = c->r[rm] & ~1u;
+            }
             break;
         }
         return 0;
@@ -372,7 +378,15 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
             int pc_bit = (insn >> 8) & 1;
             for (int i = 0; i < 8; i++)
                 if (regs & (1 << i)) { c->r[i] = mem_read32(flash, ram, c->r[REG_SP]); c->r[REG_SP] += 4; }
-            if (pc_bit) { c->r[REG_PC] = mem_read32(flash, ram, c->r[REG_SP]) & ~1u; c->r[REG_SP] += 4; }
+            if (pc_bit) {
+                uint32_t val = mem_read32(flash, ram, c->r[REG_SP]);
+                c->r[REG_SP] += 4;
+                if ((val & 0xFFFFFFF0) == 0xFFFFFFF0) {
+                    exc_return(c, flash, ram, val);
+                } else {
+                    c->r[REG_PC] = val & ~1u;
+                }
+            }
             return 0;
         }
 
@@ -382,6 +396,16 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 
         /* NOP, SEV, WFI, WFE, YIELD */
         if ((insn & 0xFF00) == 0xBF00) return 0;
+
+        /* CBZ / CBNZ (compare and branch if zero/nonzero) */
+        if ((insn & 0xF500) == 0xB100) {
+            int rn = insn & 7;
+            int nz = (insn >> 11) & 1;  /* 0=CBZ, 1=CBNZ */
+            int imm = ((insn >> 3) & 0x1F) << 1 | ((insn >> 9) & 1) << 6;
+            if (nz ? (c->r[rn] != 0) : (c->r[rn] == 0))
+                c->r[REG_PC] = pc + 4 + imm;
+            return 0;
+        }
 
         /* SXTB, SXTH, UXTB, UXTH */
         if ((insn & 0xFF00) == 0xB200) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = (int16_t)(c->r[rm] & 0xFFFF); return 0; } /* SXTH */
@@ -597,7 +621,9 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     }
 
     /* ADD.W / SUB.W / AND.W / ORR.W / etc. with immediate */
-    if ((hi & 0xFA00) == 0xF000) {
+    /* But NOT MSR (0xF38x) or MRS (0xF3Ex) or ISB/DSB (0xF3Bx) */
+    if ((hi & 0xFA00) == 0xF000 && (hi & 0xFFF0) != 0xF380
+        && (hi & 0xFFF0) != 0xF3E0 && (hi & 0xFFF0) != 0xF3B0) {
         int op = (hi >> 5) & 0xF;
         int rn = hi & 0xF;
         int rd = (lo >> 8) & 0xF;
@@ -638,7 +664,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     }
 
     /* STMDB (push multiple, decrement before) */
-    if ((hi & 0xFFF0) == 0xE920) {
+    if ((hi & 0xFFD0) == 0xE900) {
         int rn = hi & 0xF;
         int regs = lo;
         int count = 0;
@@ -655,7 +681,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     }
 
     /* LDMIA.W (pop multiple, increment after) */
-    if ((hi & 0xFFF0) == 0xE890) {
+    if ((hi & 0xFFD0) == 0xE890) {
         int rn = hi & 0xF;
         int regs = lo;
         uint32_t addr = c->r[rn];
@@ -666,7 +692,12 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             }
         }
         if (hi & 0x0020) c->r[rn] = addr; /* writeback */
-        if (regs & (1 << REG_PC)) c->r[REG_PC] &= ~1u;
+        if (regs & (1 << REG_PC)) {
+            if ((c->r[REG_PC] & 0xFFFFFFF0) == 0xFFFFFFF0)
+                exc_return(c, flash, ram, c->r[REG_PC]);
+            else
+                c->r[REG_PC] &= ~1u;
+        }
         return 0;
     }
 
@@ -675,8 +706,8 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int rn = hi & 0xF;
         int sysm = lo & 0xFF;
         switch (sysm) {
-        case 0: c->msp = c->r[rn]; if (!(c->control & 2)) c->r[REG_SP] = c->msp; break;
-        case 1: c->psp = c->r[rn]; if (c->control & 2) c->r[REG_SP] = c->psp; break;
+        case 8: c->msp = c->r[rn]; if (!(c->control & 2)) c->r[REG_SP] = c->msp; break;
+        case 9: c->psp = c->r[rn]; if (c->control & 2) c->r[REG_SP] = c->psp; break;
         case 16: c->primask = c->r[rn] & 1; break;
         case 20: c->control = c->r[rn] & 3;
                  c->r[REG_SP] = (c->control & 2) ? c->psp : c->msp; break;
@@ -689,8 +720,8 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int rd = (lo >> 8) & 0xF;
         int sysm = lo & 0xFF;
         switch (sysm) {
-        case 0: c->r[rd] = c->msp; break;
-        case 1: c->r[rd] = c->psp; break;
+        case 8: c->r[rd] = c->msp; break;
+        case 9: c->r[rd] = c->psp; break;
         case 16: c->r[rd] = c->primask; break;
         case 20: c->r[rd] = c->control; break;
         }
@@ -826,7 +857,75 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     return -1;
 }
 
-/* ---- Run loop with SysTick simulation ---- */
+/* ---- Interrupt entry/exit ---- */
+
+static void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vector_num)
+{
+    /* Push exception frame to current stack (PSP or MSP) */
+    uint32_t *sp_ptr;
+    if (c->control & 2)
+        sp_ptr = &c->psp;
+    else
+        sp_ptr = &c->msp;
+
+    uint32_t sp = *sp_ptr - 32;
+    mem_write32(flash, ram, sp + 0,  c->r[0]);
+    mem_write32(flash, ram, sp + 4,  c->r[1]);
+    mem_write32(flash, ram, sp + 8,  c->r[2]);
+    mem_write32(flash, ram, sp + 12, c->r[3]);
+    mem_write32(flash, ram, sp + 16, c->r[12]);
+    mem_write32(flash, ram, sp + 20, c->r[REG_LR]);
+    mem_write32(flash, ram, sp + 24, c->r[REG_PC] | 1);
+    mem_write32(flash, ram, sp + 28, c->xpsr);
+    *sp_ptr = sp;
+
+    /* Set EXC_RETURN in LR */
+    if (c->control & 2)
+        c->r[REG_LR] = 0xFFFFFFFD;  /* return to thread mode, PSP */
+    else
+        c->r[REG_LR] = 0xFFFFFFF9;  /* return to thread mode, MSP */
+
+    /* Switch to handler mode (MSP, privileged) */
+    c->r[REG_SP] = c->msp;
+    c->in_handler = 1;
+
+    /* Jump to vector */
+    uint32_t handler = mem_read32(flash, ram, FLASH_BASE + vector_num * 4);
+    c->r[REG_PC] = handler & ~1u;
+}
+
+static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret)
+{
+    /* Determine which stack to pop from */
+    uint32_t *sp_ptr;
+    if (exc_ret & 0x4)
+        sp_ptr = &c->psp;  /* return to PSP */
+    else
+        sp_ptr = &c->msp;  /* return to MSP */
+
+    uint32_t sp = *sp_ptr;
+    c->r[0]      = mem_read32(flash, ram, sp + 0);
+    c->r[1]      = mem_read32(flash, ram, sp + 4);
+    c->r[2]      = mem_read32(flash, ram, sp + 8);
+    c->r[3]      = mem_read32(flash, ram, sp + 12);
+    c->r[12]     = mem_read32(flash, ram, sp + 16);
+    c->r[REG_LR] = mem_read32(flash, ram, sp + 20);
+    c->r[REG_PC] = mem_read32(flash, ram, sp + 24) & ~1u;
+    c->xpsr      = mem_read32(flash, ram, sp + 28) | FLAG_T;
+    *sp_ptr = sp + 32;
+
+    /* Restore stack pointer */
+    if (exc_ret & 0x4) {
+        c->r[REG_SP] = c->psp;
+        c->control |= 2;  /* SPSEL = PSP */
+    } else {
+        c->r[REG_SP] = c->msp;
+    }
+
+    c->in_handler = 0;
+}
+
+/* ---- Run loop with SysTick and interrupt simulation ---- */
 
 void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
 {
@@ -840,8 +939,27 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
             systick_counter++;
             if (systick_counter >= systick_reload()) {
                 systick_counter = 0;
-                /* In a real emulator, we'd trigger the SysTick interrupt.
-                 * For now, just print a tick marker periodically. */
+                if (systick_irq_enabled())
+                    c->pending_irq |= IRQ_SYSTICK;
+            }
+        }
+
+        /* Check for PendSV (firmware wrote PENDSVSET to SCB_ICSR) */
+        if (pendsv_pending())
+            c->pending_irq |= IRQ_PENDSV;
+
+        /* Take highest priority pending interrupt */
+        if (c->pending_irq && !c->primask && !c->in_handler) {
+            if (c->pending_irq & IRQ_SVC) {
+                c->pending_irq &= ~IRQ_SVC;
+                take_interrupt(c, flash, ram, 11);  /* SVC = vector 11 */
+            } else if (c->pending_irq & IRQ_SYSTICK) {
+                c->pending_irq &= ~IRQ_SYSTICK;
+                take_interrupt(c, flash, ram, 15);  /* SysTick = vector 15 */
+            } else if (c->pending_irq & IRQ_PENDSV) {
+                c->pending_irq &= ~IRQ_PENDSV;
+                clear_pendsv();
+                take_interrupt(c, flash, ram, 14);  /* PendSV = vector 14 */
             }
         }
     }

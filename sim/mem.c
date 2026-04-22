@@ -9,7 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "cpu.h"
+
+#define SYSTICK_BASE 0xE000E010
 
 /* UART state */
 static int uart_fifo_fd = -1;
@@ -177,3 +180,5 @@ int systick_irq_enabled(void) { return systick_csr & 2; }
 uint32_t systick_reload(void) { return systick_rvr; }
 int pendsv_pending(void) { return scb_icsr & (1 << 28); }
 void clear_pendsv(void) { scb_icsr &= ~(1 << 28); }
+int svc_pending(void) { return scb_icsr & (1 << 15); }
+void clear_svc(void) { scb_icsr &= ~(1 << 15); }
