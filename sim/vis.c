@@ -1,63 +1,79 @@
 /*
- * vis.c — Two-pane visualizer: memory map (left) + console (right)
+ * vis.c — Two-pane visualizer using ANSI escape codes
+ *
+ * Uses exact cursor positioning so columns line up perfectly.
+ * Left pane: memory map. Right pane: UART console.
  */
 
 #include <stdio.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 #include "cpu.h"
 #include "vis.h"
 
-/* Console output buffer — captures UART writes */
-#define CONSOLE_LINES 20
-#define CONSOLE_WIDTH 30
-static char console_buf[CONSOLE_LINES][CONSOLE_WIDTH + 1];
-static int console_line = 0;
-static int console_col = 0;
-static int switch_count = 0;
+/* Console ring buffer */
+#define CON_LINES 24
+#define CON_WIDTH 36
+static char con[CON_LINES][CON_WIDTH + 1];
+static int con_row = 0;
+static int con_col = 0;
+static int ctx_switches = 0;
 
 void vis_console_putc(char c)
 {
-    if (c == '\r') {
-        console_col = 0;
-        return;
-    }
-    if (c == '\n' || console_col >= CONSOLE_WIDTH) {
-        console_line = (console_line + 1) % CONSOLE_LINES;
-        console_col = 0;
-        memset(console_buf[console_line], ' ', CONSOLE_WIDTH);
-        console_buf[console_line][CONSOLE_WIDTH] = '\0';
+    if (c == '\r') { con_col = 0; return; }
+    if (c == '\n' || con_col >= CON_WIDTH) {
+        con_row = (con_row + 1) % CON_LINES;
+        con_col = 0;
+        memset(con[con_row], 0, CON_WIDTH + 1);
         if (c == '\n') return;
     }
-    if (c == '\0') return;
-    console_buf[console_line][console_col++] = c;
+    if (c >= 32) con[con_row][con_col++] = c;
 }
 
-static const char *flag_str(uint32_t xpsr)
+/* ANSI helpers */
+#define ESC "\033["
+#define CLEAR ESC "2J" ESC "H"
+#define BOLD ESC "1m"
+#define DIM ESC "2m"
+#define GREEN ESC "32m"
+#define YELLOW ESC "33m"
+#define CYAN ESC "36m"
+#define RED ESC "31m"
+#define RESET ESC "0m"
+#define REVERSE ESC "7m"
+
+/* Move cursor to row, col (1-based) */
+static void moveto(FILE *f, int row, int col) { fprintf(f, ESC "%d;%dH", row, col); }
+
+/* Print at exact position, padded to width */
+static void printat(FILE *f, int row, int col, int width, const char *fmt, ...)
 {
-    static char buf[8];
-    buf[0] = (xpsr & (1u << 31)) ? 'N' : '-';
-    buf[1] = (xpsr & (1u << 30)) ? 'Z' : '-';
-    buf[2] = (xpsr & (1u << 29)) ? 'C' : '-';
-    buf[3] = (xpsr & (1u << 28)) ? 'V' : '-';
-    buf[4] = '\0';
-    return buf;
+    moveto(f, row, col);
+    char buf[128];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    fprintf(f, "%s", buf);
+    for (int i = n; i < width; i++) fputc(' ', f);
 }
 
-/* Print a line with left pane (40 chars) and right pane */
-static void row(FILE *out, const char *left, int line_idx)
+#include <stdarg.h>
+
+#define LEFT 2       /* left column start */
+#define MID 44       /* divider column */
+#define RIGHT 46     /* right column start */
+#define WIDTH_L 40   /* left pane width */
+#define WIDTH_R 36   /* right pane width */
+
+static void draw_divider(FILE *f, int rows)
 {
-    /* Left pane */
-    int len = strlen(left);
-    fprintf(out, "%s", left);
-    for (int i = len; i < 42; i++) fputc(' ', out);
-
-    /* Separator */
-    fprintf(out, "│ ");
-
-    /* Right pane: console line */
-    int idx = (console_line + 1 + line_idx) % CONSOLE_LINES;
-    fprintf(out, "%s", console_buf[idx]);
-    fprintf(out, "\n");
+    for (int r = 1; r <= rows; r++) {
+        moveto(f, r, MID);
+        fprintf(f, DIM "│" RESET);
+    }
 }
 
 void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
@@ -67,99 +83,142 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     uint32_t psp = cpu->psp;
     uint32_t msp = cpu->msp;
 
-    if (strstr(event, "PendSV")) switch_count++;
+    if (strstr(event, "PendSV")) ctx_switches++;
 
-    /* Init console buffer on first call */
     static int inited = 0;
     if (!inited) {
-        for (int i = 0; i < CONSOLE_LINES; i++) {
-            memset(console_buf[i], ' ', CONSOLE_WIDTH);
-            console_buf[i][CONSOLE_WIDTH] = '\0';
-        }
+        for (int i = 0; i < CON_LINES; i++) memset(con[i], 0, CON_WIDTH + 1);
         inited = 1;
     }
 
-    fprintf(out, "\033[2J\033[H");
+    fprintf(out, CLEAR);
+    int row = 1;
 
-    /* Header */
-    char hdr[80];
-    snprintf(hdr, sizeof(hdr), "── %-28s Cycle: %-10llu ──",
-             event, (unsigned long long)cpu->cycle_count);
-    fprintf(out, "%s\n", hdr);
+    /* ── Header ── */
+    printat(out, row, LEFT, 80, BOLD "%-30s" RESET DIM "  cycle %llu  ctx_sw %d" RESET,
+            event, (unsigned long long)cpu->cycle_count, ctx_switches);
+    row += 2;
 
-    char stats[80];
-    snprintf(stats, sizeof(stats), "   Context switches: %d", switch_count);
-    fprintf(out, "%s\n\n", stats);
+    /* ── Column headers ── */
+    printat(out, row, LEFT, WIDTH_L, BOLD "  Memory Map" RESET);
+    printat(out, row, RIGHT, WIDTH_R, BOLD "UART Console" RESET);
+    row++;
 
-    /* Column headers */
-    fprintf(out, "  %-40s│ UART Console\n", "Memory Map");
-    fprintf(out, "  %-40s│ ────────────────────────────\n", "");
+    /* Draw divider for all rows */
+    draw_divider(out, 35);
 
-    int ln = 0;
+    /* ── Registers ── */
+    int pc_in_flash = (pc >= FLASH_BASE && pc < FLASH_BASE + FLASH_SIZE);
+    printat(out, row, LEFT, WIDTH_L, "  PC=" CYAN "0x%08X" RESET "  %s  %s",
+            pc, cpu->in_handler ? YELLOW "[HANDLER]" RESET : GREEN "[THREAD]" RESET,
+            pc_in_flash ? "" : RED "⚠" RESET);
+    /* Right pane: console line */
+    int cl = 0;
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
 
-    /* Registers */
-    char line[80];
-    snprintf(line, sizeof(line), "  PC=0x%08X  Flags=%s  %s",
-             pc, flag_str(cpu->xpsr), cpu->in_handler ? "[HANDLER]" : "[THREAD]");
-    row(out, line, ln++);
+    printat(out, row, LEFT, WIDTH_L, "  PSP=" CYAN "0x%08X" RESET "  MSP=" CYAN "0x%08X" RESET, psp, msp);
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row += 2;
 
-    snprintf(line, sizeof(line), "  PSP=0x%08X  MSP=0x%08X", psp, msp);
-    row(out, line, ln++);
+    /* ── Flash ── */
+    printat(out, row, LEFT, WIDTH_L, BOLD "  FLASH" RESET DIM " (512 KB)" RESET);
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
 
-    row(out, "", ln++);
+    printat(out, row, LEFT, WIDTH_L, "  0x08000000 ┌──────────────────────┐");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
 
-    /* Flash */
-    row(out, "  FLASH (512 KB)", ln++);
-    row(out, "  0x08000000 ┌────────────────────────┐", ln++);
-    row(out, "             │ .vector_table          │", ln++);
-    row(out, "             ├────────────────────────┤", ln++);
+    printat(out, row, LEFT, WIDTH_L, "             │ .vector_table        │");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
 
-    if (pc >= FLASH_BASE && pc < FLASH_BASE + FLASH_SIZE) {
-        snprintf(line, sizeof(line), "         PC→ │ .text  0x%08X    │", pc);
-        row(out, line, ln++);
+    printat(out, row, LEFT, WIDTH_L, "             ├──────────────────────┤");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    if (pc_in_flash) {
+        printat(out, row, LEFT, WIDTH_L, "  " CYAN "PC →" RESET "     │ .text " CYAN "0x%08X" RESET "  │", pc);
     } else {
-        row(out, "             │ .text                  │", ln++);
+        printat(out, row, LEFT, WIDTH_L, "             │ .text                │");
     }
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
 
-    row(out, "             │ .rodata                │", ln++);
-    row(out, "  0x08080000 └────────────────────────┘", ln++);
-    row(out, "", ln++);
+    printat(out, row, LEFT, WIDTH_L, "             │ .rodata              │");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
 
-    /* SRAM */
-    row(out, "  SRAM (128 KB)", ln++);
-    row(out, "  0x20000000 ┌────────────────────────┐", ln++);
-    row(out, "             │ .data + .bss           │", ln++);
-    row(out, "             ├────────────────────────┤", ln++);
+    printat(out, row, LEFT, WIDTH_L, "  0x08080000 └──────────────────────┘");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row += 2;
 
-    /* Task stacks */
-    int task_count = 0;
-    for (uint32_t off = 0; off < 256 && task_count < 4; off += 4) {
+    /* ── SRAM ── */
+    printat(out, row, LEFT, WIDTH_L, BOLD "  SRAM" RESET DIM " (128 KB)" RESET);
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "  0x20000000 ┌──────────────────────┐");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "             │ .data + .bss         │");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "             ├──────────────────────┤");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    /* Tasks */
+    int tc = 0;
+    for (uint32_t off = 0; off < 256 && tc < 4; off += 4) {
         uint32_t val = *(uint32_t *)(ram + off);
         if (val >= RAM_BASE + 0x40 && val < RAM_BASE + 0x2000 && (val & 3) == 0) {
             int active = (val == psp);
-            snprintf(line, sizeof(line), "             │ %s task%d SP=0x%08X │",
-                     active ? "▶" : " ", task_count, val);
-            row(out, line, ln++);
-            task_count++;
+            if (active)
+                printat(out, row, LEFT, WIDTH_L,
+                        "             │ " GREEN "▶ task%d" RESET " SP=" CYAN "0x%08X" RESET " │", tc, val);
+            else
+                printat(out, row, LEFT, WIDTH_L,
+                        "             │   task%d SP=" DIM "0x%08X" RESET " │", tc, val);
+            printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+            row++;
+            tc++;
         }
     }
-    if (task_count == 0)
-        row(out, "             │ (no tasks)             │", ln++);
-
-    row(out, "             ├────────────────────────┤", ln++);
-    row(out, "             │ Heap                   │", ln++);
-    row(out, "             ├────────────────────────┤", ln++);
-
-    snprintf(line, sizeof(line), "         MSP │ ISR stack         ↓    │ 0x%08X", msp);
-    row(out, line, ln++);
-    row(out, "  0x20020000 └────────────────────────┘", ln++);
-
-    /* PC warning */
-    if (pc < FLASH_BASE || pc >= FLASH_BASE + FLASH_SIZE) {
-        row(out, "", ln++);
-        snprintf(line, sizeof(line), "  ⚠ PC=0x%08X OUTSIDE flash!", pc);
-        row(out, line, ln++);
+    if (tc == 0) {
+        printat(out, row, LEFT, WIDTH_L, "             │ " DIM "(no tasks)" RESET "           │");
+        printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+        row++;
     }
 
-    fprintf(out, "\n");
+    printat(out, row, LEFT, WIDTH_L, "             ├──────────────────────┤");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "             │ Heap                 │");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "             ├──────────────────────┤");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "  " YELLOW "MSP →" RESET "    │ ISR stack       ↓    │ " DIM "0x%08X" RESET, msp);
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row++;
+
+    printat(out, row, LEFT, WIDTH_L, "  0x20020000 └──────────────────────┘");
+    printat(out, row, RIGHT, WIDTH_R, DIM "%s" RESET, con[(con_row + 1 + cl++) % CON_LINES]);
+    row += 2;
+
+    if (!pc_in_flash) {
+        printat(out, row, LEFT, 80, RED "  ⚠ PC=0x%08X is OUTSIDE flash!" RESET, pc);
+        row++;
+    }
+
+    moveto(out, row, LEFT);
+    fflush(out);
 }
