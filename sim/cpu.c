@@ -134,6 +134,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     uint16_t insn = mem_read16(flash, ram, pc);
     c->r[REG_PC] = pc + 2;
     c->cycle_count++;
+    c->irq_shadow = 0;
 
     /* Check if this is a 32-bit Thumb-2 instruction */
     if ((insn & 0xE000) == 0xE000 && (insn & 0x1800) != 0) {
@@ -146,7 +147,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     /* ---- 16-bit Thumb instructions ---- */
 
     /* LSL/LSR/ASR immediate (shift) */
-    if ((insn >> 13) == 0) {
+    if ((insn >> 13) == 0 && ((insn >> 11) & 3) < 3) {
         int op = (insn >> 11) & 3;
         int imm5 = (insn >> 6) & 0x1F;
         int rm = (insn >> 3) & 7;
@@ -164,8 +165,22 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     }
 
     /* ADD/SUB register/immediate (3-bit) */
-    if ((insn >> 11) == 0x3 || (insn >> 11) == 0x2) {
-        /* Handled by the general add/sub below */
+    if ((insn >> 11) == 0x3) {
+        int rd = insn & 7;
+        int rn = (insn >> 3) & 7;
+        int is_sub = (insn >> 9) & 1;
+        int is_imm = (insn >> 10) & 1;
+        uint32_t operand = is_imm ? ((insn >> 6) & 7) : c->r[(insn >> 6) & 7];
+        uint64_t result;
+        if (is_sub) {
+            result = (uint64_t)c->r[rn] - operand;
+            set_nzcv_sub(c, c->r[rn], operand, result);
+        } else {
+            result = (uint64_t)c->r[rn] + operand;
+            set_nzcv_add(c, c->r[rn], operand, result);
+        }
+        c->r[rd] = (uint32_t)result;
+        return 0;
     }
 
     /* MOV/CMP/ADD/SUB immediate (8-bit) */
@@ -412,8 +427,8 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         }
 
         /* CPSID i / CPSIE i */
-        if ((insn & 0xFFEF) == 0xB662) { c->primask = 1; return 0; } /* CPSID */
-        if ((insn & 0xFFEF) == 0xB661) { c->primask = 0; return 0; } /* CPSIE */
+        if ((insn & 0xFFEF) == 0xB672) { c->primask = 1; return 0; } /* CPSID */
+        if ((insn & 0xFFEF) == 0xB662) { c->primask = 0; c->irq_shadow = 1; return 0; } /* CPSIE — shadow: don't fire IRQ until next insn */
 
         /* NOP, SEV, WFI, WFE, YIELD */
         if ((insn & 0xFF00) == 0xBF00) return 0;
@@ -674,6 +689,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         case 0x0: c->r[rd] = c->r[rn] & imm; break; /* AND */
         case 0x1: c->r[rd] = c->r[rn] & ~imm; break; /* BIC */
         case 0x2: c->r[rd] = (rn == 15) ? imm : c->r[rn] | imm; break; /* ORR / MOV */
+        case 0x3: c->r[rd] = (rn == 15) ? ~imm : c->r[rn] | ~imm; break; /* ORN / MVN */
         case 0x4: c->r[rd] = c->r[rn] ^ imm; break; /* EOR */
         case 0x8: { uint64_t r = (uint64_t)c->r[rn] + imm; if (s) set_nzcv_add(c, c->r[rn], imm, r); c->r[rd] = (uint32_t)r; break; } /* ADD */
         case 0xA: { uint64_t r = (uint64_t)c->r[rn] - imm; if (s) set_nzcv_sub(c, c->r[rn], imm, r); c->r[rd] = (uint32_t)r; break; } /* SUB */
@@ -728,6 +744,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int sysm = lo & 0xFF;
         switch (sysm) {
         case 8: c->msp = c->r[rn]; if (!(c->control & 2)) c->r[REG_SP] = c->msp; break;
+        case 9: c->psp = c->r[rn]; if (c->control & 2) c->r[REG_SP] = c->psp; break;
         case 16: c->primask = c->r[rn] & 1; break;
         case 20: c->control = c->r[rn] & 3;
                  c->r[REG_SP] = (c->control & 2) ? c->psp : c->msp; break;
@@ -978,7 +995,7 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
             c->pending_irq |= IRQ_PENDSV;
 
         /* Take highest priority pending interrupt */
-        if (c->pending_irq && !c->primask && !c->in_handler) {
+        if (c->pending_irq && !c->primask && !c->in_handler && !c->irq_shadow) {
             if (c->pending_irq & IRQ_SVC) {
                 c->pending_irq &= ~IRQ_SVC;
                 take_interrupt(c, flash, ram, 11);  /* SVC = vector 11 */
