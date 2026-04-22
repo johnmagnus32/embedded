@@ -323,7 +323,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     }
 
     /* LDR/STR immediate offset (word) */
-    if ((insn >> 13) == 3) {
+    if ((insn >> 12) == 6) {
         int is_load = (insn >> 11) & 1;
         int imm5 = ((insn >> 6) & 0x1F) << 2;
         int rn = (insn >> 3) & 7;
@@ -482,7 +482,6 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         int cond = (insn >> 8) & 0xF;
         if (cond == 0xE) return 0; /* UDF */
         if (cond == 0xF) { /* SVC */
-            /* For now, treat as NOP — real SVC handling would go here */
             return 0;
         }
         if (cond_check(c, cond)) {

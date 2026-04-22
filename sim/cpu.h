@@ -20,6 +20,7 @@ struct cpu_state {
     uint32_t psp;
     int running;
     int in_handler;       /* 1 = executing an ISR */
+    int irq_shadow;       /* 1 = suppress IRQ for one instruction after CPSIE */
     uint32_t pending_irq; /* bitmask of pending interrupts */
     uint64_t cycle_count;
 };
