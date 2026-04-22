@@ -103,8 +103,8 @@ int main(int argc, char **argv)
     }
 
     /* ── Interactive debugger ── */
+    vis_dbg_log("Stopped at boot. Type 'help'.");
     show_state(&cpu, flash, ram);
-    fprintf(stderr, "\nStopped at boot. Type 'help' for commands.\n");
 
     char line_buf[256];
     while (1) {
@@ -112,14 +112,10 @@ int main(int argc, char **argv)
         fflush(stderr);
         if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
 
-        /* Strip newline */
         line_buf[strcspn(line_buf, "\n")] = '\0';
         char *cmd = line_buf;
         while (*cmd == ' ') cmd++;
-        if (*cmd == '\0') {
-            /* Empty line = repeat last command? For now just show prompt again */
-            continue;
-        }
+        if (*cmd == '\0') continue;
 
         if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0) {
             break;
@@ -127,16 +123,17 @@ int main(int argc, char **argv)
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             cpu.bp_hit = 0;
             cpu.step_mode = 0;
+            vis_dbg_log("Continuing...");
             cpu_run(&cpu, flash, ram, 100000000);
             if (cpu.bp_hit) {
-                show_state(&cpu, flash, ram);
                 uint32_t off;
                 const char *fn = sym_lookup(cpu.r[REG_PC], &off);
                 int ln; line_lookup(cpu.r[REG_PC], &ln);
-                fprintf(stderr, "\nBreakpoint hit: %s+0x%X (line %d)\n", fn ? fn : "???", off, ln);
+                vis_dbg_log("Breakpoint: %s+0x%X line %d", fn ? fn : "???", off, ln);
             } else {
-                fprintf(stderr, "\nProgram finished (%llu cycles)\n", (unsigned long long)cpu.cycle_count);
+                vis_dbg_log("Program finished (%llu cy)", (unsigned long long)cpu.cycle_count);
             }
+            show_state(&cpu, flash, ram);
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
             int cur_line;
@@ -147,7 +144,6 @@ int main(int argc, char **argv)
             cpu_run(&cpu, flash, ram, 100000000);
             cpu.step_mode = 0;
             show_state(&cpu, flash, ram);
-            fprintf(stderr, "\n");
 
         } else if (strcmp(cmd, "n") == 0 || strcmp(cmd, "next") == 0) {
             int cur_line;
@@ -161,7 +157,6 @@ int main(int argc, char **argv)
             cpu_run(&cpu, flash, ram, 100000000);
             cpu.step_mode = 0;
             show_state(&cpu, flash, ram);
-            fprintf(stderr, "\n");
 
         } else if (strncmp(cmd, "break ", 6) == 0 || strncmp(cmd, "b ", 2) == 0) {
             const char *spec = cmd + (cmd[1] == ' ' ? 2 : 6);
@@ -172,30 +167,25 @@ int main(int argc, char **argv)
                 uint32_t off;
                 const char *fn = sym_lookup(addr, &off);
                 int ln; const char *file = line_lookup(addr, &ln);
-                fprintf(stderr, "Breakpoint %d at 0x%08X", cpu.nbp, addr);
-                if (fn) fprintf(stderr, " (%s)", fn);
-                if (file) fprintf(stderr, " %s:%d", file, ln);
-                fprintf(stderr, "\n");
+                vis_dbg_log("BP %d: 0x%08X %s %s:%d", cpu.nbp, addr,
+                    fn ? fn : "", file ? file : "", ln);
             } else if (!addr) {
-                fprintf(stderr, "Cannot resolve '%s'\n", spec);
-            } else {
-                fprintf(stderr, "Too many breakpoints\n");
+                vis_dbg_log("Cannot resolve '%s'", spec);
             }
+            show_state(&cpu, flash, ram);
 
         } else if (strcmp(cmd, "info breakpoints") == 0 || strcmp(cmd, "info b") == 0) {
             if (cpu.nbp == 0) {
-                fprintf(stderr, "No breakpoints.\n");
+                vis_dbg_log("No breakpoints.");
             } else {
                 for (int i = 0; i < cpu.nbp; i++) {
                     uint32_t off;
                     const char *fn = sym_lookup(cpu.breakpoints[i], &off);
-                    int ln; const char *file = line_lookup(cpu.breakpoints[i], &ln);
-                    fprintf(stderr, "  %d: 0x%08X", i + 1, cpu.breakpoints[i]);
-                    if (fn) fprintf(stderr, "  %s+0x%X", fn, off);
-                    if (file) fprintf(stderr, "  %s:%d", file, ln);
-                    fprintf(stderr, "\n");
+                    int ln; line_lookup(cpu.breakpoints[i], &ln);
+                    vis_dbg_log(" %d: %s+0x%X line %d", i+1, fn ? fn : "???", off, ln);
                 }
             }
+            show_state(&cpu, flash, ram);
 
         } else if (strncmp(cmd, "delete ", 7) == 0 || strncmp(cmd, "d ", 2) == 0) {
             int n = atoi(cmd + (cmd[1] == ' ' ? 2 : 7));
@@ -203,23 +193,23 @@ int main(int argc, char **argv)
                 for (int i = n - 1; i < cpu.nbp - 1; i++)
                     cpu.breakpoints[i] = cpu.breakpoints[i + 1];
                 cpu.nbp--;
-                fprintf(stderr, "Deleted breakpoint %d\n", n);
+                vis_dbg_log("Deleted breakpoint %d", n);
             } else {
-                fprintf(stderr, "No breakpoint %d\n", n);
+                vis_dbg_log("No breakpoint %d", n);
             }
+            show_state(&cpu, flash, ram);
 
         } else if (strcmp(cmd, "help") == 0 || strcmp(cmd, "h") == 0) {
-            fprintf(stderr,
-                "  break <func|file:line>  set breakpoint\n"
-                "  info breakpoints        list breakpoints\n"
-                "  delete <n>              remove breakpoint #n\n"
-                "  continue (c)            run to next breakpoint\n"
-                "  step (s)                step one source line (into)\n"
-                "  next (n)                step one source line (over)\n"
-                "  quit (q)                exit\n");
+            vis_dbg_log("break <func|file:line>");
+            vis_dbg_log("info breakpoints");
+            vis_dbg_log("delete <n>");
+            vis_dbg_log("continue (c)  step (s)  next (n)");
+            vis_dbg_log("quit (q)");
+            show_state(&cpu, flash, ram);
 
         } else {
-            fprintf(stderr, "Unknown command: %s (type 'help')\n", cmd);
+            vis_dbg_log("Unknown: %s", cmd);
+            show_state(&cpu, flash, ram);
         }
     }
 
