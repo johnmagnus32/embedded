@@ -48,6 +48,8 @@ typedef struct {
 static struct sym { uint32_t addr; uint32_t size; char name[64]; } *syms;
 static int nsyms;
 
+static void parse_debug_line(const uint8_t *data, uint32_t size);
+
 static int sym_cmp(const void *a, const void *b)
 {
     return (int)((const struct sym *)a)->addr - (int)((const struct sym *)b)->addr;
@@ -143,7 +145,204 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
         break;  /* only need first .symtab */
     }
 
+    /* Find .debug_line section (need section name strings) */
+    if (eh.e_shstrndx < eh.e_shnum) {
+        Elf32_Shdr *shstr_sh = &shdrs[eh.e_shstrndx];
+        char *shstrtab = malloc(shstr_sh->sh_size);
+        fseek(f, shstr_sh->sh_offset, SEEK_SET);
+        fread(shstrtab, shstr_sh->sh_size, 1, f);
+        for (int i = 0; i < eh.e_shnum; i++) {
+            if (strcmp(shstrtab + shdrs[i].sh_name, ".debug_line") == 0) {
+                uint8_t *dbg = malloc(shdrs[i].sh_size);
+                fseek(f, shdrs[i].sh_offset, SEEK_SET);
+                fread(dbg, shdrs[i].sh_size, 1, f);
+                parse_debug_line(dbg, shdrs[i].sh_size);
+                free(dbg);
+                break;
+            }
+        }
+        free(shstrtab);
+    }
+
     free(shdrs);
     fclose(f);
+    return 0;
+}
+
+/* ── DWARF .debug_line parser (DWARF 2/3) ── */
+
+static struct line_entry { uint32_t addr; uint16_t line; uint16_t file_idx; } *lines;
+static int nlines;
+static char **line_files;
+static int nline_files;
+
+static int line_cmp(const void *a, const void *b)
+{
+    return (int)((const struct line_entry *)a)->addr - (int)((const struct line_entry *)b)->addr;
+}
+
+static void add_line(uint32_t addr, int file, int line)
+{
+    static int line_cap;
+    if (nlines >= line_cap) {
+        line_cap = line_cap ? line_cap * 2 : 256;
+        lines = realloc(lines, line_cap * sizeof(*lines));
+    }
+    lines[nlines].addr = addr;
+    lines[nlines].line = (uint16_t)line;
+    lines[nlines].file_idx = (uint16_t)file;
+    nlines++;
+}
+
+static uint32_t read_uleb(const uint8_t **p)
+{
+    uint32_t val = 0; int shift = 0;
+    do { val |= (uint32_t)(**p & 0x7F) << shift; shift += 7; } while (*(*p)++ & 0x80);
+    return val;
+}
+
+static int32_t read_sleb(const uint8_t **p)
+{
+    int32_t val = 0; int shift = 0; uint8_t b;
+    do { b = *(*p)++; val |= (int32_t)(b & 0x7F) << shift; shift += 7; } while (b & 0x80);
+    if (shift < 32 && (b & 0x40)) val |= -(1 << shift);
+    return val;
+}
+
+static void parse_debug_line(const uint8_t *data, uint32_t size)
+{
+    const uint8_t *end = data + size;
+    while (data < end) {
+        uint32_t unit_len = *(uint32_t *)data; data += 4;
+        const uint8_t *unit_end = data + unit_len;
+        uint16_t version = *(uint16_t *)data; data += 2;
+        if (version < 2 || version > 4) { data = unit_end; continue; }
+        uint32_t header_len = *(uint32_t *)data; data += 4;
+        const uint8_t *prog_start = data + header_len;
+        uint8_t min_insn_len = *data++;
+        if (version >= 4) data++; /* max_ops_per_insn */
+        uint8_t default_is_stmt = *data++;
+        int8_t line_base = (int8_t)*data++;
+        uint8_t line_range = *data++;
+        uint8_t opcode_base = *data++;
+        /* skip standard opcode lengths */
+        data += opcode_base - 1;
+        /* include directories — skip (null-terminated strings, then empty string) */
+        while (*data) { while (*data) data++; data++; }
+        data++; /* skip final null */
+        /* file names */
+        int file_start = nline_files;
+        while (*data) {
+            const char *name = (const char *)data;
+            while (*data) data++; data++; /* skip name */
+            read_uleb(&data); /* dir index */
+            read_uleb(&data); /* time */
+            read_uleb(&data); /* size */
+            line_files = realloc(line_files, (nline_files + 1) * sizeof(char *));
+            line_files[nline_files++] = strdup(name);
+        }
+        data++; /* skip final null */
+
+        /* Run the line number state machine */
+        uint32_t addr = 0;
+        int file = 1, line = 1;
+        data = prog_start;
+        while (data < unit_end) {
+            uint8_t op = *data++;
+            if (op == 0) { /* extended opcode */
+                uint32_t ext_len = read_uleb(&data);
+                const uint8_t *ext_end = data + ext_len;
+                uint8_t ext_op = *data++;
+                if (ext_op == 1) { /* DW_LNE_end_sequence */
+                    add_line(addr, file - 1 + file_start, line);
+                    addr = 0; file = 1; line = 1;
+                } else if (ext_op == 2) { /* DW_LNE_set_address */
+                    addr = *(uint32_t *)data;
+                }
+                data = ext_end;
+            } else if (op < opcode_base) { /* standard opcode */
+                switch (op) {
+                case 1: /* DW_LNS_copy */
+                    add_line(addr, file - 1 + file_start, line);
+                    break;
+                case 2: /* DW_LNS_advance_pc */
+                    addr += read_uleb(&data) * min_insn_len;
+                    break;
+                case 3: /* DW_LNS_advance_line */
+                    line += read_sleb(&data);
+                    break;
+                case 4: /* DW_LNS_set_file */
+                    file = read_uleb(&data);
+                    break;
+                case 5: /* DW_LNS_set_column */
+                    read_uleb(&data);
+                    break;
+                case 6: /* DW_LNS_negate_stmt */
+                    break;
+                case 8: /* DW_LNS_const_add_pc */
+                    addr += ((255 - opcode_base) / line_range) * min_insn_len;
+                    break;
+                case 9: /* DW_LNS_fixed_advance_pc */
+                    addr += *(uint16_t *)data; data += 2;
+                    break;
+                default: /* skip unknown */
+                    break;
+                }
+            } else { /* special opcode */
+                int adjusted = op - opcode_base;
+                addr += (adjusted / line_range) * min_insn_len;
+                line += line_base + (adjusted % line_range);
+                add_line(addr, file - 1 + file_start, line);
+            }
+        }
+        data = unit_end;
+    }
+    if (nlines) qsort(lines, nlines, sizeof(*lines), line_cmp);
+}
+
+const char *line_lookup(uint32_t pc, int *line_out)
+{
+    if (!lines || nlines == 0) { *line_out = 0; return NULL; }
+    int lo = 0, hi = nlines - 1, best = -1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        if (lines[mid].addr <= pc) { best = mid; lo = mid + 1; }
+        else hi = mid - 1;
+    }
+    if (best < 0) { *line_out = 0; return NULL; }
+    *line_out = lines[best].line;
+    int fi = lines[best].file_idx;
+    return (fi >= 0 && fi < nline_files) ? line_files[fi] : NULL;
+}
+
+/* ── Breakpoint resolver ── */
+
+uint32_t resolve_breakpoint(const char *spec)
+{
+    /* Try 0xADDR */
+    if (spec[0] == '0' && spec[1] == 'x') return (uint32_t)strtoul(spec, NULL, 16);
+
+    /* Try file:line */
+    const char *colon = strchr(spec, ':');
+    if (colon) {
+        int target_line = atoi(colon + 1);
+        int flen = (int)(colon - spec);
+        /* Find best matching line entry */
+        for (int i = 0; i < nlines; i++) {
+            int fi = lines[i].file_idx;
+            if (fi >= 0 && fi < nline_files && lines[i].line == target_line) {
+                const char *fname = line_files[fi];
+                int slen = strlen(fname);
+                /* Match suffix (e.g. "test_rtos.c" matches "/path/to/test_rtos.c") */
+                if (slen >= flen && memcmp(fname + slen - flen, spec, flen) == 0)
+                    return lines[i].addr;
+            }
+        }
+        return 0;
+    }
+
+    /* Try function name */
+    for (int i = 0; i < nsyms; i++)
+        if (strcmp(syms[i].name, spec) == 0) return syms[i].addr;
     return 0;
 }

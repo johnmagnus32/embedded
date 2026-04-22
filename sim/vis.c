@@ -1,9 +1,8 @@
 /*
  * vis.c — Two-pane visualizer for the ARM Cortex-M4 emulator
  *
- * Splits the terminal exactly in half. Left pane: CPU/memory state.
- * Right pane: UART console output. All positioning uses exact cursor
- * moves so ANSI color codes don't affect alignment.
+ * Left pane: CPU state + source code (or memory map if no debug info).
+ * Right pane: UART console output.
  */
 
 #include <stdio.h>
@@ -22,7 +21,7 @@
 static char con[CON_LINES][CON_WIDTH + 1];
 static int con_row = 0;
 static int con_col = 0;
-static int con_count = 0;   /* total lines written */
+static int con_count = 0;
 static int ctx_switches = 0;
 
 void vis_console_putc(char c)
@@ -51,17 +50,14 @@ void vis_console_putc(char c)
 #define RESET  ESC "0m"
 
 static FILE *g_out;
-static int g_cols;   /* terminal width */
-static int g_half;   /* left pane width (cols/2) */
+static int g_cols, g_half;
 
 static void at(int row, int col) { fprintf(g_out, ESC "%d;%dH", row, col); }
 
-/* Print plain text at (row, col), padded to exactly `w` visible chars */
 static void cell(int row, int col, int w, const char *s)
 {
     at(row, col);
     int vis = 0;
-    /* Count visible chars (skip ANSI sequences) */
     for (const char *p = s; *p; p++) {
         if (*p == '\033') { while (*p && *p != 'm') p++; }
         else vis++;
@@ -70,7 +66,6 @@ static void cell(int row, int col, int w, const char *s)
     for (int i = vis; i < w; i++) fputc(' ', g_out);
 }
 
-/* snprintf into a static buffer and return it */
 static char *fmt(const char *f, ...)
 {
     static char buf[256];
@@ -81,11 +76,9 @@ static char *fmt(const char *f, ...)
     return buf;
 }
 
-/* Get the i-th most recent console line (0 = newest) */
 static const char *con_line(int i)
 {
-    int idx = (con_row - i + CON_LINES) % CON_LINES;
-    return con[idx];
+    return con[(con_row - i + CON_LINES) % CON_LINES];
 }
 
 static int get_cols(void)
@@ -96,34 +89,52 @@ static int get_cols(void)
     return 80;
 }
 
+/* ── Source file cache ── */
+static char *src_lines[4096];
+static int src_nlines;
+static char src_file[256];
+
+static void load_source(const char *file)
+{
+    if (!file || strcmp(file, src_file) == 0) return;
+    /* Free old */
+    for (int i = 0; i < src_nlines; i++) free(src_lines[i]);
+    src_nlines = 0;
+    strncpy(src_file, file, sizeof(src_file) - 1);
+
+    FILE *f = fopen(file, "r");
+    if (!f) return;
+    char buf[512];
+    while (fgets(buf, sizeof(buf), f) && src_nlines < 4096) {
+        /* Strip trailing newline */
+        int len = strlen(buf);
+        if (len > 0 && buf[len-1] == '\n') buf[--len] = '\0';
+        if (len > 0 && buf[len-1] == '\r') buf[--len] = '\0';
+        src_lines[src_nlines++] = strdup(buf);
+    }
+    fclose(f);
+}
+
 void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
               const char *event)
 {
     g_out = out;
     g_cols = get_cols();
     g_half = g_cols / 2;
-    int lw = g_half - 2;          /* left pane usable width */
-    int rw = g_cols - g_half - 3; /* right pane usable width */
-    int rcol = g_half + 3;        /* right pane text start */
+    int lw = g_half - 2;
+    int rw = g_cols - g_half - 3;
+    int rcol = g_half + 3;
 
     uint32_t pc  = cpu->r[REG_PC];
     uint32_t psp = cpu->psp;
     uint32_t msp = cpu->msp;
-    int in_flash = (pc >= FLASH_BASE && pc < FLASH_BASE + FLASH_SIZE);
 
     if (strstr(event, "PendSV")) ctx_switches++;
 
     fprintf(out, CLEAR);
 
-    /* ── Draw vertical divider ── */
-    for (int r = 1; r <= 30; r++) {
-        at(r, g_half + 1);
-        fprintf(out, DIM "│" RESET);
-    }
-
-    /* Console line index — show newest at bottom, oldest at top */
-    int con_total = (con_count < CON_LINES) ? con_count + 1 : CON_LINES;
-    int con_display = (con_total < 20) ? con_total : 20;
+    /* Divider */
+    for (int r = 1; r <= 30; r++) { at(r, g_half + 1); fprintf(out, DIM "│" RESET); }
 
     int row = 1;
 
@@ -142,94 +153,95 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     row++;
     if (fn)
         cell(row, 2, lw, fmt("      " GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn, sym_off));
-    else
-        cell(row, 2, lw, "");
     row++;
     cell(row, 2, lw, fmt("  PSP " CYAN "0x%08X" RESET "  MSP " CYAN "0x%08X" RESET, psp, msp));
     row++;
 
-    /* ── Flash ── */
-    row++;
-    cell(row, 2, lw, BOLD "  FLASH" RESET DIM " 512K" RESET);
-    row++;
-    cell(row, 2, lw, "  0x08000000 ┌────────────────────┐");
-    row++;
-    cell(row, 2, lw, "             │ .vectors           │");
-    row++;
-    cell(row, 2, lw, "             ├────────────────────┤");
-    row++;
-    if (in_flash)
-        cell(row, 2, lw, fmt("  " CYAN "PC →" RESET "     │ " CYAN "%-16s" RESET " │", fn ? fn : ".text"));
-    else
-        cell(row, 2, lw, "             │ .text              │");
-    row++;
-    cell(row, 2, lw, "             │ .rodata            │");
-    row++;
-    cell(row, 2, lw, "  0x08080000 └────────────────────┘");
-    row++;
+    /* ── Source code or memory map ── */
+    int cur_line;
+    const char *file = line_lookup(pc, &cur_line);
+    if (file) load_source(file);
 
-    /* ── SRAM ── */
     row++;
-    cell(row, 2, lw, BOLD "  SRAM" RESET DIM " 128K" RESET);
-    row++;
-    cell(row, 2, lw, "  0x20000000 ┌────────────────────┐");
-    row++;
-    cell(row, 2, lw, "             │ .data + .bss       │");
-    row++;
-    cell(row, 2, lw, "             ├────────────────────┤");
-    row++;
+    if (src_nlines > 0 && cur_line > 0) {
+        /* Show source code centered on current line */
+        int context = 8;  /* lines above/below */
+        int start = cur_line - context;
+        if (start < 1) start = 1;
+        int end = cur_line + context;
+        if (end > src_nlines) end = src_nlines;
 
-    /* Task stacks — scan the task SP table in RAM */
-    int num_tasks = *(uint32_t *)(ram);  /* num_tasks at offset 0 */
+        cell(row, 2, lw, fmt(DIM "  %s" RESET, file));
+        row++;
+
+        for (int l = start; l <= end && row <= 28; l++) {
+            const char *line_text = (l <= src_nlines) ? src_lines[l - 1] : "";
+            /* Truncate to fit */
+            char trunc[128];
+            int maxw = lw - 8;
+            if (maxw > 120) maxw = 120;
+            strncpy(trunc, line_text, maxw);
+            trunc[maxw] = '\0';
+            /* Replace tabs with spaces */
+            for (char *p = trunc; *p; p++) if (*p == '\t') *p = ' ';
+
+            if (l == cur_line)
+                cell(row, 2, lw, fmt(CYAN " →%3d" RESET " " BOLD "%s" RESET, l, trunc));
+            else
+                cell(row, 2, lw, fmt(DIM "  %3d" RESET " %s", l, trunc));
+            row++;
+        }
+    } else {
+        /* Fallback: memory map (no debug info) */
+        int in_flash = (pc >= FLASH_BASE && pc < FLASH_BASE + FLASH_SIZE);
+        cell(row, 2, lw, BOLD "  FLASH" RESET DIM " 512K" RESET); row++;
+        cell(row, 2, lw, "  0x08000000 ┌────────────────────┐"); row++;
+        if (in_flash)
+            cell(row, 2, lw, fmt("  " CYAN "PC →" RESET "     │ " CYAN "%-16s" RESET " │", fn ? fn : ".text"));
+        else
+            cell(row, 2, lw, "             │ .text              │");
+        row++;
+        cell(row, 2, lw, "  0x08080000 └────────────────────┘"); row++;
+        row++;
+        cell(row, 2, lw, BOLD "  SRAM" RESET DIM " 128K" RESET); row++;
+        cell(row, 2, lw, "  0x20000000 ┌────────────────────┐"); row++;
+    }
+
+    /* ── Task list (always show at bottom of left pane) ── */
+    if (row < 24) row = 24;
+    int num_tasks = *(uint32_t *)(ram);
     if (num_tasks > 0 && num_tasks <= 8) {
+        cell(row, 2, lw, DIM "  Tasks:" RESET);
+        row++;
         for (int t = 0; t < num_tasks; t++) {
-            /* tcb is 8 bytes: {sp, name_ptr} at RAM offset 0x308 + t*8 */
             uint32_t sp = *(uint32_t *)(ram + 0x308 + t * 8);
             uint32_t name_ptr = *(uint32_t *)(ram + 0x308 + t * 8 + 4);
-            /* Read name from flash if pointer is valid */
             char tname[12] = {0};
             if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
                 const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
                 int j;
-                for (j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++)
-                    tname[j] = s[j];
+                for (j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tname[j] = s[j];
                 tname[j] = '\0';
             }
             if (!tname[0]) { tname[0] = '0' + t; tname[1] = '\0'; }
             int active = (sp >= RAM_BASE && sp <= RAM_BASE + 0x2000 &&
                          (psp >= sp && psp <= sp + 256));
             if (active)
-                cell(row, 2, lw, fmt("  " CYAN "PSP→" RESET "     │ " GREEN "▶%-7s" RESET CYAN "%08X" RESET "│", tname, psp));
+                cell(row, 2, lw, fmt("  " GREEN "▶ %-8s" RESET CYAN "%08X" RESET, tname, psp));
             else
-                cell(row, 2, lw, fmt("             │  %-7s" DIM "%08X" RESET "│", tname, sp));
+                cell(row, 2, lw, fmt("    %-8s" DIM "%08X" RESET, tname, sp));
             row++;
         }
-    } else {
-        cell(row, 2, lw, "             │ " DIM "(no tasks)" RESET "        │");
-        row++;
     }
 
-    cell(row, 2, lw, "             ├────────────────────┤");
-    row++;
-    cell(row, 2, lw, "             │ Heap               │");
-    row++;
-    cell(row, 2, lw, "             ├────────────────────┤");
-    row++;
-    cell(row, 2, lw, fmt("  " YELLOW "MSP →" RESET "    │ ISR stack    ↓     │ " DIM "%08X" RESET, msp));
-    row++;
-    cell(row, 2, lw, "  0x20020000 └────────────────────┘");
-    row++;
+    /* ── Right pane: UART console ── */
+    int con_total = (con_count < CON_LINES) ? con_count + 1 : CON_LINES;
+    int con_display = (con_total < 24) ? con_total : 24;
+    int con_start_row = 3;
+    for (int i = 0; i < con_display; i++)
+        cell(con_start_row + i, rcol, rw, fmt(DIM "%s" RESET, con_line(con_display - 1 - i)));
 
-    /* ── Right pane: UART console (newest lines at bottom) ── */
-    int con_start_row = 3;  /* first row for console text */
-    for (int i = 0; i < con_display; i++) {
-        const char *line = con_line(con_display - 1 - i);
-        cell(con_start_row + i, rcol, rw, fmt(DIM "%s" RESET, line));
-    }
-
-    /* ── Footer ── */
-    row += 1;
-    at(row, 2);
-    fprintf(out, DIM "  [Enter] step" RESET);
+    /* Footer */
+    at(30, 2);
     fflush(out);
 }

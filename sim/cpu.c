@@ -899,7 +899,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
 
 /* ---- Interrupt entry/exit ---- */
 
-static void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vector_num)
+void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vector_num)
 {
     /* Push exception frame to current stack (PSP or MSP) */
     uint32_t *sp_ptr;
@@ -976,7 +976,7 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
 
 void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
 {
-    uint64_t systick_counter = 0;
+    static uint64_t systick_counter = 0;
 
     while (c->running && (max_cycles <= 0 || c->cycle_count < (uint64_t)max_cycles)) {
         cpu_step(c, flash, ram);
@@ -1007,6 +1007,14 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
                 c->pending_irq &= ~IRQ_PENDSV;
                 clear_pendsv();
                 take_interrupt(c, flash, ram, 14);  /* PendSV = vector 14 */
+            }
+        }
+
+        /* Check breakpoints (after interrupts so we catch handler entry) */
+        if (c->nbp > 0) {
+            uint32_t pc = c->r[REG_PC];
+            for (int b = 0; b < c->nbp; b++) {
+                if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
             }
         }
     }
