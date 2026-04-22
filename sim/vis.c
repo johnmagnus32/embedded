@@ -183,14 +183,25 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     int num_tasks = *(uint32_t *)(ram);  /* num_tasks at offset 0 */
     if (num_tasks > 0 && num_tasks <= 8) {
         for (int t = 0; t < num_tasks; t++) {
-            /* tasks[t].sp is at RAM offset 0x308 + t*4 */
-            uint32_t sp = *(uint32_t *)(ram + 0x308 + t * 4);
+            /* tcb is 8 bytes: {sp, name_ptr} at RAM offset 0x308 + t*8 */
+            uint32_t sp = *(uint32_t *)(ram + 0x308 + t * 8);
+            uint32_t name_ptr = *(uint32_t *)(ram + 0x308 + t * 8 + 4);
+            /* Read name from flash if pointer is valid */
+            char tname[12] = {0};
+            if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
+                const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
+                int j;
+                for (j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++)
+                    tname[j] = s[j];
+                tname[j] = '\0';
+            }
+            if (!tname[0]) { tname[0] = '0' + t; tname[1] = '\0'; }
             int active = (sp >= RAM_BASE && sp <= RAM_BASE + 0x2000 &&
                          (psp >= sp && psp <= sp + 256));
             if (active)
-                cell(row, 2, lw, fmt("  " CYAN "PSP→" RESET "     │ " GREEN "▶task%d" RESET " " CYAN "%08X" RESET "  │", t, psp));
+                cell(row, 2, lw, fmt("  " CYAN "PSP→" RESET "     │ " GREEN "▶%-7s" RESET CYAN "%08X" RESET "│", tname, psp));
             else
-                cell(row, 2, lw, fmt("             │  task%d " DIM "%08X" RESET "  │", t, sp));
+                cell(row, 2, lw, fmt("             │  %-7s" DIM "%08X" RESET "│", tname, sp));
             row++;
         }
     } else {

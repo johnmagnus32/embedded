@@ -45,6 +45,7 @@ typedef void (*task_fn)(void);
 
 struct tcb {
     uint32_t *sp;
+    const char *name;
 };
 
 static struct tcb tasks[MAX_TASKS];
@@ -72,10 +73,11 @@ static uint32_t *init_stack(uint8_t *base, task_fn fn)
     return sp;
 }
 
-static void create_task(task_fn fn)
+static void create_task(const char *name, task_fn fn)
 {
     int id = num_tasks++;
     tasks[id].sp = init_stack(stacks[id], fn);
+    tasks[id].name = name;
 }
 
 /* Called by PendSV — save old SP, pick next, return new SP */
@@ -153,9 +155,9 @@ void main(void)
 {
     uart_puts("RTOS starting...\n");
 
-    create_task(task_a);
-    create_task(task_b);
-    create_task(idle_task);
+    create_task("sensor", task_a);
+    create_task("comms",  task_b);
+    create_task("idle",   idle_task);
 
     /* Set PendSV to lowest priority */
     SCB_SHPR3 |= (0xFF << 16);
@@ -165,12 +167,14 @@ void main(void)
     /* Start first task — SysTick will be started by task_a */
     uint32_t *sp = tasks[0].sp;
     __asm volatile(
+        "cpsid i                   \n"  /* disable interrupts */
         "ldmia %0!, {r4-r11}       \n"
         "msr   psp, %0             \n"
         "movs  r0, #2              \n"
         "msr   control, r0         \n"
         "isb                       \n"
         "ldr   r0, =0xFFFFFFFD     \n"
+        "cpsie i                   \n"  /* re-enable right before exc_return */
         "bx    r0                  \n"
         :
         : "r" (sp)
