@@ -23,7 +23,9 @@ config ELFLOADER
     bool "ELF program loader"
     default n
     depends on SCHED && HEAP
-    help
-      Load and execute ELF binaries from the filesystem.
+
+config PM
+    bool "Per-device power management"
+    default n
 
 endmenu
