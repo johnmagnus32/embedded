@@ -792,6 +792,8 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int rm = lo & 0xF;
         if (ra == 0xF)
             c->r[rd] = c->r[rn] * c->r[rm]; /* MUL */
+        else if ((lo >> 4) & 1)
+            c->r[rd] = c->r[ra] - c->r[rn] * c->r[rm]; /* MLS */
         else
             c->r[rd] = c->r[rn] * c->r[rm] + c->r[ra]; /* MLA */
         return 0;
