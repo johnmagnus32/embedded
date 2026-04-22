@@ -201,10 +201,10 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     cell(row, 2, lw, "20000000 ┌──────────────────┐"); row++;
     cell(row, 2, lw, "         │ .data + .bss     │"); row++;
 
-    /* Tasks */
+    /* Tasks — show each as a mini stack diagram */
     int num_tasks = *(uint32_t *)(ram);
     if (num_tasks > 0 && num_tasks <= 8) {
-        for (int t = 0; t < num_tasks && row < g_half_r - 3; t++) {
+        for (int t = 0; t < num_tasks && row < g_half_r - 5; t++) {
             uint32_t sp = *(uint32_t *)(ram + 0x308 + t * 8);
             uint32_t name_ptr = *(uint32_t *)(ram + 0x308 + t * 8 + 4);
             char tn[12] = {0};
@@ -213,22 +213,18 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 for (int j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tn[j] = s[j];
             }
             if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
-            /* Stack: base at RAM+0x08+t*256, top at base+256 */
             uint32_t stk_top = RAM_BASE + 0x08 + (t + 1) * 256;
             uint32_t stk_bot = stk_top - 256;
             int used = (sp >= stk_bot && sp <= stk_top) ? (int)(stk_top - sp) : 0;
-            int pct = used * 100 / 256;
             int active = (sp >= RAM_BASE && sp <= RAM_BASE + 0x2000 && psp >= sp && psp <= sp + 256);
-            /* Show: name, SP value, stack bar */
-            int barw = 8;
-            int filled = (pct * barw + 50) / 100;
-            char bar[16];
-            for (int i = 0; i < barw; i++) bar[i] = (i < filled) ? '#' : '.';
-            bar[barw] = '\0';
-            if (active)
-                cell(row, 2, lw, fmt(GREEN "▶%-6s" RESET " SP:" CYAN "%05X" RESET " %s %d%%", tn, sp & 0xFFFFF, bar, pct));
-            else
-                cell(row, 2, lw, fmt(" %-6s  SP:" DIM "%05X" RESET " %s %d%%", tn, sp & 0xFFFFF, bar, pct));
+            const char *mark = active ? GREEN "▶" RESET : " ";
+            /* 3-line mini stack: top, SP arrow, bottom */
+            cell(row, 2, lw, fmt("%s%-6s  %05X ┬─ top", mark, tn, stk_top & 0xFFFFF));
+            row++;
+            cell(row, 2, lw, fmt("   " CYAN "SP→" RESET "   %05X │" DIM "▓" RESET "  %d/%d used",
+                 sp & 0xFFFFF, used, 256));
+            row++;
+            cell(row, 2, lw, fmt("         %05X ┴─ bot", stk_bot & 0xFFFFF));
             row++;
         }
     }
