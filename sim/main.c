@@ -72,26 +72,16 @@ int main(int argc, char **argv)
 
     /* Check for --vis flag */
     int vis_enabled = 0;
-    int vis_interval = 10000;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--vis") == 0) vis_enabled = 1;
-        if (strcmp(argv[i], "--vis-interval") == 0 && i + 1 < argc)
-            vis_interval = atoi(argv[i + 1]);
     }
 
     if (vis_enabled) {
-        extern void vis_dump(FILE *, struct cpu_state *, uint8_t *, uint8_t *);
-        /* Run with periodic visualization */
-        while (cpu.running && cpu.cycle_count < 100000000) {
-            for (int i = 0; i < vis_interval && cpu.running; i++)
-                cpu_step(&cpu, flash, ram);
-            vis_dump(stderr, &cpu, flash, ram);
-            /* Small delay so terminal can render */
-            usleep(50000);  /* 50ms */
-        }
-    } else {
-        cpu_run(&cpu, flash, ram, 100000000);
+        extern void cpu_set_vis(FILE *, uint8_t *, uint8_t *);
+        cpu_set_vis(stderr, flash, ram);
     }
+
+    cpu_run(&cpu, flash, ram, 100000000);
 
     printf("\n--- Emulation ended after %llu cycles ---\n", (unsigned long long)cpu.cycle_count);
     if (!cpu.running)
