@@ -29,11 +29,17 @@
 /* Core 1 stack (separate from task stacks) */
 static uint8_t core1_stack[1024] __attribute__((aligned(8)));
 
-/* Core 1 entry: start the scheduler on this core */
+/* Core 1 entry: init this core's timer and start scheduling */
 static void core1_entry(void)
 {
-    /* Core 1 runs sched_start() which picks a task and never returns.
-     * The scheduler's pick_next() will find tasks not running on core 0. */
+    /*
+     * Each core has its own SysTick — must init separately.
+     * Without this, core 1 only switches tasks on voluntary yield,
+     * never on timer preemption.
+     */
+    extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
+    systick_init(125000000, 1000);  /* RP2040 runs at 125MHz */
+
     sched_start();
 }
 
