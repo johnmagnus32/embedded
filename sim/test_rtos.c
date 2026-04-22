@@ -121,6 +121,12 @@ static void delay_ticks(uint32_t ticks)
 
 static void task_a(void)
 {
+    /* Start SysTick from within the first task — safe because
+     * we're now running on PSP with a proper stack frame */
+    SYST_RVR = 500;
+    SYST_CVR = 0;
+    SYST_CSR = 0x07;
+
     while (1) {
         uart_puts("A\n");
         /* Just spin — SysTick will preempt us */
@@ -154,19 +160,14 @@ void main(void)
     /* Set PendSV to lowest priority */
     SCB_SHPR3 |= (0xFF << 16);
 
-    /* Start SysTick: reload = 16000 (1ms at 16MHz... but emulator ticks per instruction) */
-    SYST_RVR = 500;  /* fire every 500 instructions in the emulator */
-    SYST_CVR = 0;
-    SYST_CSR = 0x07;  /* enable + interrupt + CPU clock */
-
     uart_puts("Starting scheduler...\n");
 
-    /* Start first task: switch to PSP, load task 0's context */
+    /* Start first task — SysTick will be started by task_a */
     uint32_t *sp = tasks[0].sp;
     __asm volatile(
         "ldmia %0!, {r4-r11}       \n"
         "msr   psp, %0             \n"
-        "movs  r0, #2              \n"  /* SPSEL=1 (PSP) */
+        "movs  r0, #2              \n"
         "msr   control, r0         \n"
         "isb                       \n"
         "ldr   r0, =0xFFFFFFFD     \n"

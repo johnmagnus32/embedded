@@ -728,7 +728,6 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int sysm = lo & 0xFF;
         switch (sysm) {
         case 8: c->msp = c->r[rn]; if (!(c->control & 2)) c->r[REG_SP] = c->msp; break;
-        case 9: c->psp = c->r[rn]; if (c->control & 2) c->r[REG_SP] = c->psp; break;
         case 16: c->primask = c->r[rn] & 1; break;
         case 20: c->control = c->r[rn] & 3;
                  c->r[REG_SP] = (c->control & 2) ? c->psp : c->msp; break;
@@ -858,9 +857,10 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         return 0;
     }
 
-    /* Conditional branch (wide) */
+    /* Conditional branch (wide) — cond must be 0-13, not 14/15 */
     if ((hi & 0xF800) == 0xF000 && (lo & 0xD000) == 0x8000) {
         int cond = (hi >> 6) & 0xF;
+        if (cond >= 14) goto not_cond_branch;  /* cond 14/15 = other encodings */
         if (cond_check(c, cond)) {
             int s = (hi >> 10) & 1;
             int j1 = (lo >> 13) & 1;
@@ -872,6 +872,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         }
         return 0;
     }
+    not_cond_branch:
 
     fprintf(stderr, "Unknown 32-bit insn: 0x%08X at 0x%08X\n", insn, pc);
     c->running = 0;
