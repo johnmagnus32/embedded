@@ -109,7 +109,8 @@ static void vis_event(struct cpu_state *c, const char *event)
     if (!vis_out) return;
     extern void vis_dump(FILE *, struct cpu_state *, uint8_t *, uint8_t *, const char *);
     vis_dump(vis_out, c, vis_flash_ptr, vis_ram_ptr, event);
-    usleep(300000);
+    fprintf(vis_out, "  [Press Enter to continue] ");
+    getchar();
 }
 
 void cpu_reset(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
