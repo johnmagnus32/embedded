@@ -78,7 +78,11 @@ int main(int argc, char **argv)
 
     if (vis_enabled) {
         extern void cpu_set_vis(FILE *, uint8_t *, uint8_t *);
+        extern void vis_dump(FILE *, struct cpu_state *, uint8_t *, uint8_t *, const char *);
         cpu_set_vis(stderr, flash, ram);
+        vis_dump(stderr, &cpu, flash, ram, "Boot — reset vector");
+        fprintf(stderr, "  [Press Enter to start] ");
+        getchar();
     }
 
     cpu_run(&cpu, flash, ram, 100000000);
