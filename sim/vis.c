@@ -189,19 +189,19 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     row++;
 
     /* Flash */
-    cell(row, 2, lw, "08000000 ┌──────────────────┐"); row++;
+    cell(row, 2, lw, "0x08000000 ┌─────────────────────────────┐"); row++;
     if (in_flash)
-        cell(row, 2, lw, fmt(CYAN "PC →" RESET "     │ " CYAN "%-14s" RESET " │", fn ? fn : ".text"));
+        cell(row, 2, lw, fmt("  " CYAN "PC →" RESET "     │ " CYAN "%-25s" RESET " │", fn ? fn : ".text"));
     else
-        cell(row, 2, lw, "         │ .text            │");
+        cell(row, 2, lw, "           │ .text                       │");
     row++;
-    cell(row, 2, lw, "08080000 └──────────────────┘"); row++;
+    cell(row, 2, lw, "0x08080000 └─────────────────────────────┘"); row++;
 
-    /* SRAM */
-    cell(row, 2, lw, "20000000 ┌──────────────────┐"); row++;
-    cell(row, 2, lw, "         │ .data + .bss     │"); row++;
+    /* SRAM — full-width memory map with stack diagrams */
+    cell(row, 2, lw, "0x20000000 ┌─────────────────────────────┐"); row++;
+    cell(row, 2, lw, "           │ .data + .bss                │"); row++;
 
-    /* Tasks — show each as a mini stack diagram */
+    /* Tasks — show stacks inside the SRAM box */
     int num_tasks = *(uint32_t *)(ram);
     if (num_tasks > 0 && num_tasks <= 8) {
         for (int t = 0; t < num_tasks && row < g_half_r - 5; t++) {
@@ -217,19 +217,19 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
             uint32_t stk_bot = stk_top - 256;
             int used = (sp >= stk_bot && sp <= stk_top) ? (int)(stk_top - sp) : 0;
             int active = (sp >= RAM_BASE && sp <= RAM_BASE + 0x2000 && psp >= sp && psp <= sp + 256);
-            const char *mark = active ? GREEN "▶" RESET : " ";
-            /* 3-line mini stack: top, SP arrow, bottom */
-            cell(row, 2, lw, fmt("%s%-6s  %05X ┬─ top", mark, tn, stk_top & 0xFFFFF));
-            row++;
-            cell(row, 2, lw, fmt("   " CYAN "SP→" RESET "   %05X │" DIM "▓" RESET "  %d/%d used",
-                 sp & 0xFFFFF, used, 256));
-            row++;
-            cell(row, 2, lw, fmt("         %05X ┴─ bot", stk_bot & 0xFFFFF));
-            row++;
+            const char *hi = active ? GREEN : "";
+            const char *lo = active ? RESET : "";
+            /* Stack grows DOWN: high addr (top) is shown first, SP below, bottom last */
+            cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top, hi, tn, lo)); row++;
+            cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
+            cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/256 used    │", sp, hi, active ? "▶" : " ", lo, used)); row++;
+            cell(row, 2, lw, fmt("           │ " DIM "used ↓" RESET "                      │")); row++;
+            cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot)); row++;
         }
     }
-    cell(row, 2, lw, fmt(YELLOW "MSP→" RESET "     │ stack  " DIM "%08X" RESET "│", msp)); row++;
-    cell(row, 2, lw, "20020000 └──────────────────┘"); row++;
+    cell(row, 2, lw, fmt("           │ " DIM "heap" RESET "                        │")); row++;
+    cell(row, 2, lw, fmt("0x%08X │" YELLOW "◄─MSP" RESET "                       │", msp)); row++;
+    cell(row, 2, lw, "0x20020000 └─────────────────────────────┘"); row++;
 
     /* ════════════════════════════════════════════
      * TOP-RIGHT: UART Console
