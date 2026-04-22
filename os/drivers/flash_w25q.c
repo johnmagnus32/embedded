@@ -11,10 +11,14 @@
  */
 
 #include <stdint.h>
+#include "config.h"
 #include "devicetree.h"
 #include "device.h"
 #include "drivers/flash.h"
 #include "drivers/spi.h"
+#ifdef CONFIG_PM
+#include "pm.h"
+#endif
 
 /* W25Q128 commands */
 #define CMD_WRITE_ENABLE  0x06
@@ -39,6 +43,35 @@ static const struct device *spi(void)
 {
     return DEVICE_DT_GET(spi1);
 }
+
+#ifdef CONFIG_PM
+/*
+ * SPI bus PM state — the flash driver manages SPI power.
+ * SPI is suspended when no flash operation is in progress.
+ *
+ * In a real system, the SPI driver would own this pm_device
+ * and the PM callback would disable/enable the SPI clock.
+ * We simplify by putting it here.
+ */
+static int spi_pm_action(const struct device *dev, enum pm_device_action action)
+{
+    (void)dev;
+    /* In a real driver: disable/enable SPI clock via clock_on/clock_off */
+    return 0;
+}
+
+static struct pm_device spi_pm = {
+    .action_cb = spi_pm_action,
+    .state = PM_DEVICE_ACTIVE,
+    .usage_count = 0,
+};
+
+#define SPI_PM_GET()  pm_runtime_get(spi(), &spi_pm)
+#define SPI_PM_PUT()  pm_runtime_put(spi(), &spi_pm)
+#else
+#define SPI_PM_GET()  (void)0
+#define SPI_PM_PUT()  (void)0
+#endif
 
 /* --- W25Q128 command helpers --- */
 
@@ -100,10 +133,14 @@ static int flash_nor_read(const struct device *dev, uint32_t offset,
 {
     (void)dev;
 
+    SPI_PM_GET();
+
     spi_cs_select(spi());
     w25q_cmd_addr(CMD_READ_DATA, offset);
     spi_read(spi(), buf, len);
     spi_cs_release(spi());
+
+    SPI_PM_PUT();
 
     return 0;
 }
@@ -113,6 +150,8 @@ static int flash_nor_write(const struct device *dev, uint32_t offset,
 {
     (void)dev;
     const uint8_t *src = buf;
+
+    SPI_PM_GET();
 
     while (len > 0) {
         size_t page_remain = 256 - (offset & 0xFF);
@@ -132,6 +171,8 @@ static int flash_nor_write(const struct device *dev, uint32_t offset,
         len -= chunk;
     }
 
+    SPI_PM_PUT();
+
     return 0;
 }
 
@@ -139,6 +180,8 @@ static int flash_nor_erase(const struct device *dev, uint32_t offset,
                            size_t size)
 {
     (void)dev;
+
+    SPI_PM_GET();
 
     while (size > 0) {
         w25q_write_enable();
@@ -152,6 +195,8 @@ static int flash_nor_erase(const struct device *dev, uint32_t offset,
         offset += 4096;
         size = size > 4096 ? size - 4096 : 0;
     }
+
+    SPI_PM_PUT();
 
     return 0;
 }
