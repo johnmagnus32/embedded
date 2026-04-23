@@ -1071,7 +1071,9 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
                     uint32_t off;
                     sym_lookup(c->r[REG_PC], &off);
                     uint32_t fn_addr = c->r[REG_PC] - off;
-                    if (fn_addr == c->step_fn_addr && cur_line > c->step_line) {
+                    if (fn_addr == c->step_fn_addr &&
+                        (cur_line > c->step_line ||
+                         cur_line < c->step_line - 1)) {
                         c->bp_hit = 1; c->step_mode = 0; return;
                     }
                 }

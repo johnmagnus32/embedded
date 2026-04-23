@@ -65,6 +65,7 @@ int main(int argc, char **argv)
 
     if (elf_load(argv[1], flash, ram) == 0) {
         fprintf(stderr, "Loaded ELF %s\n", argv[1]);
+        vis_set_source_dir(argv[1]);
     } else {
         FILE *f = fopen(argv[1], "rb");
         if (!f) { perror("open firmware"); return 1; }

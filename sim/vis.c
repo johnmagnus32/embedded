@@ -112,13 +112,35 @@ static char *src_lines[4096];
 static int src_nlines;
 static char src_file[256];
 
+static char src_search_dir[256];
+
+void vis_set_source_dir(const char *elf_path)
+{
+    strncpy(src_search_dir, elf_path, sizeof(src_search_dir) - 1);
+    /* Strip filename to get directory */
+    char *slash = strrchr(src_search_dir, '/');
+    if (slash) *(slash + 1) = '\0';
+    else src_search_dir[0] = '\0';
+}
+
 static void load_source(const char *file)
 {
     if (!file || strcmp(file, src_file) == 0) return;
     for (int i = 0; i < src_nlines; i++) free(src_lines[i]);
     src_nlines = 0;
     strncpy(src_file, file, sizeof(src_file) - 1);
-    FILE *f = fopen(file, "r");
+
+    /* Try: dir/src/file, dir/file, dir/../src/file, dir/../file, file */
+    char path[512];
+    FILE *f = NULL;
+    if (src_search_dir[0]) {
+        snprintf(path, sizeof(path), "%ssrc/%s", src_search_dir, file);
+        f = fopen(path, "r");
+        if (!f) { snprintf(path, sizeof(path), "%s%s", src_search_dir, file); f = fopen(path, "r"); }
+        if (!f) { snprintf(path, sizeof(path), "%s../src/%s", src_search_dir, file); f = fopen(path, "r"); }
+        if (!f) { snprintf(path, sizeof(path), "%s../%s", src_search_dir, file); f = fopen(path, "r"); }
+    }
+    if (!f) f = fopen(file, "r");
     if (!f) return;
     char buf[512];
     while (fgets(buf, sizeof(buf), f) && src_nlines < 4096) {
