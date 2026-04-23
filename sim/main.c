@@ -31,6 +31,9 @@
 extern void mem_set_uart_fd(int fd);
 extern void mem_set_uart_suppress(int s);
 
+volatile sig_atomic_t dbg_interrupted = 0;
+static void sigint_handler(int sig) { (void)sig; dbg_interrupted = 1; }
+
 #define MAX_BP 32
 #define MAX_CYCLES_RUN   100000000
 #define MAX_CYCLES_DEBUG  10000000
@@ -121,6 +124,7 @@ int main(int argc, char **argv)
     }
 
     /* ── Interactive debugger ── */
+    signal(SIGINT, sigint_handler);  /* Ctrl+C interrupts continue, doesn't exit */
     /* Auto-run to main() so we start somewhere useful */
     uint32_t main_addr = resolve_breakpoint("main");
     if (main_addr) {
@@ -151,15 +155,21 @@ int main(int argc, char **argv)
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             cpu.bp_hit = 0;
             cpu.step_mode = 0;
-            vis_dbg_log("Continuing...");
-            cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
+            /* Run in chunks until breakpoint or Ctrl+C */
+            extern volatile sig_atomic_t dbg_interrupted;
+            dbg_interrupted = 0;
+            while (!cpu.bp_hit && !dbg_interrupted && cpu.running) {
+                cpu_run(&cpu, flash, ram, cpu.cycle_count + MAX_CYCLES_DEBUG);
+                if (!cpu.bp_hit && !dbg_interrupted)
+                    continue;  /* keep going */
+            }
             if (cpu.bp_hit) {
                 uint32_t off;
                 const char *fn = sym_lookup(cpu.r[REG_PC], &off);
                 int ln; line_lookup(cpu.r[REG_PC], &ln);
-                vis_dbg_log("Breakpoint: %s+0x%X line %d", fn ? fn : "???", off, ln);
-            } else {
-                vis_dbg_log("Program finished (%llu cy)", (unsigned long long)cpu.cycle_count);
+                fprintf(stderr, "\nBreakpoint: %s+0x%X line %d\n", fn ? fn : "???", off, ln);
+            } else if (dbg_interrupted) {
+                fprintf(stderr, "\nInterrupted.\n");
             }
             show_state(&cpu, flash, ram);
 
