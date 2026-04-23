@@ -249,6 +249,7 @@ void sched_start(void)
 
 #ifdef CONFIG_CPU_CORTEX_M0PLUS
     __asm volatile(
+        "cpsid i                   \n"  /* disable interrupts during switch */
         "ldmia %0!, {r4-r7}        \n"
         "ldmia %0!, {r0-r3}        \n"
         "mov   r8, r0              \n"
@@ -260,12 +261,14 @@ void sched_start(void)
         "msr   control, r0         \n"
         "isb                       \n"
         "ldr   r0, =0xFFFFFFFD     \n"
+        "cpsie i                   \n"  /* re-enable: exc_return is next */
         "bx    r0                  \n"
         :
         : "r" (sp)
     );
 #else
     __asm volatile(
+        "cpsid i                   \n"  /* disable interrupts during switch */
         "ldmia %0!, {r4-r11}       \n"
         "msr   psp, %0             \n"
 #ifdef CONFIG_USERSPACE
@@ -276,6 +279,7 @@ void sched_start(void)
         "msr   control, r0         \n"
         "isb                       \n"
         "ldr   r0, =0xFFFFFFFD     \n"
+        "cpsie i                   \n"  /* re-enable: exc_return is next */
         "bx    r0                  \n"
         :
         : "r" (sp)
