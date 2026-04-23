@@ -201,32 +201,33 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
      * RIGHT PANEL: Memory Map
      * ════════════════════════════════════════════ */
     int row = 1;
+    /* All box lines are exactly 22 chars wide inside: "│" + 20 chars + "│" */
+    #define BOX "─────────────────────"
+    #define DOT "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
 
     /* Registers */
-    cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s " GREEN "%s" RESET,
-         pc, cpu->in_handler ? YELLOW "[H]" RESET : "[T]",
-         fn ? fn : ""));
+    cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s",
+         pc, cpu->in_handler ? YELLOW "[HANDLER]" RESET : GREEN "[THREAD]" RESET));
     row++;
-    if (fn)
-        cell(row, rc, rw, fmt("   " GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn, sym_off));
+    cell(row, rc, rw, fmt(GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn ? fn : "???", sym_off));
     row++;
-    cell(row, rc, rw, fmt("PSP " CYAN "%08X" RESET "  MSP " CYAN "%08X" RESET, psp, msp));
+    cell(row, rc, rw, fmt("PSP " CYAN "%08X" RESET " MSP " CYAN "%08X" RESET, psp, msp));
     row += 2;
 
     /* Flash */
-    cell(row, rc, rw, "0x08000000 ┌────────────────────┐"); row++;
+    cell(row, rc, rw, "0x08000000 ┌" BOX "┐"); row++;
     if (in_flash)
-        cell(row, rc, rw, fmt("  " CYAN "PC →" RESET "   │ " CYAN "%-16s" RESET " │", fn ? fn : ".text"));
+        cell(row, rc, rw, fmt(CYAN "  PC →" RESET "     │ %-19s│", fn ? fn : ".text"));
     else
-        cell(row, rc, rw, "           │ .text              │");
+        cell(row, rc, rw, "           │ .text               │");
     row++;
-    cell(row, rc, rw, "0x08080000 └────────────────────┘"); row++;
+    cell(row, rc, rw, "0x08080000 └" BOX "┘"); row++;
 
     /* SRAM */
-    cell(row, rc, rw, "0x20000000 ┌────────────────────┐"); row++;
-    cell(row, rc, rw, "           │ .data + .bss       │"); row++;
+    cell(row, rc, rw, "0x20000000 ┌" BOX "┐"); row++;
+    cell(row, rc, rw, "           │ .data + .bss        │"); row++;
 
-    /* Tasks from symbol table */
+    /* Tasks */
     uint32_t sym_nt = sym_find_by_name("num_tasks");
     uint32_t sym_tasks = sym_find_by_name("tasks");
     uint32_t sym_stacks = sym_find_by_name("task_stacks");
@@ -256,15 +257,15 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
                 const char *hi = active ? GREEN : "";
                 const char *lo = active ? RESET : "";
-                cell(row, rc, rw, fmt("%08X ├╌ %s%s%s ╌╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
-                cell(row, rc, rw, fmt("%08X │" CYAN "SP" RESET " %s%s%s %d/%d    │", dsp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
-                cell(row, rc, rw, fmt("%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top)); row++;
+                cell(row, rc, rw, fmt("0x%08X ├╌╌ %s%-7s%s ╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
+                cell(row, rc, rw, fmt("0x%08X │" CYAN " SP" RESET " %s%s%s %3d/%-3d     │", dsp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
+                cell(row, rc, rw, fmt("0x%08X ├" DOT "┤", stk_top)); row++;
             }
         }
     }
-    cell(row, rc, rw, fmt("           │ " DIM "heap" RESET "               │")); row++;
-    cell(row, rc, rw, fmt("%08X │" YELLOW "MSP" RESET "                │", msp)); row++;
-    cell(row, rc, rw, "0x20020000 └────────────────────┘"); row++;
+    cell(row, rc, rw, "           │ heap                │"); row++;
+    cell(row, rc, rw, fmt("0x%08X │" YELLOW " MSP" RESET "                │", msp)); row++;
+    cell(row, rc, rw, "0x20020000 └" BOX "┘"); row++;
 
     /* Cursor at bottom for prompt */
     at(g_rows, 1);
