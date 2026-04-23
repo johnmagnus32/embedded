@@ -229,74 +229,104 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
      * ════════════════════════════════════════════ */
     int row = 1;
     #define BW 21  /* box inner width */
-
-    /* Helper: render "addr │content padded to BW│" */
     #define BOX_TOP(addr)       cell(row, rc, rw, fmt("0x%08X ┌" "─────────────────────" "┐", addr)); row++
     #define BOX_BOT(addr)       cell(row, rc, rw, fmt("0x%08X └" "─────────────────────" "┘", addr)); row++
     #define BOX_SEP(addr)       cell(row, rc, rw, fmt("0x%08X ├" "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌" "┤", addr)); row++
-    /* For box rows with content: we print addr+│, then content, then pad+│ */
-    /* box_content: prints a row with address, opening │, content (with ANSI), closing │ */
 
     /* Registers */
-    cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s",
-         pc, cpu->in_handler ? YELLOW "[HANDLER]" RESET : GREEN "[THREAD]" RESET));
-    row++;
-    cell(row, rc, rw, fmt(GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn ? fn : "???", sym_off));
+    cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s " GREEN "%s" RESET,
+         pc, cpu->in_handler ? YELLOW "[H]" RESET : "[T]", fn ? fn : ""));
     row++;
     cell(row, rc, rw, fmt("PSP " CYAN "%08X" RESET " MSP " CYAN "%08X" RESET, psp, msp));
     row += 2;
 
-    /* Flash */
-    BOX_TOP(FLASH_BASE);
-    if (in_flash) {
-        cell(row, rc, rw, box_row(0, 0, fmt(CYAN " PC →" RESET " %-13s", fn ? fn : ".text"))); row++;
-    } else {
-        cell(row, rc, rw, box_row(0, 0, " .text")); row++;
-    }
-    BOX_BOT(FLASH_BASE + FLASH_SIZE);
+    /* SRAM — proportional layout */
+    int avail_rows = g_rows - row - 2;  /* rows available for the box */
+    if (avail_rows < 10) avail_rows = 10;
 
-    /* SRAM */
-    BOX_TOP(RAM_BASE);
-    cell(row, rc, rw, box_row(0, 0, " .data + .bss")); row++;
-
-    /* Tasks */
+    /* Gather memory regions */
     uint32_t sym_nt = sym_find_by_name("num_tasks");
     uint32_t sym_tasks = sym_find_by_name("tasks");
     uint32_t sym_stacks = sym_find_by_name("task_stacks");
     if (!sym_stacks) sym_stacks = sym_find_by_name("stacks");
+
+    int tcb_size = 0, stk_size = 0, num_tasks = 0;
+    uint32_t tasks_off = 0, stk_base = 0;
+    uint32_t stk_end = RAM_BASE;  /* end of last stack */
+
     if (sym_nt && sym_tasks && sym_stacks) {
-        int tcb_size, stk_size;
         if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
         else { tcb_size = 8; stk_size = 256; }
-        uint32_t nt_off = sym_nt - RAM_BASE;
-        uint32_t tasks_off = sym_tasks - RAM_BASE;
-        uint32_t stk_base = sym_stacks - RAM_BASE;
-        int num_tasks = *(uint32_t *)(ram + nt_off);
-        if (num_tasks > 0 && num_tasks <= 8) {
-            for (int t = 0; t < num_tasks && row < g_rows - 5; t++) {
-                uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
-                uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
-                char tn[12] = {0};
-                if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
-                    const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
-                    for (int j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tn[j] = s[j];
-                }
-                if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
-                uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
-                uint32_t stk_bot = stk_top - stk_size;
-                int active = (psp >= stk_bot && psp <= stk_top);
-                uint32_t dsp = active ? psp : sp;
-                int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
-                BOX_SEP(stk_bot);
-                cell(row, rc, rw, box_row(dsp, 1, fmt(CYAN " SP" RESET " %s%s%s %3d/%-3d",
-                    active ? GREEN : "", active ? "▶" : " ", active ? RESET : "", used, stk_size))); row++;
-                cell(row, rc, rw, box_row(0, 0, fmt(" %s%s%s", active ? GREEN : "", tn, active ? RESET : ""))); row++;
-            }
-            BOX_SEP(RAM_BASE + stk_base + num_tasks * stk_size);
-        }
+        tasks_off = sym_tasks - RAM_BASE;
+        stk_base = sym_stacks - RAM_BASE;
+        num_tasks = *(uint32_t *)(ram + (sym_nt - RAM_BASE));
+        if (num_tasks < 0 || num_tasks > 8) num_tasks = 0;
+        stk_end = RAM_BASE + stk_base + num_tasks * stk_size;
     }
-    cell(row, rc, rw, box_row(0, 0, " heap")); row++;
-    cell(row, rc, rw, box_row(msp, 1, YELLOW " MSP" RESET)); row++;
+
+    /* Compute sizes of each region */
+    uint32_t bss_size = sym_stacks ? (sym_stacks - RAM_BASE) : 0x100;
+    uint32_t all_stacks = num_tasks * stk_size;
+    uint32_t heap_size = (RAM_BASE + RAM_SIZE) - stk_end;
+
+    uint32_t total = bss_size + all_stacks + heap_size;
+    if (total == 0) total = 1;
+
+    /* Allocate rows proportionally (min 1 per region, min 2 per stack) */
+    int bss_rows = (int)((uint64_t)bss_size * avail_rows / total);
+    int heap_rows = (int)((uint64_t)heap_size * avail_rows / total);
+    if (bss_rows < 1) bss_rows = 1;
+    if (heap_rows < 1) heap_rows = 1;
+    /* Each task gets at least 2 rows (SP + name) */
+    int per_task = num_tasks > 0 ? (avail_rows - bss_rows - heap_rows - 2) / num_tasks : 0;
+    if (per_task < 2) per_task = 2;
+
+    /* Draw */
+    BOX_TOP(RAM_BASE);
+
+    /* .bss region */
+    cell(row, rc, rw, box_row(0, 0, DIM " .data + .bss" RESET)); row++;
+
+    /* Task stacks */
+    if (num_tasks > 0) {
+        for (int t = 0; t < num_tasks && row < g_rows - 4; t++) {
+            uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
+            uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
+            char tn[12] = {0};
+            if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
+                const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
+                for (int j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tn[j] = s[j];
+            }
+            if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
+            uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
+            uint32_t stk_bot = stk_top - stk_size;
+            int active = (psp >= stk_bot && psp <= stk_top);
+            uint32_t dsp = active ? psp : sp;
+            int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
+
+            BOX_SEP(stk_bot);
+            /* Show used portion */
+            if (per_task > 3) {
+                cell(row, rc, rw, box_row(0, 0, DIM " ··· used ···" RESET)); row++;
+            }
+            cell(row, rc, rw, box_row(dsp, 1, fmt(CYAN " SP" RESET " %s%s%s %3d/%-3d",
+                active ? GREEN : "", active ? "▶" : " ", active ? RESET : "", used, stk_size))); row++;
+            cell(row, rc, rw, box_row(0, 0, fmt(" %s%s%s",
+                active ? GREEN : "", tn, active ? RESET : ""))); row++;
+            if (per_task > 3) {
+                cell(row, rc, rw, box_row(0, 0, DIM " ··· free ···" RESET)); row++;
+            }
+        }
+        BOX_SEP(stk_end);
+    }
+
+    /* Heap */
+    cell(row, rc, rw, box_row(0, 0, DIM " heap" RESET)); row++;
+    int heap_dots = (heap_rows > 4) ? 3 : heap_rows - 1;
+    for (int i = 0; i < heap_dots && row < g_rows - 2; i++) {
+        cell(row, rc, rw, box_row(0, 0, DIM " ···" RESET)); row++;
+    }
+    cell(row, rc, rw, box_row(msp, 1, YELLOW " MSP ↓" RESET)); row++;
     BOX_BOT(RAM_BASE + RAM_SIZE);
 
     /* Cursor at bottom for prompt */
