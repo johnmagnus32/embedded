@@ -2,12 +2,12 @@
  * vis.c — 2-panel debugger visualizer
  *
  * ┌──────────────────┬──────────────────┐
- * │  Memory Map      │  Source Code     │
- * │  (regs, flash,   │  (with → arrow)  │
- * │   sram, tasks)   │                  │
+ * │  Source Code     │  Memory Map      │
+ * │  (with → arrow)  │  (regs, flash,   │
+ * │                  │   sram, tasks)   │
  * └──────────────────┴──────────────────┘
  *
- * UART output goes to a fifo (/tmp/sim_uart) for minicom/screen.
+ * UART output goes to /tmp/sim_uart fifo.
  */
 
 #include <stdio.h>
@@ -20,7 +20,7 @@
 #include "vis.h"
 #include "elf_sym.h"
 
-/* ── UART console (still buffered for non-debug vis mode) ── */
+/* ── UART console (for non-debug vis mode) ── */
 #define CON_LINES 32
 #define CON_WIDTH 60
 static char con[CON_LINES][CON_WIDTH + 1];
@@ -40,10 +40,7 @@ void vis_console_putc(char c)
     if (c >= 32) con[con_row][con_col++] = c;
 }
 
-void vis_dbg_log(const char *fmt, ...)
-{
-    (void)fmt; /* no longer used — debugger output goes to prompt area */
-}
+void vis_dbg_log(const char *fmt, ...) { (void)fmt; }
 
 /* ── ANSI helpers ── */
 #define ESC    "\033["
@@ -52,7 +49,6 @@ void vis_dbg_log(const char *fmt, ...)
 #define GREEN  ESC "32m"
 #define YELLOW ESC "33m"
 #define CYAN   ESC "36m"
-#define RED    ESC "31m"
 #define RESET  ESC "0m"
 
 static FILE *g_out;
@@ -139,9 +135,9 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
 {
     g_out = out;
     get_size();
-    int lw = g_half - 2;
-    int rw = g_cols - g_half - 3;
-    int rc = g_half + 3;
+    int lw = g_half - 2;          /* left pane width (source) */
+    int rw = g_cols - g_half - 3; /* right pane width (memory) */
+    int rc = g_half + 3;          /* right pane col start */
 
     uint32_t pc  = cpu->r[REG_PC];
     uint32_t psp = cpu->psp;
@@ -157,39 +153,78 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
         at(r, g_half + 1); fprintf(out, DIM "│" RESET);
     }
 
-    /* ════════════════════════════════════════════
-     * LEFT PANEL: Memory Map
-     * ════════════════════════════════════════════ */
-    int row = 1;
-    cell(row, 2, lw, fmt(BOLD "%-24s" RESET DIM " cy %-7llu ctx %d" RESET,
-         event, (unsigned long long)cpu->cycle_count, ctx_switches));
-    row++;
-
-    /* Registers */
     uint32_t sym_off;
     const char *fn = sym_lookup(pc, &sym_off);
-    cell(row, 2, lw, fmt("PC " CYAN "%08X" RESET " %s " GREEN "%s" RESET,
+
+    /* ════════════════════════════════════════════
+     * LEFT PANEL: Source Code
+     * ════════════════════════════════════════════ */
+    int cur_line;
+    const char *file = line_lookup(pc, &cur_line);
+    if (file) load_source(file);
+
+    int src_row = 1;
+    /* Header: function + event */
+    cell(src_row, 2, lw, fmt(BOLD "%s" RESET DIM "  cy %-7llu ctx %d" RESET,
+         event, (unsigned long long)cpu->cycle_count, ctx_switches));
+    src_row++;
+
+    if (src_nlines > 0 && cur_line > 0) {
+        cell(src_row, 2, lw, fmt(DIM "%s" RESET, file));
+        src_row++;
+
+        int avail = g_rows - 4;
+        int context = avail / 2;
+        int start = cur_line - context;
+        if (start < 1) start = 1;
+        int end = start + avail - 1;
+        if (end > src_nlines) end = src_nlines;
+
+        for (int l = start; l <= end; l++) {
+            const char *lt = (l <= src_nlines) ? src_lines[l - 1] : "";
+            char tr[128];
+            int maxw = lw - 6;
+            if (maxw > 120) maxw = 120;
+            strncpy(tr, lt, maxw); tr[maxw] = '\0';
+            for (char *p = tr; *p; p++) if (*p == '\t') *p = ' ';
+            if (l == cur_line)
+                cell(src_row, 2, lw, fmt(CYAN "→%3d" RESET " " BOLD "%s" RESET, l, tr));
+            else
+                cell(src_row, 2, lw, fmt(DIM " %3d" RESET " %s", l, tr));
+            src_row++;
+        }
+    } else {
+        cell(src_row, 2, lw, DIM "  (no source — compile with -g)" RESET);
+    }
+
+    /* ════════════════════════════════════════════
+     * RIGHT PANEL: Memory Map
+     * ════════════════════════════════════════════ */
+    int row = 1;
+
+    /* Registers */
+    cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s " GREEN "%s" RESET,
          pc, cpu->in_handler ? YELLOW "[H]" RESET : "[T]",
          fn ? fn : ""));
     row++;
     if (fn)
-        cell(row, 2, lw, fmt("   " GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn, sym_off));
+        cell(row, rc, rw, fmt("   " GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn, sym_off));
     row++;
-    cell(row, 2, lw, fmt("PSP " CYAN "%08X" RESET "  MSP " CYAN "%08X" RESET, psp, msp));
+    cell(row, rc, rw, fmt("PSP " CYAN "%08X" RESET "  MSP " CYAN "%08X" RESET, psp, msp));
     row += 2;
 
     /* Flash */
-    cell(row, 2, lw, "0x08000000 ┌─────────────────────────────┐"); row++;
+    cell(row, rc, rw, "0x08000000 ┌────────────────────┐"); row++;
     if (in_flash)
-        cell(row, 2, lw, fmt("  " CYAN "PC →" RESET "     │ " CYAN "%-25s" RESET " │", fn ? fn : ".text"));
+        cell(row, rc, rw, fmt("  " CYAN "PC →" RESET "   │ " CYAN "%-16s" RESET " │", fn ? fn : ".text"));
     else
-        cell(row, 2, lw, "           │ .text                       │");
+        cell(row, rc, rw, "           │ .text              │");
     row++;
-    cell(row, 2, lw, "0x08080000 └─────────────────────────────┘"); row++;
+    cell(row, rc, rw, "0x08080000 └────────────────────┘"); row++;
 
     /* SRAM */
-    cell(row, 2, lw, "0x20000000 ┌─────────────────────────────┐"); row++;
-    cell(row, 2, lw, "           │ .data + .bss                │"); row++;
+    cell(row, rc, rw, "0x20000000 ┌────────────────────┐"); row++;
+    cell(row, rc, rw, "           │ .data + .bss       │"); row++;
 
     /* Tasks from symbol table */
     uint32_t sym_nt = sym_find_by_name("num_tasks");
@@ -205,7 +240,7 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
         uint32_t stk_base = sym_stacks - RAM_BASE;
         int num_tasks = *(uint32_t *)(ram + nt_off);
         if (num_tasks > 0 && num_tasks <= 8) {
-            for (int t = 0; t < num_tasks && row < g_rows - 6; t++) {
+            for (int t = 0; t < num_tasks && row < g_rows - 5; t++) {
                 uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
                 uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
                 char tn[12] = {0};
@@ -217,56 +252,19 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
                 uint32_t stk_bot = stk_top - stk_size;
                 int active = (psp >= stk_bot && psp <= stk_top);
-                uint32_t display_sp = active ? psp : sp;
-                int used = (display_sp >= stk_bot && display_sp <= stk_top) ? (int)(stk_top - display_sp) : 0;
+                uint32_t dsp = active ? psp : sp;
+                int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
                 const char *hi = active ? GREEN : "";
                 const char *lo = active ? RESET : "";
-                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
-                cell(row, 2, lw, fmt("           │ " DIM "used ↑" RESET "                      │")); row++;
-                cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/%d used    │", display_sp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
-                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top)); row++;
+                cell(row, rc, rw, fmt("%08X ├╌ %s%s%s ╌╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
+                cell(row, rc, rw, fmt("%08X │" CYAN "SP" RESET " %s%s%s %d/%d    │", dsp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
+                cell(row, rc, rw, fmt("%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top)); row++;
             }
         }
     }
-    cell(row, 2, lw, fmt("           │ " DIM "heap" RESET "                        │")); row++;
-    cell(row, 2, lw, fmt("0x%08X │" YELLOW "◄─MSP" RESET "                       │", msp)); row++;
-    cell(row, 2, lw, "0x20020000 └─────────────────────────────┘"); row++;
-
-    /* ════════════════════════════════════════════
-     * RIGHT PANEL: Source Code
-     * ════════════════════════════════════════════ */
-    int cur_line;
-    const char *file = line_lookup(pc, &cur_line);
-    if (file) load_source(file);
-
-    int src_row = 1;
-    if (src_nlines > 0 && cur_line > 0) {
-        cell(src_row, rc, rw, fmt(DIM "%s" RESET, file));
-        src_row++;
-
-        int avail = g_rows - 3;
-        int context = avail / 2;
-        int start = cur_line - context;
-        if (start < 1) start = 1;
-        int end = start + avail - 1;
-        if (end > src_nlines) end = src_nlines;
-
-        for (int l = start; l <= end; l++) {
-            const char *lt = (l <= src_nlines) ? src_lines[l - 1] : "";
-            char tr[128];
-            int maxw = rw - 6;
-            if (maxw > 120) maxw = 120;
-            strncpy(tr, lt, maxw); tr[maxw] = '\0';
-            for (char *p = tr; *p; p++) if (*p == '\t') *p = ' ';
-            if (l == cur_line)
-                cell(src_row, rc, rw, fmt(CYAN "→%3d" RESET " " BOLD "%s" RESET, l, tr));
-            else
-                cell(src_row, rc, rw, fmt(DIM " %3d" RESET " %s", l, tr));
-            src_row++;
-        }
-    } else {
-        cell(src_row, rc, rw, DIM "  (no source — compile with -g)" RESET);
-    }
+    cell(row, rc, rw, fmt("           │ " DIM "heap" RESET "               │")); row++;
+    cell(row, rc, rw, fmt("%08X │" YELLOW "MSP" RESET "                │", msp)); row++;
+    cell(row, rc, rw, "0x20020000 └────────────────────┘"); row++;
 
     /* Cursor at bottom for prompt */
     at(g_rows, 1);
