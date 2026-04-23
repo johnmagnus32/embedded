@@ -59,7 +59,7 @@ void main(void)
 
     sched_create_task(sensor_task, "sensor", 1);
     sched_create_task(comms_task,  "comms",  1);
-    sched_create_task(idle_task,   "idle",   0);
+    sched_create_task(idle_task,   "idle",   255);
 
     uart_print("Starting scheduler\n");
 

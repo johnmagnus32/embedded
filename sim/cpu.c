@@ -136,13 +136,30 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     c->cycle_count++;
     c->irq_shadow = 0;
 
+    /* IT block: check condition for current instruction */
+    int it_skip = 0;
+    if (c->it_state) {
+        /* Top 4 bits = condition for this instruction */
+        int cond = (c->it_state >> 4) & 0xF;
+        it_skip = !cond_check(c, cond);
+        /* Advance: shift mask left, keep base cond bits but update LSB */
+        uint8_t mask = c->it_state & 0xF;
+        if ((mask & 0x7) == 0)
+            c->it_state = 0;  /* was last instruction */
+        else
+            c->it_state = ((c->it_state & 0xE0) | ((mask << 1) & 0x1F));
+    }
+
     /* Check if this is a 32-bit Thumb-2 instruction */
     if ((insn & 0xE000) == 0xE000 && (insn & 0x1800) != 0) {
         uint16_t insn2 = mem_read16(flash, ram, pc + 2);
         c->r[REG_PC] = pc + 4;
+        if (it_skip) return 0;
         uint32_t insn32 = ((uint32_t)insn << 16) | insn2;
         return exec_thumb32(c, flash, ram, insn32);
     }
+
+    if (it_skip) return 0;
 
     /* ---- 16-bit Thumb instructions ---- */
 
@@ -430,8 +447,14 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         if ((insn & 0xFFEF) == 0xB672) { c->primask = 1; return 0; } /* CPSID */
         if ((insn & 0xFFEF) == 0xB662) { c->primask = 0; c->irq_shadow = 1; return 0; } /* CPSIE — shadow: don't fire IRQ until next insn */
 
-        /* NOP, SEV, WFI, WFE, YIELD */
-        if ((insn & 0xFF00) == 0xBF00) return 0;
+        /* IT (If-Then) block */
+        if ((insn & 0xFF00) == 0xBF00) {
+            uint8_t mask = insn & 0xF;
+            if (mask == 0) return 0; /* NOP/YIELD/WFI/WFE/SEV (mask=0) */
+            uint8_t cond = (insn >> 4) & 0xF;
+            c->it_state = (cond << 4) | mask;
+            return 0;
+        }
 
         /* CBZ / CBNZ (compare and branch if zero/nonzero) */
         if ((insn & 0xF500) == 0xB100) {

@@ -21,6 +21,9 @@ struct cpu_state {
     int running;
     int in_handler;       /* 1 = executing an ISR */
     int irq_shadow;       /* 1 = suppress IRQ for one instruction after CPSIE */
+
+    /* IT block state */
+    uint8_t it_state;     /* ITSTATE: bits [7:5]=base cond, [4:0]=mask */
     uint32_t pending_irq; /* bitmask of pending interrupts */
 
     /* Breakpoints */
