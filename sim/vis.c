@@ -130,7 +130,9 @@ static void load_source(const char *file)
     src_nlines = 0;
     strncpy(src_file, file, sizeof(src_file) - 1);
 
-    /* Try: dir/src/file, dir/file, dir/../src/file, dir/../file, file */
+    /* Search for source file relative to ELF location:
+     * dir/src/file, dir/file, dir/../src/file, dir/../file,
+     * dir/../../os/ tree (for OS sources), file */
     char path[512];
     FILE *f = NULL;
     if (src_search_dir[0]) {
@@ -139,6 +141,12 @@ static void load_source(const char *file)
         if (!f) { snprintf(path, sizeof(path), "%s%s", src_search_dir, file); f = fopen(path, "r"); }
         if (!f) { snprintf(path, sizeof(path), "%s../src/%s", src_search_dir, file); f = fopen(path, "r"); }
         if (!f) { snprintf(path, sizeof(path), "%s../%s", src_search_dir, file); f = fopen(path, "r"); }
+        /* Search OS tree: os/arch/arm/, os/kernel/, os/drivers/, os/lib/ */
+        const char *os_dirs[] = {"os/arch/arm/", "os/kernel/", "os/drivers/", "os/lib/", "os/fs/", NULL};
+        for (int d = 0; !f && os_dirs[d]; d++) {
+            snprintf(path, sizeof(path), "%s../../%s%s", src_search_dir, os_dirs[d], file);
+            f = fopen(path, "r");
+        }
     }
     if (!f) f = fopen(file, "r");
     if (!f) return;
