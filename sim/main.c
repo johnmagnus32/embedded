@@ -167,6 +167,7 @@ int main(int argc, char **argv)
             sym_lookup(cpu.r[REG_PC], &off);
             cpu.step_mode = 2;
             cpu.step_line = cur_line;
+            cpu.step_max_line = cur_line;
             cpu.step_fn_addr = cpu.r[REG_PC] - off;
             cpu.bp_hit = 0;
             cpu_run(&cpu, flash, ram, 100000000);

@@ -1071,10 +1071,17 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
                     uint32_t off;
                     sym_lookup(c->r[REG_PC], &off);
                     uint32_t fn_addr = c->r[REG_PC] - off;
-                    if (fn_addr == c->step_fn_addr &&
-                        (cur_line > c->step_line ||
-                         cur_line < c->step_line - 1)) {
-                        c->bp_hit = 1; c->step_mode = 0; return;
+                    if (fn_addr == c->step_fn_addr) {
+                        if (cur_line > c->step_max_line) {
+                            /* True forward progress — stop */
+                            c->bp_hit = 1; c->step_mode = 0; return;
+                        } else if (cur_line < c->step_line - 5) {
+                            /* Jumped far backward — loop back, stop */
+                            c->bp_hit = 1; c->step_mode = 0; return;
+                        }
+                        /* Interleaved bounce — update max and keep going */
+                        if (cur_line > c->step_max_line)
+                            c->step_max_line = cur_line;
                     }
                 }
             }

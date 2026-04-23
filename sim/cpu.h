@@ -34,6 +34,7 @@ struct cpu_state {
     /* Step/next */
     int step_mode;        /* 0=run, 1=step (any line), 2=next (same function) */
     int step_line;        /* source line we're stepping from */
+    int step_max_line;    /* highest line seen during this next (for interleave skip) */
     uint32_t step_fn_addr; /* function start addr for next (stay in same function) */
 
     uint64_t cycle_count;
