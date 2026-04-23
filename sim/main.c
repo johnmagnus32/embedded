@@ -97,10 +97,9 @@ int main(int argc, char **argv)
         mem_set_uart_suppress(1);
 
     if (debug_mode) {
-        /* Create UART fifo — open O_RDWR so it doesn't block or fail without reader */
         const char *fifo = "/tmp/sim_uart";
         mkfifo(fifo, 0666);
-        signal(SIGPIPE, SIG_IGN);  /* ignore broken pipe if reader disconnects */
+        signal(SIGPIPE, SIG_IGN);
         int fd = open(fifo, O_RDWR | O_NONBLOCK);
         if (fd >= 0) mem_set_uart_fd(fd);
         mem_set_uart_suppress(1);
