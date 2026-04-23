@@ -263,11 +263,11 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 int active = (sp >= RAM_BASE && sp <= RAM_BASE + RAM_SIZE && psp >= sp && psp <= sp + stk_size);
                 const char *hi = active ? GREEN : "";
                 const char *lo = active ? RESET : "";
-                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top, hi, tn, lo)); row++;
-                cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
+                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
+                cell(row, 2, lw, fmt("           │ " DIM "used ↑" RESET "                      │")); row++;
                 cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/%d used    │", sp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
-                cell(row, 2, lw, fmt("           │ " DIM "used ↓" RESET "                      │")); row++;
-                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot)); row++;
+                cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
+                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top)); row++;
             }
         }
     }
