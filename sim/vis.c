@@ -1,14 +1,13 @@
 /*
- * vis.c — 2x2 grid visualizer for the ARM Cortex-M4 emulator
+ * vis.c — 2-panel debugger visualizer
  *
  * ┌──────────────────┬──────────────────┐
- * │  Memory Map      │  UART Console    │
- * │  (regs, flash,   │                  │
+ * │  Memory Map      │  Source Code     │
+ * │  (regs, flash,   │  (with → arrow)  │
  * │   sram, tasks)   │                  │
- * ├──────────────────┼──────────────────┤
- * │  Source Code     │  Debugger Log    │
- * │  (→ arrow)       │  (commands/out)  │
  * └──────────────────┴──────────────────┘
+ *
+ * UART output goes to a fifo (/tmp/sim_uart) for minicom/screen.
  */
 
 #include <stdio.h>
@@ -21,7 +20,7 @@
 #include "vis.h"
 #include "elf_sym.h"
 
-/* ── UART console ring buffer ── */
+/* ── UART console (still buffered for non-debug vis mode) ── */
 #define CON_LINES 32
 #define CON_WIDTH 60
 static char con[CON_LINES][CON_WIDTH + 1];
@@ -41,25 +40,13 @@ void vis_console_putc(char c)
     if (c >= 32) con[con_row][con_col++] = c;
 }
 
-/* ── Debugger log ring buffer ── */
-#define DBG_LINES 32
-#define DBG_WIDTH 60
-static char dbg[DBG_LINES][DBG_WIDTH + 1];
-static int dbg_row = 0, dbg_count = 0;
-
 void vis_dbg_log(const char *fmt, ...)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    dbg_row = (dbg_row + 1) % DBG_LINES;
-    dbg_count++;
-    vsnprintf(dbg[dbg_row], DBG_WIDTH, fmt, ap);
-    va_end(ap);
+    (void)fmt; /* no longer used — debugger output goes to prompt area */
 }
 
 /* ── ANSI helpers ── */
 #define ESC    "\033["
-#define CLEAR  ESC "2J" ESC "H"
 #define BOLD   ESC "1m"
 #define DIM    ESC "2m"
 #define GREEN  ESC "32m"
@@ -69,7 +56,7 @@ void vis_dbg_log(const char *fmt, ...)
 #define RESET  ESC "0m"
 
 static FILE *g_out;
-static int g_cols, g_rows, g_half_c, g_half_r;
+static int g_cols, g_rows, g_half;
 
 static void at(int r, int c) { fprintf(g_out, ESC "%d;%dH", r, c); }
 
@@ -103,21 +90,18 @@ static void get_size(void)
     } else {
         g_cols = 80; g_rows = 40;
     }
-    g_half_c = g_cols / 2;
-    g_half_r = g_rows / 2;
+    g_half = g_cols / 2;
 }
 
 /* ── Source file cache ── */
 static char *src_lines[4096];
 static int src_nlines;
 static char src_file[256];
-
 static char src_search_dir[256];
 
 void vis_set_source_dir(const char *elf_path)
 {
     strncpy(src_search_dir, elf_path, sizeof(src_search_dir) - 1);
-    /* Strip filename to get directory */
     char *slash = strrchr(src_search_dir, '/');
     if (slash) *(slash + 1) = '\0';
     else src_search_dir[0] = '\0';
@@ -130,19 +114,16 @@ static void load_source(const char *file)
     src_nlines = 0;
     strncpy(src_file, file, sizeof(src_file) - 1);
 
-    /* Search for source file using DWARF path (may be relative to build dir) */
     char path[512];
     FILE *f = NULL;
     if (src_search_dir[0]) {
-        /* Try relative to ELF directory (DWARF paths are relative to compilation dir) */
         snprintf(path, sizeof(path), "%s%s", src_search_dir, file);
         f = fopen(path, "r");
-        /* Try relative to ELF's parent (build/../<path>) */
         if (!f) { snprintf(path, sizeof(path), "%s../%s", src_search_dir, file); f = fopen(path, "r"); }
     }
-    /* Try as-is (absolute or cwd-relative) */
     if (!f) f = fopen(file, "r");
     if (!f) return;
+
     char buf[512];
     while (fgets(buf, sizeof(buf), f) && src_nlines < 4096) {
         int len = strlen(buf);
@@ -153,24 +134,14 @@ static void load_source(const char *file)
     fclose(f);
 }
 
-static const char *con_line(int i)
-{
-    return con[(con_row - i + CON_LINES) % CON_LINES];
-}
-
-static const char *dbg_line(int i)
-{
-    return dbg[(dbg_row - i + DBG_LINES) % DBG_LINES];
-}
-
 void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
               const char *event)
 {
     g_out = out;
     get_size();
-    int lw = g_half_c - 2;          /* left pane width */
-    int rw = g_cols - g_half_c - 3; /* right pane width */
-    int rc = g_half_c + 3;          /* right pane col start */
+    int lw = g_half - 2;
+    int rw = g_cols - g_half - 3;
+    int rc = g_half + 3;
 
     uint32_t pc  = cpu->r[REG_PC];
     uint32_t psp = cpu->psp;
@@ -179,22 +150,15 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
 
     if (strstr(event, "PendSV")) ctx_switches++;
 
-    fprintf(out, ESC "2J" ESC "H" ESC "?25l");  /* clear + home + hide cursor */
+    fprintf(out, ESC "2J" ESC "H" ESC "?25l");
 
-    /* ── Draw grid lines ── */
-    /* Vertical divider full height */
+    /* Vertical divider */
     for (int r = 1; r <= g_rows - 1; r++) {
-        at(r, g_half_c + 1); fprintf(out, DIM "│" RESET);
-    }
-    /* Horizontal divider */
-    for (int c = 1; c <= g_cols; c++) {
-        at(g_half_r, c);
-        if (c == g_half_c + 1) fprintf(out, DIM "┼" RESET);
-        else fprintf(out, DIM "─" RESET);
+        at(r, g_half + 1); fprintf(out, DIM "│" RESET);
     }
 
     /* ════════════════════════════════════════════
-     * TOP-LEFT: Memory Map + Registers
+     * LEFT PANEL: Memory Map
      * ════════════════════════════════════════════ */
     int row = 1;
     cell(row, 2, lw, fmt(BOLD "%-24s" RESET DIM " cy %-7llu ctx %d" RESET,
@@ -208,8 +172,11 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
          pc, cpu->in_handler ? YELLOW "[H]" RESET : "[T]",
          fn ? fn : ""));
     row++;
-    cell(row, 2, lw, fmt("PSP " CYAN "%08X" RESET "  MSP " CYAN "%08X" RESET, psp, msp));
+    if (fn)
+        cell(row, 2, lw, fmt("   " GREEN "%s" RESET "+" CYAN "0x%X" RESET, fn, sym_off));
     row++;
+    cell(row, 2, lw, fmt("PSP " CYAN "%08X" RESET "  MSP " CYAN "%08X" RESET, psp, msp));
+    row += 2;
 
     /* Flash */
     cell(row, 2, lw, "0x08000000 ┌─────────────────────────────┐"); row++;
@@ -220,36 +187,25 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     row++;
     cell(row, 2, lw, "0x08080000 └─────────────────────────────┘"); row++;
 
-    /* SRAM — full-width memory map with stack diagrams */
+    /* SRAM */
     cell(row, 2, lw, "0x20000000 ┌─────────────────────────────┐"); row++;
     cell(row, 2, lw, "           │ .data + .bss                │"); row++;
 
-    /* Tasks — find layout from symbol table */
+    /* Tasks from symbol table */
     uint32_t sym_nt = sym_find_by_name("num_tasks");
     uint32_t sym_tasks = sym_find_by_name("tasks");
     uint32_t sym_stacks = sym_find_by_name("task_stacks");
     if (!sym_stacks) sym_stacks = sym_find_by_name("stacks");
-    int tcb_size = 0, stk_size = 0;
     if (sym_nt && sym_tasks && sym_stacks) {
-        /* Detect struct size: if task_stacks exists (OS), tcb=32, stack=512
-         * otherwise (test_rtos), tcb=8, stack=256 */
-        stk_size = (sym_tasks - sym_stacks) / 8;  /* rough: total stack / max_tasks */
-        if (stk_size < 128) stk_size = 256;
-        /* tcb size from gap between tasks entries */
+        int tcb_size, stk_size;
+        if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
+        else { tcb_size = 8; stk_size = 256; }
         uint32_t nt_off = sym_nt - RAM_BASE;
         uint32_t tasks_off = sym_tasks - RAM_BASE;
+        uint32_t stk_base = sym_stacks - RAM_BASE;
         int num_tasks = *(uint32_t *)(ram + nt_off);
         if (num_tasks > 0 && num_tasks <= 8) {
-            /* Detect tcb size: check if 8-byte or 32-byte gives valid name ptrs */
-            uint32_t name8 = *(uint32_t *)(ram + tasks_off + 4);
-            uint32_t name32 = *(uint32_t *)(ram + tasks_off + 4);
-            tcb_size = (sym_stacks > sym_tasks) ? 8 : 32;
-            /* Better: if task_stacks symbol exists separately, it's the OS (32-byte tcb) */
-            if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
-            else { tcb_size = 8; stk_size = 256; }
-
-            uint32_t stk_base = sym_stacks - RAM_BASE;
-            for (int t = 0; t < num_tasks && row < g_half_r - 5; t++) {
+            for (int t = 0; t < num_tasks && row < g_rows - 6; t++) {
                 uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
                 uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
                 char tn[12] = {0};
@@ -261,7 +217,6 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
                 uint32_t stk_bot = stk_top - stk_size;
                 int active = (psp >= stk_bot && psp <= stk_top);
-                /* For the running task, use live PSP instead of stale saved SP */
                 uint32_t display_sp = active ? psp : sp;
                 int used = (display_sp >= stk_bot && display_sp <= stk_top) ? (int)(stk_top - display_sp) : 0;
                 const char *hi = active ? GREEN : "";
@@ -269,7 +224,6 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
                 cell(row, 2, lw, fmt("           │ " DIM "used ↑" RESET "                      │")); row++;
                 cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/%d used    │", display_sp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
-                cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
                 cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top)); row++;
             }
         }
@@ -279,62 +233,43 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     cell(row, 2, lw, "0x20020000 └─────────────────────────────┘"); row++;
 
     /* ════════════════════════════════════════════
-     * TOP-RIGHT: UART Console
+     * RIGHT PANEL: Source Code
      * ════════════════════════════════════════════ */
-    cell(1, rc, rw, BOLD "UART Console" RESET);
-    int con_avail = g_half_r - 3;
-    int con_total = (con_count < CON_LINES) ? con_count + 1 : CON_LINES;
-    int con_show = (con_total < con_avail) ? con_total : con_avail;
-    for (int i = 0; i < con_show; i++)
-        cell(2 + i, rc, rw, fmt(DIM "%s" RESET, con_line(con_show - 1 - i)));
-
-    /* ════════════════════════════════════════════
-     * BOTTOM-LEFT: Source Code
-     * ════════════════════════════════════════════ */
-    int src_top = g_half_r + 1;
-    int src_avail = g_rows - g_half_r - 2;
     int cur_line;
     const char *file = line_lookup(pc, &cur_line);
     if (file) load_source(file);
 
+    int src_row = 1;
     if (src_nlines > 0 && cur_line > 0) {
-        cell(src_top, 2, lw, fmt(DIM "%s" RESET, file));
-        int context = src_avail / 2;
+        cell(src_row, rc, rw, fmt(DIM "%s" RESET, file));
+        src_row++;
+
+        int avail = g_rows - 3;
+        int context = avail / 2;
         int start = cur_line - context;
         if (start < 1) start = 1;
-        int end = start + src_avail - 2;
+        int end = start + avail - 1;
         if (end > src_nlines) end = src_nlines;
 
         for (int l = start; l <= end; l++) {
-            int r = src_top + 1 + (l - start);
-            if (r >= g_rows) break;
             const char *lt = (l <= src_nlines) ? src_lines[l - 1] : "";
             char tr[128];
-            int maxw = lw - 7;
+            int maxw = rw - 6;
             if (maxw > 120) maxw = 120;
             strncpy(tr, lt, maxw); tr[maxw] = '\0';
             for (char *p = tr; *p; p++) if (*p == '\t') *p = ' ';
             if (l == cur_line)
-                cell(r, 2, lw, fmt(CYAN "→%3d" RESET " " BOLD "%s" RESET, l, tr));
+                cell(src_row, rc, rw, fmt(CYAN "→%3d" RESET " " BOLD "%s" RESET, l, tr));
             else
-                cell(r, 2, lw, fmt(DIM " %3d" RESET " %s", l, tr));
+                cell(src_row, rc, rw, fmt(DIM " %3d" RESET " %s", l, tr));
+            src_row++;
         }
     } else {
-        cell(src_top, 2, lw, DIM "  (no source — compile with -g)" RESET);
+        cell(src_row, rc, rw, DIM "  (no source — compile with -g)" RESET);
     }
 
-    /* ════════════════════════════════════════════
-     * BOTTOM-RIGHT: Debugger Log
-     * ════════════════════════════════════════════ */
-    cell(src_top, rc, rw, BOLD "Debugger" RESET);
-    int dbg_avail = g_rows - g_half_r - 2;
-    int dbg_total = (dbg_count < DBG_LINES) ? dbg_count + 1 : DBG_LINES;
-    int dbg_show = (dbg_total < dbg_avail) ? dbg_total : dbg_avail;
-    for (int i = 0; i < dbg_show; i++)
-        cell(src_top + 1 + i, rc, rw, fmt(DIM "%s" RESET, dbg_line(dbg_show - 1 - i)));
-
-    /* Position cursor at bottom for prompt */
+    /* Cursor at bottom for prompt */
     at(g_rows, 1);
-    fprintf(out, ESC "?25h");  /* show cursor */
+    fprintf(out, ESC "?25h");
     fflush(out);
 }

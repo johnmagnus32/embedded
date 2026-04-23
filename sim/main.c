@@ -92,8 +92,23 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (vis_mode || debug_mode)
+    if (vis_mode && !debug_mode)
         mem_set_uart_suppress(1);
+
+    if (debug_mode) {
+        /* Create UART fifo for external terminal */
+        const char *fifo = "/tmp/sim_uart";
+        mkfifo(fifo, 0666);  /* ok if already exists */
+        fprintf(stderr, "UART → %s (in another terminal: cat %s)\n", fifo, fifo);
+        fprintf(stderr, "Waiting for reader...\n");
+        fflush(stderr);
+        int fd = open(fifo, O_WRONLY);
+        if (fd >= 0) {
+            mem_set_uart_fd(fd);
+            mem_set_uart_suppress(1);
+            fprintf(stderr, "Connected.\n");
+        }
+    }
 
     if (vis_mode && !debug_mode) {
         /* Event-driven vis mode (old behavior) */
