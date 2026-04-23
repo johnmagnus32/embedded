@@ -223,30 +223,52 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     cell(row, 2, lw, "0x20000000 ┌─────────────────────────────┐"); row++;
     cell(row, 2, lw, "           │ .data + .bss                │"); row++;
 
-    /* Tasks — show stacks inside the SRAM box */
-    int num_tasks = *(uint32_t *)(ram);
-    if (num_tasks > 0 && num_tasks <= 8) {
-        for (int t = 0; t < num_tasks && row < g_half_r - 5; t++) {
-            uint32_t sp = *(uint32_t *)(ram + 0x308 + t * 8);
-            uint32_t name_ptr = *(uint32_t *)(ram + 0x308 + t * 8 + 4);
-            char tn[12] = {0};
-            if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
-                const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
-                for (int j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tn[j] = s[j];
+    /* Tasks — find layout from symbol table */
+    uint32_t sym_nt = sym_find_by_name("num_tasks");
+    uint32_t sym_tasks = sym_find_by_name("tasks");
+    uint32_t sym_stacks = sym_find_by_name("task_stacks");
+    if (!sym_stacks) sym_stacks = sym_find_by_name("stacks");
+    int tcb_size = 0, stk_size = 0;
+    if (sym_nt && sym_tasks && sym_stacks) {
+        /* Detect struct size: if task_stacks exists (OS), tcb=32, stack=512
+         * otherwise (test_rtos), tcb=8, stack=256 */
+        stk_size = (sym_tasks - sym_stacks) / 8;  /* rough: total stack / max_tasks */
+        if (stk_size < 128) stk_size = 256;
+        /* tcb size from gap between tasks entries */
+        uint32_t nt_off = sym_nt - RAM_BASE;
+        uint32_t tasks_off = sym_tasks - RAM_BASE;
+        int num_tasks = *(uint32_t *)(ram + nt_off);
+        if (num_tasks > 0 && num_tasks <= 8) {
+            /* Detect tcb size: check if 8-byte or 32-byte gives valid name ptrs */
+            uint32_t name8 = *(uint32_t *)(ram + tasks_off + 4);
+            uint32_t name32 = *(uint32_t *)(ram + tasks_off + 4);
+            tcb_size = (sym_stacks > sym_tasks) ? 8 : 32;
+            /* Better: if task_stacks symbol exists separately, it's the OS (32-byte tcb) */
+            if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
+            else { tcb_size = 8; stk_size = 256; }
+
+            uint32_t stk_base = sym_stacks - RAM_BASE;
+            for (int t = 0; t < num_tasks && row < g_half_r - 5; t++) {
+                uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
+                uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
+                char tn[12] = {0};
+                if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
+                    const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
+                    for (int j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tn[j] = s[j];
+                }
+                if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
+                uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
+                uint32_t stk_bot = stk_top - stk_size;
+                int used = (sp >= stk_bot && sp <= stk_top) ? (int)(stk_top - sp) : 0;
+                int active = (sp >= RAM_BASE && sp <= RAM_BASE + RAM_SIZE && psp >= sp && psp <= sp + stk_size);
+                const char *hi = active ? GREEN : "";
+                const char *lo = active ? RESET : "";
+                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top, hi, tn, lo)); row++;
+                cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
+                cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/%d used    │", sp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
+                cell(row, 2, lw, fmt("           │ " DIM "used ↓" RESET "                      │")); row++;
+                cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot)); row++;
             }
-            if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
-            uint32_t stk_top = RAM_BASE + 0x08 + (t + 1) * 256;
-            uint32_t stk_bot = stk_top - 256;
-            int used = (sp >= stk_bot && sp <= stk_top) ? (int)(stk_top - sp) : 0;
-            int active = (sp >= RAM_BASE && sp <= RAM_BASE + 0x2000 && psp >= sp && psp <= sp + 256);
-            const char *hi = active ? GREEN : "";
-            const char *lo = active ? RESET : "";
-            /* Stack grows DOWN: high addr (top) is shown first, SP below, bottom last */
-            cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top, hi, tn, lo)); row++;
-            cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
-            cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/256 used    │", sp, hi, active ? "▶" : " ", lo, used)); row++;
-            cell(row, 2, lw, fmt("           │ " DIM "used ↓" RESET "                      │")); row++;
-            cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot)); row++;
         }
     }
     cell(row, 2, lw, fmt("           │ " DIM "heap" RESET "                        │")); row++;

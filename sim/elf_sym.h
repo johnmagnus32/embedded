@@ -11,6 +11,9 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram);
  * Returns NULL if no symbol found. */
 const char *sym_lookup(uint32_t pc, uint32_t *offset);
 
+/* Find a symbol's address by name. Returns 0 if not found. */
+uint32_t sym_find_by_name(const char *name);
+
 /* Look up a PC address → source file and line number.
  * Returns NULL if no debug info. */
 const char *line_lookup(uint32_t pc, int *line_out);

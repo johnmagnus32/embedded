@@ -71,6 +71,13 @@ const char *sym_lookup(uint32_t pc, uint32_t *offset)
     return syms[best].name;
 }
 
+uint32_t sym_find_by_name(const char *name)
+{
+    for (int i = 0; i < nsyms; i++)
+        if (strcmp(syms[i].name, name) == 0) return syms[i].addr;
+    return 0;
+}
+
 /* ── ELF loader ── */
 int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
 {
@@ -126,11 +133,12 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
         fseek(f, strtab_sh->sh_offset, SEEK_SET);
         fread(strtab, strtab_sh->sh_size, 1, f);
 
-        /* Extract FUNC symbols */
+        /* Extract FUNC and OBJECT symbols */
         syms = malloc(n * sizeof(struct sym));
         nsyms = 0;
         for (int j = 0; j < n; j++) {
-            if (ELF32_ST_TYPE(raw[j].st_info) != STT_FUNC) continue;
+            int type = ELF32_ST_TYPE(raw[j].st_info);
+            if (type != STT_FUNC && type != 1 /* STT_OBJECT */) continue;
             if (raw[j].st_value == 0) continue;
             syms[nsyms].addr = raw[j].st_value & ~1u; /* strip thumb bit */
             syms[nsyms].size = raw[j].st_size;
