@@ -130,24 +130,17 @@ static void load_source(const char *file)
     src_nlines = 0;
     strncpy(src_file, file, sizeof(src_file) - 1);
 
-    /* Search for source file relative to ELF location:
-     * dir/src/file, dir/file, dir/../src/file, dir/../file,
-     * dir/../../os/ tree (for OS sources), file */
+    /* Search for source file using DWARF path (may be relative to build dir) */
     char path[512];
     FILE *f = NULL;
     if (src_search_dir[0]) {
-        snprintf(path, sizeof(path), "%ssrc/%s", src_search_dir, file);
+        /* Try relative to ELF directory (DWARF paths are relative to compilation dir) */
+        snprintf(path, sizeof(path), "%s%s", src_search_dir, file);
         f = fopen(path, "r");
-        if (!f) { snprintf(path, sizeof(path), "%s%s", src_search_dir, file); f = fopen(path, "r"); }
-        if (!f) { snprintf(path, sizeof(path), "%s../src/%s", src_search_dir, file); f = fopen(path, "r"); }
+        /* Try relative to ELF's parent (build/../<path>) */
         if (!f) { snprintf(path, sizeof(path), "%s../%s", src_search_dir, file); f = fopen(path, "r"); }
-        /* Search OS tree: os/arch/arm/, os/kernel/, os/drivers/, os/lib/ */
-        const char *os_dirs[] = {"os/arch/arm/", "os/kernel/", "os/drivers/", "os/lib/", "os/fs/", NULL};
-        for (int d = 0; !f && os_dirs[d]; d++) {
-            snprintf(path, sizeof(path), "%s../../%s%s", src_search_dir, os_dirs[d], file);
-            f = fopen(path, "r");
-        }
     }
+    /* Try as-is (absolute or cwd-relative) */
     if (!f) f = fopen(file, "r");
     if (!f) return;
     char buf[512];

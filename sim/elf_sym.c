@@ -235,21 +235,33 @@ static void parse_debug_line(const uint8_t *data, uint32_t size)
         uint8_t opcode_base = *data++;
         /* skip standard opcode lengths */
         data += opcode_base - 1;
-        /* include directories — skip (null-terminated strings, then empty string) */
-        while (*data) { while (*data) data++; data++; }
+        /* include directories */
+        char *dirs[64];
+        int ndirs = 0;
+        while (*data) {
+            if (ndirs < 64) dirs[ndirs++] = strdup((const char *)data);
+            while (*data) data++;
+            data++;
+        }
         data++; /* skip final null */
-        /* file names */
+        /* file names — prepend directory from dir index */
         int file_start = nline_files;
         while (*data) {
             const char *name = (const char *)data;
             while (*data) data++; data++; /* skip name */
-            read_uleb(&data); /* dir index */
+            uint32_t dir_idx = read_uleb(&data); /* dir index (1-based, 0=comp dir) */
             read_uleb(&data); /* time */
             read_uleb(&data); /* size */
+            char fullpath[512];
+            if (dir_idx > 0 && dir_idx <= (uint32_t)ndirs)
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", dirs[dir_idx - 1], name);
+            else
+                snprintf(fullpath, sizeof(fullpath), "%s", name);
             line_files = realloc(line_files, (nline_files + 1) * sizeof(char *));
-            line_files[nline_files++] = strdup(name);
+            line_files[nline_files++] = strdup(fullpath);
         }
         data++; /* skip final null */
+        for (int d = 0; d < ndirs; d++) free(dirs[d]);
 
         /* Run the line number state machine */
         uint32_t addr = 0;
