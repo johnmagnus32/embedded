@@ -140,9 +140,11 @@ int main(int argc, char **argv)
 
     char line_buf[256];
     while (1) {
+        dbg_interrupted = 0;
         fprintf(stderr, PROMPT);
         fflush(stderr);
         if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
+        if (dbg_interrupted) break;  /* Ctrl+C at prompt = quit */
 
         line_buf[strcspn(line_buf, "\n")] = '\0';
         char *cmd = line_buf;
