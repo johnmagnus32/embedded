@@ -32,7 +32,17 @@ extern void mem_set_uart_fd(int fd);
 extern void mem_set_uart_suppress(int s);
 
 volatile sig_atomic_t dbg_interrupted = 0;
-static void sigint_handler(int sig) { (void)sig; dbg_interrupted = 1; }
+static void sigint_handler(int sig) {
+    (void)sig;
+    if (dbg_interrupted) {
+        /* Second Ctrl+C — force exit */
+        signal(SIGINT, SIG_DFL);
+        raise(SIGINT);
+    }
+    dbg_interrupted = 1;
+    /* Write a newline so fgets returns */
+    write(STDIN_FILENO, "\n", 1);
+}
 
 #define MAX_BP 32
 #define MAX_CYCLES_RUN   100000000
@@ -56,14 +66,13 @@ static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <firmware.elf|.bin> [--debug|--vis]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <firmware.elf|.bin> [--debug]\n", argv[0]);
         return 1;
     }
 
-    int debug_mode = 0, vis_mode = 0;
+    int debug_mode = 0;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--debug") == 0) debug_mode = 1;
-        else if (strcmp(argv[i], "--vis") == 0) vis_mode = 1;
     }
 
     uint8_t *flash = calloc(1, FLASH_SIZE);
@@ -87,7 +96,7 @@ int main(int argc, char **argv)
     cpu_init(&cpu);
     cpu_reset(&cpu, flash, ram);
 
-    if (!debug_mode && !vis_mode) {
+    if (!debug_mode) {
         /* Plain run mode */
         printf("UART output → stdout\n");
         printf("Starting emulation at PC=0x%08X, SP=0x%08X\n", cpu.r[REG_PC], cpu.r[REG_SP]);
@@ -98,30 +107,14 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (vis_mode && !debug_mode)
-        mem_set_uart_suppress(1);
-
-    if (debug_mode) {
-        const char *fifo = "/tmp/sim_uart";
-        mkfifo(fifo, 0666);
-        signal(SIGPIPE, SIG_IGN);
-        int fd = open(fifo, O_RDWR | O_NONBLOCK);
-        if (fd >= 0) mem_set_uart_fd(fd);
-        mem_set_uart_suppress(1);
-        fprintf(stderr, "UART → %s (in another terminal: cat %s)\n", fifo, fifo);
-    }
-
-    if (vis_mode && !debug_mode) {
-        /* Event-driven vis mode (old behavior) */
-        extern void cpu_set_vis(FILE *, uint8_t *, uint8_t *);
-        cpu_set_vis(stderr, flash, ram);
-        vis_dump(stderr, &cpu, flash, ram, "Boot — reset vector");
-        fprintf(stderr, "  [Press Enter to start] ");
-        getchar();
-        cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
-        free(flash); free(ram);
-        return 0;
-    }
+    /* Debug mode — UART to fifo */
+    const char *fifo = "/tmp/sim_uart";
+    mkfifo(fifo, 0666);
+    signal(SIGPIPE, SIG_IGN);
+    int fd = open(fifo, O_RDWR | O_NONBLOCK);
+    if (fd >= 0) mem_set_uart_fd(fd);
+    mem_set_uart_suppress(1);
+    fprintf(stderr, "UART → %s (in another terminal: cat %s)\n", fifo, fifo);
 
     /* ── Interactive debugger ── */
     signal(SIGINT, sigint_handler);  /* Ctrl+C interrupts continue, doesn't exit */
