@@ -178,9 +178,7 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
 
     if (strstr(event, "PendSV")) ctx_switches++;
 
-    fprintf(out, ESC "H" ESC "?25l");  /* cursor home + hide cursor */
-    static int first = 1;
-    if (first) { fprintf(out, ESC "2J"); first = 0; }
+    fprintf(out, ESC "2J" ESC "H" ESC "?25l");  /* clear + home + hide cursor */
 
     /* ── Draw grid lines ── */
     /* Vertical divider full height */
