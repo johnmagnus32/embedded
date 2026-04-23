@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include "cpu.h"
 #include "vis.h"
 #include "elf_sym.h"
@@ -96,18 +97,14 @@ int main(int argc, char **argv)
         mem_set_uart_suppress(1);
 
     if (debug_mode) {
-        /* Create UART fifo for external terminal */
+        /* Create UART fifo — open O_RDWR so it doesn't block or fail without reader */
         const char *fifo = "/tmp/sim_uart";
-        mkfifo(fifo, 0666);  /* ok if already exists */
+        mkfifo(fifo, 0666);
+        signal(SIGPIPE, SIG_IGN);  /* ignore broken pipe if reader disconnects */
+        int fd = open(fifo, O_RDWR | O_NONBLOCK);
+        if (fd >= 0) mem_set_uart_fd(fd);
+        mem_set_uart_suppress(1);
         fprintf(stderr, "UART → %s (in another terminal: cat %s)\n", fifo, fifo);
-        fprintf(stderr, "Waiting for reader...\n");
-        fflush(stderr);
-        int fd = open(fifo, O_WRONLY);
-        if (fd >= 0) {
-            mem_set_uart_fd(fd);
-            mem_set_uart_suppress(1);
-            fprintf(stderr, "Connected.\n");
-        }
     }
 
     if (vis_mode && !debug_mode) {
