@@ -108,7 +108,17 @@ int main(int argc, char **argv)
     }
 
     /* ── Interactive debugger ── */
-    vis_dbg_log("Stopped at boot. Type 'help'.");
+    /* Auto-run to main() so we start somewhere useful */
+    uint32_t main_addr = resolve_breakpoint("main");
+    if (main_addr) {
+        cpu.breakpoints[0] = main_addr;
+        cpu.nbp = 1;
+        cpu_run(&cpu, flash, ram, 100000000);
+        cpu.nbp = 0;  /* remove temporary breakpoint */
+        vis_dbg_log("Stopped at main(). Type 'help'.");
+    } else {
+        vis_dbg_log("Stopped at boot. Type 'help'.");
+    }
     show_state(&cpu, flash, ram);
 
     char line_buf[256];

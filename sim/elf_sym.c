@@ -262,7 +262,7 @@ static void parse_debug_line(const uint8_t *data, uint32_t size)
                 const uint8_t *ext_end = data + ext_len;
                 uint8_t ext_op = *data++;
                 if (ext_op == 1) { /* DW_LNE_end_sequence */
-                    add_line(addr, file - 1 + file_start, line);
+                    /* Don't add — end markers aren't real source locations */
                     addr = 0; file = 1; line = 1;
                 } else if (ext_op == 2) { /* DW_LNE_set_address */
                     addr = *(uint32_t *)data;
