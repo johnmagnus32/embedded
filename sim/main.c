@@ -32,6 +32,8 @@ extern void mem_set_uart_fd(int fd);
 extern void mem_set_uart_suppress(int s);
 
 #define MAX_BP 32
+#define MAX_CYCLES_RUN   100000000
+#define MAX_CYCLES_DEBUG  10000000
 #define PROMPT "\033[33m(dbg) \033[0m"
 
 static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
@@ -87,7 +89,7 @@ int main(int argc, char **argv)
         printf("UART output → stdout\n");
         printf("Starting emulation at PC=0x%08X, SP=0x%08X\n", cpu.r[REG_PC], cpu.r[REG_SP]);
         printf("--- UART output ---\n");
-        cpu_run(&cpu, flash, ram, 100000000);
+        cpu_run(&cpu, flash, ram, MAX_CYCLES_RUN);
         printf("\n--- Emulation ended after %llu cycles ---\n", (unsigned long long)cpu.cycle_count);
         free(flash); free(ram);
         return 0;
@@ -113,7 +115,7 @@ int main(int argc, char **argv)
         vis_dump(stderr, &cpu, flash, ram, "Boot — reset vector");
         fprintf(stderr, "  [Press Enter to start] ");
         getchar();
-        cpu_run(&cpu, flash, ram, 100000000);
+        cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
         free(flash); free(ram);
         return 0;
     }
@@ -124,7 +126,7 @@ int main(int argc, char **argv)
     if (main_addr) {
         cpu.breakpoints[0] = main_addr;
         cpu.nbp = 1;
-        cpu_run(&cpu, flash, ram, 100000000);
+        cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
         cpu.nbp = 0;  /* remove temporary breakpoint */
         vis_dbg_log("Stopped at main(). Type 'help'.");
     } else {
@@ -150,7 +152,7 @@ int main(int argc, char **argv)
             cpu.bp_hit = 0;
             cpu.step_mode = 0;
             vis_dbg_log("Continuing...");
-            cpu_run(&cpu, flash, ram, 100000000);
+            cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
             if (cpu.bp_hit) {
                 uint32_t off;
                 const char *fn = sym_lookup(cpu.r[REG_PC], &off);
@@ -167,7 +169,7 @@ int main(int argc, char **argv)
             cpu.step_mode = 1;
             cpu.step_line = cur_line;
             cpu.bp_hit = 0;
-            cpu_run(&cpu, flash, ram, 100000000);
+            cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
             cpu.step_mode = 0;
             show_state(&cpu, flash, ram);
 
@@ -181,7 +183,7 @@ int main(int argc, char **argv)
             cpu.step_max_line = cur_line;
             cpu.step_fn_addr = cpu.r[REG_PC] - off;
             cpu.bp_hit = 0;
-            cpu_run(&cpu, flash, ram, 100000000);
+            cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
             cpu.step_mode = 0;
             show_state(&cpu, flash, ram);
 
