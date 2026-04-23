@@ -78,6 +78,33 @@ static char *fmt(const char *f, ...)
     return buf;
 }
 
+/* Render a box content row: "0x%08X │%-*s│" with ANSI-aware padding */
+#define BW 21
+static char *box_row(uint32_t addr, int has_addr, const char *content)
+{
+    static char buf[256];
+    char prefix[16];
+    if (has_addr)
+        snprintf(prefix, sizeof(prefix), "0x%08X ", addr);
+    else
+        snprintf(prefix, sizeof(prefix), "           ");
+
+    /* Count visible chars in content */
+    int vis = 0;
+    for (const char *p = content; *p; p++) {
+        if (*p == '\033') { while (*p && *p != 'm') p++; }
+        else vis++;
+    }
+    int pad = BW - vis;
+    if (pad < 0) pad = 0;
+
+    char padding[64] = {0};
+    for (int i = 0; i < pad && i < 63; i++) padding[i] = ' ';
+
+    snprintf(buf, sizeof(buf), "%s│%s%s│", prefix, content, padding);
+    return buf;
+}
+
 static void get_size(void)
 {
     struct winsize w;
@@ -201,9 +228,14 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
      * RIGHT PANEL: Memory Map
      * ════════════════════════════════════════════ */
     int row = 1;
-    /* All box lines are exactly 22 chars wide inside: "│" + 20 chars + "│" */
-    #define BOX "─────────────────────"
-    #define DOT "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+    #define BW 21  /* box inner width */
+
+    /* Helper: render "addr │content padded to BW│" */
+    #define BOX_TOP(addr)       cell(row, rc, rw, fmt("0x%08X ┌" "─────────────────────" "┐", addr)); row++
+    #define BOX_BOT(addr)       cell(row, rc, rw, fmt("0x%08X └" "─────────────────────" "┘", addr)); row++
+    #define BOX_SEP(addr)       cell(row, rc, rw, fmt("0x%08X ├" "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌" "┤", addr)); row++
+    /* For box rows with content: we print addr+│, then content, then pad+│ */
+    /* box_content: prints a row with address, opening │, content (with ANSI), closing │ */
 
     /* Registers */
     cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s",
@@ -215,17 +247,17 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
     row += 2;
 
     /* Flash */
-    cell(row, rc, rw, "0x08000000 ┌" BOX "┐"); row++;
-    if (in_flash)
-        cell(row, rc, rw, fmt(CYAN "  PC →" RESET "     │ %-19s│", fn ? fn : ".text"));
-    else
-        cell(row, rc, rw, "           │ .text               │");
-    row++;
-    cell(row, rc, rw, "0x08080000 └" BOX "┘"); row++;
+    BOX_TOP(FLASH_BASE);
+    if (in_flash) {
+        cell(row, rc, rw, box_row(0, 0, fmt(CYAN " PC →" RESET " %-13s", fn ? fn : ".text"))); row++;
+    } else {
+        cell(row, rc, rw, box_row(0, 0, " .text")); row++;
+    }
+    BOX_BOT(FLASH_BASE + FLASH_SIZE);
 
     /* SRAM */
-    cell(row, rc, rw, "0x20000000 ┌" BOX "┐"); row++;
-    cell(row, rc, rw, "           │ .data + .bss        │"); row++;
+    BOX_TOP(RAM_BASE);
+    cell(row, rc, rw, box_row(0, 0, " .data + .bss")); row++;
 
     /* Tasks */
     uint32_t sym_nt = sym_find_by_name("num_tasks");
@@ -255,17 +287,17 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 int active = (psp >= stk_bot && psp <= stk_top);
                 uint32_t dsp = active ? psp : sp;
                 int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
-                const char *hi = active ? GREEN : "";
-                const char *lo = active ? RESET : "";
-                cell(row, rc, rw, fmt("0x%08X ├╌╌ %s%-7s%s ╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
-                cell(row, rc, rw, fmt("0x%08X │" CYAN " SP" RESET " %s%s%s %3d/%-3d     │", dsp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
-                cell(row, rc, rw, fmt("0x%08X ├" DOT "┤", stk_top)); row++;
+                BOX_SEP(stk_bot);
+                cell(row, rc, rw, box_row(dsp, 1, fmt(CYAN " SP" RESET " %s%s%s %3d/%-3d",
+                    active ? GREEN : "", active ? "▶" : " ", active ? RESET : "", used, stk_size))); row++;
+                cell(row, rc, rw, box_row(0, 0, fmt(" %s%s%s", active ? GREEN : "", tn, active ? RESET : ""))); row++;
             }
+            BOX_SEP(RAM_BASE + stk_base + num_tasks * stk_size);
         }
     }
-    cell(row, rc, rw, "           │ heap                │"); row++;
-    cell(row, rc, rw, fmt("0x%08X │" YELLOW " MSP" RESET "                │", msp)); row++;
-    cell(row, rc, rw, "0x20020000 └" BOX "┘"); row++;
+    cell(row, rc, rw, box_row(0, 0, " heap")); row++;
+    cell(row, rc, rw, box_row(msp, 1, YELLOW " MSP" RESET)); row++;
+    BOX_BOT(RAM_BASE + RAM_SIZE);
 
     /* Cursor at bottom for prompt */
     at(g_rows, 1);
