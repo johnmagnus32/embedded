@@ -259,13 +259,15 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
                 if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
                 uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
                 uint32_t stk_bot = stk_top - stk_size;
-                int used = (sp >= stk_bot && sp <= stk_top) ? (int)(stk_top - sp) : 0;
-                int active = (sp >= RAM_BASE && sp <= RAM_BASE + RAM_SIZE && psp >= sp && psp <= sp + stk_size);
+                int active = (psp >= stk_bot && psp <= stk_top);
+                /* For the running task, use live PSP instead of stale saved SP */
+                uint32_t display_sp = active ? psp : sp;
+                int used = (display_sp >= stk_bot && display_sp <= stk_top) ? (int)(stk_top - display_sp) : 0;
                 const char *hi = active ? GREEN : "";
                 const char *lo = active ? RESET : "";
                 cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌ %s%s%s ╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_bot, hi, tn, lo)); row++;
                 cell(row, 2, lw, fmt("           │ " DIM "used ↑" RESET "                      │")); row++;
-                cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/%d used    │", sp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
+                cell(row, 2, lw, fmt("0x%08X │" CYAN "◄─SP" RESET "  %s%s%s  %d/%d used    │", display_sp, hi, active ? "▶" : " ", lo, used, stk_size)); row++;
                 cell(row, 2, lw, fmt("           │ " DIM "free" RESET "                        │")); row++;
                 cell(row, 2, lw, fmt("0x%08X ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤", stk_top)); row++;
             }
