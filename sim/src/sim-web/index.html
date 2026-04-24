@@ -260,8 +260,8 @@ function renderMemMap(s) {
           const sy1 = addrToY(t.stack_bot);
           const sh = Math.max(1, sy1 - sy0);
 
-          // Full allocation (clickable to zoom)
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" onclick="zoomToRegion(${t.stack_bot},${t.stack_size})"/>`;
+          // Full allocation with border
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" stroke="${col}" stroke-opacity="0.4" rx="1" onclick="zoomToRegion(${t.stack_bot},${t.stack_size})"/>`;
 
           // Used portion
           if (t.stack_used > 0 && t.stack_size > 0) {
