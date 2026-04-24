@@ -8,9 +8,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "cpu.h"
 #include "elf_sym.h"
 #include "state.h"
+
+extern void mem_set_uart_rx_fd(int fd);
 
 
 
@@ -45,6 +49,12 @@ int main(int argc, char **argv)
     struct cpu_state cpu;
     cpu_init(&cpu);
     cpu_reset(&cpu, flash, ram);
+
+    /* Pipe for UART RX: browser → sim-core → firmware */
+    int uart_pipe[2];
+    pipe(uart_pipe);
+    fcntl(uart_pipe[0], F_SETFL, O_NONBLOCK);
+    mem_set_uart_rx_fd(uart_pipe[0]);
 
     setbuf(stdout, NULL);
 
@@ -112,6 +122,13 @@ int main(int argc, char **argv)
                     cpu.breakpoints[i] = cpu.breakpoints[i + 1];
                 cpu.nbp--;
             }
+
+        } else if (strncmp(cmd, "u ", 2) == 0) {
+            /* UART input: write bytes to the RX pipe */
+            const char *text = cmd + 2;
+            write(uart_pipe[1], text, strlen(text));
+            write(uart_pipe[1], "\r", 1);
+            LOG("UART RX: %zu bytes", strlen(text) + 1);
         }
 
         LOG("Emitting state"); emit_state(&cpu, flash, ram);

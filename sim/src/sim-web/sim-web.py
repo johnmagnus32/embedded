@@ -132,6 +132,13 @@ class WebDebugger:
                     state = self.send_cmd_and_wait(cmd)
                     self.http_response(conn, '200 OK', 'application/json', state)
 
+                elif req.startswith('POST /uart'):
+                    body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
+                    text = body.strip()
+                    log_web(f'UART TX: {repr(text)}')
+                    self.send_cmd(f'u {text}')
+                    self.http_response(conn, '200 OK', 'text/plain', '')
+
                 elif req.startswith('POST /log'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     sys.stderr.write(f'[sim-ui] {body}\n')

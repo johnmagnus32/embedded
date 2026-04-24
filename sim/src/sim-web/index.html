@@ -76,7 +76,10 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
   </div>
   <div class="panel" id="uart-panel">
     <h2>UART Console</h2>
-    <div class="panel-body" id="uart"></div>
+    <div class="panel-body" style="display:flex;flex-direction:column">
+      <div id="uart" style="flex:1;overflow-y:auto"></div>
+      <input id="uart-input" placeholder="Type here to send UART data..." style="width:100%;background:#0d1117;border:1px solid #30363d;color:#7ee787;font-family:inherit;font-size:12px;padding:6px 8px;border-radius:4px;margin-top:4px;">
+    </div>
   </div>
 </div>
 
@@ -174,8 +177,17 @@ cmdInput.addEventListener('keydown', (e) => {
   }
 });
 
+document.getElementById('uart-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const text = e.target.value;
+    if (!text) return;
+    e.target.value = '';
+    fetch('/uart', {method:'POST', body:text}).catch(()=>{});
+  }
+});
+
 document.addEventListener('keydown', (e) => {
-  if (document.activeElement === cmdInput) return;
+  if (document.activeElement === cmdInput || document.activeElement === document.getElementById('uart-input')) return;
   if (e.key === 'F5') { sendCmd('c'); e.preventDefault(); }
   if (e.key === 'F10') { sendCmd('n'); e.preventDefault(); }
   if (e.key === 'F11') { sendCmd('s'); e.preventDefault(); }
