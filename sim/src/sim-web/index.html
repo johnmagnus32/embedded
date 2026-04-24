@@ -264,7 +264,7 @@ function renderMemMap(s) {
             const spY = seg.y + seg.h - (spAddr - RAM_BASE) / RAM_SIZE * seg.h;
             svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
             // SP address on left
-            svg += `<text x="${barX-4}" y="${spY+3}" fill="${col}" text-anchor="end" font-size="7">→ SP ${hex(spAddr)}</text>`;
+            svg += `<text x="${barX-4}" y="${spY+3}" fill="${col}" text-anchor="end" font-size="7">SP ${hex(spAddr)} →</text>`;
           }
 
           // Stack top/bottom addresses on left
