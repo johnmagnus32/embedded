@@ -1022,7 +1022,6 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
         if (pendsv_pending())
             c->pending_irq |= IRQ_PENDSV;
 
-        /* Debug: check if PendSV is pending but blocked */
 
 
         /* Take highest priority pending interrupt */
@@ -1036,7 +1035,6 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
             } else if (c->pending_irq & IRQ_PENDSV) {
                 c->pending_irq &= ~IRQ_PENDSV;
                 clear_pendsv();
-                if (c->r[REG_PC] >= 0x08000450 && c->r[REG_PC] <= 0x08000470)
                 take_interrupt(c, flash, ram, 14);  /* PendSV = vector 14 */
             }
         }
