@@ -12,7 +12,7 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .panel h2 { background:#161b22; padding:6px 10px; font-size:11px; color:#58a6ff; border-bottom:1px solid #30363d; flex-shrink:0; }
 .panel-body { flex:1; overflow-y:auto; padding:8px; }
 #source-panel { flex:3; }
-#mem-panel { flex:2; }
+#mem-panel { flex:2; min-width:220px; }
 #bottom { display:flex; height:200px; min-height:100px; }
 #uart-panel { flex:1; }
 #cmd-panel { flex:1; }
@@ -34,6 +34,9 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .header-bar { background:#161b22; padding:4px 10px; border-bottom:1px solid #30363d;
               display:flex; align-items:center; gap:15px; font-size:11px; flex-shrink:0; }
 .cyc { color:#484f58; }
+.zoom-bar { display:flex; align-items:center; gap:6px; padding:4px 10px; background:#161b22;
+            border-bottom:1px solid #30363d; font-size:10px; color:#484f58; flex-shrink:0; }
+.zoom-bar input[type=range] { flex:1; accent-color:#58a6ff; }
 </style>
 </head>
 <body>
@@ -52,7 +55,12 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
   </div>
   <div class="panel" id="mem-panel">
     <h2>Memory Map — STM32F411RE</h2>
-    <div class="panel-body" id="memmap" style="padding:8px 12px;"></div>
+    <div class="zoom-bar">
+      <span>1×</span>
+      <input type="range" id="zoom-slider" min="1" max="200" value="1">
+      <span id="zoom-label">1×</span>
+    </div>
+    <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
   </div>
 </div>
 <div id="bottom">
@@ -106,10 +114,11 @@ const cmdLog = document.getElementById('cmd-log');
 const cmdInput = document.getElementById('cmd-input');
 
 function hex(n) { return '0x' + (n >>> 0).toString(16).padStart(8,'0'); }
-function hex16(n) { return '0x' + (n >>> 0).toString(16).padStart(4,'0'); }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
+let lastState = null;
 function render(s) {
+  lastState = s;
   document.getElementById('hdr-func').textContent = s.function ? `${s.function}+0x${s.func_offset.toString(16)}` : '???';
   document.getElementById('hdr-cycles').textContent = `cy ${s.cycles.toLocaleString()}`;
   document.getElementById('hdr-pc').textContent = hex(s.pc);
@@ -117,7 +126,6 @@ function render(s) {
   document.getElementById('hdr-msp').textContent = hex(s.msp);
   document.getElementById('hdr-mode').innerHTML = `<span class="mode ${s.in_handler?'handler':'thread'}">${s.in_handler?'HANDLER':'THREAD'}</span>`;
 
-  // Source
   const src = document.getElementById('source');
   if (s.source && s.source.lines.length) {
     src.innerHTML = `<div class="file">${esc(s.source.file)}</div>` +
@@ -131,95 +139,141 @@ function render(s) {
     src.innerHTML = '<div style="color:#484f58;padding:20px">No source</div>';
   }
 
-  // Memory map
   renderMemMap(s);
 
-  // UART
   if (s.uart) document.getElementById('uart').textContent = s.uart;
 }
 
+// STM32F411RE address map — regions shown in the vertical bar
+const regions = [
+  { name:'Flash',       base:0x08000000, size:512*1024,  color:'#58a6ff' },
+  { name:'System ROM',  base:0x1FFF0000, size:0x7A10,    color:'#484f58' },
+  { name:'SRAM',        base:0x20000000, size:128*1024,  color:'#f0883e' },
+  { name:'Peripherals', base:0x40000000, size:0x20000000,color:'#30363d' },
+  { name:'Cortex-M4',   base:0xE0000000, size:0x00100000,color:'#484f58' },
+];
+
+// We map the full 0x00000000–0xFFFFFFFF space but compress gaps
 function renderMemMap(s) {
   const el = document.getElementById('memmap');
-  const W = el.clientWidth - 24;
-  const H = el.clientHeight - 16;
-  if (W < 50 || H < 50) return;
+  const zoom = parseInt(document.getElementById('zoom-slider').value) || 1;
+  const W = el.clientWidth - 16;
+  if (W < 80) return;
 
-  // STM32F411RE: 512KB Flash @ 0x08000000, 128KB SRAM @ 0x20000000
-  const FLASH_BASE = 0x08000000, FLASH_SIZE = 512*1024;
-  const RAM_BASE = s.ram_base || 0x20000000, RAM_SIZE = s.ram_size || 128*1024;
+  const barW = 60;
+  const barX = 10;
+  const labelX = barX + barW + 8;
 
-  // Layout: two columns — Flash (left), RAM (right)
-  const colW = Math.floor((W - 20) / 2);
-  const barH = H - 40;
-
-  let svg = `<svg width="${W}" height="${H}" style="font-family:inherit;font-size:10px;">`;
-
-  // Flash column
-  const fx = 10;
-  svg += `<text x="${fx}" y="12" fill="#58a6ff" font-size="11">Flash 512KB</text>`;
-  svg += `<text x="${fx}" y="24" fill="#484f58" font-size="9">${hex(FLASH_BASE)}</text>`;
-  svg += `<rect x="${fx}" y="30" width="${colW}" height="${barH}" rx="3" fill="#161b22" stroke="#30363d"/>`;
-  svg += `<text x="${fx}" y="${30+barH+12}" fill="#484f58" font-size="9">${hex(FLASH_BASE+FLASH_SIZE)}</text>`;
-
-  // RAM column
-  const rx = fx + colW + 20;
-  svg += `<text x="${rx}" y="12" fill="#f0883e" font-size="11">SRAM 128KB</text>`;
-  svg += `<text x="${rx}" y="24" fill="#484f58" font-size="9">${hex(RAM_BASE)}</text>`;
-  svg += `<rect x="${rx}" y="30" width="${colW}" height="${barH}" rx="3" fill="#161b22" stroke="#30363d"/>`;
-  svg += `<text x="${rx}" y="${30+barH+12}" fill="#484f58" font-size="9">${hex(RAM_BASE+RAM_SIZE)}</text>`;
-
-  // Draw task stacks inside RAM column (to scale)
-  const tasks = s.tasks || [];
-  const colors = ['#f85149','#58a6ff','#d2a8ff','#7ee787','#f0883e','#79c0ff','#ffa657','#ff7b72'];
-  for (let i = 0; i < tasks.length; i++) {
-    const t = tasks[i];
-    const bot = t.stack_bot, top = t.stack_top;
-    if (!bot || !top || bot < RAM_BASE || top > RAM_BASE + RAM_SIZE) continue;
-
-    // Stack region (full allocation)
-    const y0 = 30 + Math.floor((bot - RAM_BASE) / RAM_SIZE * barH);
-    const y1 = 30 + Math.floor((top - RAM_BASE) / RAM_SIZE * barH);
-    const sh = y1 - y0;
-    const col = colors[i % colors.length];
-
-    // Full stack allocation (dim)
-    svg += `<rect x="${rx+1}" y="${y0}" width="${colW-2}" height="${sh}" fill="${col}" opacity="0.15"/>`;
-
-    // Used portion (grows down from top)
-    if (t.stack_used > 0) {
-      const usedH = Math.max(1, Math.floor(t.stack_used / t.stack_size * sh));
-      svg += `<rect x="${rx+1}" y="${y1-usedH}" width="${colW-2}" height="${usedH}" fill="${col}" opacity="0.5"/>`;
-    }
-
-    // SP marker
-    const sp = t.sp || (top - t.stack_used);
-    if (sp >= bot && sp <= top) {
-      const spY = 30 + Math.floor((sp - RAM_BASE) / RAM_SIZE * barH);
-      svg += `<line x1="${rx}" y1="${spY}" x2="${rx+colW}" y2="${spY}" stroke="${col}" stroke-width="1.5"/>`;
-    }
-
-    // Label
-    const labelY = y0 + sh/2 + 3;
-    const pct = Math.round(t.stack_used / t.stack_size * 100);
-    const label = `${t.name || 'task'+i} ${pct}%`;
-    svg += `<text x="${rx+colW/2}" y="${labelY}" fill="${col}" text-anchor="middle" font-size="9" font-weight="${t.active?'bold':'normal'}">${label}</text>`;
-
-    // Active indicator
-    if (t.active) {
-      svg += `<text x="${rx+colW+2}" y="${labelY}" fill="#7ee787" font-size="9">◀</text>`;
-    }
+  // Build segments: regions + gaps between them
+  const segs = [];
+  let prev = 0;
+  for (const r of regions) {
+    if (r.base > prev) segs.push({type:'gap', base:prev, size:r.base-prev});
+    segs.push({type:'region', ...r});
+    prev = r.base + r.size;
   }
+  if (prev < 0xFFFFFFFF) segs.push({type:'gap', base:prev, size:0xFFFFFFFF-prev});
 
-  // MSP marker in RAM
-  if (s.msp >= RAM_BASE && s.msp <= RAM_BASE + RAM_SIZE) {
-    const mspY = 30 + Math.floor((s.msp - RAM_BASE) / RAM_SIZE * barH);
-    svg += `<line x1="${rx}" y1="${mspY}" x2="${rx+colW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
-    svg += `<text x="${rx+colW+2}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
+  // Assign pixel heights: gaps get 6px, regions get proportional height
+  // Total region bytes for proportional sizing
+  const totalRegionBytes = regions.reduce((a,r) => a + r.size, 0);
+  const baseH = Math.max(300, el.clientHeight - 20);
+  const gapPx = 6;
+  const totalGapPx = segs.filter(s=>s.type==='gap').length * gapPx;
+  const regionPx = (baseH * zoom) - totalGapPx;
+
+  // Compute y positions
+  let y = 10;
+  for (const seg of segs) {
+    seg.y = y;
+    if (seg.type === 'gap') {
+      seg.h = gapPx;
+    } else {
+      seg.h = Math.max(8, Math.round(seg.size / totalRegionBytes * regionPx));
+    }
+    y += seg.h;
+  }
+  const totalH = y + 10;
+
+  let svg = `<svg width="${W}" height="${totalH}" style="font-family:inherit;font-size:9px;">`;
+
+  for (const seg of segs) {
+    if (seg.type === 'gap') {
+      // Dotted gap indicator
+      svg += `<line x1="${barX+barW/2-5}" y1="${seg.y+3}" x2="${barX+barW/2+5}" y2="${seg.y+3}" stroke="#21262d" stroke-dasharray="2,2"/>`;
+    } else {
+      // Region bar
+      svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2"/>`;
+      // Top address
+      svg += `<text x="${barX-2}" y="${seg.y+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base)}</text>`;
+      // Bottom address
+      if (seg.h > 14) {
+        svg += `<text x="${barX-2}" y="${seg.y+seg.h-2}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base+seg.size)}</text>`;
+      }
+      // Region label on right
+      const ly = seg.y + seg.h/2 + 3;
+      svg += `<text x="${labelX}" y="${ly}" fill="${seg.color}" font-size="10">${seg.name}</text>`;
+      const sizeStr = seg.size >= 1024*1024 ? `${(seg.size/1024/1024).toFixed(0)}MB` : seg.size >= 1024 ? `${(seg.size/1024).toFixed(0)}KB` : `${seg.size}B`;
+      svg += `<text x="${labelX}" y="${ly+11}" fill="#484f58" font-size="8">${sizeStr}</text>`;
+
+      // Draw task stacks inside SRAM
+      if (seg.name === 'SRAM') {
+        const tasks = s.tasks || [];
+        const colors = ['#f85149','#58a6ff','#d2a8ff','#7ee787','#f0883e','#79c0ff'];
+        const RAM_BASE = seg.base, RAM_SIZE = seg.size;
+
+        for (let i = 0; i < tasks.length; i++) {
+          const t = tasks[i];
+          if (!t.stack_bot || !t.stack_top) continue;
+          if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
+          const col = colors[i % colors.length];
+
+          const sy0 = seg.y + (t.stack_bot - RAM_BASE) / RAM_SIZE * seg.h;
+          const sy1 = seg.y + (t.stack_top - RAM_BASE) / RAM_SIZE * seg.h;
+          const sh = Math.max(1, sy1 - sy0);
+
+          // Full allocation
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.2"/>`;
+
+          // Used portion (grows down from top)
+          if (t.stack_used > 0 && t.stack_size > 0) {
+            const uh = Math.max(1, t.stack_used / t.stack_size * sh);
+            svg += `<rect x="${barX+1}" y="${sy1-uh}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.6"/>`;
+          }
+
+          // SP line
+          const spAddr = t.active ? (s.psp || t.sp) : t.sp;
+          if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
+            const spY = seg.y + (spAddr - RAM_BASE) / RAM_SIZE * seg.h;
+            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${col}" stroke-width="1.5"/>`;
+          }
+
+          // Label (only if tall enough)
+          if (sh > 6) {
+            const pct = Math.round(t.stack_used / t.stack_size * 100);
+            svg += `<text x="${labelX}" y="${sy0+sh/2+3}" fill="${col}" font-size="8">${t.name||'t'+i} ${pct}%${t.active?' ◀':''}</text>`;
+          }
+        }
+
+        // MSP marker
+        if (s.msp >= RAM_BASE && s.msp <= RAM_BASE + RAM_SIZE) {
+          const mspY = seg.y + (s.msp - RAM_BASE) / RAM_SIZE * seg.h;
+          svg += `<line x1="${barX}" y1="${mspY}" x2="${barX+barW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
+          svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
+        }
+      }
+    }
   }
 
   svg += '</svg>';
   el.innerHTML = svg;
 }
+
+// Zoom slider
+document.getElementById('zoom-slider').addEventListener('input', (e) => {
+  document.getElementById('zoom-label').textContent = e.target.value + '×';
+  if (lastState) renderMemMap(lastState);
+});
 
 cmdInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
