@@ -23,6 +23,9 @@ static void uart_print(const char *s)
 
 static void __attribute__((noinline)) deep_work(const char *task)
 {
+    volatile char buf[100];
+    buf[0] = task[0];  /* touch the array so compiler doesn't optimize it out */
+    buf[99] = task[0];
     uart_print("  deep: ");
     uart_print(task);
     uart_print("\n");

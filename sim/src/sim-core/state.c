@@ -169,8 +169,32 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
 
             if (t) fprintf(f, ",");
             fprintf(f, "{\"name\":\"%s\",\"sp\":%u,\"stack_bot\":%u,\"stack_top\":%u,"
-                       "\"stack_used\":%d,\"stack_size\":%d,\"active\":%s}",
+                       "\"stack_used\":%d,\"stack_size\":%d,\"active\":%s,\"frames\":[",
                     tn, dsp, stk_bot, stk_top, used, stk_size, active ? "true" : "false");
+
+            /* Walk stack for return addresses → call stack frames */
+            int nframes = 0;
+            if (active) {
+                /* Current function */
+                uint32_t sym_off2;
+                const char *fn = sym_lookup(cpu->r[REG_PC], &sym_off2);
+                if (fn) fprintf(f, "{\"func\":\"%s\",\"sp\":%u}", fn, dsp);
+                nframes++;
+            }
+            /* Scan stack for saved LR values (return addresses in Flash) */
+            for (uint32_t sa = dsp; sa < stk_top && nframes < 8; sa += 4) {
+                uint32_t val = *(uint32_t *)(ram + (sa - RAM_BASE));
+                if (val >= FLASH_BASE + 1 && val < FLASH_BASE + FLASH_SIZE && (val & 1)) {
+                    uint32_t sym_off2;
+                    const char *fn = sym_lookup(val & ~1u, &sym_off2);
+                    if (fn) {
+                        if (nframes) fprintf(f, ",");
+                        fprintf(f, "{\"func\":\"%s\",\"sp\":%u}", fn, sa);
+                        nframes++;
+                    }
+                }
+            }
+            fprintf(f, "]}");
         }
     }
     fprintf(f, "],");

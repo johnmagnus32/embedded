@@ -247,38 +247,54 @@ function renderMemMap(s) {
           if (!t.stack_bot || !t.stack_top) continue;
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
           const col = colors[i % colors.length];
+          const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
 
-          // Within SRAM, higher address = lower y (top)
-          const sy0 = seg.y + seg.h - (t.stack_top - RAM_BASE) / RAM_SIZE * seg.h;
-          const sy1 = seg.y + seg.h - (t.stack_bot - RAM_BASE) / RAM_SIZE * seg.h;
+          const sy0 = addrToY(t.stack_top);
+          const sy1 = addrToY(t.stack_bot);
           const sh = Math.max(1, sy1 - sy0);
 
-          // Full allocation
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.2"/>`;
+          // Full allocation (clickable to zoom)
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" onclick="zoomToRegion(${t.stack_bot},${t.stack_size})"/>`;
 
-          // Used portion (stack grows down, so used is at top of stack = lower y)
+          // Used portion
           if (t.stack_used > 0 && t.stack_size > 0) {
             const uh = Math.max(1, t.stack_used / t.stack_size * sh);
-            svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.6"/>`;
+            svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.5"/>`;
           }
 
-          // SP line
-          const spAddr = t.active ? (s.psp || t.sp) : t.sp;
+          // SP line + colored address
+          const spAddr = t.sp;
           if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
-            const spY = seg.y + seg.h - (spAddr - RAM_BASE) / RAM_SIZE * seg.h;
+            const spY = addrToY(spAddr);
             svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-            // SP address on left
             svg += `<text x="${barX-4}" y="${spY+3}" fill="${col}" text-anchor="end" font-size="7">SP ${hex(spAddr)} →</text>`;
           }
 
-          // Stack top/bottom addresses on left
-          svg += `<text x="${barX-4}" y="${sy0+4}" fill="${col}" text-anchor="end" font-size="7">${hex(t.stack_top)}</text>`;
-          svg += `<text x="${barX-4}" y="${sy1+3}" fill="${col}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
+          // Stack bounds — grey, deduplicated (skip if same as adjacent stack)
+          const topLabel = hex(t.stack_top);
+          const botLabel = hex(t.stack_bot);
+          // Only show top label if not same as previous stack's bottom
+          if (i === 0 || t.stack_top !== tasks[i-1]?.stack_bot) {
+            svg += `<text x="${barX-4}" y="${sy0+4}" fill="#484f58" text-anchor="end" font-size="7">${topLabel}</text>`;
+          }
+          svg += `<text x="${barX-4}" y="${sy1+3}" fill="#484f58" text-anchor="end" font-size="7">${botLabel}</text>`;
 
-          // Label (only if tall enough)
+          // Task name + size on right
           if (sh > 6) {
             const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
             svg += `<text x="${labelX}" y="${sy0+sh/2+3}" fill="${col}" font-size="8">${t.name||'t'+i} stack ${stkSize}${t.active?' ◀':''}</text>`;
+          }
+
+          // Stack frame annotations (call stack)
+          const frames = t.frames || [];
+          for (let fi = 0; fi < frames.length; fi++) {
+            const fr = frames[fi];
+            if (fr.sp >= t.stack_bot && fr.sp <= t.stack_top) {
+              const fy = addrToY(fr.sp);
+              // Small tick mark + function name
+              svg += `<line x1="${barX+barW-6}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.6"/>`;
+              svg += `<text x="${labelX+2}" y="${fy+3}" fill="#8b949e" font-size="7">${fr.func}</text>`;
+            }
           }
         }
 
