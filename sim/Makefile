@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -O2 -g
 
-sim: main.o cpu.o mem.o vis.o elf_sym.o state.o
+sim-core: main.o cpu.o mem.o vis.o elf_sym.o state.o
 	$(CC) -o $@ $^
 
 %.o: %.c cpu.h vis.h elf_sym.h state.h

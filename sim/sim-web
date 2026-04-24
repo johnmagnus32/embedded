@@ -174,6 +174,17 @@ document.addEventListener('keydown', (e) => {
 
 import hashlib, base64, struct
 
+def find_free_port(start=3000):
+    for port in range(start, start + 100):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(('', port))
+            s.close()
+            return port
+        except OSError:
+            continue
+    return start
+
 def ws_handshake(conn, headers):
     key = None
     for h in headers:
@@ -221,7 +232,10 @@ class WebDebugger:
         self.last_state = '{}'
 
     def start_sim(self):
-        cmd = ['./sim', self.elf, '--headless']
+        # Find sim-core next to this script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        sim_core = os.path.join(script_dir, 'sim-core')
+        cmd = [sim_core, self.elf, '--headless']
         if self.console:
             cmd += ['--console', self.console]
         cmd += self.extra_args
@@ -315,14 +329,14 @@ class WebDebugger:
                         except: pass
 
 def main():
-    p = argparse.ArgumentParser(description='Web debugger for ARM emulator')
+    p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator + Web Debugger')
     p.add_argument('elf', help='Firmware ELF file')
-    p.add_argument('--port', type=int, default=3000)
+    p.add_argument('--port', type=int, default=0, help='HTTP port (default: auto)')
     p.add_argument('--console', help='UART console fifo path')
-    p.add_argument('--state', help='(ignored, for compat)')
     args, extra = p.parse_known_args()
 
-    dbg = WebDebugger(args.elf, args.port, args.console, extra)
+    port = args.port if args.port else find_free_port()
+    dbg = WebDebugger(args.elf, port, args.console, extra)
     try:
         dbg.run()
     except KeyboardInterrupt:
