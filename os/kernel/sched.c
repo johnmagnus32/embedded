@@ -144,7 +144,7 @@ static int pick_next(int cpu)
             continue;
 
         /* Pick highest priority (lowest number) ready task */
-        if (t->state == TASK_READY && t->priority < best_prio) {
+        if (t->state == TASK_READY && t->priority <= best_prio) {
             best = c;
             best_prio = t->priority;
         }

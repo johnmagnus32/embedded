@@ -25,7 +25,7 @@ static void task_a(void)
 {
     while (1) {
         uart_print("running task_a\n");
-        sched_yield();
+        sched_sleep_ms(100);
     }
 }
 
@@ -33,7 +33,7 @@ static void task_b(void)
 {
     while (1) {
         uart_print("running task_b\n");
-        sched_yield();
+        sched_sleep_ms(100);
     }
 }
 
@@ -41,7 +41,7 @@ static void task_c(void)
 {
     while (1) {
         uart_print("running task_c\n");
-        sched_yield();
+        sched_sleep_ms(100);
     }
 }
 

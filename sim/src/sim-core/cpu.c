@@ -922,6 +922,12 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
 
 void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vector_num)
 {
+    /* Sync PSP/MSP from the SP register (instructions like PUSH update SP but not psp/msp) */
+    if (c->control & 2)
+        c->psp = c->r[REG_SP];
+    else
+        c->msp = c->r[REG_SP];
+
     /* Push exception frame to current stack (PSP or MSP) */
     uint32_t *sp_ptr;
     if (c->control & 2)
@@ -1016,6 +1022,9 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
         if (pendsv_pending())
             c->pending_irq |= IRQ_PENDSV;
 
+        /* Debug: check if PendSV is pending but blocked */
+
+
         /* Poll UART RX (every 1024 cycles to avoid syscall overhead) */
         if ((c->cycle_count & 0x3FF) == 0) {
             extern void uart_rx_poll(void);
@@ -1039,6 +1048,7 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
             } else if (c->pending_irq & IRQ_PENDSV) {
                 c->pending_irq &= ~IRQ_PENDSV;
                 clear_pendsv();
+                if (c->r[REG_PC] >= 0x08000450 && c->r[REG_PC] <= 0x08000470)
                 take_interrupt(c, flash, ram, 14);  /* PendSV = vector 14 */
             }
         }
