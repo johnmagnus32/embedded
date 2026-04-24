@@ -1,48 +1,132 @@
 /*
- * state.c — Dump emulator state to a JSON file for external visualization
+ * state.c — Dump emulator state to JSON (stdout or file)
  */
 
 #include <stdio.h>
 #include <string.h>
 #include "cpu.h"
 #include "elf_sym.h"
+#include "state.h"
 
 static char state_path[256];
+static char src_search_dir[256];
 
-void state_set_path(const char *path)
+/* UART TX capture ring buffer */
+#define UART_CAP_SIZE 4096
+static char uart_cap[UART_CAP_SIZE];
+static int uart_cap_pos = 0;
+
+void state_set_path(const char *path) { strncpy(state_path, path, sizeof(state_path) - 1); }
+void state_set_source_dir(const char *dir) { strncpy(src_search_dir, dir, sizeof(src_search_dir) - 1); }
+
+void state_uart_putc(char c)
 {
-    strncpy(state_path, path, sizeof(state_path) - 1);
+    if (c == '\r') return;
+    if (uart_cap_pos < UART_CAP_SIZE - 1)
+        uart_cap[uart_cap_pos++] = c;
+}
+
+/* Load source file and return lines array */
+static char *src_lines[4096];
+static int src_nlines;
+static char src_file[256];
+
+static void load_source(const char *file)
+{
+    if (!file || strcmp(file, src_file) == 0) return;
+    for (int i = 0; i < src_nlines; i++) free(src_lines[i]);
+    src_nlines = 0;
+    strncpy(src_file, file, sizeof(src_file) - 1);
+
+    char path[512];
+    FILE *f = NULL;
+    if (src_search_dir[0]) {
+        snprintf(path, sizeof(path), "%s%s", src_search_dir, file);
+        f = fopen(path, "r");
+        if (!f) { snprintf(path, sizeof(path), "%s../%s", src_search_dir, file); f = fopen(path, "r"); }
+    }
+    if (!f) f = fopen(file, "r");
+    if (!f) return;
+
+    char buf[512];
+    while (fgets(buf, sizeof(buf), f) && src_nlines < 4096) {
+        int len = strlen(buf);
+        if (len > 0 && buf[len-1] == '\n') buf[--len] = '\0';
+        if (len > 0 && buf[len-1] == '\r') buf[--len] = '\0';
+        src_lines[src_nlines++] = strdup(buf);
+    }
+    fclose(f);
+}
+
+static void json_escape(FILE *f, const char *s)
+{
+    for (; *s; s++) {
+        if (*s == '"') fprintf(f, "\\\"");
+        else if (*s == '\\') fprintf(f, "\\\\");
+        else if (*s == '\t') fprintf(f, "    ");
+        else if ((unsigned char)*s >= 0x20) fputc(*s, f);
+    }
 }
 
 void state_dump(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 {
-    if (!state_path[0]) return;
+    state_dump_to(cpu, flash, ram, NULL);
+}
 
-    FILE *f = fopen(state_path, "w");
+void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *out)
+{
+    FILE *f = out;
+    if (!f && state_path[0]) f = fopen(state_path, "w");
     if (!f) return;
 
     uint32_t pc = cpu->r[REG_PC];
     uint32_t sym_off;
     const char *fn = sym_lookup(pc, &sym_off);
-    int line;
-    const char *file = line_lookup(pc, &line);
+    int cur_line;
+    const char *file = line_lookup(pc, &cur_line);
 
-    fprintf(f, "{\n");
-    fprintf(f, "  \"pc\": %u,\n", pc);
-    fprintf(f, "  \"psp\": %u,\n", cpu->psp);
-    fprintf(f, "  \"msp\": %u,\n", cpu->msp);
-    fprintf(f, "  \"cycles\": %llu,\n", (unsigned long long)cpu->cycle_count);
-    fprintf(f, "  \"in_handler\": %s,\n", cpu->in_handler ? "true" : "false");
-    fprintf(f, "  \"function\": \"%s\",\n", fn ? fn : "");
-    fprintf(f, "  \"func_offset\": %u,\n", sym_off);
-    fprintf(f, "  \"file\": \"%s\",\n", file ? file : "");
-    fprintf(f, "  \"line\": %d,\n", line);
+    fprintf(f, "{");
+    fprintf(f, "\"pc\":%u,", pc);
+    fprintf(f, "\"psp\":%u,", cpu->psp);
+    fprintf(f, "\"msp\":%u,", cpu->msp);
+    fprintf(f, "\"cycles\":%llu,", (unsigned long long)cpu->cycle_count);
+    fprintf(f, "\"in_handler\":%s,", cpu->in_handler ? "true" : "false");
+    fprintf(f, "\"function\":\"%s\",", fn ? fn : "");
+    fprintf(f, "\"func_offset\":%u,", sym_off);
+    fprintf(f, "\"file\":\"%s\",", file ? file : "");
+    fprintf(f, "\"line\":%d,", cur_line);
 
     /* Registers */
-    fprintf(f, "  \"regs\": [");
+    fprintf(f, "\"regs\":[");
     for (int i = 0; i < 16; i++)
         fprintf(f, "%s%u", i ? "," : "", cpu->r[i]);
-    fprintf(f, "],\n");
+    fprintf(f, "],");
+
+    /* Source code context */
+    if (file) load_source(file);
+    fprintf(f, "\"source\":{\"file\":\"%s\",\"current_line\":%d,\"lines\":[", file ? file : "", cur_line);
+    if (src_nlines > 0 && cur_line > 0) {
+        int start = cur_line - 20; if (start < 1) start = 1;
+        int end = cur_line + 20; if (end > src_nlines) end = src_nlines;
+        for (int l = start; l <= end; l++) {
+            if (l > start) fprintf(f, ",");
+            fprintf(f, "{\"num\":%d,\"text\":\"", l);
+            json_escape(f, src_lines[l - 1]);
+            fprintf(f, "\"}");
+        }
+    }
+    fprintf(f, "]},");
+
+    /* UART output */
+    fprintf(f, "\"uart\":\"");
+    for (int i = 0; i < uart_cap_pos; i++) {
+        char c = uart_cap[i];
+        if (c == '"') fprintf(f, "\\\"");
+        else if (c == '\\') fprintf(f, "\\\\");
+        else if (c == '\n') fprintf(f, "\\n");
+        else if ((unsigned char)c >= 0x20) fputc(c, f);
+    }
+    fprintf(f, "\",");
 
     /* Tasks */
     uint32_t sym_nt = sym_find_by_name("num_tasks");
@@ -50,7 +134,7 @@ void state_dump(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
     uint32_t sym_stacks = sym_find_by_name("task_stacks");
     if (!sym_stacks) sym_stacks = sym_find_by_name("stacks");
 
-    fprintf(f, "  \"tasks\": [\n");
+    fprintf(f, "\"tasks\":[");
     if (sym_nt && sym_tasks && sym_stacks) {
         int tcb_size, stk_size;
         if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
@@ -74,20 +158,16 @@ void state_dump(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
             uint32_t dsp = active ? cpu->psp : sp;
             int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
 
-            fprintf(f, "    {\"name\":\"%s\", \"sp\":%u, \"stack_bot\":%u, \"stack_top\":%u, "
-                       "\"stack_used\":%d, \"stack_size\":%d, \"active\":%s}%s\n",
-                    tn, dsp, stk_bot, stk_top, used, stk_size,
-                    active ? "true" : "false",
-                    t < num_tasks - 1 ? "," : "");
+            if (t) fprintf(f, ",");
+            fprintf(f, "{\"name\":\"%s\",\"sp\":%u,\"stack_bot\":%u,\"stack_top\":%u,"
+                       "\"stack_used\":%d,\"stack_size\":%d,\"active\":%s}",
+                    tn, dsp, stk_bot, stk_top, used, stk_size, active ? "true" : "false");
         }
     }
-    fprintf(f, "  ],\n");
+    fprintf(f, "],");
 
-    /* Memory layout */
-    fprintf(f, "  \"flash_base\": %u,\n", FLASH_BASE);
-    fprintf(f, "  \"flash_size\": %u,\n", FLASH_SIZE);
-    fprintf(f, "  \"ram_base\": %u,\n", RAM_BASE);
-    fprintf(f, "  \"ram_size\": %u\n", RAM_SIZE);
-    fprintf(f, "}\n");
-    fclose(f);
+    fprintf(f, "\"ram_base\":%u,\"ram_size\":%u}\n", RAM_BASE, RAM_SIZE);
+
+    if (!out && state_path[0]) fclose(f);
+    if (out) fflush(out);
 }

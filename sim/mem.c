@@ -132,7 +132,9 @@ void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
         }
         /* Also feed to visualizer console */
         extern void vis_console_putc(char c);
+        extern void state_uart_putc(char c);
         vis_console_putc(c);
+        state_uart_putc(c);
         return;
     }
 

@@ -68,18 +68,22 @@ static void sigint_handler(int sig) {
 #define MAX_CYCLES_DEBUG  10000000
 #define PROMPT "\033[33m(dbg) \033[0m"
 
+static int g_headless = 0;
+
 static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 {
-    uint32_t off;
-    const char *fn = sym_lookup(cpu->r[REG_PC], &off);
-    int line;
-    const char *file = line_lookup(cpu->r[REG_PC], &line);
-    char event[80];
-    if (fn)
-        snprintf(event, sizeof(event), "%s+0x%X", fn, off);
-    else
-        snprintf(event, sizeof(event), "0x%08X", cpu->r[REG_PC]);
-    vis_dump(stderr, cpu, flash, ram, event);
+    if (g_headless) {
+        state_dump_to(cpu, flash, ram, stdout);
+    } else {
+        uint32_t off;
+        const char *fn = sym_lookup(cpu->r[REG_PC], &off);
+        int line;
+        const char *file = line_lookup(cpu->r[REG_PC], &line);
+        char event[80];
+        if (fn) snprintf(event, sizeof(event), "%s+0x%X", fn, off);
+        else snprintf(event, sizeof(event), "0x%08X", cpu->r[REG_PC]);
+        vis_dump(stderr, cpu, flash, ram, event);
+    }
     state_dump(cpu, flash, ram);
 }
 
@@ -90,11 +94,12 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    int debug_mode = 0;
+    int debug_mode = 0, headless_mode = 0;
     const char *console_path = NULL;
     const char *state_path = NULL;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--debug") == 0) debug_mode = 1;
+        else if (strcmp(argv[i], "--headless") == 0) { headless_mode = 1; debug_mode = 1; }
         else if (strcmp(argv[i], "--console") == 0 && i + 1 < argc)
             console_path = argv[++i];
         else if (strcmp(argv[i], "--state") == 0 && i + 1 < argc)
@@ -108,6 +113,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "Loaded ELF %s\n", argv[1]);
         vis_set_source_dir(argv[1]);
         if (state_path) state_set_path(state_path);
+        /* Set source search dir for state.c too */
+        { char dir[256]; strncpy(dir, argv[1], 255);
+          char *sl = strrchr(dir, '/'); if (sl) *(sl+1)='\0'; else dir[0]='\0';
+          state_set_source_dir(dir); }
     } else {
         FILE *f = fopen(argv[1], "rb");
         if (!f) { perror("open firmware"); return 1; }
@@ -143,6 +152,8 @@ int main(int argc, char **argv)
     setup_console(fifo);
 
     /* ── Interactive debugger ── */
+    g_headless = headless_mode;
+    if (headless_mode) setbuf(stdout, NULL);  /* unbuffered JSON output */
     signal(SIGINT, sigint_handler);  /* Ctrl+C interrupts continue, doesn't exit */
     /* Auto-run to main() so we start somewhere useful */
     uint32_t main_addr = resolve_breakpoint("main");
@@ -160,8 +171,10 @@ int main(int argc, char **argv)
     char line_buf[256];
     while (1) {
         dbg_interrupted = 0;
-        fprintf(stderr, PROMPT);
-        fflush(stderr);
+        if (!g_headless) {
+            fprintf(stderr, PROMPT);
+            fflush(stderr);
+        }
         if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
         if (dbg_interrupted) break;  /* Ctrl+C at prompt = quit */
 
