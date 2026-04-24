@@ -1,8 +1,8 @@
 /*
  * sim-core — ARM Cortex-M4 emulator
  *
- * If stdout is a terminal: plain run mode (UART to stdout)
- * If stdout is a pipe: headless mode (JSON to stdout, commands from stdin)
+ * Terminal: ./sim-core firmware.elf   (UART to stdout)
+ * Piped:    stdout is pipe → JSON debugger mode (used by sim-web)
  */
 
 #include <stdio.h>
@@ -25,7 +25,6 @@ static void sigint_handler(int sig) { (void)sig; dbg_interrupted = 1; }
 
 #define MAX_BP 32
 #define MAX_CYCLES_RUN   100000000
-#define MAX_CYCLES_DEBUG  10000000
 
 static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 {
@@ -35,28 +34,21 @@ static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <firmware.elf|.bin>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <firmware.elf>\n", argv[0]);
         return 1;
     }
 
     uint8_t *flash = calloc(1, FLASH_SIZE);
     uint8_t *ram = calloc(1, RAM_SIZE);
 
-    if (elf_load(argv[1], flash, ram) == 0) {
-        fprintf(stderr, "Loaded ELF %s\n", argv[1]);
-        char dir[256]; strncpy(dir, argv[1], 255);
-        char *sl = strrchr(dir, '/'); if (sl) *(sl+1)='\0'; else dir[0]='\0';
-        state_set_source_dir(dir);
-    } else {
-        FILE *f = fopen(argv[1], "rb");
-        if (!f) { perror("open firmware"); return 1; }
-        fseek(f, 0, SEEK_END);
-        long size = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        fread(flash, 1, size, f);
-        fclose(f);
-        fprintf(stderr, "Loaded raw binary %s (%ld bytes)\n", argv[1], size);
+    if (elf_load(argv[1], flash, ram) != 0) {
+        fprintf(stderr, "Failed to load ELF: %s\n", argv[1]);
+        return 1;
     }
+    fprintf(stderr, "Loaded ELF %s\n", argv[1]);
+    char dir[256]; strncpy(dir, argv[1], 255);
+    char *sl = strrchr(dir, '/'); if (sl) *(sl+1)='\0'; else dir[0]='\0';
+    state_set_source_dir(dir);
 
     struct cpu_state cpu;
     cpu_init(&cpu);
@@ -85,7 +77,7 @@ int main(int argc, char **argv)
     if (main_addr) {
         cpu.breakpoints[0] = main_addr;
         cpu.nbp = 1;
-        cpu_run(&cpu, flash, ram, MAX_CYCLES_DEBUG);
+        cpu_run(&cpu, flash, ram, 0);
         cpu.nbp = 0;
     }
     show_state(&cpu, flash, ram);
@@ -108,7 +100,7 @@ int main(int argc, char **argv)
             cpu.step_mode = 0;
             dbg_interrupted = 0;
             while (!cpu.bp_hit && !dbg_interrupted && cpu.running)
-                cpu_run(&cpu, flash, ram, cpu.cycle_count + MAX_CYCLES_DEBUG);
+                cpu_run(&cpu, flash, ram, 0);
             show_state(&cpu, flash, ram);
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
@@ -116,7 +108,7 @@ int main(int argc, char **argv)
             cpu.step_mode = 1;
             cpu.step_line = cur_line;
             cpu.bp_hit = 0;
-            cpu_run(&cpu, flash, ram, cpu.cycle_count + MAX_CYCLES_DEBUG);
+            cpu_run(&cpu, flash, ram, 0);
             cpu.step_mode = 0;
             show_state(&cpu, flash, ram);
 
@@ -128,7 +120,7 @@ int main(int argc, char **argv)
             cpu.step_max_line = cur_line;
             cpu.step_fn_addr = cpu.r[REG_PC] - off;
             cpu.bp_hit = 0;
-            cpu_run(&cpu, flash, ram, cpu.cycle_count + MAX_CYCLES_DEBUG);
+            cpu_run(&cpu, flash, ram, 0);
             cpu.step_mode = 0;
             show_state(&cpu, flash, ram);
 
