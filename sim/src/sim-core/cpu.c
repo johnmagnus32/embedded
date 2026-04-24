@@ -961,7 +961,7 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
 
 static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret)
 {
-    /* Determine which stack to pop from */
+    /* Normal return: pop exception frame */
     uint32_t *sp_ptr;
     if (exc_ret & 0x4)
         sp_ptr = &c->psp;  /* return to PSP */
