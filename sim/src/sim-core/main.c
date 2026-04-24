@@ -114,6 +114,13 @@ int main(int argc, char **argv)
             cpu_run(&cpu, flash, ram, 0);
             cpu.step_mode = 0;
 
+        } else if (strncmp(cmd, "peek ", 5) == 0) {
+            uint32_t addr = (uint32_t)strtoul(cmd + 5, NULL, 0);
+            uint32_t val = 0;
+            if (addr >= 0x20000000 && addr < 0x20000000 + RAM_SIZE)
+                val = *(uint32_t *)(ram + (addr - 0x20000000));
+            LOG("peek 0x%08X = %u (0x%08X)", addr, val, val);
+
         } else if (strncmp(cmd, "break ", 6) == 0 || strncmp(cmd, "b ", 2) == 0) {
             const char *spec = cmd + (cmd[1] == ' ' ? 2 : 6);
             while (*spec == ' ') spec++;

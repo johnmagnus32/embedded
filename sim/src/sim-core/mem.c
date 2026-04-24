@@ -110,6 +110,7 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
     return 0;
 }
 
+
 void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
 {
     /* RAM */

@@ -112,6 +112,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 {
     if (!c->running) return -1;
 
+
     uint32_t pc = c->r[REG_PC];
     uint16_t insn = mem_read16(flash, ram, pc);
     c->r[REG_PC] = pc + 2;
@@ -762,7 +763,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int sysm = lo & 0xFF;
         switch (sysm) {
         case 8: c->msp = c->r[rn]; if (!(c->control & 2)) c->r[REG_SP] = c->msp; break;
-        case 9: c->psp = c->r[rn]; if (c->control & 2) c->r[REG_SP] = c->psp; break;
+        case 9: c->psp = c->r[rn]; if ((c->control & 2) && !c->in_handler) c->r[REG_SP] = c->psp; break;
         case 16: c->primask = c->r[rn] & 1; break;
         case 20: c->control = c->r[rn] & 3;
                  c->r[REG_SP] = (c->control & 2) ? c->psp : c->msp; break;
