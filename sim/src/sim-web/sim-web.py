@@ -75,14 +75,16 @@ def ws_send(conn, data):
 
 def ws_recv(conn):
     try:
-        conn.setblocking(True)
-        conn.settimeout(0.05)
+        conn.setblocking(False)
         hdr = conn.recv(2)
-        if len(hdr) < 2: return None
+        if not hdr: return None  # connection closed
+        if len(hdr) < 2: return ''  # partial, try later
         opcode = hdr[0] & 0x0F
-        if opcode == 8: return None
+        if opcode == 8: return None  # close frame
         masked = hdr[1] & 0x80
         length = hdr[1] & 0x7F
+        conn.setblocking(True)
+        conn.settimeout(1.0)
         if length == 126: length = struct.unpack('>H', conn.recv(2))[0]
         elif length == 127: length = struct.unpack('>Q', conn.recv(8))[0]
         mask = conn.recv(4) if masked else b'\x00'*4
@@ -93,6 +95,8 @@ def ws_recv(conn):
             data += chunk
         conn.setblocking(False)
         return bytes(b ^ mask[i%4] for i,b in enumerate(data)).decode()
+    except BlockingIOError:
+        return ''  # no data available
     except socket.timeout:
         conn.setblocking(False)
         return ''
