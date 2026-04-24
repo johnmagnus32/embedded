@@ -87,7 +87,13 @@ int main(int argc, char **argv)
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             cpu.bp_hit = 0;
             cpu.step_mode = 0;
-                cpu_run(&cpu, flash, ram, 0);
+            /* Run in 500K-cycle chunks, emitting state between for live UART */
+            while (cpu.running && !cpu.bp_hit) {
+                uint64_t limit = cpu.cycle_count + 500000;
+                cpu_run(&cpu, flash, ram, limit);
+                if (!cpu.bp_hit && cpu.running)
+                    emit_state(&cpu, flash, ram);
+            }
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
             int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);

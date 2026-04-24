@@ -993,11 +993,11 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
 
 /* ---- Run loop with SysTick and interrupt simulation ---- */
 
-void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
+void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cycles)
 {
     static uint64_t systick_counter = 0;
 
-    while (c->running && (max_cycles <= 0 || c->cycle_count < (uint64_t)max_cycles)) {
+    while (c->running && (max_cycles == 0 || c->cycle_count < max_cycles)) {
         cpu_step(c, flash, ram);
 
         /* Simulate SysTick */
