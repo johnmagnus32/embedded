@@ -249,7 +249,13 @@ function renderMemMap(s) {
           if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
             const spY = seg.y + seg.h - (spAddr - RAM_BASE) / RAM_SIZE * seg.h;
             svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${col}" stroke-width="1.5"/>`;
+            // SP address on left
+            svg += `<text x="${barX-4}" y="${spY+3}" fill="${col}" text-anchor="end" font-size="7">SP ${hex(spAddr)}</text>`;
           }
+
+          // Stack top/bottom addresses on left
+          svg += `<text x="${barX-4}" y="${sy0+4}" fill="${col}" text-anchor="end" font-size="7">${hex(t.stack_top)}</text>`;
+          svg += `<text x="${barX-4}" y="${sy1+3}" fill="${col}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
 
           // Label (only if tall enough)
           if (sh > 6) {
@@ -263,6 +269,7 @@ function renderMemMap(s) {
           const mspY = seg.y + seg.h - (s.msp - RAM_BASE) / RAM_SIZE * seg.h;
           svg += `<line x1="${barX}" y1="${mspY}" x2="${barX+barW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
           svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
+          svg += `<text x="${barX-4}" y="${mspY+3}" fill="#ffa657" text-anchor="end" font-size="7">${hex(s.msp)}</text>`;
         }
       }
     }
