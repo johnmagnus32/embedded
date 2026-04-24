@@ -135,17 +135,22 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
 
     fprintf(f, "\"tasks\":[");
     if (sym_nt && sym_tasks && sym_stacks) {
-        int tcb_size, stk_size;
-        if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
-        else { tcb_size = 8; stk_size = 256; }
+        uint32_t dwarf_tcb_size; int dwarf_sp_off, dwarf_name_off;
+        dwarf_get_tcb_layout(&dwarf_tcb_size, &dwarf_sp_off, &dwarf_name_off);
+
+        int tcb_size = dwarf_tcb_size ? (int)dwarf_tcb_size : 32;
+        int sp_off   = dwarf_sp_off >= 0 ? dwarf_sp_off : 0;
+        int name_off = dwarf_name_off >= 0 ? dwarf_name_off : 4;
+        int stk_size = 512; /* TODO: derive from DWARF TASK_STACK_SIZE */
+
         uint32_t tasks_off = sym_tasks - RAM_BASE;
         uint32_t stk_base = sym_stacks - RAM_BASE;
         int num_tasks = *(uint32_t *)(ram + (sym_nt - RAM_BASE));
         if (num_tasks > 8) num_tasks = 0;
 
         for (int t = 0; t < num_tasks; t++) {
-            uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
-            uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
+            uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size + sp_off);
+            uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + name_off);
             char tn[32] = {0};
             if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
                 const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));

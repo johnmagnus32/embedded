@@ -26,4 +26,7 @@ uint32_t resolve_breakpoint(const char *spec);
 struct elf_section { uint32_t addr; uint32_t size; char name[32]; };
 int elf_get_sections(const struct elf_section **out);
 
+/* DWARF-derived TCB struct layout. Returns 0 in tcb_size if not found. */
+void dwarf_get_tcb_layout(uint32_t *tcb_size, int *sp_off, int *name_off);
+
 #endif
