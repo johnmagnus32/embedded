@@ -276,19 +276,19 @@ function renderMemMap(s) {
 let memZoom = 1;
 const memEl = document.getElementById('memmap');
 memEl.addEventListener('wheel', (e) => {
+  // Pinch-to-zoom sends ctrlKey; regular scroll does not
+  if (!e.ctrlKey) return; // let normal scroll work
   e.preventDefault();
   const rect = memEl.getBoundingClientRect();
   const mouseY = e.clientY - rect.top + memEl.scrollTop;
   const oldH = memEl.scrollHeight;
   const frac = oldH > 0 ? mouseY / oldH : 0;
 
-  // Zoom in/out
   const delta = e.deltaY < 0 ? 1.15 : 1/1.15;
   memZoom = Math.max(1, Math.min(500, memZoom * delta));
 
   if (lastState) renderMemMap(lastState);
 
-  // Scroll so the point under the mouse stays put
   const newH = memEl.scrollHeight;
   const newMouseY = frac * newH;
   memEl.scrollTop = newMouseY - (e.clientY - rect.top);
