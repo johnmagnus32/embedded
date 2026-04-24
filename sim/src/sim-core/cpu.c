@@ -94,25 +94,7 @@ void cpu_init(struct cpu_state *c)
 }
 
 /* Visualization hooks */
-static FILE *vis_out = NULL;
-static uint8_t *vis_flash_ptr = NULL;
-static uint8_t *vis_ram_ptr = NULL;
-
-void cpu_set_vis(FILE *out, uint8_t *flash, uint8_t *ram)
-{
-    vis_out = out;
-    vis_flash_ptr = flash;
-    vis_ram_ptr = ram;
-}
-
-static void vis_event(struct cpu_state *c, const char *event)
-{
-    if (!vis_out) return;
-    extern void vis_dump(FILE *, struct cpu_state *, uint8_t *, uint8_t *, const char *);
-    vis_dump(vis_out, c, vis_flash_ptr, vis_ram_ptr, event);
-    fprintf(vis_out, "  [Press Enter to continue] ");
-    getchar();
-}
+/* (vis removed — state visualization is in the web UI) */
 
 void cpu_reset(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 {
@@ -974,7 +956,7 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
     /* Visualize */
     const char *names[] = {[11]="SVC", [14]="PendSV (ctx switch)", [15]="SysTick"};
     const char *name = (vector_num < 16 && names[vector_num]) ? names[vector_num] : "IRQ";
-    vis_event(c, name);
+
 }
 
 static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret)
@@ -1007,7 +989,7 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
 
     c->in_handler = 0;
 
-    vis_event(c, "Exception return → thread");
+
 }
 
 /* ---- Run loop with SysTick and interrupt simulation ---- */
