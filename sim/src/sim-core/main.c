@@ -13,7 +13,6 @@
 #include "elf_sym.h"
 #include "state.h"
 
-extern void mem_set_uart_suppress(int s);
 
 volatile sig_atomic_t dbg_interrupted = 0;
 static void sigint_handler(int sig) { (void)sig; dbg_interrupted = 1; }
@@ -51,7 +50,6 @@ int main(int argc, char **argv)
 
     setbuf(stdout, NULL);
     signal(SIGINT, sigint_handler);
-    mem_set_uart_suppress(1);
 
     /* Auto-run to main() */
     uint32_t main_addr = resolve_breakpoint("main");
