@@ -196,7 +196,8 @@ class WebDebugger:
                     elif 'POST /log' in req:
                         # Read body (after headers)
                         body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
-                        log_web(f'[sim-ui] {body}')
+                        sys.stderr.write(f'[sim-ui] {body}\n')
+                        sys.stderr.flush()
                         conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\n\r\n')
                         conn.close()
                     elif 'GET' in req:
