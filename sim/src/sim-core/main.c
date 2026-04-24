@@ -21,6 +21,8 @@ extern void mem_set_uart_rx_fd(int fd);
 #define MAX_BP 32
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
 
+int g_stopped = 1;
+
 static void emit_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 {
     state_dump_to(cpu, flash, ram, stdout);
@@ -87,6 +89,7 @@ int main(int argc, char **argv)
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             cpu.bp_hit = 0;
             cpu.step_mode = 0;
+            g_stopped = 0;
             /* Run in 500K-cycle chunks, emitting state between for live UART */
             while (cpu.running && !cpu.bp_hit) {
                 uint64_t limit = cpu.cycle_count + 500000;
@@ -94,6 +97,7 @@ int main(int argc, char **argv)
                 if (!cpu.bp_hit && cpu.running)
                     emit_state(&cpu, flash, ram);
             }
+            g_stopped = 1;
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
             int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);

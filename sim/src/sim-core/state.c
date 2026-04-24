@@ -87,6 +87,8 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     const char *file = line_lookup(pc, &cur_line);
 
     fprintf(f, "{");
+    extern int g_stopped;
+    fprintf(f, "\"stopped\":%s,", g_stopped ? "true" : "false");
     fprintf(f, "\"pc\":%u,", pc);
     fprintf(f, "\"psp\":%u,", cpu->psp);
     fprintf(f, "\"msp\":%u,", cpu->msp);

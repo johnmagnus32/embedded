@@ -47,7 +47,7 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 </div>
 <div class="top">
   <div class="panel" id="source-panel">
-    <h2>Source</h2>
+    <h2>Source <span id="run-indicator" style="display:none;float:right;color:#7ee787;font-weight:normal">⟳ Running...</span></h2>
     <div class="panel-body" id="source"></div>
   </div>
   <div class="panel" id="mem-panel">
@@ -118,15 +118,22 @@ function render(s) {
   document.getElementById('hdr-msp').textContent = hex(s.msp);
   document.getElementById('hdr-mode').innerHTML = `<span class="mode ${s.in_handler?'handler':'thread'}">${s.in_handler?'HANDLER':'THREAD'}</span>`;
 
+  // Running indicator
+  const running = !s.stopped;
+  document.getElementById('run-indicator').style.display = running ? 'inline' : 'none';
+
   const src = document.getElementById('source');
   if (s.source && s.source.lines.length) {
+    const curLine = running ? -1 : s.source.current_line;  // don't highlight when running
     src.innerHTML = `<div class="file">${esc(s.source.file)}</div>` +
       s.source.lines.map(l =>
-        `<div class="src-line ${l.num===s.source.current_line?'current':''}" ${l.num===s.source.current_line?'id="cur-line"':''}>` +
-        `<span class="num">${l.num===s.source.current_line?'→':' '}${l.num}</span>${esc(l.text)}</div>`
+        `<div class="src-line ${l.num===curLine?'current':''}" ${l.num===curLine?'id="cur-line"':''}>` +
+        `<span class="num">${l.num===curLine?'→':' '}${l.num}</span>${esc(l.text)}</div>`
       ).join('');
-    const cur = document.getElementById('cur-line');
-    if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
+    if (!running) {
+      const cur = document.getElementById('cur-line');
+      if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
+    }
   } else {
     src.innerHTML = '<div style="color:#484f58;padding:20px">No source</div>';
   }
