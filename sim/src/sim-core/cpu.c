@@ -8,7 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include "cpu.h"
 
 /* External memory functions */
@@ -998,8 +997,7 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
 {
     static uint64_t systick_counter = 0;
 
-    extern volatile sig_atomic_t dbg_interrupted;
-    while (c->running && !dbg_interrupted && (max_cycles <= 0 || c->cycle_count < (uint64_t)max_cycles)) {
+    while (c->running && (max_cycles <= 0 || c->cycle_count < (uint64_t)max_cycles)) {
         cpu_step(c, flash, ram);
 
         /* Simulate SysTick */

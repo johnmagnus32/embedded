@@ -8,14 +8,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include "cpu.h"
 #include "elf_sym.h"
 #include "state.h"
 
 
-volatile sig_atomic_t dbg_interrupted = 0;
-static void sigint_handler(int sig) { (void)sig; dbg_interrupted = 1; }
 
 #define MAX_BP 32
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
@@ -50,7 +47,6 @@ int main(int argc, char **argv)
     cpu_reset(&cpu, flash, ram);
 
     setbuf(stdout, NULL);
-    signal(SIGINT, sigint_handler);
 
     /* Auto-run to main() */
     uint32_t main_addr = resolve_breakpoint("main");
@@ -65,7 +61,6 @@ int main(int argc, char **argv)
     char line_buf[256];
     while (1) {
         if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
-        if (dbg_interrupted) break;
 
         line_buf[strcspn(line_buf, "\n")] = '\0';
         char *cmd = line_buf;
@@ -78,8 +73,6 @@ int main(int argc, char **argv)
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             cpu.bp_hit = 0;
             cpu.step_mode = 0;
-            dbg_interrupted = 0;
-            while (!cpu.bp_hit && !dbg_interrupted && cpu.running)
                 cpu_run(&cpu, flash, ram, 0);
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
