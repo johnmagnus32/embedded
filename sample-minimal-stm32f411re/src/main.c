@@ -47,9 +47,7 @@ static void task_c(void)
 
 static void idle_task(void)
 {
-    while (1) {
-        sched_yield();
-    }
+    while (1) {}
 }
 
 void main(void)
