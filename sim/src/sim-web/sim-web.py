@@ -9,9 +9,13 @@ Usage:
     ./state-visualizer <firmware.elf> [--port 3000] [--console /tmp/uart]
 """
 
-import argparse, asyncio, json, os, signal, subprocess, sys
+import argparse, asyncio, json, os, signal, subprocess, sys, time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+
+def log_web(msg):
+    log_web(f'{msg}')
+    sys.stderr.flush()
 
 # ── HTML/JS/CSS for the web UI ──
 
@@ -40,7 +44,7 @@ def ws_handshake(conn, headers):
         if h.lower().startswith('sec-websocket-key:'):
             key = h.split(':',1)[1].strip()
     if not key:
-        sys.stderr.write('[sim-web] WS handshake: no key found\n')
+        log_web('WS handshake: no key found')
         return False
     GUID = '258EAFA5-E914-47DA-95CA-5AB5CE108231'
     accept = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
@@ -52,7 +56,7 @@ def ws_handshake(conn, headers):
         '\r\n'
     )
     conn.sendall(response.encode())
-    sys.stderr.write(f'[sim-web] WS handshake OK: key={key[:8]}... accept={accept[:8]}...\n')
+    log_web(f'WS handshake OK: key={key[:8]}... accept={accept[:8]}...')
     return True
 
 def ws_send(conn, data):
@@ -151,8 +155,8 @@ class WebDebugger:
         srv.bind(('', self.port))
         srv.listen(5)
         srv.setblocking(False)
-        sys.stderr.write(f'[sim-web] Debugger: http://localhost:{self.port}\n')
-        sys.stderr.write(f'[sim-web] Initial state: {len(self.last_state)} bytes\n')
+        log_web(f'Debugger: http://localhost:{self.port}')
+        log_web(f'Initial state: {len(self.last_state)} bytes')
 
         ws_clients = []
 
@@ -181,21 +185,22 @@ class WebDebugger:
                     data = conn.recv(4096).decode(errors='ignore')
                     lines = data.split('\r\n')
                     req = lines[0] if lines else ''
+                    log_web(f'Request: {req[:60]}')
 
                     if 'GET /ws' in req:
-                        sys.stderr.write(f'[sim-web] WS upgrade request from client\n')
+                        log_web(f'WS upgrade request from client')
                         if ws_handshake(conn, lines[1:]):
                             conn.setblocking(False)
                             ws_clients.append(conn)
-                            sys.stderr.write(f'[sim-web] WS client connected, sending {len(self.last_state)} bytes\n')
+                            log_web(f'WS client connected, sending {len(self.last_state)} bytes')
                             try:
                                 ws_send(conn, self.last_state)
-                                sys.stderr.write(f'[sim-web] WS initial send OK\n')
+                                log_web(f'WS initial send OK')
                             except Exception as e:
-                                sys.stderr.write(f'[sim-web] WS initial send FAILED: {e}\n')
+                                log_web(f'WS initial send FAILED: {e}')
                     elif 'GET' in req:
                         html_bytes = HTML.encode()
-                        resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {len(html_bytes)}\r\n\r\n'
+                        resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {len(html_bytes)}\r\n\r\n'
                         conn.sendall(resp.encode() + html_bytes)
                         conn.close()
                     else:
@@ -208,7 +213,7 @@ class WebDebugger:
                             ws_clients.remove(r)
                             r.close()
                         elif msg:  # non-empty command
-                            sys.stderr.write(f'[sim-web] CMD: {msg}\n')
+                            log_web(f'CMD: {msg}')
                             self.send_cmd(msg)
                     except:
                         if r in ws_clients: ws_clients.remove(r)
@@ -226,7 +231,7 @@ def main():
     try:
         dbg.run()
     except KeyboardInterrupt:
-        sys.stderr.write('[sim-web] Stopped.\n')
+        log_web('Stopped.')
         if dbg.sim: dbg.sim.kill()
 
 if __name__ == '__main__':
