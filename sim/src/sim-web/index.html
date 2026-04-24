@@ -133,16 +133,16 @@ function render(s) {
   document.getElementById('hdr-msp').textContent = hex(s.msp);
   document.getElementById('hdr-mode').innerHTML = `<span class="mode ${s.in_handler?'handler':'thread'}">${s.in_handler?'HANDLER':'THREAD'}</span>`;
 
-  // Source
+  // Source — full file, scroll to current line
   const src = document.getElementById('source');
   if (s.source && s.source.lines.length) {
     src.innerHTML = `<div class="file">${esc(s.source.file)}</div>` +
       s.source.lines.map(l =>
-        `<div class="src-line ${l.num===s.source.current_line?'current':''}">` +
+        `<div class="src-line ${l.num===s.source.current_line?'current':''}" ${l.num===s.source.current_line?'id="cur-line"':''}>` +
         `<span class="num">${l.num===s.source.current_line?'→':' '}${l.num}</span>${esc(l.text)}</div>`
       ).join('');
-    const cur = src.querySelector('.current');
-    if (cur) cur.scrollIntoView({block:'center'});
+    const cur = document.getElementById('cur-line');
+    if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   } else {
     src.innerHTML = '<div style="color:#484f58;padding:20px">No source — compile with -g</div>';
   }

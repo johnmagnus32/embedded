@@ -107,10 +107,8 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     if (file) load_source(file);
     fprintf(f, "\"source\":{\"file\":\"%s\",\"current_line\":%d,\"lines\":[", file ? file : "", cur_line);
     if (src_nlines > 0 && cur_line > 0) {
-        int start = cur_line - 20; if (start < 1) start = 1;
-        int end = cur_line + 20; if (end > src_nlines) end = src_nlines;
-        for (int l = start; l <= end; l++) {
-            if (l > start) fprintf(f, ",");
+        for (int l = 1; l <= src_nlines; l++) {
+            if (l > 1) fprintf(f, ",");
             fprintf(f, "{\"num\":%d,\"text\":\"", l);
             json_escape(f, src_lines[l - 1]);
             fprintf(f, "\"}");
