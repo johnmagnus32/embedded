@@ -1,32 +1,26 @@
 /*
  * sim-core — ARM Cortex-M4 emulator
  *
- * Terminal: ./sim-core firmware.elf   (UART to stdout)
- * Piped:    stdout is pipe → JSON debugger mode (used by sim-web)
+ * Reads debugger commands from stdin, writes JSON state to stdout.
+ * Launched by sim-web, not run directly.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <signal.h>
 #include "cpu.h"
 #include "elf_sym.h"
 #include "state.h"
 
-extern void mem_set_uart_fd(int fd);
-extern void mem_set_uart_rx_fd(int fd);
 extern void mem_set_uart_suppress(int s);
 
 volatile sig_atomic_t dbg_interrupted = 0;
 static void sigint_handler(int sig) { (void)sig; dbg_interrupted = 1; }
 
 #define MAX_BP 32
-#define MAX_CYCLES_RUN   100000000
 
-static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
+static void emit_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 {
     state_dump_to(cpu, flash, ram, stdout);
 }
@@ -45,7 +39,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Failed to load ELF: %s\n", argv[1]);
         return 1;
     }
-    fprintf(stderr, "Loaded ELF %s\n", argv[1]);
+    fprintf(stderr, "Loaded %s\n", argv[1]);
+
     char dir[256]; strncpy(dir, argv[1], 255);
     char *sl = strrchr(dir, '/'); if (sl) *(sl+1)='\0'; else dir[0]='\0';
     state_set_source_dir(dir);
@@ -54,20 +49,6 @@ int main(int argc, char **argv)
     cpu_init(&cpu);
     cpu_reset(&cpu, flash, ram);
 
-    int headless = !isatty(STDOUT_FILENO);
-
-    /* ── Plain run mode (stdout is terminal) ── */
-    if (!headless) {
-        printf("UART output → stdout\n");
-        printf("Starting emulation at PC=0x%08X, SP=0x%08X\n", cpu.r[REG_PC], cpu.r[REG_SP]);
-        printf("--- UART output ---\n");
-        cpu_run(&cpu, flash, ram, MAX_CYCLES_RUN);
-        printf("\n--- Emulation ended after %llu cycles ---\n", (unsigned long long)cpu.cycle_count);
-        free(flash); free(ram);
-        return 0;
-    }
-
-    /* ── Headless debugger mode (stdout is pipe) ── */
     setbuf(stdout, NULL);
     signal(SIGINT, sigint_handler);
     mem_set_uart_suppress(1);
@@ -80,7 +61,7 @@ int main(int argc, char **argv)
         cpu_run(&cpu, flash, ram, 0);
         cpu.nbp = 0;
     }
-    show_state(&cpu, flash, ram);
+    emit_state(&cpu, flash, ram);
 
     char line_buf[256];
     while (1) {
@@ -101,7 +82,6 @@ int main(int argc, char **argv)
             dbg_interrupted = 0;
             while (!cpu.bp_hit && !dbg_interrupted && cpu.running)
                 cpu_run(&cpu, flash, ram, 0);
-            show_state(&cpu, flash, ram);
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
             int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
@@ -110,7 +90,6 @@ int main(int argc, char **argv)
             cpu.bp_hit = 0;
             cpu_run(&cpu, flash, ram, 0);
             cpu.step_mode = 0;
-            show_state(&cpu, flash, ram);
 
         } else if (strcmp(cmd, "n") == 0 || strcmp(cmd, "next") == 0) {
             int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
@@ -122,7 +101,6 @@ int main(int argc, char **argv)
             cpu.bp_hit = 0;
             cpu_run(&cpu, flash, ram, 0);
             cpu.step_mode = 0;
-            show_state(&cpu, flash, ram);
 
         } else if (strncmp(cmd, "break ", 6) == 0 || strncmp(cmd, "b ", 2) == 0) {
             const char *spec = cmd + (cmd[1] == ' ' ? 2 : 6);
@@ -130,7 +108,6 @@ int main(int argc, char **argv)
             uint32_t addr = resolve_breakpoint(spec);
             if (addr && cpu.nbp < MAX_BP)
                 cpu.breakpoints[cpu.nbp++] = addr;
-            show_state(&cpu, flash, ram);
 
         } else if (strncmp(cmd, "delete ", 7) == 0 || strncmp(cmd, "d ", 2) == 0) {
             int n = atoi(cmd + (cmd[1] == ' ' ? 2 : 7));
@@ -139,11 +116,9 @@ int main(int argc, char **argv)
                     cpu.breakpoints[i] = cpu.breakpoints[i + 1];
                 cpu.nbp--;
             }
-            show_state(&cpu, flash, ram);
-
-        } else {
-            show_state(&cpu, flash, ram);
         }
+
+        emit_state(&cpu, flash, ram);
     }
 
     free(flash);
