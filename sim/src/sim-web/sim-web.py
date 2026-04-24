@@ -202,6 +202,12 @@ class WebDebugger:
                                 log_web(f'WS initial send OK')
                             except Exception as e:
                                 log_web(f'WS initial send FAILED: {e}')
+                    elif 'POST /log' in req:
+                        # Read body (after headers)
+                        body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
+                        log_web(f'[sim-ui] {body}')
+                        conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\n\r\n')
+                        conn.close()
                     elif 'GET' in req:
                         html_bytes = HTML.encode()
                         resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {len(html_bytes)}\r\n\r\n'

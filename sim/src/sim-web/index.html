@@ -82,12 +82,16 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 
 <script>
 const wsUrl = `ws://${location.host}/ws`;
-const log = (msg) => { document.getElementById('cmd-log').innerHTML += `<div style="color:#888">[sim-ui] ${msg}</div>`; document.getElementById('cmd-log').scrollTop=99999; };
+const log = (msg) => {
+  document.getElementById('cmd-log').innerHTML += `<div style="color:#888">[sim-ui] ${msg}</div>`;
+  document.getElementById('cmd-log').scrollTop=99999;
+  fetch('/log', {method:'POST', body:msg}).catch(()=>{});
+};
 log(`Connecting to ${wsUrl}...`);
 const ws = new WebSocket(wsUrl);
 ws.onopen = () => { log('WebSocket connected'); };
-ws.onerror = (e) => { log(`WebSocket error: ${e.type} readyState=${ws.readyState}`); };
-ws.onclose = (e) => { log(`WebSocket closed: code=${e.code} reason=${e.reason} clean=${e.wasClean}`); };
+ws.onerror = (e) => { log(`WebSocket error: type=${e.type} readyState=${ws.readyState} url=${ws.url}`); };
+ws.onclose = (e) => { log(`WebSocket closed: code=${e.code} reason="${e.reason}" clean=${e.wasClean}`); };
 const cmdLog = document.getElementById('cmd-log');
 const cmdInput = document.getElementById('cmd-input');
 
