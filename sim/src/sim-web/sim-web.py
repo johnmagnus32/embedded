@@ -55,18 +55,20 @@ def ws_handshake(conn, headers):
         f'Sec-WebSocket-Accept: {accept}\r\n'
         '\r\n'
     )
+    log_web(f'WS handshake response: {repr(response[:120])}')
     conn.sendall(response.encode())
     log_web(f'WS handshake OK: key={key[:8]}... accept={accept[:8]}...')
     return True
 
 def ws_send(conn, data):
-    b = data.encode()
+    b = data.encode('utf-8')
     if len(b) < 126:
         frame = bytes([0x81, len(b)]) + b
     elif len(b) < 65536:
         frame = bytes([0x81, 126]) + struct.pack('>H', len(b)) + b
     else:
         frame = bytes([0x81, 127]) + struct.pack('>Q', len(b)) + b
+    log_web(f'WS frame: {len(frame)} bytes, header={frame[:4].hex()}, payload={len(b)}')
     conn.sendall(frame)
 
 def ws_recv(conn):

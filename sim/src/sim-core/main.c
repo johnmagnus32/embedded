@@ -56,7 +56,9 @@ int main(int argc, char **argv)
         cpu_run(&cpu, flash, ram, 0);
         cpu.nbp = 0;
     }
+    LOG("Stopped at main(), emitting initial state");
     emit_state(&cpu, flash, ram);
+    LOG("Waiting for commands on stdin");
 
     char line_buf[256];
     while (1) {
@@ -66,6 +68,8 @@ int main(int argc, char **argv)
         char *cmd = line_buf;
         while (*cmd == ' ') cmd++;
         if (*cmd == '\0') continue;
+
+        LOG("Command: %s", cmd);
 
         if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0) {
             break;
@@ -110,7 +114,7 @@ int main(int argc, char **argv)
             }
         }
 
-        emit_state(&cpu, flash, ram);
+        LOG("Emitting state"); emit_state(&cpu, flash, ram);
     }
 
     free(flash);
