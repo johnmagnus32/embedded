@@ -149,7 +149,10 @@ const regions = [
   { name:'Flash',       base:0x08000000, size:512*1024,  color:'#58a6ff' },
   { name:'System ROM',  base:0x1FFF0000, size:0x7A10,    color:'#484f58' },
   { name:'SRAM',        base:0x20000000, size:128*1024,  color:'#f0883e' },
-  { name:'Peripherals', base:0x40000000, size:0x20000000,color:'#30363d' },
+  { name:'APB1',        base:0x40000000, size:0x6800,    color:'#8b949e' },
+  { name:'APB2',        base:0x40010000, size:0x6C00,    color:'#8b949e' },
+  { name:'AHB1',        base:0x40020000, size:0x3C00,    color:'#8b949e' },
+  { name:'AHB2 (USB)',  base:0x50000000, size:0x60C00,   color:'#8b949e' },
   { name:'Cortex-M4',   base:0xE0000000, size:0x00100000,color:'#484f58' },
 ];
 
