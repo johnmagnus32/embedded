@@ -14,7 +14,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
 def log_web(msg):
-    log_web(f'{msg}')
+    sys.stderr.write(f'[sim-web] {msg}\n')
     sys.stderr.flush()
 
 # ── HTML/JS/CSS for the web UI ──
