@@ -240,10 +240,9 @@ def ws_recv(conn):
 import socket, select
 
 class WebDebugger:
-    def __init__(self, elf, port, console, extra_args):
+    def __init__(self, elf, port, extra_args):
         self.port = port
         self.elf = elf
-        self.console = console
         self.extra_args = extra_args
         self.sim = None
         self.ws_conn = None
@@ -253,9 +252,7 @@ class WebDebugger:
         # Find sim-core in build/ (two levels up from src/sim-web/)
         script_dir = os.path.dirname(os.path.abspath(__file__))
         sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
-        cmd = [sim_core, self.elf, '--headless']
-        if self.console:
-            cmd += ['--console', self.console]
+        cmd = [sim_core, self.elf]
         cmd += self.extra_args
         self.sim = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, bufsize=0)
@@ -357,11 +354,10 @@ def main():
     p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator + Web Debugger')
     p.add_argument('elf', help='Firmware ELF file')
     p.add_argument('--port', type=int, default=0, help='HTTP port (default: auto)')
-    p.add_argument('--console', help='UART console fifo path')
     args, extra = p.parse_known_args()
 
     port = args.port if args.port else find_free_port()
-    dbg = WebDebugger(args.elf, port, args.console, extra)
+    dbg = WebDebugger(args.elf, port, extra)
     try:
         dbg.run()
     except KeyboardInterrupt:
