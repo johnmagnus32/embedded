@@ -130,8 +130,16 @@ class WebDebugger:
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     cmd = body.strip()
                     log_web(f'CMD: {cmd}')
-                    state = self.send_cmd_and_wait(cmd)
-                    self.http_response(conn, '200 OK', 'application/json', state)
+                    if cmd in ('c', 'continue'):
+                        # Non-blocking: send command, return current state immediately
+                        # sim-core will stream states as it runs
+                        self.send_cmd(cmd)
+                        import time; time.sleep(0.05)
+                        self.drain_queue()
+                        self.http_response(conn, '200 OK', 'application/json', self.last_state)
+                    else:
+                        state = self.send_cmd_and_wait(cmd)
+                        self.http_response(conn, '200 OK', 'application/json', state)
 
                 elif req.startswith('POST /uart'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
