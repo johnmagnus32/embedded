@@ -242,6 +242,13 @@ function renderMemMap(s) {
         const colors = ['#f85149','#58a6ff','#d2a8ff','#7ee787','#f0883e','#79c0ff'];
         const RAM_BASE = seg.base, RAM_SIZE = seg.size;
 
+        // Collect addresses already labeled (from ELF sections) to avoid duplicates
+        const labeledAddrs = new Set();
+        for (const sec of (s.sections || [])) {
+          if (sec.addr >= seg.base && sec.addr < seg.base + seg.size)
+            labeledAddrs.add(sec.addr);
+        }
+
         for (let i = 0; i < tasks.length; i++) {
           const t = tasks[i];
           if (!t.stack_bot || !t.stack_top) continue;
@@ -262,6 +269,24 @@ function renderMemMap(s) {
             svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.5"/>`;
           }
 
+          // Stack frames drawn INSIDE the bar
+          const frames = t.frames || [];
+          for (let fi = 0; fi < frames.length; fi++) {
+            const fr = frames[fi];
+            if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
+            const fy = addrToY(fr.sp);
+            // Next frame boundary (or stack top)
+            const nextSp = (fi + 1 < frames.length && frames[fi+1].sp <= t.stack_top) ? frames[fi+1].sp : t.stack_top;
+            const ny = addrToY(nextSp);
+            const fh = ny - fy;
+            // Frame separator line
+            if (fi > 0) svg += `<line x1="${barX+2}" y1="${fy}" x2="${barX+barW-2}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.4"/>`;
+            // Function name inside the frame block
+            if (fh > 8) {
+              svg += `<text x="${barX+barW/2}" y="${fy+fh/2+3}" fill="${col}" text-anchor="middle" font-size="7" opacity="0.9">${fr.func}</text>`;
+            }
+          }
+
           // SP line + colored address
           const spAddr = t.sp;
           if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
@@ -270,31 +295,22 @@ function renderMemMap(s) {
             svg += `<text x="${barX-4}" y="${spY+3}" fill="${col}" text-anchor="end" font-size="7">SP ${hex(spAddr)} →</text>`;
           }
 
-          // Stack bounds — grey, deduplicated (skip if same as adjacent stack)
-          const topLabel = hex(t.stack_top);
-          const botLabel = hex(t.stack_bot);
-          // Only show top label if not same as previous stack's bottom
-          if (i === 0 || t.stack_top !== tasks[i-1]?.stack_bot) {
-            svg += `<text x="${barX-4}" y="${sy0+4}" fill="#484f58" text-anchor="end" font-size="7">${topLabel}</text>`;
+          // Stack bounds — grey, skip if already labeled
+          if (!labeledAddrs.has(t.stack_top) && (i === 0 || t.stack_top !== tasks[i-1]?.stack_top)) {
+            if (!labeledAddrs.has(t.stack_top)) {
+              svg += `<text x="${barX-4}" y="${sy0+4}" fill="#484f58" text-anchor="end" font-size="7">${hex(t.stack_top)}</text>`;
+              labeledAddrs.add(t.stack_top);
+            }
           }
-          svg += `<text x="${barX-4}" y="${sy1+3}" fill="#484f58" text-anchor="end" font-size="7">${botLabel}</text>`;
+          if (!labeledAddrs.has(t.stack_bot)) {
+            svg += `<text x="${barX-4}" y="${sy1+3}" fill="#484f58" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
+            labeledAddrs.add(t.stack_bot);
+          }
 
-          // Task name + size on right
+          // Task name on right
           if (sh > 6) {
             const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
             svg += `<text x="${labelX}" y="${sy0+sh/2+3}" fill="${col}" font-size="8">${t.name||'t'+i} stack ${stkSize}${t.active?' ◀':''}</text>`;
-          }
-
-          // Stack frame annotations (call stack)
-          const frames = t.frames || [];
-          for (let fi = 0; fi < frames.length; fi++) {
-            const fr = frames[fi];
-            if (fr.sp >= t.stack_bot && fr.sp <= t.stack_top) {
-              const fy = addrToY(fr.sp);
-              // Small tick mark + function name
-              svg += `<line x1="${barX+barW-6}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.6"/>`;
-              svg += `<text x="${labelX+2}" y="${fy+3}" fill="#8b949e" font-size="7">${fr.func}</text>`;
-            }
           }
         }
 
