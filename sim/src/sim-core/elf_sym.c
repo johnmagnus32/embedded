@@ -48,6 +48,13 @@ typedef struct {
 static struct sym { uint32_t addr; uint32_t size; char name[64]; } *syms;
 static int nsyms;
 
+/* ── ELF sections (allocated, with addresses) ── */
+#define MAX_ELF_SECTIONS 32
+static struct elf_section elf_sections[MAX_ELF_SECTIONS];
+static int n_elf_sections;
+
+int elf_get_sections(const struct elf_section **out) { *out = elf_sections; return n_elf_sections; }
+
 static void parse_debug_line(const uint8_t *data, uint32_t size);
 
 static int sym_cmp(const void *a, const void *b)
@@ -153,12 +160,25 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
         break;  /* only need first .symtab */
     }
 
-    /* Find .debug_line section (need section name strings) */
+    /* Find .debug_line section and extract allocated sections (need section name strings) */
     if (eh.e_shstrndx < eh.e_shnum) {
         Elf32_Shdr *shstr_sh = &shdrs[eh.e_shstrndx];
         char *shstrtab = malloc(shstr_sh->sh_size);
         fseek(f, shstr_sh->sh_offset, SEEK_SET);
         fread(shstrtab, shstr_sh->sh_size, 1, f);
+
+        /* Collect allocated sections with nonzero address */
+        n_elf_sections = 0;
+        for (int i = 0; i < eh.e_shnum && n_elf_sections < MAX_ELF_SECTIONS; i++) {
+            if (!(shdrs[i].sh_flags & 2)) continue; /* SHF_ALLOC = 2 */
+            if (shdrs[i].sh_size == 0) continue;
+            elf_sections[n_elf_sections].addr = shdrs[i].sh_addr;
+            elf_sections[n_elf_sections].size = shdrs[i].sh_size;
+            strncpy(elf_sections[n_elf_sections].name, shstrtab + shdrs[i].sh_name, 31);
+            elf_sections[n_elf_sections].name[31] = '\0';
+            n_elf_sections++;
+        }
+
         for (int i = 0; i < eh.e_shnum; i++) {
             if (strcmp(shstrtab + shdrs[i].sh_name, ".debug_line") == 0) {
                 uint8_t *dbg = malloc(shdrs[i].sh_size);

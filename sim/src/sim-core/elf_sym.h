@@ -22,4 +22,8 @@ const char *line_lookup(uint32_t pc, int *line_out);
  * Returns 0 if not found. */
 uint32_t resolve_breakpoint(const char *spec);
 
+/* ELF section info (allocated sections with addresses) */
+struct elf_section { uint32_t addr; uint32_t size; char name[32]; };
+int elf_get_sections(const struct elf_section **out);
+
 #endif

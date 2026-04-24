@@ -165,6 +165,16 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     }
     fprintf(f, "],");
 
+    /* ELF sections */
+    const struct elf_section *secs;
+    int nsecs = elf_get_sections(&secs);
+    fprintf(f, "\"sections\":[");
+    for (int i = 0; i < nsecs; i++) {
+        if (i) fprintf(f, ",");
+        fprintf(f, "{\"name\":\"%s\",\"addr\":%u,\"size\":%u}", secs[i].name, secs[i].addr, secs[i].size);
+    }
+    fprintf(f, "],");
+
     fprintf(f, "\"ram_base\":%u,\"ram_size\":%u}\n", RAM_BASE, RAM_SIZE);
 
     if (!out && state_path[0]) fclose(f);

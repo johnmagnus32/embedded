@@ -218,6 +218,24 @@ function renderMemMap(s) {
       const sizeStr = seg.size >= 1024*1024 ? `${(seg.size/1024/1024).toFixed(0)}MB` : seg.size >= 1024 ? `${(seg.size/1024).toFixed(0)}KB` : `${seg.size}B`;
       svg += `<text x="${labelX}" y="${ly+11}" fill="#484f58" font-size="8">${sizeStr}</text>`;
 
+      // Draw ELF sections that fall within this region
+      const secColors = {'.vector_table':'#79c0ff','.text':'#58a6ff','device_area':'#6e7681',
+                         '.data':'#d2a8ff','.rodata':'#a5d6ff','.bss':'#f0883e'};
+      for (const sec of (s.sections || [])) {
+        if (sec.addr < seg.base || sec.addr >= seg.base + seg.size) continue;
+        const sc = secColors[sec.name] || '#8b949e';
+        const sy = seg.y + seg.h - (sec.addr + sec.size - seg.base) / seg.size * seg.h;
+        const sh = Math.max(1, sec.size / seg.size * seg.h);
+        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${sc}" opacity="0.35" rx="1"/>`;
+        // Label on right if tall enough
+        if (sh > 8) {
+          const secSize = sec.size >= 1024 ? `${(sec.size/1024).toFixed(1)}KB` : `${sec.size}B`;
+          svg += `<text x="${labelX+2}" y="${sy+sh/2+3}" fill="${sc}" font-size="7">${sec.name} ${secSize}</text>`;
+        }
+        // Address on left
+        svg += `<text x="${barX-4}" y="${sy+sh/2+3}" fill="${sc}" text-anchor="end" font-size="7">${hex(sec.addr)}</text>`;
+      }
+
       // Draw task stacks inside SRAM
       if (seg.name === 'SRAM') {
         const tasks = s.tasks || [];
