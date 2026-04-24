@@ -272,7 +272,7 @@ class WebDebugger:
         cmd = [sim_core, self.elf]
         cmd += self.extra_args
         self.sim = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, bufsize=0)
+                                    stderr=sys.stderr, bufsize=0)
 
     def send_cmd(self, cmd):
         if self.sim and self.sim.poll() is None:
