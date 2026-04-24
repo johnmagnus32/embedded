@@ -273,7 +273,8 @@ function renderMemMap(s) {
 
           // Label (only if tall enough)
           if (sh > 6) {
-            svg += `<text x="${labelX}" y="${sy0+sh/2+3}" fill="${col}" font-size="8">${t.name||'t'+i}${t.active?' ◀':''}</text>`;
+            const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
+            svg += `<text x="${labelX}" y="${sy0+sh/2+3}" fill="${col}" font-size="8">${t.name||'t'+i} stack ${stkSize}${t.active?' ◀':''}</text>`;
           }
         }
 
