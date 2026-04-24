@@ -27,7 +27,7 @@ static void emit_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <firmware.elf>\n", argv[0]);
+        fprintf(stderr, "[sim-core] Usage: %s <firmware.elf>\n", argv[0]);
         return 1;
     }
 
@@ -35,10 +35,10 @@ int main(int argc, char **argv)
     uint8_t *ram = calloc(1, RAM_SIZE);
 
     if (elf_load(argv[1], flash, ram) != 0) {
-        fprintf(stderr, "Failed to load ELF: %s\n", argv[1]);
+        fprintf(stderr, "[sim-core] Failed to load ELF: %s\n", argv[1]);
         return 1;
     }
-    fprintf(stderr, "Loaded %s\n", argv[1]);
+    fprintf(stderr, "[sim-core] Loaded %s\n", argv[1]);
 
     char dir[256]; strncpy(dir, argv[1], 255);
     char *sl = strrchr(dir, '/'); if (sl) *(sl+1)='\0'; else dir[0]='\0';

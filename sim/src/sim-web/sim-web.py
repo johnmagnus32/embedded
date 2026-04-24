@@ -40,7 +40,7 @@ def ws_handshake(conn, headers):
         if h.lower().startswith('sec-websocket-key:'):
             key = h.split(':',1)[1].strip()
     if not key:
-        sys.stderr.write('WS handshake: no key found\n')
+        sys.stderr.write('[sim-web] WS handshake: no key found\n')
         return False
     GUID = '258EAFA5-E914-47DA-95CA-5AB5CE108231'
     accept = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
@@ -52,7 +52,7 @@ def ws_handshake(conn, headers):
         '\r\n'
     )
     conn.sendall(response.encode())
-    sys.stderr.write(f'WS handshake OK: key={key[:8]}... accept={accept[:8]}...\n')
+    sys.stderr.write(f'[sim-web] WS handshake OK: key={key[:8]}... accept={accept[:8]}...\n')
     return True
 
 def ws_send(conn, data):
@@ -151,8 +151,8 @@ class WebDebugger:
         srv.bind(('', self.port))
         srv.listen(5)
         srv.setblocking(False)
-        print(f'Debugger: http://localhost:{self.port}')
-        sys.stderr.write(f'Initial state: {len(self.last_state)} bytes\n')
+        sys.stderr.write(f'[sim-web] Debugger: http://localhost:{self.port}\n')
+        sys.stderr.write(f'[sim-web] Initial state: {len(self.last_state)} bytes\n')
 
         ws_clients = []
 
@@ -183,16 +183,16 @@ class WebDebugger:
                     req = lines[0] if lines else ''
 
                     if 'GET /ws' in req:
-                        sys.stderr.write(f'WS upgrade request from client\n')
+                        sys.stderr.write(f'[sim-web] WS upgrade request from client\n')
                         if ws_handshake(conn, lines[1:]):
                             conn.setblocking(False)
                             ws_clients.append(conn)
-                            sys.stderr.write(f'WS client connected, sending {len(self.last_state)} bytes\n')
+                            sys.stderr.write(f'[sim-web] WS client connected, sending {len(self.last_state)} bytes\n')
                             try:
                                 ws_send(conn, self.last_state)
-                                sys.stderr.write(f'WS initial send OK\n')
+                                sys.stderr.write(f'[sim-web] WS initial send OK\n')
                             except Exception as e:
-                                sys.stderr.write(f'WS initial send FAILED: {e}\n')
+                                sys.stderr.write(f'[sim-web] WS initial send FAILED: {e}\n')
                     elif 'GET' in req:
                         html_bytes = HTML.encode()
                         resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {len(html_bytes)}\r\n\r\n'
@@ -208,7 +208,7 @@ class WebDebugger:
                             ws_clients.remove(r)
                             r.close()
                         elif msg:  # non-empty command
-                            sys.stderr.write(f'CMD: {msg}\n')
+                            sys.stderr.write(f'[sim-web] CMD: {msg}\n')
                             self.send_cmd(msg)
                     except:
                         if r in ws_clients: ws_clients.remove(r)
@@ -226,7 +226,7 @@ def main():
     try:
         dbg.run()
     except KeyboardInterrupt:
-        print('\nStopped.')
+        sys.stderr.write('[sim-web] Stopped.\n')
         if dbg.sim: dbg.sim.kill()
 
 if __name__ == '__main__':
