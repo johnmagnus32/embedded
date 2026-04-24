@@ -284,7 +284,7 @@ memEl.addEventListener('wheel', (e) => {
   const oldH = memEl.scrollHeight;
   const frac = oldH > 0 ? mouseY / oldH : 0;
 
-  const delta = e.deltaY < 0 ? 1.15 : 1/1.15;
+  const delta = e.deltaY < 0 ? 1.05 : 1/1.05;
   memZoom = Math.max(1, Math.min(500, memZoom * delta));
 
   if (lastState) renderMemMap(lastState);
