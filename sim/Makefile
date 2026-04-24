@@ -1,27 +1,24 @@
+# sim/Makefile — builds sim-core into build/
+
 CC = gcc
 CFLAGS = -Wall -O2 -g
+SRC = src/sim-core
+BUILD = build
 
-sim-core: main.o cpu.o mem.o vis.o elf_sym.o state.o
+SRCS = $(SRC)/main.c $(SRC)/cpu.c $(SRC)/mem.c $(SRC)/vis.c $(SRC)/elf_sym.c $(SRC)/state.c
+OBJS = $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(SRCS))
+HDRS = $(SRC)/cpu.h $(SRC)/vis.h $(SRC)/elf_sym.h $(SRC)/state.h
+
+all: $(BUILD)/sim-core
+
+$(BUILD)/sim-core: $(OBJS)
 	$(CC) -o $@ $^
 
-%.o: %.c cpu.h vis.h elf_sym.h state.h
-	$(CC) $(CFLAGS) -c -o $@ $<
+$(BUILD)/%.o: $(SRC)/%.c $(HDRS)
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC) -c -o $@ $<
 
 clean:
-	rm -f sim *.o
+	rm -f $(BUILD)/*
 
-# Run with the STM32 sample firmware
-run: sim
-	./sim ../sample-stm32f411re/build/hello.bin
-
-# Run with FIFO (open another terminal: cat /tmp/uart)
-run-fifo: sim
-	./sim ../sample-stm32f411re/build/hello.bin --fifo /tmp/uart
-
-# Run with visualization (UART to stdout, vis to stderr)
-# Use: make run-vis 2>/dev/tty  (vis on current terminal)
-# Or:  make run-vis 2>/tmp/vis.txt  (vis to file, tail -f /tmp/vis.txt)
-run-vis: sim
-	./sim ../sample-stm32f411re/build/hello.bin --vis
-
-.PHONY: clean run run-fifo run-vis
+.PHONY: all clean

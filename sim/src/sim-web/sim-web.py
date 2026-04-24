@@ -250,9 +250,9 @@ class WebDebugger:
         self.last_state = '{}'
 
     def start_sim(self):
-        # Find sim-core next to this script
+        # Find sim-core in build/ (two levels up from src/sim-web/)
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        sim_core = os.path.join(script_dir, 'sim-core')
+        sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
         cmd = [sim_core, self.elf, '--headless']
         if self.console:
             cmd += ['--console', self.console]
