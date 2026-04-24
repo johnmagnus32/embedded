@@ -191,7 +191,7 @@ def ws_handshake(conn, headers):
         if h.lower().startswith('sec-websocket-key:'):
             key = h.split(':',1)[1].strip()
     if not key: return False
-    accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-5AB5-0F65FE7D').encode()).digest()).decode()
+    accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-5AB5CE108231').encode()).digest()).decode()
     conn.sendall(f'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n'.encode())
     return True
 
@@ -259,6 +259,17 @@ class WebDebugger:
         # Read initial state
         self.last_state = self.read_state() or '{}'
 
+        # Thread to read sim stdout
+        import queue
+        state_queue = queue.Queue()
+        def reader():
+            while self.sim and self.sim.poll() is None:
+                line = self.sim.stdout.readline()
+                if line:
+                    state_queue.put(line.decode().strip())
+        t = threading.Thread(target=reader, daemon=True)
+        t.start()
+
         # Start HTTP server
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -270,21 +281,27 @@ class WebDebugger:
         ws_clients = []
 
         while True:
-            rlist = [srv]
-            if self.sim and self.sim.stdout:
-                rlist.append(self.sim.stdout)
-            for c in ws_clients:
-                rlist.append(c)
+            # Drain state queue
+            while not state_queue.empty():
+                self.last_state = state_queue.get()
+                dead = []
+                for c in ws_clients:
+                    try: ws_send(c, self.last_state)
+                    except: dead.append(c)
+                for c in dead:
+                    ws_clients.remove(c)
+                    try: c.close()
+                    except: pass
 
+            rlist = [srv] + ws_clients
             try:
-                readable, _, _ = select.select(rlist, [], [], 0.1)
+                readable, _, _ = select.select(rlist, [], [], 0.05)
             except:
                 break
 
             for r in readable:
                 if r is srv:
                     conn, addr = srv.accept()
-                    # Read HTTP request
                     data = conn.recv(4096).decode(errors='ignore')
                     lines = data.split('\r\n')
                     req = lines[0] if lines else ''
@@ -301,19 +318,6 @@ class WebDebugger:
                         conn.close()
                     else:
                         conn.close()
-
-                elif r is (self.sim.stdout if self.sim else None):
-                    line = self.sim.stdout.readline()
-                    if line:
-                        self.last_state = line.decode().strip()
-                        dead = []
-                        for c in ws_clients:
-                            try: ws_send(c, self.last_state)
-                            except: dead.append(c)
-                        for c in dead:
-                            ws_clients.remove(c)
-                            try: c.close()
-                            except: pass
 
                 elif r in ws_clients:
                     try:
