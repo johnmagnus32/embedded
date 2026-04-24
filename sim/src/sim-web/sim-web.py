@@ -99,6 +99,9 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 
 <script>
 const ws = new WebSocket(`ws://${location.host}/ws`);
+ws.onopen = () => { document.getElementById('cmd-log').innerHTML += '<div style="color:#52b788">Connected to debugger</div>'; };
+ws.onerror = (e) => { document.getElementById('cmd-log').innerHTML += '<div style="color:#f85149">WebSocket error</div>'; };
+ws.onclose = () => { document.getElementById('cmd-log').innerHTML += '<div style="color:#f85149">Disconnected</div>'; };
 const cmdLog = document.getElementById('cmd-log');
 const cmdInput = document.getElementById('cmd-input');
 
@@ -145,7 +148,10 @@ function render(s) {
 }
 
 ws.onmessage = (e) => {
-  try { render(JSON.parse(e.data)); } catch(ex) {}
+  try { render(JSON.parse(e.data)); } catch(ex) {
+    document.getElementById('cmd-log').innerHTML += `<div style="color:#f85149">Parse error: ${ex.message}</div>`;
+    console.error('JSON parse error:', ex, e.data.substring(0, 200));
+  }
 };
 
 cmdInput.addEventListener('keydown', (e) => {
@@ -330,8 +336,9 @@ class WebDebugger:
                             try: ws_send(conn, self.last_state)
                             except Exception as e: sys.stderr.write(f'WS send error: {e}\n')
                     elif 'GET' in req:
-                        resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {len(HTML)}\r\n\r\n{HTML}'
-                        conn.sendall(resp.encode())
+                        html_bytes = HTML.encode()
+                        resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {len(html_bytes)}\r\n\r\n'
+                        conn.sendall(resp.encode() + html_bytes)
                         conn.close()
                     else:
                         conn.close()
