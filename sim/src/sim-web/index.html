@@ -204,7 +204,7 @@ function renderMemMap(s) {
       svg += `<line x1="${barX+barW/2-5}" y1="${seg.y+3}" x2="${barX+barW/2+5}" y2="${seg.y+3}" stroke="#21262d" stroke-dasharray="2,2"/>`;
     } else {
       // Region bar
-      svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2"/>`;
+      svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2" style="cursor:pointer" onclick="zoomToRegion(${seg.base},${seg.size})"/>`;
       // Top address
       // Top address (high end)
       svg += `<text x="${barX-4}" y="${seg.y+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base+seg.size)}</text>`;
@@ -224,7 +224,7 @@ function renderMemMap(s) {
         if (sec.addr < seg.base || sec.addr >= seg.base + seg.size) continue;
         const sy = seg.y + seg.h - (sec.addr + sec.size - seg.base) / seg.size * seg.h;
         const sh = Math.max(1, sec.size / seg.size * seg.h);
-        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" rx="1"/>`;
+        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" rx="1" style="cursor:pointer" onclick="zoomToRegion(${sec.addr},${sec.size})"/>`;
         if (sh > 8) {
           const secSize = sec.size >= 1024 ? `${(sec.size/1024).toFixed(1)}KB` : `${sec.size}B`;
           svg += `<text x="${labelX+2}" y="${sy+sh/2+3}" fill="${secColor}" font-size="7">${sec.name} ${secSize}</text>`;
@@ -291,6 +291,37 @@ function renderMemMap(s) {
 
   svg += '</svg>';
   el.innerHTML = svg;
+}
+
+// Click a section/region to zoom to it
+function zoomToRegion(addr, size) {
+  // Find which region contains this address to calculate needed zoom
+  const totalRegionBytes = regions.reduce((a,r) => a + r.size, 0);
+  const panelH = memEl.clientHeight;
+  // We want this section to fill ~80% of the visible panel
+  const targetFraction = size / totalRegionBytes;
+  const neededZoom = 0.8 / targetFraction;
+  memZoom = Math.max(1, Math.min(500, neededZoom));
+
+  if (lastState) renderMemMap(lastState);
+
+  // Now scroll to center the section
+  // Find the y position of this address in the new SVG
+  const svgH = memEl.scrollHeight;
+  // Address fraction within all regions (approximate)
+  let bytesBefore = 0;
+  for (const r of regions) {
+    if (addr >= r.base && addr < r.base + r.size) {
+      bytesBefore += (addr + size/2) - r.base;
+      break;
+    } else if (r.base + r.size <= addr) {
+      bytesBefore += r.size;
+    }
+  }
+  const frac = bytesBefore / totalRegionBytes;
+  // In reversed layout, low address = bottom, so scroll target is (1-frac)*svgH
+  const targetY = (1 - frac) * svgH;
+  memEl.scrollTop = targetY - panelH / 2;
 }
 
 // Pinch/scroll zoom on memory map, anchored at mouse position
