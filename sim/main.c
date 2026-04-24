@@ -29,7 +29,25 @@
 #include "elf_sym.h"
 
 extern void mem_set_uart_fd(int fd);
+extern void mem_set_uart_rx_fd(int fd);
 extern void mem_set_uart_suppress(int s);
+
+static void setup_console(const char *path)
+{
+    char tx_path[256], rx_path[256];
+    snprintf(tx_path, sizeof(tx_path), "%s", path);
+    snprintf(rx_path, sizeof(rx_path), "%s.in", path);
+    mkfifo(tx_path, 0666);
+    mkfifo(rx_path, 0666);
+    signal(SIGPIPE, SIG_IGN);
+    int tx_fd = open(tx_path, O_RDWR | O_NONBLOCK);
+    int rx_fd = open(rx_path, O_RDWR | O_NONBLOCK);
+    if (tx_fd >= 0) mem_set_uart_fd(tx_fd);
+    if (rx_fd >= 0) mem_set_uart_rx_fd(rx_fd);
+    mem_set_uart_suppress(1);
+    fprintf(stderr, "UART TX → %s  (read:  cat %s)\n", tx_path, tx_path);
+    fprintf(stderr, "UART RX ← %s  (write: echo a > %s)\n", rx_path, rx_path);
+}
 
 volatile sig_atomic_t dbg_interrupted = 0;
 static void sigint_handler(int sig) {
@@ -71,8 +89,11 @@ int main(int argc, char **argv)
     }
 
     int debug_mode = 0;
+    const char *console_path = NULL;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--debug") == 0) debug_mode = 1;
+        else if (strcmp(argv[i], "--console") == 0 && i + 1 < argc)
+            console_path = argv[++i];
     }
 
     uint8_t *flash = calloc(1, FLASH_SIZE);
@@ -98,7 +119,11 @@ int main(int argc, char **argv)
 
     if (!debug_mode) {
         /* Plain run mode */
-        printf("UART output → stdout\n");
+        if (console_path) {
+            setup_console(console_path);
+        } else {
+            printf("UART output → stdout\n");
+        }
         printf("Starting emulation at PC=0x%08X, SP=0x%08X\n", cpu.r[REG_PC], cpu.r[REG_SP]);
         printf("--- UART output ---\n");
         cpu_run(&cpu, flash, ram, MAX_CYCLES_RUN);
@@ -108,13 +133,8 @@ int main(int argc, char **argv)
     }
 
     /* Debug mode — UART to fifo */
-    const char *fifo = "/tmp/sim_uart";
-    mkfifo(fifo, 0666);
-    signal(SIGPIPE, SIG_IGN);
-    int fd = open(fifo, O_RDWR | O_NONBLOCK);
-    if (fd >= 0) mem_set_uart_fd(fd);
-    mem_set_uart_suppress(1);
-    fprintf(stderr, "UART → %s (in another terminal: cat %s)\n", fifo, fifo);
+    const char *fifo = console_path ? console_path : "/tmp/sim_uart";
+    setup_console(fifo);
 
     /* ── Interactive debugger ── */
     signal(SIGINT, sigint_handler);  /* Ctrl+C interrupts continue, doesn't exit */

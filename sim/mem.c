@@ -16,9 +16,31 @@
 
 /* UART state */
 static int uart_fifo_fd = -1;
+static int uart_rx_fd = -1;
 static int uart_suppress_stdout = 0;
 void mem_set_uart_fd(int fd) { uart_fifo_fd = fd; }
+void mem_set_uart_rx_fd(int fd) { uart_rx_fd = fd; }
 void mem_set_uart_suppress(int s) { uart_suppress_stdout = s; }
+
+/* UART RX ring buffer */
+#define UART_RX_SIZE 64
+static uint8_t uart_rx_buf[UART_RX_SIZE];
+static int uart_rx_head = 0, uart_rx_tail = 0;
+
+void uart_rx_poll(void)
+{
+    int fd = (uart_rx_fd >= 0) ? uart_rx_fd : uart_fifo_fd;
+    if (fd < 0) return;
+    while (((uart_rx_head + 1) % UART_RX_SIZE) != uart_rx_tail) {
+        uint8_t c;
+        int n = read(fd, &c, 1);
+        if (n <= 0) break;
+        uart_rx_buf[uart_rx_head] = c;
+        uart_rx_head = (uart_rx_head + 1) % UART_RX_SIZE;
+    }
+}
+
+int uart_rx_available(void) { return uart_rx_head != uart_rx_tail; }
 
 /* SysTick state */
 static uint32_t systick_csr = 0;
@@ -49,10 +71,19 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
     }
 
     /* USART2 */
-    if (addr == USART2_BASE + 0x00)  /* SR */
-        return (1 << 7) | (1 << 6);  /* TXE + TC always ready */
-    if (addr == USART2_BASE + 0x04)  /* DR */
+    if (addr == USART2_BASE + 0x00) { /* SR */
+        uint32_t sr = (1 << 7) | (1 << 6);  /* TXE + TC always ready */
+        if (uart_rx_available()) sr |= (1 << 5);  /* RXNE */
+        return sr;
+    }
+    if (addr == USART2_BASE + 0x04) { /* DR */
+        if (uart_rx_available()) {
+            uint8_t c = uart_rx_buf[uart_rx_tail];
+            uart_rx_tail = (uart_rx_tail + 1) % UART_RX_SIZE;
+            return c;
+        }
         return 0;
+    }
 
     /* SysTick */
     if (addr == SYSTICK_BASE + 0x00) return systick_csr;

@@ -1034,6 +1034,15 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
         if (pendsv_pending())
             c->pending_irq |= IRQ_PENDSV;
 
+        /* Poll UART RX (every 1024 cycles to avoid syscall overhead) */
+        if ((c->cycle_count & 0x3FF) == 0) {
+            extern void uart_rx_poll(void);
+            extern int uart_rx_available(void);
+            uart_rx_poll();
+            if (uart_rx_available())
+                c->pending_irq |= IRQ_USART2;
+        }
+
         /* Take highest priority pending interrupt */
         if (c->pending_irq && !c->primask && !c->in_handler && !c->irq_shadow) {
             if (c->pending_irq & IRQ_SVC) {
@@ -1042,6 +1051,9 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int max_cycles)
             } else if (c->pending_irq & IRQ_SYSTICK) {
                 c->pending_irq &= ~IRQ_SYSTICK;
                 take_interrupt(c, flash, ram, 15);  /* SysTick = vector 15 */
+            } else if (c->pending_irq & IRQ_USART2) {
+                c->pending_irq &= ~IRQ_USART2;
+                take_interrupt(c, flash, ram, 54);  /* USART2 = IRQ38 = vector 54 */
             } else if (c->pending_irq & IRQ_PENDSV) {
                 c->pending_irq &= ~IRQ_PENDSV;
                 clear_pendsv();

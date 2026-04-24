@@ -44,6 +44,7 @@ struct cpu_state {
 #define IRQ_SYSTICK  (1 << 0)
 #define IRQ_PENDSV   (1 << 1)
 #define IRQ_SVC      (1 << 2)
+#define IRQ_USART2   (1 << 3)
 
 /* Memory map */
 #define FLASH_BASE  0x08000000
