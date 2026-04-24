@@ -21,10 +21,24 @@ static void uart_print(const char *s)
     }
 }
 
+static void __attribute__((noinline)) deep_work(const char *task)
+{
+    uart_print("  deep: ");
+    uart_print(task);
+    uart_print("\n");
+}
+
+static void __attribute__((noinline)) do_work(const char *task)
+{
+    uart_print(task);
+    uart_print(": do_work\n");
+    deep_work(task);
+}
+
 static void task_a(void)
 {
     while (1) {
-        uart_print("running task_a\n");
+        do_work("task_a");
         sched_sleep_ms(100);
     }
 }
@@ -32,7 +46,7 @@ static void task_a(void)
 static void task_b(void)
 {
     while (1) {
-        uart_print("running task_b\n");
+        do_work("task_b");
         sched_sleep_ms(100);
     }
 }
@@ -40,7 +54,7 @@ static void task_b(void)
 static void task_c(void)
 {
     while (1) {
-        uart_print("running task_c\n");
+        do_work("task_c");
         sched_sleep_ms(100);
     }
 }

@@ -92,7 +92,7 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     extern int g_stopped;
     fprintf(f, "\"stopped\":%s,", g_stopped ? "true" : "false");
     fprintf(f, "\"pc\":%u,", pc);
-    fprintf(f, "\"psp\":%u,", cpu->psp);
+    fprintf(f, "\"psp\":%u,", cpu->r[REG_SP]);
     fprintf(f, "\"msp\":%u,", cpu->msp);
     fprintf(f, "\"cycles\":%llu,", (unsigned long long)cpu->cycle_count);
     fprintf(f, "\"in_handler\":%s,", cpu->in_handler ? "true" : "false");
@@ -163,8 +163,8 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
             }
             uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
             uint32_t stk_bot = stk_top - stk_size;
-            int active = (cpu->psp >= stk_bot && cpu->psp <= stk_top);
-            uint32_t dsp = active ? cpu->psp : sp;
+            int active = (cpu->r[REG_SP] >= stk_bot && cpu->r[REG_SP] <= stk_top);
+            uint32_t dsp = active ? cpu->r[REG_SP] : sp;
             int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
 
             if (t) fprintf(f, ",");
