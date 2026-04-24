@@ -239,7 +239,6 @@ function renderMemMap(s) {
       // Draw task stacks inside SRAM
       if (seg.name === 'SRAM') {
         const tasks = s.tasks || [];
-        const colors = ['#f85149','#58a6ff','#d2a8ff','#7ee787','#f0883e','#79c0ff'];
         const RAM_BASE = seg.base, RAM_SIZE = seg.size;
 
         // Collect addresses already labeled (from ELF sections) to avoid duplicates
@@ -253,7 +252,8 @@ function renderMemMap(s) {
           const t = tasks[i];
           if (!t.stack_bot || !t.stack_top) continue;
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
-          const col = colors[i % colors.length];
+          const col = t.active ? '#c9d1d9' : '#484f58';  /* light grey active, dark grey inactive */
+          const spCol = '#7ee787';  /* green for SP marker */
           const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
 
           const sy0 = addrToY(t.stack_top);
@@ -291,8 +291,8 @@ function renderMemMap(s) {
           const spAddr = t.sp;
           if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
             const spY = addrToY(spAddr);
-            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${col}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-            svg += `<text x="${barX-4}" y="${spY+3}" fill="${col}" text-anchor="end" font-size="7">SP ${hex(spAddr)} →</text>`;
+            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${spCol}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+            svg += `<text x="${barX-4}" y="${spY+3}" fill="${spCol}" text-anchor="end" font-size="7">SP ${hex(spAddr)} →</text>`;
           }
 
           // Stack bounds — grey, skip if already labeled
@@ -337,7 +337,7 @@ function zoomToRegion(addr, size) {
   // We want this section to fill ~80% of the visible panel
   const targetFraction = size / totalRegionBytes;
   const neededZoom = 0.8 / targetFraction;
-  memZoom = Math.max(1, Math.min(500, neededZoom));
+  memZoom = Math.max(1, Math.min(5000, neededZoom));
 
   if (lastState) renderMemMap(lastState);
 
@@ -373,7 +373,7 @@ memEl.addEventListener('wheel', (e) => {
   const frac = oldH > 0 ? mouseY / oldH : 0;
 
   const delta = e.deltaY < 0 ? 1.05 : 1/1.05;
-  memZoom = Math.max(1, Math.min(500, memZoom * delta));
+  memZoom = Math.max(1, Math.min(5000, memZoom * delta));
 
   if (lastState) renderMemMap(lastState);
 
