@@ -9,7 +9,7 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
        background:#0d1117; color:#c9d1d9; display:flex; flex-direction:column; height:100vh; }
 .top { display:flex; flex:1; overflow:hidden; }
 .panel { border:1px solid #30363d; margin:4px; border-radius:6px; overflow:hidden; display:flex; flex-direction:column; }
-.panel h2 { background:#161b22; padding:6px 10px; font-size:11px; color:#58a6ff; border-bottom:1px solid #30363d; }
+.panel h2 { background:#161b22; padding:6px 10px; font-size:11px; color:#58a6ff; border-bottom:1px solid #30363d; flex-shrink:0; }
 .panel-body { flex:1; overflow-y:auto; padding:8px; }
 #source-panel { flex:3; }
 #mem-panel { flex:2; }
@@ -20,30 +20,19 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .src-line.current { background:#1f3a1f; color:#7ee787; font-weight:bold; }
 .src-line .num { color:#484f58; display:inline-block; width:40px; text-align:right; margin-right:8px; }
 .src-line.current .num { color:#7ee787; }
-.reg { display:inline-block; margin:2px 6px; }
-.reg .label { color:#484f58; }
-.reg .val { color:#58a6ff; }
 .mode { padding:1px 6px; border-radius:3px; font-size:10px; }
 .mode.thread { background:#1f3a1f; color:#7ee787; }
 .mode.handler { background:#3d1f1f; color:#f85149; }
-.task { padding:3px 8px; border-bottom:1px solid #21262d; display:flex; align-items:center; gap:8px; }
-.task.active { background:#1f3a1f; }
-.task .name { width:60px; font-weight:bold; }
-.task .name.active { color:#7ee787; }
-.task .bar { flex:1; height:8px; background:#21262d; border-radius:4px; overflow:hidden; }
-.task .bar-fill { height:100%; background:#f85149; border-radius:4px; }
-.task .sp { color:#58a6ff; font-size:10px; }
-.task .usage { color:#484f58; font-size:10px; width:70px; }
 #uart { white-space:pre-wrap; word-break:break-all; color:#7ee787; font-size:11px; }
 #cmd-input { width:100%; background:#0d1117; border:1px solid #30363d; color:#c9d1d9;
-             font-family:inherit; font-size:12px; padding:6px 8px; border-radius:4px; }
+             font-family:inherit; font-size:12px; padding:6px 8px; border-radius:4px; flex-shrink:0; }
 #cmd-input:focus { outline:none; border-color:#58a6ff; }
-#cmd-log { font-size:11px; color:#484f58; margin-bottom:6px; }
+#cmd-log { flex:1; overflow-y:auto; font-size:11px; color:#484f58; }
 .fn { color:#d2a8ff; }
 .addr { color:#58a6ff; }
 .file { color:#484f58; font-size:10px; }
 .header-bar { background:#161b22; padding:4px 10px; border-bottom:1px solid #30363d;
-              display:flex; align-items:center; gap:15px; font-size:11px; }
+              display:flex; align-items:center; gap:15px; font-size:11px; flex-shrink:0; }
 .cyc { color:#484f58; }
 </style>
 </head>
@@ -62,14 +51,14 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     <div class="panel-body" id="source"></div>
   </div>
   <div class="panel" id="mem-panel">
-    <h2>Memory Map</h2>
-    <div class="panel-body" id="memmap"></div>
+    <h2>Memory Map — STM32F411RE</h2>
+    <div class="panel-body" id="memmap" style="padding:8px 12px;"></div>
   </div>
 </div>
 <div id="bottom">
   <div class="panel" id="cmd-panel">
     <h2>Debugger</h2>
-    <div class="panel-body">
+    <div class="panel-body" style="display:flex;flex-direction:column;padding:4px 8px;">
       <div id="cmd-log"></div>
       <input id="cmd-input" placeholder="(dbg) type command..." autofocus>
     </div>
@@ -78,44 +67,36 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     <h2>UART Console</h2>
     <div class="panel-body" style="display:flex;flex-direction:column">
       <div id="uart" style="flex:1;overflow-y:auto"></div>
-      <input id="uart-input" placeholder="Type here to send UART data..." style="width:100%;background:#0d1117;border:1px solid #30363d;color:#7ee787;font-family:inherit;font-size:12px;padding:6px 8px;border-radius:4px;margin-top:4px;">
+      <input id="uart-input" placeholder="Type here to send UART data..." style="width:100%;background:#0d1117;border:1px solid #30363d;color:#7ee787;font-family:inherit;font-size:12px;padding:6px 8px;border-radius:4px;margin-top:4px;flex-shrink:0;">
     </div>
   </div>
 </div>
 
 <script>
 const log = (msg) => {
-  document.getElementById('cmd-log').innerHTML += `<div style="color:#888">[sim-ui] ${msg}</div>`;
-  document.getElementById('cmd-log').scrollTop=99999;
+  const el = document.getElementById('cmd-log');
+  el.innerHTML += `<div style="color:#888">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
   fetch('/log', {method:'POST', body:msg}).catch(()=>{});
 };
 
-// Use HTTP polling instead of WebSocket for maximum compatibility
 let lastCycles = -1;
 async function poll() {
   try {
     const r = await fetch('/state');
     if (r.ok) {
       const s = await r.json();
-      if (s.cycles !== lastCycles) {
-        lastCycles = s.cycles;
-        render(s);
-      }
+      if (s.cycles !== lastCycles) { lastCycles = s.cycles; render(s); }
     }
   } catch(e) {}
   setTimeout(poll, 200);
 }
 
 async function sendCmd(cmd) {
-  log(`> ${cmd}`);
+  log(`<span style="color:#c9d1d9">(dbg) ${esc(cmd)}</span>`);
   try {
     const r = await fetch('/cmd', {method:'POST', body:cmd});
-    if (r.ok) {
-      const s = await r.json();
-      lastCycles = s.cycles;
-      render(s);
-      log('OK');
-    }
+    if (r.ok) { const s = await r.json(); lastCycles = s.cycles; render(s); }
   } catch(e) { log(`Error: ${e.message}`); }
 }
 
@@ -125,10 +106,10 @@ const cmdLog = document.getElementById('cmd-log');
 const cmdInput = document.getElementById('cmd-input');
 
 function hex(n) { return '0x' + (n >>> 0).toString(16).padStart(8,'0'); }
+function hex16(n) { return '0x' + (n >>> 0).toString(16).padStart(4,'0'); }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
 function render(s) {
-  // Header
   document.getElementById('hdr-func').textContent = s.function ? `${s.function}+0x${s.func_offset.toString(16)}` : '???';
   document.getElementById('hdr-cycles').textContent = `cy ${s.cycles.toLocaleString()}`;
   document.getElementById('hdr-pc').textContent = hex(s.pc);
@@ -136,7 +117,7 @@ function render(s) {
   document.getElementById('hdr-msp').textContent = hex(s.msp);
   document.getElementById('hdr-mode').innerHTML = `<span class="mode ${s.in_handler?'handler':'thread'}">${s.in_handler?'HANDLER':'THREAD'}</span>`;
 
-  // Source — full file, scroll to current line
+  // Source
   const src = document.getElementById('source');
   if (s.source && s.source.lines.length) {
     src.innerHTML = `<div class="file">${esc(s.source.file)}</div>` +
@@ -147,31 +128,103 @@ function render(s) {
     const cur = document.getElementById('cur-line');
     if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   } else {
-    src.innerHTML = '<div style="color:#484f58;padding:20px">No source — compile with -g</div>';
+    src.innerHTML = '<div style="color:#484f58;padding:20px">No source</div>';
   }
 
   // Memory map
-  let h = '';
-  for (const t of s.tasks) {
-    const pct = Math.round(t.stack_used/t.stack_size*100);
-    h += `<div class="task ${t.active?'active':''}">` +
-         `<div class="name ${t.active?'active':''}">${t.active?'▶ ':'  '}${t.name}</div>` +
-         `<div class="sp">${hex(t.sp)}</div>` +
-         `<div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>` +
-         `<div class="usage">${t.stack_used}/${t.stack_size}</div></div>`;
-  }
-  document.getElementById('memmap').innerHTML = h || '<div style="color:#484f58;padding:10px">No tasks</div>';
+  renderMemMap(s);
 
   // UART
   if (s.uart) document.getElementById('uart').textContent = s.uart;
+}
+
+function renderMemMap(s) {
+  const el = document.getElementById('memmap');
+  const W = el.clientWidth - 24;
+  const H = el.clientHeight - 16;
+  if (W < 50 || H < 50) return;
+
+  // STM32F411RE: 512KB Flash @ 0x08000000, 128KB SRAM @ 0x20000000
+  const FLASH_BASE = 0x08000000, FLASH_SIZE = 512*1024;
+  const RAM_BASE = s.ram_base || 0x20000000, RAM_SIZE = s.ram_size || 128*1024;
+
+  // Layout: two columns — Flash (left), RAM (right)
+  const colW = Math.floor((W - 20) / 2);
+  const barH = H - 40;
+
+  let svg = `<svg width="${W}" height="${H}" style="font-family:inherit;font-size:10px;">`;
+
+  // Flash column
+  const fx = 10;
+  svg += `<text x="${fx}" y="12" fill="#58a6ff" font-size="11">Flash 512KB</text>`;
+  svg += `<text x="${fx}" y="24" fill="#484f58" font-size="9">${hex(FLASH_BASE)}</text>`;
+  svg += `<rect x="${fx}" y="30" width="${colW}" height="${barH}" rx="3" fill="#161b22" stroke="#30363d"/>`;
+  svg += `<text x="${fx}" y="${30+barH+12}" fill="#484f58" font-size="9">${hex(FLASH_BASE+FLASH_SIZE)}</text>`;
+
+  // RAM column
+  const rx = fx + colW + 20;
+  svg += `<text x="${rx}" y="12" fill="#f0883e" font-size="11">SRAM 128KB</text>`;
+  svg += `<text x="${rx}" y="24" fill="#484f58" font-size="9">${hex(RAM_BASE)}</text>`;
+  svg += `<rect x="${rx}" y="30" width="${colW}" height="${barH}" rx="3" fill="#161b22" stroke="#30363d"/>`;
+  svg += `<text x="${rx}" y="${30+barH+12}" fill="#484f58" font-size="9">${hex(RAM_BASE+RAM_SIZE)}</text>`;
+
+  // Draw task stacks inside RAM column (to scale)
+  const tasks = s.tasks || [];
+  const colors = ['#f85149','#58a6ff','#d2a8ff','#7ee787','#f0883e','#79c0ff','#ffa657','#ff7b72'];
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    const bot = t.stack_bot, top = t.stack_top;
+    if (!bot || !top || bot < RAM_BASE || top > RAM_BASE + RAM_SIZE) continue;
+
+    // Stack region (full allocation)
+    const y0 = 30 + Math.floor((bot - RAM_BASE) / RAM_SIZE * barH);
+    const y1 = 30 + Math.floor((top - RAM_BASE) / RAM_SIZE * barH);
+    const sh = y1 - y0;
+    const col = colors[i % colors.length];
+
+    // Full stack allocation (dim)
+    svg += `<rect x="${rx+1}" y="${y0}" width="${colW-2}" height="${sh}" fill="${col}" opacity="0.15"/>`;
+
+    // Used portion (grows down from top)
+    if (t.stack_used > 0) {
+      const usedH = Math.max(1, Math.floor(t.stack_used / t.stack_size * sh));
+      svg += `<rect x="${rx+1}" y="${y1-usedH}" width="${colW-2}" height="${usedH}" fill="${col}" opacity="0.5"/>`;
+    }
+
+    // SP marker
+    const sp = t.sp || (top - t.stack_used);
+    if (sp >= bot && sp <= top) {
+      const spY = 30 + Math.floor((sp - RAM_BASE) / RAM_SIZE * barH);
+      svg += `<line x1="${rx}" y1="${spY}" x2="${rx+colW}" y2="${spY}" stroke="${col}" stroke-width="1.5"/>`;
+    }
+
+    // Label
+    const labelY = y0 + sh/2 + 3;
+    const pct = Math.round(t.stack_used / t.stack_size * 100);
+    const label = `${t.name || 'task'+i} ${pct}%`;
+    svg += `<text x="${rx+colW/2}" y="${labelY}" fill="${col}" text-anchor="middle" font-size="9" font-weight="${t.active?'bold':'normal'}">${label}</text>`;
+
+    // Active indicator
+    if (t.active) {
+      svg += `<text x="${rx+colW+2}" y="${labelY}" fill="#7ee787" font-size="9">◀</text>`;
+    }
+  }
+
+  // MSP marker in RAM
+  if (s.msp >= RAM_BASE && s.msp <= RAM_BASE + RAM_SIZE) {
+    const mspY = 30 + Math.floor((s.msp - RAM_BASE) / RAM_SIZE * barH);
+    svg += `<line x1="${rx}" y1="${mspY}" x2="${rx+colW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
+    svg += `<text x="${rx+colW+2}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
+  }
+
+  svg += '</svg>';
+  el.innerHTML = svg;
 }
 
 cmdInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     const cmd = cmdInput.value.trim();
     if (!cmd) return;
-    cmdLog.innerHTML += `<div style="color:#c9d1d9">(dbg) ${esc(cmd)}</div>`;
-    cmdLog.scrollTop = cmdLog.scrollHeight;
     sendCmd(cmd);
     cmdInput.value = '';
   }
