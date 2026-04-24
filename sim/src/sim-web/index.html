@@ -138,16 +138,16 @@ function render(s) {
 
 // STM32F411RE address map — regions shown in the vertical bar
 const regions = [
-  { name:'Flash',        base:0x08000000, size:512*1024,  color:'#58a6ff' },
-  { name:'System ROM',   base:0x1FFF0000, size:0x7A10,    color:'#484f58' },
-  { name:'SRAM',         base:0x20000000, size:128*1024,  color:'#f0883e' },
+  { name:'Flash',        base:0x08000000, size:512*1024,  color:'#8b949e' },
+  { name:'System ROM',   base:0x1FFF0000, size:0x7A10,    color:'#8b949e' },
+  { name:'SRAM',         base:0x20000000, size:128*1024,  color:'#8b949e' },
   { name:'APB1',         base:0x40000000, size:0x6800,    color:'#8b949e' },
   { name:'APB2',         base:0x40010000, size:0x6C00,    color:'#8b949e' },
   { name:'AHB1',         base:0x40020000, size:0x3C00,    color:'#8b949e' },
   { name:'AHB2 (USB)',   base:0x50000000, size:0x60C00,   color:'#8b949e' },
-  { name:'ITM/DWT/TPIU', base:0xE0000000, size:0x42000,   color:'#484f58' },
-  { name:'SysTick+NVIC', base:0xE000E000, size:0x1000,    color:'#7ee787' },
-  { name:'SCB/MPU/FPU',  base:0xE000ED00, size:0x300,     color:'#484f58' },
+  { name:'ITM/DWT/TPIU', base:0xE0000000, size:0x42000,   color:'#8b949e' },
+  { name:'SysTick+NVIC', base:0xE000E000, size:0x1000,    color:'#8b949e' },
+  { name:'SCB/MPU/FPU',  base:0xE000ED00, size:0x300,     color:'#8b949e' },
 ];
 
 function renderMemMap(s) {
@@ -204,7 +204,7 @@ function renderMemMap(s) {
       svg += `<line x1="${barX+barW/2-5}" y1="${seg.y+3}" x2="${barX+barW/2+5}" y2="${seg.y+3}" stroke="#21262d" stroke-dasharray="2,2"/>`;
     } else {
       // Region bar
-      svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2" style="cursor:pointer" onclick="zoomToRegion(${seg.base},${seg.size})"/>`;
+      svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2" onclick="zoomToRegion(${seg.base},${seg.size})"/>`;
       // Top address
       // Top address (high end)
       svg += `<text x="${barX-4}" y="${seg.y+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base+seg.size)}</text>`;
@@ -224,7 +224,7 @@ function renderMemMap(s) {
         if (sec.addr < seg.base || sec.addr >= seg.base + seg.size) continue;
         const sy = seg.y + seg.h - (sec.addr + sec.size - seg.base) / seg.size * seg.h;
         const sh = Math.max(1, sec.size / seg.size * seg.h);
-        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" rx="1" style="cursor:pointer" onclick="zoomToRegion(${sec.addr},${sec.size})"/>`;
+        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" rx="1" onclick="zoomToRegion(${sec.addr},${sec.size})"/>`;
         if (sh > 8) {
           const secSize = sec.size >= 1024 ? `${(sec.size/1024).toFixed(1)}KB` : `${sec.size}B`;
           svg += `<text x="${labelX+2}" y="${sy+sh/2+3}" fill="${secColor}" font-size="7">${sec.name} ${secSize}</text>`;
