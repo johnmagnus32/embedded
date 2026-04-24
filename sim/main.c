@@ -27,6 +27,7 @@
 #include "cpu.h"
 #include "vis.h"
 #include "elf_sym.h"
+#include "state.h"
 
 extern void mem_set_uart_fd(int fd);
 extern void mem_set_uart_rx_fd(int fd);
@@ -79,6 +80,7 @@ static void show_state(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram)
     else
         snprintf(event, sizeof(event), "0x%08X", cpu->r[REG_PC]);
     vis_dump(stderr, cpu, flash, ram, event);
+    state_dump(cpu, flash, ram);
 }
 
 int main(int argc, char **argv)
@@ -90,10 +92,13 @@ int main(int argc, char **argv)
 
     int debug_mode = 0;
     const char *console_path = NULL;
+    const char *state_path = NULL;
     for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--debug") == 0) debug_mode = 1;
         else if (strcmp(argv[i], "--console") == 0 && i + 1 < argc)
             console_path = argv[++i];
+        else if (strcmp(argv[i], "--state") == 0 && i + 1 < argc)
+            state_path = argv[++i];
     }
 
     uint8_t *flash = calloc(1, FLASH_SIZE);
@@ -102,6 +107,7 @@ int main(int argc, char **argv)
     if (elf_load(argv[1], flash, ram) == 0) {
         fprintf(stderr, "Loaded ELF %s\n", argv[1]);
         vis_set_source_dir(argv[1]);
+        if (state_path) state_set_path(state_path);
     } else {
         FILE *f = fopen(argv[1], "rb");
         if (!f) { perror("open firmware"); return 1; }

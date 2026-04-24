@@ -1,13 +1,8 @@
 /*
- * vis.c — 2-panel debugger visualizer
+ * vis.c — Debugger source code display
  *
- * ┌──────────────────┬──────────────────┐
- * │  Source Code     │  Memory Map      │
- * │  (with → arrow)  │  (regs, flash,   │
- * │                  │   sram, tasks)   │
- * └──────────────────┴──────────────────┘
- *
- * UART output goes to /tmp/sim_uart fifo.
+ * Shows source code with → arrow at current line.
+ * Memory map is handled externally via --state JSON file.
  */
 
 #include <stdio.h>
@@ -20,26 +15,8 @@
 #include "vis.h"
 #include "elf_sym.h"
 
-/* ── UART console (for non-debug vis mode) ── */
-#define CON_LINES 32
-#define CON_WIDTH 60
-static char con[CON_LINES][CON_WIDTH + 1];
-static int con_row = 0, con_col = 0, con_count = 0;
-static int ctx_switches = 0;
-
-void vis_console_putc(char c)
-{
-    if (c == '\0') return;
-    if (c == '\r') { con_col = 0; return; }
-    if (c == '\n' || con_col >= CON_WIDTH) {
-        con_row = (con_row + 1) % CON_LINES;
-        con_col = 0; con_count++;
-        memset(con[con_row], 0, CON_WIDTH + 1);
-        if (c == '\n') return;
-    }
-    if (c >= 32) con[con_row][con_col++] = c;
-}
-
+/* ── UART console (kept for non-debug mode) ── */
+void vis_console_putc(char c) { (void)c; }
 void vis_dbg_log(const char *fmt, ...) { (void)fmt; }
 
 /* ── ANSI helpers ── */
@@ -51,69 +28,20 @@ void vis_dbg_log(const char *fmt, ...) { (void)fmt; }
 #define CYAN   ESC "36m"
 #define RESET  ESC "0m"
 
-static FILE *g_out;
-static int g_cols, g_rows, g_half;
-
-static void at(int r, int c) { fprintf(g_out, ESC "%d;%dH", r, c); }
-
-static void cell(int row, int col, int w, const char *s)
-{
-    at(row, col);
-    int vis = 0;
-    for (const char *p = s; *p; p++) {
-        if (*p == '\033') { while (*p && *p != 'm') p++; }
-        else vis++;
-    }
-    fprintf(g_out, "%s", s);
-    for (int i = vis; i < w; i++) fputc(' ', g_out);
-}
-
-static char *fmt(const char *f, ...)
-{
-    static char buf[256];
-    va_list ap;
-    va_start(ap, f);
-    vsnprintf(buf, sizeof(buf), f, ap);
-    va_end(ap);
-    return buf;
-}
-
-/* Render a box content row: "0x%08X │%-*s│" with ANSI-aware padding */
-#define BW 21
-static char *box_row(uint32_t addr, int has_addr, const char *content)
-{
-    static char buf[256];
-    char prefix[16];
-    if (has_addr)
-        snprintf(prefix, sizeof(prefix), "0x%08X ", addr);
-    else
-        snprintf(prefix, sizeof(prefix), "           ");
-
-    /* Count visible chars in content */
-    int vis = 0;
-    for (const char *p = content; *p; p++) {
-        if (*p == '\033') { while (*p && *p != 'm') p++; }
-        else vis++;
-    }
-    int pad = BW - vis;
-    if (pad < 0) pad = 0;
-
-    char padding[64] = {0};
-    for (int i = 0; i < pad && i < 63; i++) padding[i] = ' ';
-
-    snprintf(buf, sizeof(buf), "%s│%s%s│", prefix, content, padding);
-    return buf;
-}
-
-static void get_size(void)
+static int get_rows(void)
 {
     struct winsize w;
-    if (ioctl(STDERR_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 40) {
-        g_cols = w.ws_col; g_rows = w.ws_row;
-    } else {
-        g_cols = 80; g_rows = 40;
-    }
-    g_half = g_cols / 2;
+    if (ioctl(STDERR_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_row > 10)
+        return w.ws_row;
+    return 40;
+}
+
+static int get_cols(void)
+{
+    struct winsize w;
+    if (ioctl(STDERR_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 20)
+        return w.ws_col;
+    return 80;
 }
 
 /* ── Source file cache ── */
@@ -160,47 +88,38 @@ static void load_source(const char *file)
 void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
               const char *event)
 {
-    g_out = out;
-    get_size();
-    int lw = g_half - 2;          /* left pane width (source) */
-    int rw = g_cols - g_half - 3; /* right pane width (memory) */
-    int rc = g_half + 3;          /* right pane col start */
-
-    uint32_t pc  = cpu->r[REG_PC];
-    uint32_t psp = cpu->psp;
-    uint32_t msp = cpu->msp;
-    int in_flash = (pc >= FLASH_BASE && pc < FLASH_BASE + FLASH_SIZE);
-
-    if (strstr(event, "PendSV")) ctx_switches++;
-
-    fprintf(out, ESC "2J" ESC "H" ESC "?25l");
-
-    /* Vertical divider */
-    for (int r = 1; r <= g_rows - 1; r++) {
-        at(r, g_half + 1); fprintf(out, DIM "│" RESET);
-    }
+    (void)flash; (void)ram;
+    int rows = get_rows();
+    int cols = get_cols();
+    uint32_t pc = cpu->r[REG_PC];
 
     uint32_t sym_off;
     const char *fn = sym_lookup(pc, &sym_off);
 
-    /* ════════════════════════════════════════════
-     * LEFT PANEL: Source Code
-     * ════════════════════════════════════════════ */
+    fprintf(out, ESC "2J" ESC "H" ESC "?25l");
+
+    int row = 1;
+
+    /* Header */
+    fprintf(out, ESC "%d;1H", row);
+    fprintf(out, BOLD "%s" RESET "  " DIM "cy %llu" RESET "  "
+            "PC " CYAN "%08X" RESET " %s " GREEN "%s" RESET "+" CYAN "0x%X" RESET
+            "  PSP " CYAN "%08X" RESET " MSP " CYAN "%08X" RESET,
+            event, (unsigned long long)cpu->cycle_count,
+            pc, cpu->in_handler ? YELLOW "[H]" RESET : "[T]",
+            fn ? fn : "???", sym_off, cpu->psp, cpu->msp);
+    row += 2;
+
+    /* Source code */
     int cur_line;
     const char *file = line_lookup(pc, &cur_line);
     if (file) load_source(file);
 
-    int src_row = 1;
-    /* Header: function + event */
-    cell(src_row, 2, lw, fmt(BOLD "%s" RESET DIM "  cy %-7llu ctx %d" RESET,
-         event, (unsigned long long)cpu->cycle_count, ctx_switches));
-    src_row++;
-
     if (src_nlines > 0 && cur_line > 0) {
-        cell(src_row, 2, lw, fmt(DIM "%s" RESET, file));
-        src_row++;
+        fprintf(out, ESC "%d;1H" DIM "%s" RESET, row, file);
+        row++;
 
-        int avail = g_rows - 4;
+        int avail = rows - row - 1;
         int context = avail / 2;
         int start = cur_line - context;
         if (start < 1) start = 1;
@@ -208,129 +127,28 @@ void vis_dump(FILE *out, struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
         if (end > src_nlines) end = src_nlines;
 
         for (int l = start; l <= end; l++) {
-            const char *lt = (l <= src_nlines) ? src_lines[l - 1] : "";
-            char tr[128];
-            int maxw = lw - 6;
-            if (maxw > 120) maxw = 120;
+            const char *lt = src_lines[l - 1];
+            /* Truncate to terminal width */
+            char tr[256];
+            int maxw = cols - 6;
+            if (maxw > 250) maxw = 250;
             strncpy(tr, lt, maxw); tr[maxw] = '\0';
             for (char *p = tr; *p; p++) if (*p == '\t') *p = ' ';
+
+            fprintf(out, ESC "%d;1H", row);
             if (l == cur_line)
-                cell(src_row, 2, lw, fmt(CYAN "→%3d" RESET " " BOLD "%s" RESET, l, tr));
+                fprintf(out, CYAN "→%3d" RESET " " BOLD "%s" RESET, l, tr);
             else
-                cell(src_row, 2, lw, fmt(DIM " %3d" RESET " %s", l, tr));
-            src_row++;
+                fprintf(out, DIM " %3d" RESET " %s", l, tr);
+            /* Clear to end of line */
+            fprintf(out, ESC "K");
+            row++;
         }
     } else {
-        cell(src_row, 2, lw, DIM "  (no source — compile with -g)" RESET);
+        fprintf(out, ESC "%d;1H" DIM "(no source — compile with -g)" RESET, row);
     }
-
-    /* ════════════════════════════════════════════
-     * RIGHT PANEL: Memory Map
-     * ════════════════════════════════════════════ */
-    int row = 1;
-    #define BW 21  /* box inner width */
-    #define BOX_TOP(addr)       cell(row, rc, rw, fmt("0x%08X ┌" "─────────────────────" "┐", addr)); row++
-    #define BOX_BOT(addr)       cell(row, rc, rw, fmt("0x%08X └" "─────────────────────" "┘", addr)); row++
-    #define BOX_SEP(addr)       cell(row, rc, rw, fmt("0x%08X ├" "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌" "┤", addr)); row++
-
-    /* Registers */
-    cell(row, rc, rw, fmt("PC " CYAN "%08X" RESET " %s " GREEN "%s" RESET,
-         pc, cpu->in_handler ? YELLOW "[H]" RESET : "[T]", fn ? fn : ""));
-    row++;
-    cell(row, rc, rw, fmt("PSP " CYAN "%08X" RESET " MSP " CYAN "%08X" RESET, psp, msp));
-    row += 2;
-
-    /* SRAM — proportional layout */
-    int avail_rows = g_rows - row - 2;  /* rows available for the box */
-    if (avail_rows < 10) avail_rows = 10;
-
-    /* Gather memory regions */
-    uint32_t sym_nt = sym_find_by_name("num_tasks");
-    uint32_t sym_tasks = sym_find_by_name("tasks");
-    uint32_t sym_stacks = sym_find_by_name("task_stacks");
-    if (!sym_stacks) sym_stacks = sym_find_by_name("stacks");
-
-    int tcb_size = 0, stk_size = 0, num_tasks = 0;
-    uint32_t tasks_off = 0, stk_base = 0;
-    uint32_t stk_end = RAM_BASE;  /* end of last stack */
-
-    if (sym_nt && sym_tasks && sym_stacks) {
-        if (sym_find_by_name("task_stacks")) { tcb_size = 32; stk_size = 512; }
-        else { tcb_size = 8; stk_size = 256; }
-        tasks_off = sym_tasks - RAM_BASE;
-        stk_base = sym_stacks - RAM_BASE;
-        num_tasks = *(uint32_t *)(ram + (sym_nt - RAM_BASE));
-        if (num_tasks < 0 || num_tasks > 8) num_tasks = 0;
-        stk_end = RAM_BASE + stk_base + num_tasks * stk_size;
-    }
-
-    /* Compute sizes of each region */
-    uint32_t bss_size = sym_stacks ? (sym_stacks - RAM_BASE) : 0x100;
-    uint32_t all_stacks = num_tasks * stk_size;
-    uint32_t heap_size = (RAM_BASE + RAM_SIZE) - stk_end;
-
-    uint32_t total = bss_size + all_stacks + heap_size;
-    if (total == 0) total = 1;
-
-    /* Allocate rows proportionally (min 1 per region, min 2 per stack) */
-    int bss_rows = (int)((uint64_t)bss_size * avail_rows / total);
-    int heap_rows = (int)((uint64_t)heap_size * avail_rows / total);
-    if (bss_rows < 1) bss_rows = 1;
-    if (heap_rows < 1) heap_rows = 1;
-    /* Each task gets at least 2 rows (SP + name) */
-    int per_task = num_tasks > 0 ? (avail_rows - bss_rows - heap_rows - 2) / num_tasks : 0;
-    if (per_task < 2) per_task = 2;
-
-    /* Draw */
-    BOX_TOP(RAM_BASE);
-
-    /* .bss region */
-    cell(row, rc, rw, box_row(0, 0, DIM " .data + .bss" RESET)); row++;
-
-    /* Task stacks */
-    if (num_tasks > 0) {
-        for (int t = 0; t < num_tasks && row < g_rows - 4; t++) {
-            uint32_t sp = *(uint32_t *)(ram + tasks_off + t * tcb_size);
-            uint32_t name_ptr = *(uint32_t *)(ram + tasks_off + t * tcb_size + 4);
-            char tn[12] = {0};
-            if (name_ptr >= FLASH_BASE && name_ptr < FLASH_BASE + FLASH_SIZE) {
-                const char *s = (const char *)(flash + (name_ptr - FLASH_BASE));
-                for (int j = 0; j < 7 && s[j] >= 0x20 && s[j] < 0x7F; j++) tn[j] = s[j];
-            }
-            if (!tn[0]) { tn[0] = '0' + t; tn[1] = '\0'; }
-            uint32_t stk_top = RAM_BASE + stk_base + (t + 1) * stk_size;
-            uint32_t stk_bot = stk_top - stk_size;
-            int active = (psp >= stk_bot && psp <= stk_top);
-            uint32_t dsp = active ? psp : sp;
-            int used = (dsp >= stk_bot && dsp <= stk_top) ? (int)(stk_top - dsp) : 0;
-
-            BOX_SEP(stk_bot);
-            /* Show used portion */
-            if (per_task > 3) {
-                cell(row, rc, rw, box_row(0, 0, DIM " ··· used ···" RESET)); row++;
-            }
-            cell(row, rc, rw, box_row(dsp, 1, fmt(CYAN " SP" RESET " %s%s%s %3d/%-3d",
-                active ? GREEN : "", active ? "▶" : " ", active ? RESET : "", used, stk_size))); row++;
-            cell(row, rc, rw, box_row(0, 0, fmt(" %s%s%s",
-                active ? GREEN : "", tn, active ? RESET : ""))); row++;
-            if (per_task > 3) {
-                cell(row, rc, rw, box_row(0, 0, DIM " ··· free ···" RESET)); row++;
-            }
-        }
-        BOX_SEP(stk_end);
-    }
-
-    /* Heap */
-    cell(row, rc, rw, box_row(0, 0, DIM " heap" RESET)); row++;
-    int heap_dots = (heap_rows > 4) ? 3 : heap_rows - 1;
-    for (int i = 0; i < heap_dots && row < g_rows - 2; i++) {
-        cell(row, rc, rw, box_row(0, 0, DIM " ···" RESET)); row++;
-    }
-    cell(row, rc, rw, box_row(msp, 1, YELLOW " MSP ↓" RESET)); row++;
-    BOX_BOT(RAM_BASE + RAM_SIZE);
 
     /* Cursor at bottom for prompt */
-    at(g_rows, 1);
-    fprintf(out, ESC "?25h");
+    fprintf(out, ESC "%d;1H" ESC "?25h", rows);
     fflush(out);
 }

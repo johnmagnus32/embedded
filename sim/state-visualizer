@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+"""
+state-visualizer — Web-based memory map viewer for the ARM emulator
+
+Serves an HTML page that polls a JSON state file and renders
+the memory map, registers, and task stacks.
+
+Usage:
+    ./state-visualizer --state /tmp/sim_state.json [--port 3000]
+"""
+
+import argparse
+import http.server
+import json
+import os
+import sys
+
+HTML = r"""<!DOCTYPE html>
+<html>
+<head>
+<title>ARM Emulator State</title>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 13px;
+         background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+  h1 { color: #00d4ff; margin-bottom: 15px; font-size: 16px; }
+  .grid { display: flex; gap: 20px; }
+  .panel { background: #16213e; border: 1px solid #0f3460; border-radius: 8px;
+           padding: 15px; min-width: 300px; }
+  .panel h2 { color: #e94560; font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #0f3460; padding-bottom: 5px; }
+  .reg { display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 10px; }
+  .reg span { color: #00d4ff; }
+  .reg .label { color: #888; }
+  .mode { padding: 2px 8px; border-radius: 3px; font-size: 11px; }
+  .mode.thread { background: #1b4332; color: #52b788; }
+  .mode.handler { background: #4a1942; color: #e94560; }
+  .mem-box { border: 1px solid #0f3460; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .mem-row { display: flex; padding: 4px 8px; border-bottom: 1px solid #0f3460; align-items: center; }
+  .mem-row:last-child { border-bottom: none; }
+  .mem-row .addr { color: #888; width: 90px; font-size: 11px; }
+  .mem-row .content { flex: 1; }
+  .mem-row.sep { background: #0f3460; padding: 2px 8px; font-size: 11px; }
+  .mem-row.active { background: #1b4332; }
+  .task-name { font-weight: bold; }
+  .task-name.active { color: #52b788; }
+  .sp-val { color: #00d4ff; font-size: 11px; }
+  .bar { display: inline-block; height: 10px; border-radius: 2px; margin-left: 8px; }
+  .bar-used { background: #e94560; }
+  .bar-free { background: #0f3460; }
+  .func { color: #52b788; }
+  .file { color: #888; font-size: 11px; }
+  .stale { opacity: 0.4; }
+  #status { color: #888; font-size: 11px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h1>🔬 ARM Cortex-M4 Emulator</h1>
+<div class="grid">
+  <div class="panel" id="regs-panel">
+    <h2>Registers</h2>
+    <div id="regs"></div>
+  </div>
+  <div class="panel" id="mem-panel">
+    <h2>Memory Map — SRAM</h2>
+    <div id="memmap"></div>
+  </div>
+  <div class="panel" id="info-panel">
+    <h2>Execution</h2>
+    <div id="info"></div>
+  </div>
+</div>
+<div id="status">Waiting for state...</div>
+
+<script>
+const STATE_URL = '/state.json';
+let lastCycles = -1;
+
+function hex(n) { return '0x' + (n >>> 0).toString(16).padStart(8, '0'); }
+
+function barHTML(used, total) {
+  const pct = Math.round(used / total * 100);
+  const w = 80;
+  const filled = Math.round(pct / 100 * w);
+  return `<span class="bar bar-used" style="width:${filled}px"></span>` +
+         `<span class="bar bar-free" style="width:${w - filled}px"></span>` +
+         ` ${used}/${total} (${pct}%)`;
+}
+
+function render(s) {
+  // Registers
+  document.getElementById('regs').innerHTML = `
+    <div class="reg">
+      <div><span class="label">PC</span> <span>${hex(s.pc)}</span></div>
+      <div><span class="label">PSP</span> <span>${hex(s.psp)}</span></div>
+      <div><span class="label">MSP</span> <span>${hex(s.msp)}</span></div>
+      <div><span class="mode ${s.in_handler ? 'handler' : 'thread'}">${s.in_handler ? 'HANDLER' : 'THREAD'}</span></div>
+    </div>
+    <div class="reg">
+      ${['R0','R1','R2','R3','R4','R5','R6','R7'].map((n,i) =>
+        `<div><span class="label">${n}</span> <span>${hex(s.regs[i])}</span></div>`).join('')}
+    </div>
+  `;
+
+  // Info
+  document.getElementById('info').innerHTML = `
+    <div><span class="func">${s.function || '???'}</span>+0x${s.func_offset.toString(16)}</div>
+    <div class="file">${s.file || '(no source)'}:${s.line}</div>
+    <div style="margin-top:8px"><span class="label">Cycles:</span> ${s.cycles.toLocaleString()}</div>
+  `;
+
+  // Memory map
+  let html = '<div class="mem-box">';
+  html += `<div class="mem-row sep"><div class="addr">${hex(s.ram_base)}</div><div class="content">.data + .bss</div></div>`;
+
+  for (const t of s.tasks) {
+    html += `<div class="mem-row sep"><div class="addr">${hex(t.stack_bot)}</div>` +
+            `<div class="content"><span class="task-name ${t.active ? 'active' : ''}">${t.active ? '▶ ' : '  '}${t.name}</span></div></div>`;
+    html += `<div class="mem-row ${t.active ? 'active' : ''}">` +
+            `<div class="addr"><span class="sp-val">${hex(t.sp)}</span></div>` +
+            `<div class="content">SP ${barHTML(t.stack_used, t.stack_size)}</div></div>`;
+    html += `<div class="mem-row sep"><div class="addr">${hex(t.stack_top)}</div><div class="content"></div></div>`;
+  }
+
+  html += `<div class="mem-row"><div class="addr"></div><div class="content" style="color:#888">heap ···</div></div>`;
+  html += `<div class="mem-row"><div class="addr">${hex(s.msp)}</div><div class="content" style="color:#e94560">MSP ↓</div></div>`;
+  html += `<div class="mem-row sep"><div class="addr">${hex(s.ram_base + s.ram_size)}</div><div class="content"></div></div>`;
+  html += '</div>';
+  document.getElementById('memmap').innerHTML = html;
+
+  document.getElementById('status').textContent =
+    `Updated: ${new Date().toLocaleTimeString()} — ${s.cycles.toLocaleString()} cycles`;
+}
+
+async function poll() {
+  try {
+    const r = await fetch(STATE_URL + '?t=' + Date.now());
+    if (r.ok) {
+      const s = await r.json();
+      if (s.cycles !== lastCycles) {
+        lastCycles = s.cycles;
+        document.body.classList.remove('stale');
+        render(s);
+      }
+    }
+  } catch(e) {}
+  setTimeout(poll, 200);
+}
+poll();
+</script>
+</body>
+</html>
+"""
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    state_file = None
+
+    def do_GET(self):
+        if self.path == '/' or self.path == '/index.html':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            self.wfile.write(HTML.encode())
+        elif self.path.startswith('/state.json'):
+            try:
+                with open(self.server.state_file, 'r') as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Cache-Control', 'no-cache')
+                self.end_headers()
+                self.wfile.write(data.encode())
+            except:
+                self.send_response(404)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # suppress request logs
+
+def main():
+    parser = argparse.ArgumentParser(description='Web-based ARM emulator state viewer')
+    parser.add_argument('--state', required=True, help='Path to JSON state file')
+    parser.add_argument('--port', type=int, default=3000, help='HTTP port (default: 3000)')
+    args = parser.parse_args()
+
+    server = http.server.HTTPServer(('', args.port), Handler)
+    server.state_file = args.state
+    print(f"State visualizer: http://localhost:{args.port}")
+    print(f"Reading state from: {args.state}")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+
+if __name__ == '__main__':
+    main()

@@ -1,10 +1,10 @@
 CC = gcc
 CFLAGS = -Wall -O2 -g
 
-sim: main.o cpu.o mem.o vis.o elf_sym.o
+sim: main.o cpu.o mem.o vis.o elf_sym.o state.o
 	$(CC) -o $@ $^
 
-%.o: %.c cpu.h vis.h elf_sym.h
+%.o: %.c cpu.h vis.h elf_sym.h state.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
