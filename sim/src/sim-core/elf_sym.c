@@ -728,8 +728,18 @@ uint32_t resolve_breakpoint(const char *spec)
         return 0;
     }
 
-    /* Try function name */
-    for (int i = 0; i < nsyms; i++)
-        if (strcmp(syms[i].name, spec) == 0) return syms[i].addr;
+    /* Try function name — resolve past prologue */
+    for (int i = 0; i < nsyms; i++) {
+        if (strcmp(syms[i].name, spec) == 0) {
+            uint32_t addr = syms[i].addr;
+            uint32_t end = addr + syms[i].size;
+            /* Skip prologue: find first line entry >= addr+4 */
+            for (int j = 0; j < nlines; j++) {
+                if (lines[j].addr >= addr + 4 && lines[j].addr < end)
+                    return lines[j].addr;
+            }
+            return addr;
+        }
+    }
     return 0;
 }

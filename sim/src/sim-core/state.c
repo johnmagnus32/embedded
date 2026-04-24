@@ -13,9 +13,10 @@ static char state_path[256];
 static char src_search_dir[256];
 
 /* UART TX capture ring buffer */
-#define UART_CAP_SIZE 4096
+#define UART_CAP_SIZE 8192
 static char uart_cap[UART_CAP_SIZE];
-static int uart_cap_pos = 0;
+static int uart_cap_head = 0;
+static int uart_cap_count = 0;
 
 void state_set_path(const char *path) { strncpy(state_path, path, sizeof(state_path) - 1); }
 void state_set_source_dir(const char *dir) { strncpy(src_search_dir, dir, sizeof(src_search_dir) - 1); }
@@ -23,8 +24,9 @@ void state_set_source_dir(const char *dir) { strncpy(src_search_dir, dir, sizeof
 void state_uart_putc(char c)
 {
     if (c == '\r') return;
-    if (uart_cap_pos < UART_CAP_SIZE - 1)
-        uart_cap[uart_cap_pos++] = c;
+    uart_cap[uart_cap_head] = c;
+    uart_cap_head = (uart_cap_head + 1) % UART_CAP_SIZE;
+    if (uart_cap_count < UART_CAP_SIZE) uart_cap_count++;
 }
 
 /* Load source file and return lines array */
@@ -118,10 +120,11 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     }
     fprintf(f, "]},");
 
-    /* UART output */
+    /* UART output (ring buffer — output in order) */
     fprintf(f, "\"uart\":\"");
-    for (int i = 0; i < uart_cap_pos; i++) {
-        char c = uart_cap[i];
+    int start = (uart_cap_count < UART_CAP_SIZE) ? 0 : uart_cap_head;
+    for (int j = 0; j < uart_cap_count; j++) {
+        char c = uart_cap[(start + j) % UART_CAP_SIZE];
         if (c == '"') fprintf(f, "\\\"");
         else if (c == '\\') fprintf(f, "\\\\");
         else if (c == '\n') fprintf(f, "\\n");
