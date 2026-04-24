@@ -764,6 +764,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         switch (sysm) {
         case 8: c->msp = c->r[rn]; if (!(c->control & 2)) c->r[REG_SP] = c->msp; break;
         case 9: c->psp = c->r[rn]; if ((c->control & 2) && !c->in_handler) c->r[REG_SP] = c->psp; break;
+                if ((c->control & 2) && !c->in_handler) c->r[REG_SP] = c->psp; break;
         case 16: c->primask = c->r[rn] & 1; break;
         case 20: c->control = c->r[rn] & 3;
                  c->r[REG_SP] = (c->control & 2) ? c->psp : c->msp; break;
@@ -961,7 +962,7 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
 
 static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret)
 {
-    /* Normal return: pop exception frame */
+    /* Pop exception frame */
     uint32_t *sp_ptr;
     if (exc_ret & 0x4)
         sp_ptr = &c->psp;  /* return to PSP */
