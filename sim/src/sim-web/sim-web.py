@@ -67,24 +67,17 @@ def ws_send(conn, data):
         frame = bytes([0x81, 126]) + struct.pack('>H', len(b)) + b
     else:
         frame = bytes([0x81, 127]) + struct.pack('>Q', len(b)) + b
-    try:
-        conn.setblocking(True)
-        conn.sendall(frame)
-        conn.setblocking(False)
-    except: raise
+    conn.sendall(frame)
 
 def ws_recv(conn):
     try:
-        conn.setblocking(False)
         hdr = conn.recv(2)
-        if not hdr: return None  # connection closed
-        if len(hdr) < 2: return ''  # partial, try later
+        if not hdr: return None
+        if len(hdr) < 2: return ''
         opcode = hdr[0] & 0x0F
-        if opcode == 8: return None  # close frame
+        if opcode == 8: return None
         masked = hdr[1] & 0x80
         length = hdr[1] & 0x7F
-        conn.setblocking(True)
-        conn.settimeout(1.0)
         if length == 126: length = struct.unpack('>H', conn.recv(2))[0]
         elif length == 127: length = struct.unpack('>Q', conn.recv(8))[0]
         mask = conn.recv(4) if masked else b'\x00'*4
@@ -93,12 +86,10 @@ def ws_recv(conn):
             chunk = conn.recv(length - len(data))
             if not chunk: return None
             data += chunk
-        conn.setblocking(False)
         return bytes(b ^ mask[i%4] for i,b in enumerate(data)).decode()
-    except BlockingIOError:
-        return ''  # no data available
     except socket.timeout:
-        conn.setblocking(False)
+        return ''
+    except BlockingIOError:
         return ''
     except:
         return None
@@ -194,7 +185,7 @@ class WebDebugger:
                     if 'GET /ws' in req:
                         log_web(f'WS upgrade request from client')
                         if ws_handshake(conn, lines[1:]):
-                            conn.setblocking(False)
+                            conn.settimeout(0.05)
                             ws_clients.append(conn)
                             log_web(f'WS client connected, sending {len(self.last_state)} bytes')
                             try:
