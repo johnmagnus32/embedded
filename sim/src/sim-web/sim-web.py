@@ -196,9 +196,20 @@ def ws_handshake(conn, headers):
     for h in headers:
         if h.lower().startswith('sec-websocket-key:'):
             key = h.split(':',1)[1].strip()
-    if not key: return False
-    accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-5AB5CE108231').encode()).digest()).decode()
-    conn.sendall(f'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n'.encode())
+    if not key:
+        sys.stderr.write('WS handshake: no key found\n')
+        return False
+    GUID = '258EAFA5-E914-47DA-95CA-5AB5CE108231'
+    accept = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
+    response = (
+        'HTTP/1.1 101 Switching Protocols\r\n'
+        'Upgrade: websocket\r\n'
+        'Connection: Upgrade\r\n'
+        f'Sec-WebSocket-Accept: {accept}\r\n'
+        '\r\n'
+    )
+    conn.sendall(response.encode())
+    sys.stderr.write(f'WS handshake OK: key={key[:8]}... accept={accept[:8]}...\n')
     return True
 
 def ws_send(conn, data):
@@ -329,12 +340,16 @@ class WebDebugger:
                     req = lines[0] if lines else ''
 
                     if 'GET /ws' in req:
+                        sys.stderr.write(f'WS upgrade request from client\n')
                         if ws_handshake(conn, lines[1:]):
                             conn.setblocking(False)
                             ws_clients.append(conn)
                             sys.stderr.write(f'WS client connected, sending {len(self.last_state)} bytes\n')
-                            try: ws_send(conn, self.last_state)
-                            except Exception as e: sys.stderr.write(f'WS send error: {e}\n')
+                            try:
+                                ws_send(conn, self.last_state)
+                                sys.stderr.write(f'WS initial send OK\n')
+                            except Exception as e:
+                                sys.stderr.write(f'WS initial send FAILED: {e}\n')
                     elif 'GET' in req:
                         html_bytes = HTML.encode()
                         resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {len(html_bytes)}\r\n\r\n'
