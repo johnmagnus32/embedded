@@ -180,6 +180,9 @@ function renderMemMap(s) {
   const totalGapPx = segs.filter(s=>s.type==='gap').length * gapPx;
   const regionPx = (baseH * zoom) - totalGapPx;
 
+  // Reverse so highest addresses at top, lowest at bottom
+  segs.reverse();
+
   // Compute y positions
   let y = 10;
   for (const seg of segs) {
@@ -203,10 +206,11 @@ function renderMemMap(s) {
       // Region bar
       svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2"/>`;
       // Top address
-      svg += `<text x="${barX-4}" y="${seg.y+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base)}</text>`;
-      // Bottom address
+      // Top address (high end)
+      svg += `<text x="${barX-4}" y="${seg.y+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base+seg.size)}</text>`;
+      // Bottom address (low end)
       if (seg.h > 14) {
-        svg += `<text x="${barX-4}" y="${seg.y+seg.h-2}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base+seg.size)}</text>`;
+        svg += `<text x="${barX-4}" y="${seg.y+seg.h-2}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base)}</text>`;
       }
       // Region label on right
       const ly = seg.y + seg.h/2 + 3;
@@ -226,23 +230,24 @@ function renderMemMap(s) {
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
           const col = colors[i % colors.length];
 
-          const sy0 = seg.y + (t.stack_bot - RAM_BASE) / RAM_SIZE * seg.h;
-          const sy1 = seg.y + (t.stack_top - RAM_BASE) / RAM_SIZE * seg.h;
+          // Within SRAM, higher address = lower y (top)
+          const sy0 = seg.y + seg.h - (t.stack_top - RAM_BASE) / RAM_SIZE * seg.h;
+          const sy1 = seg.y + seg.h - (t.stack_bot - RAM_BASE) / RAM_SIZE * seg.h;
           const sh = Math.max(1, sy1 - sy0);
 
           // Full allocation
           svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.2"/>`;
 
-          // Used portion (grows down from top)
+          // Used portion (stack grows down, so used is at top of stack = lower y)
           if (t.stack_used > 0 && t.stack_size > 0) {
             const uh = Math.max(1, t.stack_used / t.stack_size * sh);
-            svg += `<rect x="${barX+1}" y="${sy1-uh}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.6"/>`;
+            svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.6"/>`;
           }
 
           // SP line
           const spAddr = t.active ? (s.psp || t.sp) : t.sp;
           if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
-            const spY = seg.y + (spAddr - RAM_BASE) / RAM_SIZE * seg.h;
+            const spY = seg.y + seg.h - (spAddr - RAM_BASE) / RAM_SIZE * seg.h;
             svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${col}" stroke-width="1.5"/>`;
           }
 
@@ -255,7 +260,7 @@ function renderMemMap(s) {
 
         // MSP marker
         if (s.msp >= RAM_BASE && s.msp <= RAM_BASE + RAM_SIZE) {
-          const mspY = seg.y + (s.msp - RAM_BASE) / RAM_SIZE * seg.h;
+          const mspY = seg.y + seg.h - (s.msp - RAM_BASE) / RAM_SIZE * seg.h;
           svg += `<line x1="${barX}" y1="${mspY}" x2="${barX+barW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
           svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
         }
