@@ -53,7 +53,6 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
   <div class="panel" id="mem-panel">
     <h2>Memory Map — STM32F411RE</h2>
     <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
-    <div id="stack-detail" style="display:none;border-top:1px solid #30363d;overflow-y:auto;max-height:50%;font-size:12px;"></div>
   </div>
 </div>
 <div id="bottom">
@@ -262,7 +261,7 @@ function renderMemMap(s) {
           const sh = Math.max(1, sy1 - sy0);
 
           // Full allocation fill
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" onclick="showStackDetail(${i})"/>`;
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" onclick="zoomToRegion(${t.stack_bot},${t.stack_size})"/>`;
 
           // Top/bottom separator lines
           svg += `<line x1="${barX}" y1="${sy0}" x2="${barX+barW}" y2="${sy0}" stroke="${col}" stroke-width="1"/>`;
@@ -276,26 +275,83 @@ function renderMemMap(s) {
 
           const data = t.stack_data || [];
           const frames = t.frames || [];
-          const pxPerByte = sh / t.stack_size;
+          const pxPer4 = (sh / t.stack_size) * 4;  // pixels per 4-byte word
 
-          // Frame separator lines and function names on right with brackets
-          for (let fi = 0; fi < frames.length; fi++) {
-            const fr = frames[fi];
-            if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
-            const fy = addrToY(fr.sp);
-            const nextSp = (fi + 1 < frames.length && frames[fi+1].sp <= t.stack_top) ? frames[fi+1].sp : t.stack_top;
-            const ny = addrToY(nextSp);
-            const fh = ny - fy;
+          // Build frame boundaries for lookup
+          const frameBounds = frames.map((fr, fi) => ({
+            sp: fr.sp, func: fr.func,
+            end: (fi+1 < frames.length) ? frames[fi+1].sp : t.stack_top
+          }));
 
-            // Frame separator line
-            svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.6"/>`;
+          if (pxPer4 > 14) {
+            // ZOOMED IN: show each word as a row with address, value, symbol
+            let lastFrameIdx = -1;
+            let di = 0;
+            while (di < data.length) {
+              const d = data[di];
+              const dy = addrToY(d.addr + 4);  // bottom of this word cell
+              const cellH = pxPer4;
 
-            // Bracket on right
-            const bx = labelX - 2;
-            svg += `<line x1="${bx}" y1="${fy+1}" x2="${bx}" y2="${fy+fh-1}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
-            svg += `<line x1="${bx-3}" y1="${fy}" x2="${bx}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
-            svg += `<line x1="${bx-3}" y1="${fy+fh}" x2="${bx}" y2="${fy+fh}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
-            if (fh > 8) svg += `<text x="${bx+4}" y="${fy+fh/2+3}" fill="${col}" font-size="8">${fr.func}</text>`;
+              // Frame header when entering a new frame
+              const fi = frameBounds.findIndex(f => d.addr >= f.sp && d.addr < f.end);
+              if (fi >= 0 && fi !== lastFrameIdx) {
+                lastFrameIdx = fi;
+                const fy = addrToY(frameBounds[fi].sp);
+                svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="#7ee787" stroke-width="0.5" opacity="0.6"/>`;
+                svg += `<text x="${labelX}" y="${fy+11}" fill="#7ee787" font-size="10" font-weight="bold">${frameBounds[fi].func}</text>`;
+                const fsize = frameBounds[fi].end - frameBounds[fi].sp;
+                svg += `<text x="${labelX}" y="${fy+22}" fill="#484f58" font-size="9">${fsize} bytes</text>`;
+              }
+
+              // Collapse consecutive zeros
+              let zeroRun = 0;
+              if (d.val === 0 && !d.sym) {
+                let j = di;
+                while (j < data.length && data[j].val === 0 && !data[j].sym) { zeroRun++; j++; }
+              }
+
+              if (zeroRun > 2) {
+                const startAddr = d.addr;
+                const endAddr = data[di + zeroRun - 1].addr + 4;
+                const zy0 = addrToY(endAddr);
+                const zy1 = addrToY(startAddr);
+                const zh = zy1 - zy0;
+                svg += `<rect x="${barX+1}" y="${zy0}" width="${barW-2}" height="${zh}" fill="#21262d" opacity="0.5" rx="2"/>`;
+                svg += `<text x="${barX+barW/2}" y="${zy0+zh/2+4}" fill="#6e7681" text-anchor="middle" font-size="10">${zeroRun*4} bytes = 0</text>`;
+                // Address range on left
+                svg += `<text x="${barX-4}" y="${zy0+zh/2+4}" fill="#484f58" text-anchor="end" font-size="9">${hex(startAddr)}</text>`;
+                di += zeroRun;
+              } else {
+                // Single word row
+                const isSP = d.addr === t.sp;
+                if (isSP) svg += `<rect x="${barX+1}" y="${dy}" width="${barW-2}" height="${cellH}" fill="#1a2e1a" opacity="0.8"/>`;
+                // Separator line
+                svg += `<line x1="${barX+1}" y1="${dy}" x2="${barX+barW-1}" y2="${dy}" stroke="${col}" stroke-width="0.3" opacity="0.3"/>`;
+                // Address on left
+                svg += `<text x="${barX-4}" y="${dy+cellH/2+4}" fill="${isSP?'#7ee787':'#484f58'}" text-anchor="end" font-size="9">${hex(d.addr)}</text>`;
+                // Value inside bar
+                const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8,'0');
+                svg += `<text x="${barX+4}" y="${dy+cellH/2+4}" fill="#c9d1d9" font-size="10">${valStr}</text>`;
+                // Symbol annotation
+                if (d.sym) svg += `<text x="${barX+barW/2+10}" y="${dy+cellH/2+4}" fill="#d2a8ff" font-size="9">${d.sym}</text>`;
+                di++;
+              }
+            }
+          } else {
+            // OVERVIEW: frame brackets on right with function names
+            for (let fi = 0; fi < frames.length; fi++) {
+              const fr = frames[fi];
+              if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
+              const fy = addrToY(fr.sp);
+              const nextSp = (fi + 1 < frames.length && frames[fi+1].sp <= t.stack_top) ? frames[fi+1].sp : t.stack_top;
+              const fh = addrToY(nextSp) - fy;
+              svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.6"/>`;
+              const bx = labelX - 2;
+              svg += `<line x1="${bx}" y1="${fy+1}" x2="${bx}" y2="${fy+fh-1}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
+              svg += `<line x1="${bx-3}" y1="${fy}" x2="${bx}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
+              svg += `<line x1="${bx-3}" y1="${fy+fh}" x2="${bx}" y2="${fy+fh}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
+              if (fh > 8) svg += `<text x="${bx+4}" y="${fy+fh/2+3}" fill="${col}" font-size="8">${fr.func}</text>`;
+            }
           }
 
           // SP line
@@ -336,76 +392,6 @@ function renderMemMap(s) {
 
   svg += '</svg>';
   el.innerHTML = svg;
-}
-
-// Show stack detail panel for a task
-function showStackDetail(taskIdx) {
-  const el = document.getElementById('stack-detail');
-  if (!lastState || !lastState.tasks || !lastState.tasks[taskIdx]) { el.style.display='none'; return; }
-  const t = lastState.tasks[taskIdx];
-  const frames = t.frames || [];
-  const data = t.stack_data || [];
-
-  // Build frame lookup: for each address, which frame?
-  const frameAt = {};
-  for (let fi = 0; fi < frames.length; fi++) {
-    const sp = frames[fi].sp;
-    const end = (fi+1 < frames.length) ? frames[fi+1].sp : t.stack_top;
-    for (const d of data) {
-      if (d.addr >= sp && d.addr < end) frameAt[d.addr] = fi;
-    }
-  }
-
-  let html = `<div style="padding:6px 10px;background:#161b22;font-size:11px;color:#58a6ff;display:flex;justify-content:space-between">
-    <span>Stack: ${t.name} (${t.stack_used}/${t.stack_size} bytes used)</span>
-    <span style="cursor:pointer;color:#484f58" onclick="document.getElementById('stack-detail').style.display='none'">✕ close</span>
-  </div>`;
-  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
-
-  let lastFrame = -1;
-  // Group consecutive zeros
-  let di = 0;
-  while (di < data.length) {
-    const d = data[di];
-    const fi = frameAt[d.addr];
-
-    // Frame header when frame changes
-    if (fi !== undefined && fi !== lastFrame) {
-      lastFrame = fi;
-      const fr = frames[fi];
-      const nextSp = (fi+1 < frames.length) ? frames[fi+1].sp : t.stack_top;
-      const frameSize = nextSp - fr.sp;
-      html += `<tr style="background:#1f2937"><td colspan="3" style="padding:4px 8px;color:#7ee787;font-weight:bold;border-top:1px solid #30363d">
-        ${fr.func} <span style="color:#484f58;font-weight:normal">(${frameSize} bytes)</span></td></tr>`;
-    }
-
-    // Collapse consecutive zeros
-    let zeroRun = 0;
-    if (d.val === 0 && !d.sym) {
-      let j = di;
-      while (j < data.length && data[j].val === 0 && !data[j].sym && frameAt[data[j].addr] === fi) { zeroRun++; j++; }
-    }
-
-    if (zeroRun > 2) {
-      const endAddr = data[di + zeroRun - 1].addr + 4;
-      html += `<tr style="color:#484f58"><td style="padding:2px 8px;font-family:monospace">${hex(d.addr)}-${hex(endAddr)}</td>
-        <td style="padding:2px 4px">0x00000000</td>
-        <td style="padding:2px 4px;color:#6e7681">${zeroRun * 4} bytes of zeros</td></tr>`;
-      di += zeroRun;
-    } else {
-      const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8, '0');
-      const isSP = d.addr === t.sp;
-      const rowStyle = isSP ? 'background:#1a2e1a' : '';
-      const symCol = d.sym ? '#d2a8ff' : '#484f58';
-      html += `<tr style="${rowStyle}"><td style="padding:2px 8px;font-family:monospace;color:#484f58">${hex(d.addr)}${isSP?' ← SP':''}</td>
-        <td style="padding:2px 4px;font-family:monospace;color:#c9d1d9">${valStr}</td>
-        <td style="padding:2px 4px;color:${symCol}">${d.sym || ''}</td></tr>`;
-      di++;
-    }
-  }
-  html += '</table>';
-  el.innerHTML = html;
-  el.style.display = 'block';
 }
 
 // Click a section/region to zoom to it
