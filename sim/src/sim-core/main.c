@@ -73,7 +73,8 @@ int main(int argc, char **argv)
             /* Step into: run one instruction at a time until source line changes */
             int orig_line; line_lookup(cpu.r[REG_PC], &orig_line);
             while (cpu.running) {
-                cpu_step(&cpu, flash, ram);
+                uint64_t limit = cpu.cycle_count + 1;
+                cpu_run(&cpu, flash, ram, limit);
                 int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
                 if (cur_line > 0 && cur_line != orig_line) {
                     cpu.bp_hit = 1;

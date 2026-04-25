@@ -15,7 +15,7 @@ NM      = $(TC)-nm
 OS      = ../os
 BUILD   = build
 
-CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 -g \
+CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O1 -g \
           -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
           -I$(OS)/fs -I$(OS)/drivers -I$(OS)
 LDFLAGS = -T linker.ld -nostdlib
