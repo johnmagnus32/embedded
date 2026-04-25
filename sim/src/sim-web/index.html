@@ -263,7 +263,7 @@ function renderMemMap(s) {
           // Full allocation fill
           svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" onclick="zoomToRegion(${t.stack_bot},${t.stack_size})"/>`;
 
-          // Explicit top/bottom separator lines
+          // Top/bottom separator lines
           svg += `<line x1="${barX}" y1="${sy0}" x2="${barX+barW}" y2="${sy0}" stroke="${col}" stroke-width="1"/>`;
           svg += `<line x1="${barX}" y1="${sy1}" x2="${barX+barW}" y2="${sy1}" stroke="${col}" stroke-width="1"/>`;
 
@@ -273,51 +273,82 @@ function renderMemMap(s) {
             svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.4"/>`;
           }
 
-          // Stack content — show individual words when zoomed in enough
           const data = t.stack_data || [];
+          const frames = t.frames || [];
           const pxPerByte = sh / t.stack_size;
-          if (pxPerByte > 0.5 && data.length > 0) {
-            // Build frame map: which frame does each address belong to?
-            const frames = t.frames || [];
-            for (const d of data) {
-              const dy = addrToY(d.addr);
-              const cellH = pxPerByte * 4;  // 4 bytes per word
-              if (cellH > 6) {
-                // Word separator line
-                svg += `<line x1="${barX+1}" y1="${dy}" x2="${barX+barW-1}" y2="${dy}" stroke="${col}" stroke-width="0.3" opacity="0.3"/>`;
-              }
-              if (cellH > 10) {
-                // Show value and annotation inside the bar
-                const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8,'0');
-                const label = d.sym ? d.sym : valStr;
-                svg += `<text x="${barX+3}" y="${dy+cellH/2+3}" fill="${col}" font-size="6" opacity="0.8">${label}</text>`;
-                // Address on left
-                svg += `<text x="${barX-4}" y="${dy+cellH/2+3}" fill="#484f58" text-anchor="end" font-size="6">${hex(d.addr)}</text>`;
-              }
+
+          // Frame brackets on the RIGHT with function names
+          for (let fi = 0; fi < frames.length; fi++) {
+            const fr = frames[fi];
+            if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
+            const fy = addrToY(fr.sp);
+            const nextSp = (fi + 1 < frames.length && frames[fi+1].sp <= t.stack_top) ? frames[fi+1].sp : t.stack_top;
+            const ny = addrToY(nextSp);
+            const fh = ny - fy;
+
+            // Frame separator line across the bar
+            svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.6"/>`;
+
+            // Bracket on right: vertical line + top/bottom ticks
+            const bx = labelX - 2;
+            svg += `<line x1="${bx}" y1="${fy}" x2="${bx}" y2="${fy+fh}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
+            svg += `<line x1="${bx-3}" y1="${fy}" x2="${bx}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
+            svg += `<line x1="${bx-3}" y1="${fy+fh}" x2="${bx}" y2="${fy+fh}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
+            // Function name next to bracket
+            if (fh > 8) {
+              svg += `<text x="${bx+4}" y="${fy+fh/2+3}" fill="${col}" font-size="7">${fr.func}</text>`;
             }
           }
 
-          // Frame labels inside the bar (when not showing individual words)
-          const frames = t.frames || [];
-          if (pxPerByte <= 0.5) {
+          // Stack content INSIDE the bar
+          if (pxPerByte > 0.3 && data.length > 0) {
+            // Group consecutive zero words as a block
+            let di = 0;
+            while (di < data.length) {
+              const d = data[di];
+              const dy = addrToY(d.addr);
+              const cellH = pxPerByte * 4;
+
+              // Count consecutive zeros
+              let zeroRun = 0;
+              if (d.val === 0 && !d.sym) {
+                let j = di;
+                while (j < data.length && data[j].val === 0 && !data[j].sym) { zeroRun++; j++; }
+              }
+
+              if (zeroRun > 2) {
+                // Draw as a single labeled block
+                const blockEnd = data[di + zeroRun - 1].addr + 4;
+                const by0 = addrToY(blockEnd);
+                const by1 = dy;
+                const bh = by1 - by0;
+                if (bh > 10) {
+                  svg += `<text x="${barX+barW/2}" y="${by0+bh/2+3}" fill="${col}" text-anchor="middle" font-size="6" opacity="0.7">[${zeroRun*4} bytes = 0]</text>`;
+                }
+                di += zeroRun;
+              } else {
+                // Single word
+                if (cellH > 6) {
+                  svg += `<line x1="${barX+1}" y1="${dy}" x2="${barX+barW-1}" y2="${dy}" stroke="${col}" stroke-width="0.3" opacity="0.2"/>`;
+                }
+                if (cellH > 10) {
+                  const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8,'0');
+                  const label = d.sym || valStr;
+                  svg += `<text x="${barX+3}" y="${dy+cellH/2+3}" fill="${col}" font-size="6" opacity="0.8">${label}</text>`;
+                  svg += `<text x="${barX-4}" y="${dy+cellH/2+3}" fill="#484f58" text-anchor="end" font-size="6">${hex(d.addr)}</text>`;
+                }
+                di++;
+              }
+            }
+          } else if (pxPerByte <= 0.3) {
+            // Low zoom: just show function names centered in each frame
             for (let fi = 0; fi < frames.length; fi++) {
               const fr = frames[fi];
               if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
               const fy = addrToY(fr.sp);
               const nextSp = (fi + 1 < frames.length && frames[fi+1].sp <= t.stack_top) ? frames[fi+1].sp : t.stack_top;
-              const ny = addrToY(nextSp);
-              const fh = ny - fy;
-              if (fi > 0) svg += `<line x1="${barX+2}" y1="${fy}" x2="${barX+barW-2}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.4"/>`;
+              const fh = addrToY(nextSp) - fy;
               if (fh > 8) svg += `<text x="${barX+barW/2}" y="${fy+fh/2+3}" fill="${col}" text-anchor="middle" font-size="7" opacity="0.9">${fr.func}</text>`;
-            }
-          } else {
-            // When zoomed in, show frame function name at the top of each frame
-            for (let fi = 0; fi < frames.length; fi++) {
-              const fr = frames[fi];
-              if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
-              const fy = addrToY(fr.sp);
-              svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${spCol}" stroke-width="0.5" opacity="0.5"/>`;
-              svg += `<text x="${barX+barW/2}" y="${fy-2}" fill="${col}" text-anchor="middle" font-size="7" font-weight="bold">${fr.func}</text>`;
             }
           }
 
