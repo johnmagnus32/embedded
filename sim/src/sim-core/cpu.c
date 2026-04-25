@@ -1039,8 +1039,8 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
             }
         }
 
-        /* Check breakpoints (after interrupts so we catch handler entry) */
-        if (c->nbp > 0) {
+        /* Check breakpoints (skip during step/next) */
+        if (c->nbp > 0 && !c->step_mode) {
             uint32_t pc = c->r[REG_PC];
             for (int b = 0; b < c->nbp; b++) {
                 if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
@@ -1068,10 +1068,8 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
 
                     if (!same_stack) {
                         /* Different task — keep running */
-                    } else if (fn_addr != c->step_fn_addr && c->r[REG_SP] > c->step_sp) {
-                        /* Returned to caller — stop */
-                        c->bp_hit = 1; c->step_mode = 0; return;
                     } else if (fn_addr == c->step_fn_addr) {
+                        /* Same function, same stack — check for line progress */
                         if (cur_line > c->step_max_line) {
                             c->bp_hit = 1; c->step_mode = 0; return;
                         } else if (cur_line < c->step_line - 5) {
