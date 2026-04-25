@@ -194,6 +194,22 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
                     }
                 }
             }
+            fprintf(f, "],\"stack_data\":[");
+            /* Dump stack words from SP to top, annotated */
+            int nwords = 0;
+            for (uint32_t sa = dsp; sa < stk_top && nwords < 128; sa += 4) {
+                uint32_t val = *(uint32_t *)(ram + (sa - RAM_BASE));
+                if (nwords) fprintf(f, ",");
+                fprintf(f, "{\"addr\":%u,\"val\":%u", sa, val);
+                /* Annotate: is it a return address? */
+                if (val >= FLASH_BASE + 1 && val < FLASH_BASE + FLASH_SIZE && (val & 1)) {
+                    uint32_t so2;
+                    const char *fn2 = sym_lookup(val & ~1u, &so2);
+                    if (fn2) fprintf(f, ",\"sym\":\"%s+0x%x\"", fn2, so2);
+                }
+                fprintf(f, "}");
+                nwords++;
+            }
             fprintf(f, "]}");
         }
     }
