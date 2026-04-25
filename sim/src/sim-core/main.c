@@ -104,6 +104,7 @@ int main(int argc, char **argv)
             cpu.step_line = cur_line;
             cpu.step_max_line = cur_line;
             cpu.step_fn_addr = cpu.r[REG_PC] - off;
+            cpu.step_sp = cpu.r[REG_SP];
             cpu.bp_hit = 0;
             cpu_run(&cpu, flash, ram, 0);
             cpu.step_mode = 0;

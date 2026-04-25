@@ -1063,15 +1063,20 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
                     uint32_t off;
                     sym_lookup(c->r[REG_PC], &off);
                     uint32_t fn_addr = c->r[REG_PC] - off;
-                    if (fn_addr == c->step_fn_addr) {
+                    int32_t sp_delta = (int32_t)(c->r[REG_SP] - c->step_sp);
+                    int same_stack = (sp_delta >= -128 && sp_delta <= 128);
+
+                    if (!same_stack) {
+                        /* Different task — keep running */
+                    } else if (fn_addr != c->step_fn_addr && c->r[REG_SP] > c->step_sp) {
+                        /* Returned to caller — stop */
+                        c->bp_hit = 1; c->step_mode = 0; return;
+                    } else if (fn_addr == c->step_fn_addr) {
                         if (cur_line > c->step_max_line) {
-                            /* True forward progress — stop */
                             c->bp_hit = 1; c->step_mode = 0; return;
                         } else if (cur_line < c->step_line - 5) {
-                            /* Jumped far backward — loop back, stop */
                             c->bp_hit = 1; c->step_mode = 0; return;
                         }
-                        /* Interleaved bounce — update max and keep going */
                         if (cur_line > c->step_max_line)
                             c->step_max_line = cur_line;
                     }
