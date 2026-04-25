@@ -21,6 +21,7 @@ const char *line_lookup(uint32_t pc, int *line_out);
 /* Resolve a breakpoint spec ("func", "file:line", "0xADDR") to an address.
  * Returns 0 if not found. */
 uint32_t resolve_breakpoint(const char *spec);
+uint32_t next_line_addr(uint32_t pc);
 
 /* ELF section info (allocated sections with addresses) */
 struct elf_section { uint32_t addr; uint32_t size; char name[32]; };

@@ -1039,47 +1039,13 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
             }
         }
 
-        /* Check breakpoints (skip during step/next) */
-        if (c->nbp > 0 && !c->step_mode) {
+        /* Check breakpoints */
+        if (c->nbp > 0) {
             uint32_t pc = c->r[REG_PC];
             for (int b = 0; b < c->nbp; b++) {
                 if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
             }
         }
 
-        /* Check step/next */
-        if (c->step_mode) {
-            extern const char *line_lookup(uint32_t pc, int *line_out);
-            int cur_line;
-            line_lookup(c->r[REG_PC], &cur_line);
-            if (cur_line > 0 && cur_line != c->step_line) {
-                if (c->step_mode == 1) {
-                    /* step: any line change stops */
-                    c->bp_hit = 1; c->step_mode = 0; return;
-                } else {
-                    /* next: stop if same function AND line moved forward
-                     * (skip backward bounces from compiler instruction scheduling) */
-                    extern const char *sym_lookup(uint32_t, uint32_t *);
-                    uint32_t off;
-                    sym_lookup(c->r[REG_PC], &off);
-                    uint32_t fn_addr = c->r[REG_PC] - off;
-                    int32_t sp_delta = (int32_t)(c->r[REG_SP] - c->step_sp);
-                    int same_stack = (sp_delta >= -128 && sp_delta <= 128);
-
-                    if (!same_stack) {
-                        /* Different task — keep running */
-                    } else if (fn_addr == c->step_fn_addr) {
-                        /* Same function, same stack — check for line progress */
-                        if (cur_line > c->step_max_line) {
-                            c->bp_hit = 1; c->step_mode = 0; return;
-                        } else if (cur_line < c->step_line - 5) {
-                            c->bp_hit = 1; c->step_mode = 0; return;
-                        }
-                        if (cur_line > c->step_max_line)
-                            c->step_max_line = cur_line;
-                    }
-                }
-            }
-        }
     }
 }

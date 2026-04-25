@@ -60,7 +60,6 @@ int main(int argc, char **argv)
             break;
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             cpu.bp_hit = 0;
-            cpu.step_mode = 0;
             g_stopped = 0;
             /* Run in 500K-cycle chunks, emitting state between for live UART */
             while (cpu.running && !cpu.bp_hit) {
@@ -71,25 +70,36 @@ int main(int argc, char **argv)
             }
             g_stopped = 1;
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
-            int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
-            cpu.step_mode = 1;
-            cpu.step_line = cur_line;
-            cpu.bp_hit = 0;
-            cpu_run(&cpu, flash, ram, 0);
-            cpu.step_mode = 0;
+            /* Step into: run one instruction at a time until source line changes */
+            int orig_line; line_lookup(cpu.r[REG_PC], &orig_line);
+            while (cpu.running) {
+                cpu_step(&cpu, flash, ram);
+                int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
+                if (cur_line > 0 && cur_line != orig_line) {
+                    cpu.bp_hit = 1;
+                    break;
+                }
+            }
+
         } else if (strcmp(cmd, "n") == 0 || strcmp(cmd, "next") == 0) {
-            int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
-            uint32_t off; sym_lookup(cpu.r[REG_PC], &off);
-            cpu.step_mode = 2;
-            cpu.step_line = cur_line;
-            cpu.step_max_line = cur_line;
-            cpu.step_fn_addr = cpu.r[REG_PC] - off;
-            cpu.step_sp = cpu.r[REG_SP];
-            cpu.step_ret = cpu.r[REG_LR] & ~1u;
+            /* GDB-style next: temp breakpoint at next line + return address */
+            uint32_t next = next_line_addr(cpu.r[REG_PC]);
+            /* Find return address: scan stack for first saved LR (Flash address) */
+            uint32_t ret_addr = 0;
+            for (uint32_t sa = cpu.r[REG_SP]; sa < cpu.r[REG_SP] + 256; sa += 4) {
+                if (sa < 0x20000000 || sa >= 0x20000000 + RAM_SIZE) break;
+                uint32_t val = *(uint32_t *)(ram + (sa - 0x20000000));
+                if (val >= FLASH_BASE + 1 && val < FLASH_BASE + FLASH_SIZE && (val & 1)) {
+                    ret_addr = val & ~1u;
+                    break;
+                }
+            }
+            int old_nbp = cpu.nbp;
+            if (next) cpu.breakpoints[cpu.nbp++] = next;
+            if (ret_addr) cpu.breakpoints[cpu.nbp++] = ret_addr;
             cpu.bp_hit = 0;
             cpu_run(&cpu, flash, ram, 0);
-            
-            cpu.step_mode = 0;
+            cpu.nbp = old_nbp;  /* remove temp breakpoints */
         } else if (strncmp(cmd, "peek ", 5) == 0) {
             uint32_t addr = (uint32_t)strtoul(cmd + 5, NULL, 0);
             uint32_t val = 0;

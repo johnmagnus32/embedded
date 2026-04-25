@@ -702,6 +702,25 @@ const char *line_lookup(uint32_t pc, int *line_out)
     return (fi >= 0 && fi < nline_files) ? line_files[fi] : NULL;
 }
 
+/* Find the address of the next source line after pc (different line number).
+ * Returns 0 if not found. */
+uint32_t next_line_addr(uint32_t pc)
+{
+    if (!lines || nlines == 0) return 0;
+    /* Find current line */
+    int cur_line = 0;
+    for (int i = nlines - 1; i >= 0; i--) {
+        if (lines[i].addr <= pc) { cur_line = lines[i].line; break; }
+    }
+    if (!cur_line) return 0;
+    /* Find first entry with a different (higher) line at a higher address */
+    for (int i = 0; i < nlines; i++) {
+        if (lines[i].addr > pc && lines[i].line != cur_line)
+            return lines[i].addr;
+    }
+    return 0;
+}
+
 /* ── Breakpoint resolver ── */
 
 uint32_t resolve_breakpoint(const char *spec)
