@@ -70,37 +70,43 @@ int main(int argc, char **argv)
             }
             g_stopped = 1;
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
-            /* Step into: run one instruction at a time until source line changes */
+            /* Step in: single-step instructions until source line changes.
+             * Same approach as sdb: step_instruction in a loop. */
             int orig_line; line_lookup(cpu.r[REG_PC], &orig_line);
-            while (cpu.running) {
+            do {
                 uint64_t limit = cpu.cycle_count + 1;
                 cpu_run(&cpu, flash, ram, limit);
                 int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
-                if (cur_line > 0 && cur_line != orig_line) {
-                    cpu.bp_hit = 1;
-                    break;
-                }
-            }
+                if (cur_line > 0 && cur_line != orig_line) break;
+            } while (cpu.running);
+            cpu.bp_hit = 1;
 
         } else if (strcmp(cmd, "n") == 0 || strcmp(cmd, "next") == 0) {
-            /* GDB-style next: temp breakpoint at next line + return address */
-            uint32_t next = next_line_addr(cpu.r[REG_PC]);
-            /* Find return address: scan stack for first saved LR (Flash address) */
-            uint32_t ret_addr = 0;
-            for (uint32_t sa = cpu.r[REG_SP]; sa < cpu.r[REG_SP] + 256; sa += 4) {
-                if (sa < 0x20000000 || sa >= 0x20000000 + RAM_SIZE) break;
-                uint32_t val = *(uint32_t *)(ram + (sa - 0x20000000));
-                if (val >= FLASH_BASE + 1 && val < FLASH_BASE + FLASH_SIZE && (val & 1)) {
-                    ret_addr = val & ~1u;
-                    break;
+            /* Step over: like sdb — if current insn is a BL (call), set temp
+             * breakpoint at the return point and run. Otherwise single-step.
+             * Repeat until source line changes. */
+            int orig_line; line_lookup(cpu.r[REG_PC], &orig_line);
+            do {
+                uint16_t insn = mem_read16(flash, ram, cpu.r[REG_PC]);
+                int is_bl = (insn & 0xF800) == 0xF000;  /* BL first halfword */
+                if (is_bl) {
+                    /* It's a call — set temp bp at instruction after the BL (4 bytes) */
+                    uint32_t ret_point = cpu.r[REG_PC] + 4;
+                    int old_nbp = cpu.nbp;
+                    cpu.breakpoints[cpu.nbp++] = ret_point;
+                    cpu.bp_hit = 0;
+                    cpu_run(&cpu, flash, ram, 0);
+                    cpu.nbp = old_nbp;
+                    cpu.bp_hit = 0;  /* temp bp hit is expected, not a real stop */
+                } else {
+                    /* Not a call — single step one instruction */
+                    uint64_t limit = cpu.cycle_count + 1;
+                    cpu_run(&cpu, flash, ram, limit);
                 }
-            }
-            int old_nbp = cpu.nbp;
-            if (next) cpu.breakpoints[cpu.nbp++] = next;
-            if (ret_addr) cpu.breakpoints[cpu.nbp++] = ret_addr;
-            cpu.bp_hit = 0;
-            cpu_run(&cpu, flash, ram, 0);
-            cpu.nbp = old_nbp;  /* remove temp breakpoints */
+                int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
+                if (cur_line > 0 && cur_line != orig_line) break;
+            } while (cpu.running && !cpu.bp_hit);
+            cpu.bp_hit = 1;  /* remove temp breakpoints */
         } else if (strncmp(cmd, "peek ", 5) == 0) {
             uint32_t addr = (uint32_t)strtoul(cmd + 5, NULL, 0);
             uint32_t val = 0;
