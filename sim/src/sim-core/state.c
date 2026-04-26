@@ -198,8 +198,10 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
                 /* Current function */
                 uint32_t sym_off2;
                 const char *fn = sym_lookup(cpu->r[REG_PC], &sym_off2);
-                if (fn) fprintf(f, "{\"func\":\"%s\",\"sp\":%u}", fn, dsp);
-                nframes++;
+                if (fn) {
+                    fprintf(f, "{\"func\":\"%s\",\"sp\":%u}", fn, dsp);
+                    nframes++;
+                }
             }
             /* Scan stack for saved LR values (return addresses in Flash) */
             for (uint32_t sa = dsp; sa < stk_top && nframes < 8; sa += 4) {
