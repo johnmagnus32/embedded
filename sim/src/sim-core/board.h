@@ -11,11 +11,6 @@ struct board {
     struct systick   systick;
     uint8_t         *flash;
     uint8_t         *ram;
-
-    /* Breakpoints (owned by debugger, checked by board) */
-    uint32_t breakpoints[32];
-    int      nbp;
-    int      bp_hit;
 };
 
 void board_init(struct board *b);

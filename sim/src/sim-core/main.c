@@ -15,6 +15,10 @@
 
 int g_stopped = 1;
 
+/* Debugger state */
+static uint32_t breakpoints[32];
+static int nbp = 0;
+
 /* Global board pointer for mem.c device routing */
 extern struct board *g_board;
 
@@ -23,11 +27,17 @@ static void emit_state(struct board *b)
     state_dump_to(&b->cpu, b->flash, b->ram, stdout);
 }
 
+static int check_breakpoint(struct board *b)
+{
+    uint32_t pc = b->cpu.r[REG_PC];
+    for (int i = 0; i < nbp; i++)
+        if (pc == breakpoints[i]) return 1;
+    return 0;
+}
+
 static void run_until_bp(struct board *b)
 {
-    b->bp_hit = 0;
-    while (!b->bp_hit)
-        board_tick(b);
+    do { board_tick(b); } while (!check_breakpoint(b));
 }
 
 int main(int argc, char **argv)
@@ -60,10 +70,10 @@ int main(int argc, char **argv)
     /* Auto-run to main() */
     uint32_t main_addr = resolve_breakpoint("main");
     if (main_addr) {
-        board.breakpoints[0] = main_addr;
-        board.nbp = 1;
+        breakpoints[0] = main_addr;
+        nbp = 1;
         run_until_bp(&board);
-        board.nbp = 0;
+        nbp = 0;
     }
     LOG("Stopped at main(), emitting initial state");
     emit_state(&board);
@@ -83,16 +93,15 @@ int main(int argc, char **argv)
             break;
 
         } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
-            board.bp_hit = 0;
             g_stopped = 0;
             uint64_t last_emit = board.cpu.cycle_count;
-            while (!board.bp_hit) {
+            do {
                 board_tick(&board);
                 if (board.cpu.cycle_count - last_emit >= 500000) {
                     emit_state(&board);
                     last_emit = board.cpu.cycle_count;
                 }
-            }
+            } while (!check_breakpoint(&board));
             g_stopped = 1;
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
@@ -109,10 +118,10 @@ int main(int argc, char **argv)
                 uint16_t insn = mem_read16(board.flash, board.ram, board.cpu.r[REG_PC]);
                 int is_bl = (insn & 0xF800) == 0xF000;
                 if (is_bl) {
-                    int old_nbp = board.nbp;
-                    board.breakpoints[board.nbp++] = board.cpu.r[REG_PC] + 4;
+                    int old_nbp = nbp;
+                    breakpoints[nbp++] = board.cpu.r[REG_PC] + 4;
                     run_until_bp(&board);
-                    board.nbp = old_nbp;
+                    nbp = old_nbp;
                 } else {
                     board_tick(&board);
                 }
@@ -131,15 +140,15 @@ int main(int argc, char **argv)
             const char *spec = cmd + (cmd[1] == ' ' ? 2 : 6);
             while (*spec == ' ') spec++;
             uint32_t addr = resolve_breakpoint(spec);
-            if (addr && board.nbp < 32)
-                board.breakpoints[board.nbp++] = addr;
+            if (addr && nbp < 32)
+                breakpoints[nbp++] = addr;
 
         } else if (strncmp(cmd, "delete ", 7) == 0 || strncmp(cmd, "d ", 2) == 0) {
             int n = atoi(cmd + (cmd[1] == ' ' ? 2 : 7));
-            if (n >= 1 && n <= board.nbp) {
-                for (int i = n - 1; i < board.nbp - 1; i++)
-                    board.breakpoints[i] = board.breakpoints[i + 1];
-                board.nbp--;
+            if (n >= 1 && n <= nbp) {
+                for (int i = n - 1; i < nbp - 1; i++)
+                    breakpoints[i] = breakpoints[i + 1];
+                nbp--;
             }
         }
 
