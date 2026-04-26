@@ -1004,53 +1004,48 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
 
 }
 
-/* ---- Run loop with SysTick and interrupt simulation ---- */
+/* ---- One tick of the entire system: CPU + devices + interrupts ---- */
 
-void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cycles)
+static uint64_t systick_counter = 0;
+
+void sim_tick(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 {
-    static uint64_t systick_counter = 0;
+    cpu_step(c, flash, ram);
 
-    while (max_cycles == 0 || c->cycle_count < max_cycles) {
-        cpu_step(c, flash, ram);
-
-        /* Simulate SysTick */
-        if (systick_enabled()) {
-            systick_counter++;
-            if (systick_counter >= systick_reload()) {
-                systick_counter = 0;
-                if (systick_irq_enabled())
-                    c->pending_irq |= IRQ_SYSTICK;
-            }
+    /* SysTick device */
+    if (systick_enabled()) {
+        systick_counter++;
+        if (systick_counter >= systick_reload()) {
+            systick_counter = 0;
+            if (systick_irq_enabled())
+                c->pending_irq |= IRQ_SYSTICK;
         }
+    }
 
-        /* Check for PendSV (firmware wrote PENDSVSET to SCB_ICSR) */
-        if (pendsv_pending())
-            c->pending_irq |= IRQ_PENDSV;
+    /* PendSV (firmware wrote PENDSVSET to SCB_ICSR) */
+    if (pendsv_pending())
+        c->pending_irq |= IRQ_PENDSV;
 
-
-
-        /* Take highest priority pending interrupt */
-        if (c->pending_irq && !c->primask && !c->in_handler && !c->irq_shadow) {
-            if (c->pending_irq & IRQ_SVC) {
-                c->pending_irq &= ~IRQ_SVC;
-                take_interrupt(c, flash, ram, 11);  /* SVC = vector 11 */
-            } else if (c->pending_irq & IRQ_SYSTICK) {
-                c->pending_irq &= ~IRQ_SYSTICK;
-                take_interrupt(c, flash, ram, 15);  /* SysTick = vector 15 */
-            } else if (c->pending_irq & IRQ_PENDSV) {
-                c->pending_irq &= ~IRQ_PENDSV;
-                clear_pendsv();
-                take_interrupt(c, flash, ram, 14);  /* PendSV = vector 14 */
-            }
+    /* Interrupt dispatch — take highest priority pending */
+    if (c->pending_irq && !c->primask && !c->in_handler && !c->irq_shadow) {
+        if (c->pending_irq & IRQ_SVC) {
+            c->pending_irq &= ~IRQ_SVC;
+            take_interrupt(c, flash, ram, 11);
+        } else if (c->pending_irq & IRQ_SYSTICK) {
+            c->pending_irq &= ~IRQ_SYSTICK;
+            take_interrupt(c, flash, ram, 15);
+        } else if (c->pending_irq & IRQ_PENDSV) {
+            c->pending_irq &= ~IRQ_PENDSV;
+            clear_pendsv();
+            take_interrupt(c, flash, ram, 14);
         }
+    }
 
-        /* Check breakpoints */
-        if (c->nbp > 0) {
-            uint32_t pc = c->r[REG_PC];
-            for (int b = 0; b < c->nbp; b++) {
-                if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
-            }
+    /* Breakpoints */
+    if (c->nbp > 0) {
+        uint32_t pc = c->r[REG_PC];
+        for (int b = 0; b < c->nbp; b++) {
+            if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
         }
-
     }
 }

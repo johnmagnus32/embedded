@@ -50,6 +50,6 @@ struct cpu_state {
 void cpu_init(struct cpu_state *cpu);
 void cpu_reset(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram);
 int  cpu_step(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram);
-void cpu_run(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, uint64_t max_cycles);
+void sim_tick(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram);
 
 #endif
