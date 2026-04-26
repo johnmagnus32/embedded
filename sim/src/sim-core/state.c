@@ -28,6 +28,7 @@ static int tl_head = 0, tl_count = 0;
 
 void timeline_record(uint64_t cycle, const char *ctx)
 {
+    if (!ctx) return;
     /* Skip if same context as last entry */
     if (tl_count > 0) {
         int last = (tl_head + tl_count - 1) % TL_SIZE;
