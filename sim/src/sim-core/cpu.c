@@ -963,7 +963,8 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
     /* Visualize */
     const char *names[] = {[11]="SVC", [14]="PendSV (ctx switch)", [15]="SysTick"};
     const char *name = (vector_num < 16 && names[vector_num]) ? names[vector_num] : "IRQ";
-
+    extern void timeline_record(uint64_t, const char *);
+    timeline_record(c->cycle_count, name);
 }
 
 static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret)
@@ -995,6 +996,13 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
     }
 
     c->in_handler = 0;
+
+    /* Record which task/context we're returning to */
+    extern void timeline_record(uint64_t, const char *);
+    extern const char *sym_lookup(uint32_t, uint32_t *);
+    uint32_t _off;
+    const char *fn = sym_lookup(c->r[REG_PC], &_off);
+    timeline_record(c->cycle_count, fn ? fn : "thread");
 
 
 }

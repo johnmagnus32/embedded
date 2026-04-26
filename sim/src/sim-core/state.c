@@ -21,6 +21,26 @@ static int uart_cap_count = 0;
 void state_set_path(const char *path) { strncpy(state_path, path, sizeof(state_path) - 1); }
 void state_set_source_dir(const char *dir) { strncpy(src_search_dir, dir, sizeof(src_search_dir) - 1); }
 
+/* Timeline ring buffer */
+#define TL_SIZE 512
+static struct { uint64_t cycle; char ctx[24]; } tl[TL_SIZE];
+static int tl_head = 0, tl_count = 0;
+
+void timeline_record(uint64_t cycle, const char *ctx)
+{
+    /* Skip if same context as last entry */
+    if (tl_count > 0) {
+        int last = (tl_head + tl_count - 1) % TL_SIZE;
+        if (strcmp(tl[last].ctx, ctx) == 0) return;
+    }
+    int idx = (tl_head + tl_count) % TL_SIZE;
+    if (tl_count == TL_SIZE) tl_head = (tl_head + 1) % TL_SIZE;
+    else tl_count++;
+    tl[idx].cycle = cycle;
+    strncpy(tl[idx].ctx, ctx, 23);
+    tl[idx].ctx[23] = '\0';
+}
+
 void state_uart_putc(char c)
 {
     if (c == '\r') return;
@@ -222,6 +242,15 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     for (int i = 0; i < nsecs; i++) {
         if (i) fprintf(f, ",");
         fprintf(f, "{\"name\":\"%s\",\"addr\":%u,\"size\":%u}", secs[i].name, secs[i].addr, secs[i].size);
+    }
+    fprintf(f, "],");
+
+    /* Timeline */
+    fprintf(f, "\"timeline\":[");
+    for (int i = 0; i < tl_count; i++) {
+        int idx = (tl_count < TL_SIZE) ? i : (tl_head + i) % TL_SIZE;
+        if (i) fprintf(f, ",");
+        fprintf(f, "{\"cy\":%llu,\"ctx\":\"%s\"}", tl[idx].cycle, tl[idx].ctx);
     }
     fprintf(f, "],");
 
