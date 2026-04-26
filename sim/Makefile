@@ -5,9 +5,10 @@ CFLAGS = -Wall -O2 -g
 SRC = src/sim-core
 BUILD = build
 
-SRCS = $(SRC)/main.c $(SRC)/cpu.c $(SRC)/mem.c $(SRC)/elf_sym.c $(SRC)/state.c
+SRCS = $(SRC)/main.c $(SRC)/cpu.c $(SRC)/mem.c $(SRC)/elf_sym.c $(SRC)/state.c \
+       $(SRC)/board.c $(SRC)/nvic.c $(SRC)/systick.c
 OBJS = $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(SRCS))
-HDRS = $(SRC)/cpu.h $(SRC)/elf_sym.h $(SRC)/state.h
+HDRS = $(wildcard $(SRC)/*.h)
 
 all: $(BUILD)/sim-core
 

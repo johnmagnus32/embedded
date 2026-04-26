@@ -17,11 +17,6 @@ extern uint16_t mem_read16(uint8_t *f, uint8_t *r, uint32_t addr);
 extern uint8_t  mem_read8(uint8_t *f, uint8_t *r, uint32_t addr);
 extern void     mem_write16(uint8_t *f, uint8_t *r, uint32_t addr, uint16_t val);
 extern void     mem_write8(uint8_t *f, uint8_t *r, uint32_t addr, uint8_t val);
-extern int      systick_enabled(void);
-extern int      systick_irq_enabled(void);
-extern uint32_t systick_reload(void);
-extern int      pendsv_pending(void);
-extern void     clear_pendsv(void);
 
 /* Flags in xPSR */
 #define FLAG_N (1u << 31)
@@ -1004,48 +999,4 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
 
 }
 
-/* ---- One tick of the entire system: CPU + devices + interrupts ---- */
-
-static uint64_t systick_counter = 0;
-
-void sim_tick(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
-{
-    cpu_step(c, flash, ram);
-
-    /* SysTick device */
-    if (systick_enabled()) {
-        systick_counter++;
-        if (systick_counter >= systick_reload()) {
-            systick_counter = 0;
-            if (systick_irq_enabled())
-                c->pending_irq |= IRQ_SYSTICK;
-        }
-    }
-
-    /* PendSV (firmware wrote PENDSVSET to SCB_ICSR) */
-    if (pendsv_pending())
-        c->pending_irq |= IRQ_PENDSV;
-
-    /* Interrupt dispatch — take highest priority pending */
-    if (c->pending_irq && !c->primask && !c->in_handler && !c->irq_shadow) {
-        if (c->pending_irq & IRQ_SVC) {
-            c->pending_irq &= ~IRQ_SVC;
-            take_interrupt(c, flash, ram, 11);
-        } else if (c->pending_irq & IRQ_SYSTICK) {
-            c->pending_irq &= ~IRQ_SYSTICK;
-            take_interrupt(c, flash, ram, 15);
-        } else if (c->pending_irq & IRQ_PENDSV) {
-            c->pending_irq &= ~IRQ_PENDSV;
-            clear_pendsv();
-            take_interrupt(c, flash, ram, 14);
-        }
-    }
-
-    /* Breakpoints */
-    if (c->nbp > 0) {
-        uint32_t pc = c->r[REG_PC];
-        for (int b = 0; b < c->nbp; b++) {
-            if (pc == c->breakpoints[b]) { c->bp_hit = 1; return; }
-        }
-    }
-}
+/* take_interrupt and exc_return are used by nvic.c via the header */
