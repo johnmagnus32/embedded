@@ -18,7 +18,6 @@ struct cpu_state {
     uint32_t control;
     uint32_t msp;
     uint32_t psp;
-    int running;
     int in_handler;       /* 1 = executing an ISR */
     int irq_shadow;       /* 1 = suppress IRQ for one instruction after CPSIE */
 

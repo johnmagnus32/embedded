@@ -89,7 +89,6 @@ void cpu_init(struct cpu_state *c)
 {
     memset(c, 0, sizeof(*c));
     c->xpsr = FLAG_T;  /* Thumb mode */
-    c->running = 1;
 }
 
 /* Visualization hooks */
@@ -101,7 +100,6 @@ void cpu_reset(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     c->r[REG_SP] = c->msp;
     c->r[REG_PC] = mem_read32(flash, ram, FLASH_BASE + 4) & ~1u;
     c->xpsr = FLAG_T;
-    c->running = 1;
 }
 
 /* Forward declarations */
@@ -110,7 +108,6 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
 
 int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 {
-    if (!c->running) return -1;
 
 
     uint32_t pc = c->r[REG_PC];
@@ -506,7 +503,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
     }
 
     fprintf(stderr, "Unknown 16-bit insn: 0x%04X at 0x%08X\n", insn, pc);
-    c->running = 0;
+    exit(1);
     return -1;
 }
 
@@ -914,7 +911,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     not_cond_branch:
 
     fprintf(stderr, "Unknown 32-bit insn: 0x%08X at 0x%08X\n", insn, pc);
-    c->running = 0;
+    exit(1);
     return -1;
 }
 
@@ -1013,7 +1010,7 @@ void cpu_run(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint64_t max_cyc
 {
     static uint64_t systick_counter = 0;
 
-    while (c->running && (max_cycles == 0 || c->cycle_count < max_cycles)) {
+    while (max_cycles == 0 || c->cycle_count < max_cycles) {
         cpu_step(c, flash, ram);
 
         /* Simulate SysTick */

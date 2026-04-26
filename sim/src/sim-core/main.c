@@ -62,10 +62,10 @@ int main(int argc, char **argv)
             cpu.bp_hit = 0;
             g_stopped = 0;
             /* Run in 500K-cycle chunks, emitting state between for live UART */
-            while (cpu.running && !cpu.bp_hit) {
+            while (!cpu.bp_hit) {
                 uint64_t limit = cpu.cycle_count + 500000;
                 cpu_run(&cpu, flash, ram, limit);
-                if (!cpu.bp_hit && cpu.running)
+                if (!cpu.bp_hit)
                     emit_state(&cpu, flash, ram);
             }
             g_stopped = 1;
@@ -78,7 +78,7 @@ int main(int argc, char **argv)
                 cpu_run(&cpu, flash, ram, limit);
                 int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
                 if (cur_line > 0 && cur_line != orig_line) break;
-            } while (cpu.running);
+            } while (1);
             cpu.bp_hit = 1;
 
         } else if (strcmp(cmd, "n") == 0 || strcmp(cmd, "next") == 0) {
@@ -105,7 +105,7 @@ int main(int argc, char **argv)
                 }
                 int cur_line; line_lookup(cpu.r[REG_PC], &cur_line);
                 if (cur_line > 0 && cur_line != orig_line) break;
-            } while (cpu.running && !cpu.bp_hit);
+            } while (!cpu.bp_hit);
             cpu.bp_hit = 1;  /* remove temp breakpoints */
         } else if (strncmp(cmd, "peek ", 5) == 0) {
             uint32_t addr = (uint32_t)strtoul(cmd + 5, NULL, 0);
