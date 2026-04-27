@@ -21,6 +21,7 @@ with open(os.path.join(_dir, "index.html")) as _f:
     HTML = _f.read()
 
 SIM_PORT = 9001
+UART_PORT = 9002
 
 def find_free_port(start=3000):
     for port in range(start, start + 100):
@@ -50,6 +51,8 @@ class WebDebugger:
         cmd = [sim_core, self.elf, self.dts, str(SIM_PORT)] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
         self._buf = b''
+        self.uart_buf = ''
+
         # Wait for sim-core to start listening
         for _ in range(50):
             try:
@@ -57,12 +60,27 @@ class WebDebugger:
                 self.sim_sock.connect(('127.0.0.1', SIM_PORT))
                 self.sim_sock.settimeout(60)
                 log_web(f'Connected to sim-core on port {SIM_PORT}')
-                # Read initial stop info
                 self.last_state = self._recv_line()
-                return
+                break
             except ConnectionRefusedError:
                 time.sleep(0.1)
-        log_web('Failed to connect to sim-core')
+
+        # Connect to UART stream
+        try:
+            self.uart_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.uart_sock.connect(('127.0.0.1', UART_PORT))
+            log_web(f'Connected to UART on port {UART_PORT}')
+            # Read UART in background thread
+            def uart_reader():
+                while True:
+                    try:
+                        data = self.uart_sock.recv(4096)
+                        if not data: break
+                        self.uart_buf += data.decode(errors='replace')
+                    except: break
+            threading.Thread(target=uart_reader, daemon=True).start()
+        except:
+            log_web('UART connection failed (will retry later)')
 
     def _recv_line(self):
         """Read one newline-terminated JSON line from sim-core."""
@@ -118,11 +136,9 @@ class WebDebugger:
                 req = lines[0] if lines else ''
 
                 if req.startswith('GET /uart'):
-                    try:
-                        resp = self.send_command('{"cmd":"uart"}')
-                        self.http_response(conn, '200 OK', 'application/json', resp)
-                    except:
-                        self.http_response(conn, '200 OK', 'application/json', '{"uart":""}')
+                    import json as _json
+                    self.http_response(conn, '200 OK', 'application/json',
+                        _json.dumps({"uart": self.uart_buf}))
 
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''

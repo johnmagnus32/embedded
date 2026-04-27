@@ -210,14 +210,6 @@ static void handle_command(int fd, struct board *b, const char *line)
             send_source(fd, file);
         }
 
-    } else if (strncmp(cmd, "uart\"", 5) == 0) {
-        /* Send UART buffer contents */
-        char buf[UART_BUF_SIZE + 64];
-        int n = 0;
-        FILE *f = fmemopen(buf, sizeof(buf), "w");
-        uart_dump_state(&b->uarts[0], f);
-        fclose(f);
-        send_response(fd, buf);
     }
 }
 
@@ -262,7 +254,14 @@ int main(int argc, char **argv)
     cpu_reset(&board.cpu, board.flash, board.ram);
     LOG("Ready — waiting for commands");
 
-    /* Start TCP server */
+    /* Start UART TCP server (separate channel for serial output) */
+    int uart_port = port + 1;
+    if (board.nuarts > 0) {
+        if (uart_listen(&board.uarts[0], uart_port) >= 0)
+            LOG("UART on port %d", uart_port);
+    }
+
+    /* Start debug TCP server */
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1;
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -276,7 +275,12 @@ int main(int argc, char **argv)
 
     /* Accept one client */
     int client = accept(srv, NULL, NULL);
-    LOG("Client connected");
+    LOG("Debug client connected");
+
+    /* Accept UART client (non-blocking — may connect later) */
+    if (board.nuarts > 0)
+        uart_accept(&board.uarts[0]);
+    LOG("UART client connected");
 
     /* Send initial stop info */
     send_stop_info(client, &board);
