@@ -902,8 +902,44 @@ uint32_t type_deref(uint32_t type_die)
 {
     struct type_info *resolve_type(uint32_t);
     struct type_info *t = resolve_type(type_die);
-    if (t && t->tag == 0x0F && t->type_ref) return t->type_ref; /* pointer → pointee */
+    if (t && t->tag == 0x0F && t->type_ref) return t->type_ref;
     return 0;
+}
+
+uint32_t type_byte_size(uint32_t type_die)
+{
+    struct type_info *resolve_type(uint32_t);
+    struct type_info *t = resolve_type(type_die);
+    if (!t) return 4;
+    if (t->byte_size) return t->byte_size;
+    if (t->tag == 0x0F) return 4; /* pointer */
+    return 4;
+}
+
+uint32_t type_member(uint32_t struct_type_die, const char *member_name,
+                     uint32_t *offset_out, uint32_t *member_type_out)
+{
+    struct type_info *resolve_type(uint32_t);
+    struct type_info *t = resolve_type(struct_type_die);
+    if (!t || t->tag != 0x13) return 0; /* not a struct */
+    for (int i = 0; i < t->nmembers; i++) {
+        if (strcmp(t->members[i].name, member_name) == 0) {
+            *offset_out = t->members[i].offset;
+            *member_type_out = t->members[i].type_die;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+uint32_t type_array_elem(uint32_t array_type_die, uint32_t *elem_size_out)
+{
+    struct type_info *resolve_type(uint32_t);
+    struct type_info *t = resolve_type(array_type_die);
+    if (!t || t->tag != 0x01) return 0; /* not an array */
+    struct type_info *elem = t->type_ref ? resolve_type(t->type_ref) : NULL;
+    *elem_size_out = elem ? (elem->byte_size ? elem->byte_size : 4) : 4;
+    return t->type_ref;
 }
 
 /* Look up a local variable by name at the given PC.

@@ -26,8 +26,11 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out);
 uint32_t var_type_die(const char *name, uint32_t pc);
 int type_format(uint32_t type_die, uint32_t addr, uint8_t *ram, uint8_t *flash,
                 char *buf, int bufsize);
-/* Get the pointee type for a pointer type. Returns 0 if not a pointer. */
 uint32_t type_deref(uint32_t type_die);
+uint32_t type_byte_size(uint32_t type_die);
+uint32_t type_member(uint32_t struct_type_die, const char *member_name,
+                     uint32_t *offset_out, uint32_t *member_type_out);
+uint32_t type_array_elem(uint32_t array_type_die, uint32_t *elem_size_out);
 
 /* ELF section info (allocated sections with addresses) */
 struct elf_section { uint32_t addr; uint32_t size; char name[32]; };
