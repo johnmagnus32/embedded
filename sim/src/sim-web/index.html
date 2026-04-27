@@ -110,6 +110,7 @@ async function sendCmd(cmd) {
     // Parse user command into protocol command
     let cmdObj;
     if (cmd === 'c' || cmd === 'continue') cmdObj = {cmd:'continue'};
+    else if (cmd === 'r' || cmd === 'run') cmdObj = {cmd:'run'};
     else if (cmd === 's' || cmd === 'step') cmdObj = {cmd:'step'};
     else if (cmd === 'n' || cmd === 'next') cmdObj = {cmd:'next'};
     else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {

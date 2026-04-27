@@ -168,6 +168,12 @@ static void handle_command(int fd, struct board *b, const char *line)
         do { board_tick(b); } while (!check_breakpoint(b));
         send_stop_info(fd, b);
 
+    } else if (strncmp(cmd, "run\"", 4) == 0) {
+        cpu_reset(&b->cpu, b->flash, b->ram);
+        do { board_tick(b); } while (!check_breakpoint(b));
+        send_stop_info(fd, b);
+        send_stop_info(fd, b);
+
     } else if (strncmp(cmd, "break\"", 6) == 0) {
         const char *s = strstr(line, "\"spec\":\"");
         if (s) {
@@ -247,16 +253,7 @@ int main(int argc, char **argv)
     state_set_source_dir(dir);
 
     cpu_reset(&board.cpu, board.flash, board.ram);
-
-    /* Auto-run to main() */
-    uint32_t main_addr = resolve_breakpoint("main");
-    if (main_addr) {
-        breakpoints[0] = main_addr;
-        nbp = 1;
-        run_until_bp(&board);
-        nbp = 0;
-    }
-    LOG("Stopped at main()");
+    LOG("Ready — waiting for commands");
 
     /* Start TCP server */
     int srv = socket(AF_INET, SOCK_STREAM, 0);
