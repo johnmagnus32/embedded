@@ -248,9 +248,14 @@ int main(int argc, char **argv)
     }
     LOG("Loaded %s", argv[1]);
 
-    char dir[256]; strncpy(dir, argv[1], 255);
-    char *sl = strrchr(dir, '/'); if (sl) *(sl+1)='\0'; else dir[0]='\0';
-    state_set_source_dir(dir);
+    /* Use compilation directory from DWARF for source file lookup */
+    extern char elf_comp_dir[512];
+    if (elf_comp_dir[0]) {
+        char dir[512];
+        snprintf(dir, sizeof(dir), "%s/", elf_comp_dir);
+        state_set_source_dir(dir);
+        LOG("Source dir (from DWARF): %s", elf_comp_dir);
+    }
 
     cpu_reset(&board.cpu, board.flash, board.ram);
     LOG("Ready — waiting for commands");

@@ -53,6 +53,9 @@ static int nsyms;
 static struct elf_section elf_sections[MAX_ELF_SECTIONS];
 static int n_elf_sections;
 
+/* Compilation directory from DWARF (DW_AT_comp_dir) */
+char elf_comp_dir[512] = "";
+
 int elf_get_sections(const struct elf_section **out) { *out = elf_sections; return n_elf_sections; }
 
 static void parse_debug_line(const uint8_t *data, uint32_t size);
@@ -249,6 +252,7 @@ static int32_t read_sleb(const uint8_t **p)
 
 /* DWARF attributes */
 #define DW_AT_name              0x03
+#define DW_AT_comp_dir          0x1b
 #define DW_AT_byte_size         0x0b
 #define DW_AT_type              0x49
 #define DW_AT_data_member_location 0x38
@@ -492,6 +496,17 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                         if (off < str_size) d->name = str + off;
                     } else if (form == DW_FORM_string) {
                         d->name = (const char *)scan;
+                        while (*scan) scan++; scan++;
+                    } else {
+                        skip_form(&scan, form, 4, 0);
+                    }
+                } else if (attr == DW_AT_comp_dir && !elf_comp_dir[0]) {
+                    /* Extract compilation directory from first CU */
+                    if (form == DW_FORM_strp) {
+                        uint32_t off = *(uint32_t *)scan; scan += 4;
+                        if (off < str_size) strncpy(elf_comp_dir, str + off, 511);
+                    } else if (form == DW_FORM_string) {
+                        strncpy(elf_comp_dir, (const char *)scan, 511);
                         while (*scan) scan++; scan++;
                     } else {
                         skip_form(&scan, form, 4, 0);
