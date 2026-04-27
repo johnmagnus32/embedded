@@ -49,8 +49,8 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     <div class="panel" id="cmd-panel" style="height:200px;min-height:120px;">
       <h2>Debugger</h2>
       <div class="panel-body" style="display:flex;flex-direction:column;padding:4px 8px;">
-        <div id="cmd-log"></div>
-        <input id="cmd-input" placeholder="(dbg) type command..." autofocus>
+        <div id="cmd-log" style="flex:1;overflow-y:auto;"></div>
+        <input id="cmd-input" style="flex-shrink:0;" placeholder="(dbg) type command..." autofocus>
       </div>
     </div>
   </div>

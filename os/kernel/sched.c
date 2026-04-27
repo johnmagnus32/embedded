@@ -164,6 +164,7 @@ uint32_t *sched_preempt(uint32_t *old_sp)
     uint32_t now = systick_get_ticks();
 
     uint32_t key = spin_lock(&sched_lock);
+    trace_begin("scheduler");
 
     /* Account CPU time to outgoing task */
     tasks[old_task].total_ticks += now - tasks[old_task].last_switch_in;
