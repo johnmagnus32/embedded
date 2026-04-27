@@ -14,6 +14,7 @@
 #include "sched.h"
 #include "config.h"
 #include "spinlock.h"
+#include "trace.h"
 #include <stddef.h>
 
 extern uint32_t systick_get_ticks(void);
@@ -178,6 +179,8 @@ uint32_t *sched_preempt(uint32_t *old_sp)
     tasks[next].state = TASK_RUNNING;
     tasks[next].running_on_cpu = cpu;
     tasks[next].last_switch_in = now;
+
+    trace_begin(tasks[next].name);
 
 #ifdef CONFIG_MPU
     extern void mpu_switch_task(uint32_t stack_base, uint32_t stack_size);

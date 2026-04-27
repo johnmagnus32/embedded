@@ -32,8 +32,11 @@ void systick_init(uint32_t cpu_hz, uint32_t tick_hz)
     SYST_CSR = 0x07;
 }
 
+#include "trace.h"
+
 void systick_handler(void)
 {
+    trace_event("SysTick");
     tick_count++;
     SCB_ICSR = ICSR_PENDSVSET;
 }

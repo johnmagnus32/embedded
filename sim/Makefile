@@ -6,7 +6,7 @@ SRC = src/sim-core
 BUILD = build
 
 SRCS = $(SRC)/main.c $(SRC)/cpu.c $(SRC)/mem.c $(SRC)/elf_sym.c $(SRC)/state.c \
-       $(SRC)/board.c $(SRC)/nvic.c $(SRC)/systick.c $(SRC)/uart.c $(SRC)/dts.c $(SRC)/chardev.c
+       $(SRC)/board.c $(SRC)/nvic.c $(SRC)/systick.c $(SRC)/uart.c $(SRC)/dts.c $(SRC)/chardev.c $(SRC)/trace_dev.c
 OBJS = $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(SRCS))
 HDRS = $(wildcard $(SRC)/*.h)
 

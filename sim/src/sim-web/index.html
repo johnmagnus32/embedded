@@ -88,14 +88,20 @@ async function simCmd(cmdObj) {
 async function refreshUI(stopInfo) {
   const regs = await simCmd({cmd:'regs'});
   const memmap = await simCmd({cmd:'memmap'});
-  const timeline = await simCmd({cmd:'timeline'});
   let source = null;
   if (stopInfo.file) {
     source = await simCmd({cmd:'source', file: stopInfo.file});
   }
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
-  if (timeline) { lastTimelineData = {...stopInfo, ...timeline}; renderTimeline(lastTimelineData); }
+  // Fetch trace from the trace chardev stream (not a debug command)
+  try {
+    const r = await fetch('/trace');
+    if (r.ok) {
+      const data = await r.json();
+      if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
+    }
+  } catch(e) {}
 }
 
 // Poll UART independently

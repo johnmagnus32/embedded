@@ -13,6 +13,10 @@ void board_init(struct board *b, const struct dts *dt, struct chardev_table *cha
     b->nuarts = 0;
     b->sysclk_hz = dt->sysclk_hz ? dt->sysclk_hz : 16000000;
 
+    /* Trace port — always at 0xE0000000 */
+    struct chardev *trace_cd = chardevs ? chardev_find(chardevs, "trace") : NULL;
+    trace_dev_init(&b->trace, 0xE0000000, trace_cd);
+
     for (int i = 0; i < dt->nnodes; i++) {
         const struct dts_node *n = &dt->nodes[i];
 

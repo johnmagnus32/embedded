@@ -216,14 +216,6 @@ static void handle_command(int fd, struct board *b, const char *line)
         n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":[]}");
         send_response(fd, buf);
 
-    } else if (strncmp(cmd, "timeline\"", 9) == 0) {
-        char *tbuf = malloc(65536);
-        FILE *tf = fmemopen(tbuf, 65536, "w");
-        timeline_dump(tf);
-        fclose(tf);
-        send_response(fd, tbuf);
-        free(tbuf);
-
     } else if (strncmp(cmd, "print\"", 6) == 0) {
         const char *e = strstr(line, "\"expr\":\"");
         if (!e) return;

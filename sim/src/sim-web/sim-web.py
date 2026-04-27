@@ -22,6 +22,7 @@ with open(os.path.join(_dir, "index.html")) as _f:
 
 SIM_PORT = 9001
 UART_PORT = 9002
+TRACE_PORT = 9003
 
 class WebDebugger:
     def __init__(self, elf, dts, port, extra_args):
@@ -38,7 +39,8 @@ class WebDebugger:
         sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
         cmd = [sim_core, self.elf, self.dts,
                '--debug', str(SIM_PORT),
-               '--chardev', f'usart2={UART_PORT}'] + self.extra_args
+               '--chardev', f'usart2={UART_PORT}',
+               '--chardev', f'trace={TRACE_PORT}'] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
         self._buf = b''
         self.uart_buf = ''
@@ -71,6 +73,36 @@ class WebDebugger:
             threading.Thread(target=uart_reader, daemon=True).start()
         except:
             log_web('UART connection failed (will retry later)')
+
+        # Connect to trace stream
+        self.trace_events = []
+        try:
+            self.trace_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.trace_sock.connect(('127.0.0.1', TRACE_PORT))
+            log_web(f'Connected to trace port {TRACE_PORT}')
+            def trace_reader():
+                buf = ''
+                while True:
+                    try:
+                        data = self.trace_sock.recv(4096)
+                        if not data: break
+                        buf += data.decode(errors='replace')
+                        while '\n' in buf:
+                            line, buf = buf.split('\n', 1)
+                            line = line.strip()
+                            if line.startswith('B:'):
+                                self.trace_events.append({'ctx': line[2:], 'type': 'B'})
+                            elif line.startswith('E'):
+                                self.trace_events.append({'type': 'E'})
+                            elif line.startswith('I:'):
+                                self.trace_events.append({'ctx': line[2:], 'type': 'I'})
+                            elif line.startswith('@'):
+                                if self.trace_events and 'cy' not in self.trace_events[-1]:
+                                    self.trace_events[-1]['cy'] = int(line[1:])
+                    except: break
+            threading.Thread(target=trace_reader, daemon=True).start()
+        except:
+            log_web('Trace not available')
 
     def _recv_line(self):
         """Read one newline-terminated JSON line from sim-core."""
@@ -127,6 +159,11 @@ class WebDebugger:
 
                 if req.startswith('GET /init'):
                     self.http_response(conn, '200 OK', 'application/json', self.last_state)
+
+                elif req.startswith('GET /trace'):
+                    import json as _json
+                    self.http_response(conn, '200 OK', 'application/json',
+                        _json.dumps({"timeline": self.trace_events[-512:]}))
 
                 elif req.startswith('GET /uart'):
                     import json as _json

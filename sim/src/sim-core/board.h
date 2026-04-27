@@ -5,6 +5,7 @@
 #include "nvic.h"
 #include "systick.h"
 #include "uart.h"
+#include "trace_dev.h"
 #include "chardev.h"
 #include "dts.h"
 
@@ -16,6 +17,7 @@ struct board {
     struct systick   systick;
     struct uart      uarts[MAX_UARTS];
     int              nuarts;
+    struct trace_dev trace;
     uint32_t         sysclk_hz;
     uint8_t         *flash;
     uint8_t         *ram;
