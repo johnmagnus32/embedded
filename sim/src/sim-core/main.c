@@ -198,6 +198,14 @@ static void handle_command(int fd, struct board *b, const char *line)
             file[i] = '\0';
             send_source(fd, file);
         }
+    } else if (strncmp(cmd, "memmap\"", 7) == 0) {
+        /* Full state dump for memory map (tasks, sections, etc.) */
+        char *buf = malloc(65536);
+        FILE *mf = fmemopen(buf, 65536, "w");
+        state_dump_to(&b->cpu, b->flash, b->ram, mf);
+        fclose(mf);
+        send_response(fd, buf);
+        free(buf);
     }
 }
 

@@ -89,11 +89,13 @@ async function simCmd(cmdObj) {
 
 async function refreshUI(stopInfo) {
   const regs = await simCmd({cmd:'regs'});
+  const memmap = await simCmd({cmd:'memmap'});
   let source = null;
   if (stopInfo.file) {
     source = await simCmd({cmd:'source', file: stopInfo.file});
   }
   render(stopInfo, regs, source, null);
+  renderMemMap(memmap);
 }
 
 // Poll UART independently
