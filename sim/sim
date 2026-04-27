@@ -2,4 +2,6 @@
 # sim — ARM Cortex-M4 Emulator with Web Debugger
 # Usage: ./sim <firmware.elf> <board.dts>
 DIR="$(cd "$(dirname "$0")" && pwd)"
+pkill -f sim-core 2>/dev/null
+sleep 0.5
 exec python3 "$DIR/src/sim-web/sim-web.py" "$@"
