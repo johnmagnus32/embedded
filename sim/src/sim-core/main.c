@@ -225,6 +225,29 @@ static void handle_command(int fd, struct board *b, const char *line)
         expr[i] = '\0';
 
         char rbuf[128];
+
+        /* Try local variable via DWARF */
+        int reg; uint32_t val;
+        int loc = var_lookup(expr, b->cpu.r[REG_PC], &reg, &val);
+        if (loc == 1) { /* register */
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\",\"loc\":\"r%d\"}",
+                     expr, b->cpu.r[reg], b->cpu.r[reg], reg);
+            send_response(fd, rbuf); return;
+        } else if (loc == 2) { /* constant */
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\",\"loc\":\"const\"}",
+                     expr, val, val);
+            send_response(fd, rbuf); return;
+        } else if (loc == 3) { /* stack (fbreg offset) */
+            /* Approximate frame base as SP — not always correct but close */
+            uint32_t addr = b->cpu.r[REG_SP] + val;
+            uint32_t mval = 0;
+            if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+                mval = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\",\"loc\":\"[sp+%d]\"}",
+                     expr, mval, mval, (int)val);
+            send_response(fd, rbuf); return;
+        }
+
         /* Register names */
         static const char *rnames[] = {"r0","r1","r2","r3","r4","r5","r6","r7",
                                         "r8","r9","r10","r11","r12","sp","lr","pc"};
@@ -232,32 +255,30 @@ static void handle_command(int fd, struct board *b, const char *line)
             if (strcmp(expr, rnames[r]) == 0) {
                 snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\"}",
                          expr, b->cpu.r[r], b->cpu.r[r]);
-                send_response(fd, rbuf);
-                return;
+                send_response(fd, rbuf); return;
             }
         }
-        /* Try as hex address — read 4 bytes */
+
+        /* Hex address */
         if (expr[0] == '0' && expr[1] == 'x') {
             uint32_t addr = (uint32_t)strtoul(expr, NULL, 16);
-            uint32_t val = 0;
+            uint32_t v = 0;
             if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                val = *(uint32_t*)(b->ram + (addr - RAM_BASE));
-            else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-                val = *(uint32_t*)(b->flash + (addr - FLASH_BASE));
-            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\"}", expr, val, val);
-            send_response(fd, rbuf);
-            return;
+                v = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\"}", expr, v, v);
+            send_response(fd, rbuf); return;
         }
-        /* Try as symbol name — find address and read */
+
+        /* Global symbol */
         uint32_t sym_addr = sym_find_by_name(expr);
         if (sym_addr && sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE) {
-            uint32_t val = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
+            uint32_t v = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"addr\":\"0x%08x\",\"val\":%u,\"hex\":\"0x%08x\"}",
-                     expr, sym_addr, val, val);
-            send_response(fd, rbuf);
-            return;
+                     expr, sym_addr, v, v);
+            send_response(fd, rbuf); return;
         }
-        snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"error\":\"unknown\"}", expr);
+
+        snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"error\":\"not found\"}", expr);
         send_response(fd, rbuf);
     }
 }

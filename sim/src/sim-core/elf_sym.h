@@ -22,6 +22,7 @@ const char *line_lookup(uint32_t pc, int *line_out);
  * Returns 0 if not found. */
 uint32_t resolve_breakpoint(const char *spec);
 uint32_t next_line_addr(uint32_t pc);
+int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out);
 
 /* ELF section info (allocated sections with addresses) */
 struct elf_section { uint32_t addr; uint32_t size; char name[32]; };

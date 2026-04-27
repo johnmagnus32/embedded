@@ -56,6 +56,24 @@ static int n_elf_sections;
 /* Compilation directory from DWARF (DW_AT_comp_dir) */
 char elf_comp_dir[512] = "";
 
+/* Local variable info for print command */
+#define MAX_VARS 256
+struct var_info {
+    char name[32];
+    uint32_t func_low;   /* containing function's low_pc */
+    uint32_t func_high;  /* containing function's high_pc */
+    int is_const;        /* DW_AT_const_value */
+    uint32_t const_val;
+    uint32_t loc_offset; /* offset into .debug_loclists */
+    int has_loc;
+};
+static struct var_info vars[MAX_VARS];
+static int nvars = 0;
+
+/* Location list data */
+static uint8_t *loclists_data = NULL;
+static uint32_t loclists_size = 0;
+
 int elf_get_sections(const struct elf_section **out) { *out = elf_sections; return n_elf_sections; }
 
 static void parse_debug_line(const uint8_t *data, uint32_t size);
@@ -210,6 +228,10 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
             } else if (strcmp(sn, ".debug_str") == 0) {
                 ds = malloc(shdrs[i].sh_size); ds_sz = shdrs[i].sh_size;
                 fseek(f, shdrs[i].sh_offset, SEEK_SET); fread(ds, ds_sz, 1, f);
+            } else if (strcmp(sn, ".debug_loclists") == 0) {
+                loclists_data = malloc(shdrs[i].sh_size);
+                loclists_size = shdrs[i].sh_size;
+                fseek(f, shdrs[i].sh_offset, SEEK_SET); fread(loclists_data, loclists_size, 1, f);
             }
         }
         if (di && da && ds)
@@ -466,6 +488,13 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
             uint32_t type_ref;
             uint32_t byte_size;
             uint32_t member_loc;
+            uint32_t low_pc;
+            uint32_t high_pc;
+            uint32_t loc_offset;
+            uint32_t const_val;
+            int has_loc;
+            int has_const;
+            int has_high_pc;
             const char *name;
         } dies[MAX_DIES];
         int ndies = 0;
@@ -484,6 +513,9 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
             d->type_ref = 0;
             d->byte_size = 0;
             d->member_loc = 0xFFFFFFFF;
+            d->low_pc = 0; d->high_pc = 0; d->has_high_pc = 0;
+            d->loc_offset = 0; d->has_loc = 0;
+            d->const_val = 0; d->has_const = 0;
             d->name = NULL;
 
             for (int i = 0; i < a->nattrs; i++) {
@@ -517,11 +549,56 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                     d->byte_size = read_form_u32(&scan, form, a->attrs[i].implicit_val);
                 } else if (attr == DW_AT_data_member_location) {
                     d->member_loc = read_form_u32(&scan, form, a->attrs[i].implicit_val);
+                } else if (attr == 0x11) { /* DW_AT_low_pc */
+                    d->low_pc = read_form_u32(&scan, form, a->attrs[i].implicit_val);
+                } else if (attr == 0x12) { /* DW_AT_high_pc */
+                    d->high_pc = read_form_u32(&scan, form, a->attrs[i].implicit_val);
+                    d->has_high_pc = 1;
+                } else if (attr == DW_AT_location) {
+                    if (form == DW_FORM_sec_offset || form == DW_FORM_loclistx) {
+                        d->loc_offset = read_form_u32(&scan, form, a->attrs[i].implicit_val);
+                        d->has_loc = 1;
+                    } else if (form == DW_FORM_exprloc) {
+                        /* Simple inline expression — skip for now */
+                        uint32_t len = read_uleb(&scan);
+                        if (len == 1 && *scan >= 0x50 && *scan <= 0x6f) {
+                            /* DW_OP_reg0..DW_OP_reg31 */
+                            d->loc_offset = *scan - 0x50; /* store reg number */
+                            d->has_loc = 2; /* 2 = simple register */
+                        }
+                        scan += len;
+                    } else {
+                        skip_form(&scan, form, 4, 0);
+                    }
+                } else if (attr == 0x1c) { /* DW_AT_const_value */
+                    d->const_val = read_form_u32(&scan, form, a->attrs[i].implicit_val);
+                    d->has_const = 1;
                 } else {
                     skip_form(&scan, form, 4, 0);
                 }
             }
             ndies++;
+        }
+
+        /* Extract local variables from subprograms */
+        uint32_t cur_func_low = 0, cur_func_high = 0;
+        for (int i = 0; i < ndies; i++) {
+            if (dies[i].tag == 0x2E) { /* DW_TAG_subprogram */
+                cur_func_low = dies[i].low_pc;
+                cur_func_high = dies[i].has_high_pc ?
+                    (dies[i].high_pc < 0x1000 ? dies[i].low_pc + dies[i].high_pc : dies[i].high_pc) : 0;
+            }
+            if ((dies[i].tag == DW_TAG_variable || dies[i].tag == 0x05) /* DW_TAG_formal_parameter */
+                && dies[i].name && cur_func_low && nvars < MAX_VARS) {
+                struct var_info *v = &vars[nvars++];
+                strncpy(v->name, dies[i].name, 31); v->name[31] = '\0';
+                v->func_low = cur_func_low;
+                v->func_high = cur_func_high;
+                v->is_const = dies[i].has_const;
+                v->const_val = dies[i].const_val;
+                v->loc_offset = dies[i].loc_offset;
+                v->has_loc = dies[i].has_loc;
+            }
         }
 
         /* Find 'tasks' variable in this CU */
@@ -737,6 +814,99 @@ uint32_t next_line_addr(uint32_t pc)
 }
 
 /* ── Breakpoint resolver ── */
+
+/* Look up a local variable by name at the given PC.
+ * Returns: 0 = not found, 1 = register (reg_out), 2 = constant (val_out),
+ *          3 = memory address (val_out) */
+int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
+{
+    for (int i = 0; i < nvars; i++) {
+        struct var_info *v = &vars[i];
+        if (strcmp(v->name, name) != 0) continue;
+        if (pc < v->func_low || pc >= v->func_high) continue;
+
+        /* Constant value */
+        if (v->is_const) {
+            *val_out = v->const_val;
+            return 2;
+        }
+
+        /* Simple register (from inline exprloc) */
+        if (v->has_loc == 2) {
+            *reg_out = v->loc_offset; /* stored reg number */
+            return 1;
+        }
+
+        /* Location list */
+        if (v->has_loc == 1 && loclists_data && v->loc_offset < loclists_size) {
+            const uint8_t *p = loclists_data + v->loc_offset;
+            const uint8_t *end = loclists_data + loclists_size;
+            uint32_t base_addr = v->func_low;
+
+            while (p < end) {
+                uint8_t entry_kind = *p++;
+                if (entry_kind == 0) break; /* DW_LLE_end_of_list */
+                if (entry_kind == 6) { /* DW_LLE_base_address */
+                    base_addr = *(uint32_t*)p; p += 4;
+                    continue;
+                }
+                if (entry_kind == 7) { /* DW_LLE_start_length (DWARF5 default) */
+                    uint32_t start = *(uint32_t*)p; p += 4;
+                    uint32_t length = read_uleb(&p);
+                    uint16_t expr_len = read_uleb(&p);
+                    if (pc >= start && pc < start + length && expr_len > 0) {
+                        uint8_t op = *p;
+                        if (op >= 0x50 && op <= 0x6f) { /* DW_OP_reg0..reg31 */
+                            *reg_out = op - 0x50;
+                            return 1;
+                        }
+                        if (op == 0x91) { /* DW_OP_fbreg */
+                            const uint8_t *ep = p + 1;
+                            int32_t offset = read_sleb(&ep);
+                            /* frame base is typically CFA = SP at entry */
+                            /* For simplicity, approximate as current SP + offset */
+                            *val_out = offset; /* caller adds SP */
+                            return 3;
+                        }
+                    }
+                    p += expr_len;
+                    continue;
+                }
+                if (entry_kind == 4) { /* DW_LLE_offset_pair */
+                    uint32_t start_off = read_uleb(&p);
+                    uint32_t end_off = read_uleb(&p);
+                    uint16_t expr_len = read_uleb(&p);
+                    uint32_t start = base_addr + start_off;
+                    uint32_t e = base_addr + end_off;
+                    if (pc >= start && pc < e && expr_len > 0) {
+                        uint8_t op = *p;
+                        if (op >= 0x50 && op <= 0x6f) {
+                            *reg_out = op - 0x50;
+                            return 1;
+                        }
+                        if (op == 0x91) {
+                            const uint8_t *ep = p + 1;
+                            *val_out = (uint32_t)read_sleb(&ep);
+                            return 3;
+                        }
+                    }
+                    p += expr_len;
+                    continue;
+                }
+                /* Skip view pairs and other entries */
+                if (entry_kind == 8) { /* DW_LLE_start_end */
+                    p += 8; /* start + end */
+                    uint16_t expr_len = read_uleb(&p);
+                    p += expr_len;
+                    continue;
+                }
+                break; /* unknown entry, bail */
+            }
+        }
+        return 0; /* found variable but can't resolve location */
+    }
+    return 0; /* not found */
+}
 
 uint32_t resolve_breakpoint(const char *spec)
 {

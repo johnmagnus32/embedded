@@ -122,8 +122,11 @@ async function sendCmd(cmd) {
     else if (cmd.startsWith('p ') || cmd.startsWith('print ')) {
       const expr = cmd.replace(/^(p|print)\s+/, '');
       const resp = await simCmd({cmd:'print', expr});
-      if (resp.error) log(`<span style="color:#f85149">${resp.error}</span>`);
-      else log(`<span style="color:#7ee787">${resp.expr} = ${resp.hex} (${resp.val})</span>`);
+      if (resp.error) log(`<span style="color:#f85149">${resp.expr}: ${resp.error}</span>`);
+      else {
+        const loc = resp.loc ? ` <span style="color:#484f58">(${resp.loc})</span>` : '';
+        log(`<span style="color:#7ee787">${resp.expr} = ${resp.hex} (${resp.val})${loc}</span>`);
+      }
       return;
     } else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {
       const spec = cmd.replace(/^(b|break)\s+/, '');
