@@ -62,6 +62,7 @@ struct var_info {
     char name[32];
     uint32_t func_low;
     uint32_t func_high;
+    uint32_t cu_base;    /* CU's low_pc for offset_pair base */
     int is_const;
     uint32_t const_val;
     uint32_t loc_offset;
@@ -656,6 +657,14 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
 
         /* Extract local variables from subprograms */
         uint32_t cur_func_low = 0, cur_func_high = 0;
+        /* Find CU's low_pc (first compile_unit DIE) */
+        uint32_t cu_low_pc = 0;
+        for (int i = 0; i < ndies; i++) {
+            if (dies[i].tag == DW_TAG_compile_unit && dies[i].low_pc) {
+                cu_low_pc = dies[i].low_pc;
+                break;
+            }
+        }
         for (int i = 0; i < ndies; i++) {
             if (dies[i].tag == 0x2E) { /* DW_TAG_subprogram */
                 cur_func_low = dies[i].low_pc;
@@ -667,6 +676,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 struct var_info *v = &vars[nvars++];
                 strncpy(v->name, dies[i].name, 31); v->name[31] = '\0';
                 v->func_low = cur_func_low ? cur_func_low : 0;
+                v->cu_base = cu_low_pc;
                 v->func_high = cur_func_low ? cur_func_high : 0xFFFFFFFF;
                 v->is_const = dies[i].has_const;
                 v->const_val = dies[i].const_val;
@@ -979,7 +989,7 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
         if (v->has_loc == 1 && loclists_data && v->loc_offset < loclists_size) {
             const uint8_t *p = loclists_data + v->loc_offset;
             const uint8_t *end = loclists_data + loclists_size;
-            uint32_t base_addr = v->func_low;
+            uint32_t base_addr = v->cu_base;  /* CU's low_pc for offset_pair */
 
             while (p < end) {
                 uint8_t entry_kind = *p++;
