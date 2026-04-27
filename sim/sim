@@ -1,5 +1,5 @@
 #!/bin/bash
 # sim — ARM Cortex-M4 Emulator with Web Debugger
-# Usage: ./sim <firmware.elf> [--port N] [--console /path/to/fifo]
+# Usage: ./sim <firmware.elf> <board.dts>
 DIR="$(cd "$(dirname "$0")" && pwd)"
 exec python3 "$DIR/src/sim-web/sim-web.py" "$@"
