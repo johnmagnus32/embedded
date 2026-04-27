@@ -484,7 +484,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
     const uint8_t *p = info;
     const uint8_t *info_end = info + info_size;
 
-    while (p < info_end && !dwarf_tcb.valid) {
+    while (p < info_end) {
         if (p + 12 > info_end) break;
         uint32_t cu_start = (uint32_t)(p - info); /* offset of unit_length in .debug_info */
         uint32_t unit_len = *(uint32_t *)p; p += 4;
