@@ -1,26 +1,25 @@
 /*
  * sim-core — ARM Cortex-M4 emulator + debugger
  *
- * Reads debugger commands from stdin, writes JSON state to stdout.
- * Launched by sim-web, not run directly.
+ * CPU/debugger state → stdout (JSON per line)
+ * Device state → separate files in /tmp/sim-state/
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include "board.h"
 #include "elf_sym.h"
 #include "state.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
+#define STATE_DIR "/tmp/sim-state"
 
 int g_stopped = 1;
+extern struct board *g_board;
 
-/* Debugger state */
 static uint32_t breakpoints[32];
 static int nbp = 0;
-
-/* Global board pointer for mem.c device routing */
-extern struct board *g_board;
 
 static void emit_state(struct board *b)
 {
@@ -47,11 +46,17 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* State directory for device files */
+    mkdir(STATE_DIR, 0755);
+
     struct board board;
     board_init(&board);
     board.flash = calloc(1, FLASH_SIZE);
     board.ram   = calloc(1, RAM_SIZE);
     g_board = &board;
+
+    /* Configure device state output */
+    uart_set_state_dir(STATE_DIR);
 
     if (elf_load(argv[1], board.flash, board.ram) != 0) {
         LOG("Failed to load ELF: %s", argv[1]);
@@ -64,7 +69,6 @@ int main(int argc, char **argv)
     state_set_source_dir(dir);
 
     cpu_reset(&board.cpu, board.flash, board.ram);
-
     setbuf(stdout, NULL);
 
     /* Auto-run to main() */
@@ -75,13 +79,11 @@ int main(int argc, char **argv)
         run_until_bp(&board);
         nbp = 0;
     }
-    LOG("Stopped at main(), emitting initial state");
+    LOG("Stopped at main()");
     emit_state(&board);
-    LOG("Waiting for commands on stdin");
 
     char line_buf[256];
-    while (1) {
-        if (!fgets(line_buf, sizeof(line_buf), stdin)) break;
+    while (fgets(line_buf, sizeof(line_buf), stdin)) {
         line_buf[strcspn(line_buf, "\n")] = '\0';
         char *cmd = line_buf;
         while (*cmd == ' ') cmd++;
@@ -89,19 +91,9 @@ int main(int argc, char **argv)
 
         LOG("Command: %s", cmd);
 
-        if (strcmp(cmd, "q") == 0 || strcmp(cmd, "quit") == 0) {
-            break;
-
-        } else if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
+        if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
             g_stopped = 0;
-            uint64_t last_emit = board.cpu.cycle_count;
-            do {
-                board_tick(&board);
-                if (board.cpu.cycle_count - last_emit >= 500000) {
-                    emit_state(&board);
-                    last_emit = board.cpu.cycle_count;
-                }
-            } while (!check_breakpoint(&board));
+            do { board_tick(&board); } while (!check_breakpoint(&board));
             g_stopped = 1;
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
@@ -129,21 +121,13 @@ int main(int argc, char **argv)
                 if (cur_line > 0 && cur_line != orig_line) break;
             } while (1);
 
-        } else if (strncmp(cmd, "peek ", 5) == 0) {
-            uint32_t addr = (uint32_t)strtoul(cmd + 5, NULL, 0);
-            uint32_t val = 0;
-            if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                val = *(uint32_t *)(board.ram + (addr - RAM_BASE));
-            LOG("peek 0x%08X = %u (0x%08X)", addr, val, val);
-
-        } else if (strncmp(cmd, "break ", 6) == 0 || strncmp(cmd, "b ", 2) == 0) {
+        } else if (strncmp(cmd, "b ", 2) == 0 || strncmp(cmd, "break ", 6) == 0) {
             const char *spec = cmd + (cmd[1] == ' ' ? 2 : 6);
             while (*spec == ' ') spec++;
             uint32_t addr = resolve_breakpoint(spec);
-            if (addr && nbp < 32)
-                breakpoints[nbp++] = addr;
+            if (addr && nbp < 32) breakpoints[nbp++] = addr;
 
-        } else if (strncmp(cmd, "delete ", 7) == 0 || strncmp(cmd, "d ", 2) == 0) {
+        } else if (strncmp(cmd, "d ", 2) == 0 || strncmp(cmd, "delete ", 7) == 0) {
             int n = atoi(cmd + (cmd[1] == ' ' ? 2 : 7));
             if (n >= 1 && n <= nbp) {
                 for (int i = n - 1; i < nbp - 1; i++)
@@ -152,7 +136,7 @@ int main(int argc, char **argv)
             }
         }
 
-        LOG("Emitting state"); emit_state(&board);
+        emit_state(&board);
     }
 
     free(board.flash);

@@ -145,6 +145,19 @@ function render(s) {
   if (s.uart) document.getElementById('uart').textContent = s.uart;
 }
 
+// Poll UART state separately
+async function pollUart() {
+  try {
+    const r = await fetch('/uart');
+    if (r.ok) {
+      const u = await r.json();
+      if (u.uart) document.getElementById('uart').textContent = u.uart;
+    }
+  } catch(e) {}
+  setTimeout(pollUart, 300);
+}
+pollUart();
+
 // STM32F411RE address map — regions shown in the vertical bar
 const regions = [
   { name:'Flash',        base:0x08000000, size:512*1024,  color:'#8b949e' },

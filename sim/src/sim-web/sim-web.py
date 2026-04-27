@@ -126,6 +126,13 @@ class WebDebugger:
                     self.drain_queue()
                     self.http_response(conn, '200 OK', 'application/json', self.last_state)
 
+                elif req.startswith('GET /uart'):
+                    try:
+                        with open('/tmp/sim-state/uart.json', 'r') as uf:
+                            self.http_response(conn, '200 OK', 'application/json', uf.read())
+                    except:
+                        self.http_response(conn, '200 OK', 'application/json', '{"uart":""}')
+
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     cmd = body.strip()

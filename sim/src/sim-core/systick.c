@@ -1,8 +1,5 @@
 /*
  * systick.c — SysTick Timer
- *
- * Counts CPU cycles. When the counter reaches the reload value,
- * it resets and raises an IRQ to the NVIC.
  */
 #include "systick.h"
 #include "nvic.h"
@@ -19,19 +16,18 @@ void systick_init(struct systick *st)
 
 void systick_tick(struct systick *st, struct nvic *nvic)
 {
-    if (!(st->csr & 1)) return;  /* not enabled */
-
+    if (!(st->csr & 1)) return;
     st->counter++;
     if (st->counter >= st->rvr && st->rvr > 0) {
         st->counter = 0;
-        if (st->csr & 2)  /* IRQ enabled */
+        if (st->csr & 2)
             nvic_set_pending(nvic, IRQ_VEC_SYSTICK);
     }
 }
 
 int systick_handles(uint32_t addr)
 {
-    return (addr >= SYSTICK_BASE && addr < SYSTICK_BASE + 0x10);
+    return addr >= SYSTICK_BASE && addr < SYSTICK_BASE + 0x10;
 }
 
 uint32_t systick_read(struct systick *st, uint32_t addr)
