@@ -762,32 +762,10 @@ uint32_t resolve_breakpoint(const char *spec)
         return 0;
     }
 
-    /* Try function name — find the first statement's loop-back address */
+    /* Try function name — break at function entry */
     for (int i = 0; i < nsyms; i++) {
         if (strcmp(syms[i].name, spec) == 0) {
-            uint32_t addr = syms[i].addr;
-            uint32_t end = addr + syms[i].size;
-            /* Find the first non-brace line, then find its highest address
-             * (the loop-back target, past the prologue one-time setup) */
-            int first_line = 0;
-            for (int j = 0; j < nlines; j++) {
-                if (lines[j].addr >= addr && lines[j].addr < end) {
-                    /* Skip the opening brace line (same line as function decl) */
-                    int fl; line_lookup(addr, &fl);
-                    if (lines[j].line != fl && lines[j].line > 0) {
-                        first_line = lines[j].line;
-                        break;
-                    }
-                }
-            }
-            if (!first_line) return addr;
-            /* Find the LAST entry for first_line within the function */
-            uint32_t best = addr;
-            for (int j = 0; j < nlines; j++) {
-                if (lines[j].addr >= addr && lines[j].addr < end && lines[j].line == first_line)
-                    best = lines[j].addr;
-            }
-            return best;
+            return syms[i].addr;
         }
     }
     return 0;

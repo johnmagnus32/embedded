@@ -119,7 +119,13 @@ async function sendCmd(cmd) {
     else if (cmd === 'r' || cmd === 'run') cmdObj = {cmd:'run'};
     else if (cmd === 's' || cmd === 'step') cmdObj = {cmd:'step'};
     else if (cmd === 'n' || cmd === 'next') cmdObj = {cmd:'next'};
-    else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {
+    else if (cmd.startsWith('p ') || cmd.startsWith('print ')) {
+      const expr = cmd.replace(/^(p|print)\s+/, '');
+      const resp = await simCmd({cmd:'print', expr});
+      if (resp.error) log(`<span style="color:#f85149">${resp.error}</span>`);
+      else log(`<span style="color:#7ee787">${resp.expr} = ${resp.hex} (${resp.val})</span>`);
+      return;
+    } else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {
       const spec = cmd.replace(/^(b|break)\s+/, '');
       cmdObj = {cmd:'break', spec};
     } else if (cmd.startsWith('d ') || cmd.startsWith('delete ')) {

@@ -215,6 +215,50 @@ static void handle_command(int fd, struct board *b, const char *line)
         }
         n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":[]}");
         send_response(fd, buf);
+
+    } else if (strncmp(cmd, "print\"", 6) == 0) {
+        const char *e = strstr(line, "\"expr\":\"");
+        if (!e) return;
+        e += 8;
+        char expr[64]; int i = 0;
+        while (*e && *e != '"' && i < 63) expr[i++] = *e++;
+        expr[i] = '\0';
+
+        char rbuf[128];
+        /* Register names */
+        static const char *rnames[] = {"r0","r1","r2","r3","r4","r5","r6","r7",
+                                        "r8","r9","r10","r11","r12","sp","lr","pc"};
+        for (int r = 0; r < 16; r++) {
+            if (strcmp(expr, rnames[r]) == 0) {
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\"}",
+                         expr, b->cpu.r[r], b->cpu.r[r]);
+                send_response(fd, rbuf);
+                return;
+            }
+        }
+        /* Try as hex address — read 4 bytes */
+        if (expr[0] == '0' && expr[1] == 'x') {
+            uint32_t addr = (uint32_t)strtoul(expr, NULL, 16);
+            uint32_t val = 0;
+            if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+                val = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+            else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
+                val = *(uint32_t*)(b->flash + (addr - FLASH_BASE));
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\"}", expr, val, val);
+            send_response(fd, rbuf);
+            return;
+        }
+        /* Try as symbol name — find address and read */
+        uint32_t sym_addr = sym_find_by_name(expr);
+        if (sym_addr && sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE) {
+            uint32_t val = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"addr\":\"0x%08x\",\"val\":%u,\"hex\":\"0x%08x\"}",
+                     expr, sym_addr, val, val);
+            send_response(fd, rbuf);
+            return;
+        }
+        snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"error\":\"unknown\"}", expr);
+        send_response(fd, rbuf);
     }
 }
 
