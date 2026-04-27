@@ -247,6 +247,7 @@ static void handle_command(int fd, struct board *b, const char *line)
         int reg; uint32_t val;
         int loc = var_lookup(base, b->cpu.r[REG_PC], &reg, &val);
         cur_type = var_type_die(base, b->cpu.r[REG_PC]);
+        LOG("expr base='%s' pc=0x%08X loc=%d type=0x%X", base, b->cpu.r[REG_PC], loc, cur_type);
 
         if (loc == 1) { /* register — value is in the register directly */
             /* Store register value in a temp location so type_format can read it */

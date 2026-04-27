@@ -1033,7 +1033,18 @@ uint32_t type_array_elem(uint32_t array_type_die, uint32_t *elem_size_out)
 int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
 {
     struct var_info *v = find_var_in_scope(name, pc);
-    if (!v) return 0;
+    if (!v) {
+        /* Debug: check if variable exists at all */
+        for (int i = 0; i < nvars; i++) {
+            if (strcmp(vars[i].name, name) == 0) {
+                int si = vars[i].scope_idx;
+                fprintf(stderr, "[dbg] var '%s' in scope %d [0x%08x-0x%08x], pc=0x%08x %s\n",
+                    name, si, scopes[si].low_pc, scopes[si].high_pc, pc,
+                    pc_in_scope(si, pc) ? "IN" : "OUT");
+            }
+        }
+        return 0;
+    }
 
     /* Constant value */
     if (v->is_const) {
@@ -1057,7 +1068,9 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
         if (v->has_loc == 1 && loclists_data && v->loc_offset < loclists_size) {
             const uint8_t *p = loclists_data + v->loc_offset;
             const uint8_t *end = loclists_data + loclists_size;
-            uint32_t base_addr = v->cu_base;  /* CU's low_pc for offset_pair */
+            uint32_t base_addr = v->cu_base;
+            fprintf(stderr, "[dbg] loclist for '%s' at offset 0x%x, first byte=0x%02x\n",
+                    name, v->loc_offset, *p);  /* CU's low_pc for offset_pair */
 
             while (p < end) {
                 uint8_t entry_kind = *p++;
@@ -1070,24 +1083,28 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
                     base_addr = *(uint32_t*)p; p += 4;
                     continue;
                 }
-                if (entry_kind == 7) { /* DW_LLE_start_length (DWARF5 default) */
+                if (entry_kind == 8) { /* DW_LLE_start_length */
                     uint32_t start = *(uint32_t*)p; p += 4;
                     uint32_t length = read_uleb(&p);
                     uint16_t expr_len = read_uleb(&p);
+                    fprintf(stderr, "[dbg] start_length: 0x%08x len=%u expr_len=%d op=0x%02x pc=0x%08x\n",
+                            start, length, expr_len, expr_len > 0 ? *p : 0, pc);
                     if (pc >= start && pc < start + length && expr_len > 0) {
                         uint8_t op = *p;
-                        if (op >= 0x50 && op <= 0x6f) { /* DW_OP_reg0..reg31 */
-                            *reg_out = op - 0x50;
-                            return 1;
-                        }
-                        if (op == 0x91) { /* DW_OP_fbreg */
-                            const uint8_t *ep = p + 1;
-                            int32_t offset = read_sleb(&ep);
-                            /* frame base is typically CFA = SP at entry */
-                            /* For simplicity, approximate as current SP + offset */
-                            *val_out = offset; /* caller adds SP */
-                            return 3;
-                        }
+                        if (op >= 0x50 && op <= 0x6f) { *reg_out = op - 0x50; return 1; }
+                        if (op == 0x91) { const uint8_t *ep = p+1; *val_out = (uint32_t)read_sleb(&ep); return 3; }
+                    }
+                    p += expr_len;
+                    continue;
+                }
+                if (entry_kind == 7) { /* DW_LLE_start_end */
+                    uint32_t start = *(uint32_t*)p; p += 4;
+                    uint32_t e = *(uint32_t*)p; p += 4;
+                    uint16_t expr_len = read_uleb(&p);
+                    if (pc >= start && pc < e && expr_len > 0) {
+                        uint8_t op = *p;
+                        if (op >= 0x50 && op <= 0x6f) { *reg_out = op - 0x50; return 1; }
+                        if (op == 0x91) { const uint8_t *ep = p+1; *val_out = (uint32_t)read_sleb(&ep); return 3; }
                     }
                     p += expr_len;
                     continue;
@@ -1100,36 +1117,16 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
                     uint32_t e = base_addr + end_off;
                     if (pc >= start && pc < e && expr_len > 0) {
                         uint8_t op = *p;
-                        if (op >= 0x50 && op <= 0x6f) {
-                            *reg_out = op - 0x50;
-                            return 1;
-                        }
-                        if (op == 0x91) {
-                            const uint8_t *ep = p + 1;
-                            *val_out = (uint32_t)read_sleb(&ep);
-                            return 3;
-                        }
-                    }
-                    p += expr_len;
-                    continue;
-                }
-                /* Skip view pairs and other entries */
-                if (entry_kind == 8) { /* DW_LLE_start_end */
-                    uint32_t start = *(uint32_t*)p; p += 4;
-                    uint32_t e = *(uint32_t*)p; p += 4;
-                    uint16_t expr_len = read_uleb(&p);
-                    if (pc >= start && pc < e && expr_len > 0) {
-                        uint8_t op = *p;
                         if (op >= 0x50 && op <= 0x6f) { *reg_out = op - 0x50; return 1; }
                         if (op == 0x91) { const uint8_t *ep = p+1; *val_out = (uint32_t)read_sleb(&ep); return 3; }
                     }
                     p += expr_len;
                     continue;
                 }
-                break; /* unknown entry, bail */
+                break; /* unknown entry */
             }
         }
-    return 0; /* can't resolve location */
+        return 0;
 }
 
 /* Follow type chain through typedefs, const, volatile to the real type */
