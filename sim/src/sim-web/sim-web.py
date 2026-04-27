@@ -36,7 +36,9 @@ class WebDebugger:
     def start_sim(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
-        cmd = [sim_core, self.elf, self.dts, str(SIM_PORT)] + self.extra_args
+        cmd = [sim_core, self.elf, self.dts,
+               '--debug', str(SIM_PORT),
+               '--chardev', f'usart2={UART_PORT}'] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
         self._buf = b''
         self.uart_buf = ''

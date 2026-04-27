@@ -1,51 +1,16 @@
 /*
  * uart.c — USART device
  *
- * TX bytes are streamed to a connected TCP client in real time,
- * just like QEMU's chardev backend.
+ * TX bytes are sent to the attached chardev channel.
  */
-#include <stdio.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include "uart.h"
+#include "chardev.h"
 #include "cpu.h"
 
-static int uart_srv_fd = -1;
-
-void uart_init(struct uart *u, uint32_t base)
+void uart_init(struct uart *u, uint32_t base, struct chardev *cd)
 {
     u->base = base;
-    u->client_fd = -1;
-}
-
-int uart_listen(struct uart *u, int port)
-{
-    (void)u;
-    uart_srv_fd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(uart_srv_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(port),
-        .sin_addr.s_addr = htonl(INADDR_LOOPBACK)
-    };
-    if (bind(uart_srv_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
-        return -1;
-    listen(uart_srv_fd, 1);
-    return port;
-}
-
-void uart_accept(struct uart *u)
-{
-    if (uart_srv_fd >= 0) {
-        /* Non-blocking accept — client may connect later */
-        int flags = fcntl(uart_srv_fd, F_GETFL, 0);
-        fcntl(uart_srv_fd, F_SETFL, flags | O_NONBLOCK);
-        u->client_fd = accept(uart_srv_fd, NULL, NULL);
-        fcntl(uart_srv_fd, F_SETFL, flags);  /* restore */
-    }
+    u->chardev = cd;
 }
 
 int uart_handles(struct uart *u, uint32_t addr)
@@ -62,14 +27,5 @@ uint32_t uart_read(struct uart *u, uint32_t addr)
 void uart_write(struct uart *u, uint32_t addr, uint32_t val)
 {
     if (addr != u->base + 0x04) return;
-    char c = (char)(val & 0xFF);
-
-    /* Lazy accept if no client yet */
-    if (u->client_fd < 0 && uart_srv_fd >= 0)
-        uart_accept(u);
-
-    if (u->client_fd >= 0) {
-        if (write(u->client_fd, &c, 1) <= 0)
-            u->client_fd = -1;
-    }
+    chardev_write(u->chardev, (uint8_t)(val & 0xFF));
 }

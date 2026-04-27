@@ -2,16 +2,15 @@
 #define UART_H
 
 #include <stdint.h>
-#include <stdio.h>
+
+struct chardev;
 
 struct uart {
     uint32_t base;
-    int client_fd;  /* TCP socket to stream TX bytes to, -1 if none */
+    struct chardev *chardev;  /* output channel, NULL if none */
 };
 
-void     uart_init(struct uart *u, uint32_t base);
-int      uart_listen(struct uart *u, int port);  /* start listening, return port */
-void     uart_accept(struct uart *u);             /* accept a client */
+void     uart_init(struct uart *u, uint32_t base, struct chardev *cd);
 int      uart_handles(struct uart *u, uint32_t addr);
 uint32_t uart_read(struct uart *u, uint32_t addr);
 void     uart_write(struct uart *u, uint32_t addr, uint32_t val);

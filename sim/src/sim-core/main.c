@@ -1,8 +1,7 @@
 /*
  * sim-core — ARM Cortex-M4 emulator + debug server
  *
- * Listens on a TCP port. Accepts JSON-line commands, returns JSON-line responses.
- * Device state written to /tmp/sim-state/ files.
+ * Usage: sim-core <elf> <dts> --debug <port> [--chardev name=port ...]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,12 +10,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "board.h"
+#include "chardev.h"
 #include "dts.h"
 #include "elf_sym.h"
 #include "state.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
-#define DEFAULT_PORT 9001
 
 extern struct board *g_board;
 
@@ -37,14 +36,12 @@ static void run_until_bp(struct board *b)
     do { board_tick(b); } while (!check_breakpoint(b));
 }
 
-/* Send a JSON line to the client */
 static void send_response(int fd, const char *json)
 {
     write(fd, json, strlen(json));
     write(fd, "\n", 1);
 }
 
-/* Build and send stop info */
 static void send_stop_info(int fd, struct board *b)
 {
     uint32_t pc = b->cpu.r[REG_PC];
@@ -54,8 +51,8 @@ static void send_stop_info(int fd, struct board *b)
     const char *file = line_lookup(pc, &line);
     char buf[512];
     snprintf(buf, sizeof(buf),
-        "{\"stopped\":true,\"pc\":%u,\"line\":%d,\"func\":\"%s\",\"file\":\"%s\",\"cycles\":%llu}",
-        pc, line, fn ? fn : "", file ? file : "", (unsigned long long)b->cpu.cycle_count);
+        "{\"stopped\":true,\"pc\":%u,\"line\":%d,\"func\":\"%s\",\"file\":\"%s\",\"cycles\":%lu}",
+        pc, line, fn ? fn : "", file ? file : "", (unsigned long)b->cpu.cycle_count);
     send_response(fd, buf);
 }
 
@@ -78,10 +75,8 @@ static void send_mem(int fd, struct board *b, uint32_t addr, int len)
     for (int i = 0; i < len; i++) {
         uint8_t byte = 0;
         uint32_t a = addr + i;
-        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE)
-            byte = b->ram[a - RAM_BASE];
-        else if (a >= FLASH_BASE && a < FLASH_BASE + FLASH_SIZE)
-            byte = b->flash[a - FLASH_BASE];
+        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE) byte = b->ram[a - RAM_BASE];
+        else if (a >= FLASH_BASE && a < FLASH_BASE + FLASH_SIZE) byte = b->flash[a - FLASH_BASE];
         n += snprintf(buf + n, sizeof(buf) - n, "%02x", byte);
     }
     n += snprintf(buf + n, sizeof(buf) - n, "\"}");
@@ -90,7 +85,6 @@ static void send_mem(int fd, struct board *b, uint32_t addr, int len)
 
 static void send_source(int fd, const char *file)
 {
-    /* Load source file and send lines */
     char path[512];
     extern char src_search_dir[256];
     snprintf(path, sizeof(path), "%s%s", src_search_dir, file);
@@ -119,7 +113,6 @@ static void send_source(int fd, const char *file)
 
 static void handle_command(int fd, struct board *b, const char *line)
 {
-    /* Minimal JSON parsing — just look for "cmd":"..." */
     const char *cmd = strstr(line, "\"cmd\":\"");
     if (!cmd) return;
     cmd += 7;
@@ -170,7 +163,6 @@ static void handle_command(int fd, struct board *b, const char *line)
         cpu_reset(&b->cpu, b->flash, b->ram);
         do { board_tick(b); } while (!check_breakpoint(b));
         send_stop_info(fd, b);
-        send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "break\"", 6) == 0) {
         const char *s = strstr(line, "\"spec\":\"");
@@ -206,80 +198,81 @@ static void handle_command(int fd, struct board *b, const char *line)
             file[i] = '\0';
             send_source(fd, file);
         }
-
     }
 }
 
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        LOG("Usage: %s <firmware.elf> <board.dts> [port]", argv[0]);
+        LOG("Usage: %s <elf> <dts> --debug <port> [--chardev name=port ...]", argv[0]);
         return 1;
     }
 
-    int port = (argc >= 4) ? atoi(argv[3]) : DEFAULT_PORT;
+    const char *elf_path = argv[1];
+    const char *dts_path = argv[2];
+    int debug_port = 9001;
 
+    /* Parse --debug and --chardev args */
+    struct chardev_table chardevs;
+    chardev_table_init(&chardevs);
+
+    for (int i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "--debug") == 0 && i + 1 < argc) {
+            debug_port = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--chardev") == 0 && i + 1 < argc) {
+            chardev_add(&chardevs, argv[++i]);
+        }
+    }
+
+    /* Parse device tree */
     struct dts dt;
-    if (dts_parse(&dt, argv[2]) != 0) {
-        LOG("Failed to parse DTS: %s", argv[2]);
+    if (dts_parse(&dt, dts_path) != 0) {
+        LOG("Failed to parse DTS: %s", dts_path);
         return 1;
     }
-    LOG("Loaded DTS: %s (%d nodes)", argv[2], dt.nnodes);
+    LOG("Loaded DTS: %s (%d nodes)", dts_path, dt.nnodes);
 
+    /* Start chardev listeners */
+    chardev_listen_all(&chardevs);
+
+    /* Create board */
     struct board board;
-    board_init(&board, &dt);
+    board_init(&board, &dt, &chardevs);
     board.flash = calloc(1, FLASH_SIZE);
     board.ram   = calloc(1, RAM_SIZE);
     g_board = &board;
 
-
-    if (elf_load(argv[1], board.flash, board.ram) != 0) {
-        LOG("Failed to load ELF: %s", argv[1]);
+    /* Load firmware */
+    if (elf_load(elf_path, board.flash, board.ram) != 0) {
+        LOG("Failed to load ELF: %s", elf_path);
         return 1;
     }
-    LOG("Loaded %s", argv[1]);
+    LOG("Loaded %s", elf_path);
 
-    /* Use compilation directory from DWARF for source file lookup */
     extern char elf_comp_dir[512];
     if (elf_comp_dir[0]) {
         char dir[512];
         snprintf(dir, sizeof(dir), "%s/", elf_comp_dir);
         state_set_source_dir(dir);
-        LOG("Source dir (from DWARF): %s", elf_comp_dir);
     }
 
     cpu_reset(&board.cpu, board.flash, board.ram);
-    LOG("Ready — waiting for commands");
 
-    /* Start UART TCP server (separate channel for serial output) */
-    int uart_port = port + 1;
-    if (board.nuarts > 0) {
-        if (uart_listen(&board.uarts[0], uart_port) >= 0)
-            LOG("UART on port %d", uart_port);
-    }
-
-    /* Start debug TCP server */
+    /* Start debug server */
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     int opt = 1;
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(port), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
+    struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(debug_port), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
     if (bind(srv, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        LOG("Failed to bind port %d", port);
+        LOG("Failed to bind debug port %d", debug_port);
         return 1;
     }
     listen(srv, 1);
-    LOG("Listening on port %d", port);
+    LOG("Debug server on port %d", debug_port);
 
-    /* Accept one client */
     int client = accept(srv, NULL, NULL);
     LOG("Debug client connected");
 
-    /* Accept UART client (non-blocking — may connect later) */
-    if (board.nuarts > 0)
-        uart_accept(&board.uarts[0]);
-    LOG("UART client connected");
-
-    /* Send initial stop info */
     send_stop_info(client, &board);
 
     /* Command loop */
@@ -291,7 +284,6 @@ int main(int argc, char **argv)
         buf_len += n;
         buf[buf_len] = '\0';
 
-        /* Process complete lines */
         char *nl;
         while ((nl = strchr(buf, '\n')) != NULL) {
             *nl = '\0';

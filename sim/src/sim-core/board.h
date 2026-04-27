@@ -5,6 +5,7 @@
 #include "nvic.h"
 #include "systick.h"
 #include "uart.h"
+#include "chardev.h"
 #include "dts.h"
 
 #define MAX_UARTS 3
@@ -20,7 +21,7 @@ struct board {
     uint8_t         *ram;
 };
 
-void board_init(struct board *b, const struct dts *dt);
+void board_init(struct board *b, const struct dts *dt, struct chardev_table *chardevs);
 void board_tick(struct board *b);
 
 #endif
