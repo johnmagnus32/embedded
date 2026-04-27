@@ -288,24 +288,15 @@ function renderTimeline(s) {
 let lastTimelineData = null;
 const tlEl = document.getElementById('timeline');
 tlEl.addEventListener('wheel', (e) => {
-  if (e.ctrlKey) {
-    // Pinch zoom
-    e.preventDefault();
-    const delta = e.deltaY < 0 ? 1.1 : 1/1.1;
-    const rect = tlEl.getBoundingClientRect();
-    const mouseX = (e.clientX - rect.left) / rect.width;
-    const oldZoom = tlZoom;
-    tlZoom = Math.max(1, Math.min(1000, tlZoom * delta));
-    // Adjust offset to keep mouse position stable
-    tlOffset = Math.max(0, Math.min(1, tlOffset + mouseX * (1/oldZoom - 1/tlZoom)));
-    if (lastTimelineData) renderTimeline(lastTimelineData);
-  } else {
-    // Scroll horizontally
-    e.preventDefault();
-    tlOffset = Math.max(0, Math.min(1, tlOffset + e.deltaX * 0.001 / tlZoom));
-    if (e.deltaY && !e.deltaX) tlOffset = Math.max(0, Math.min(1, tlOffset + e.deltaY * 0.001 / tlZoom));
-    if (lastTimelineData) renderTimeline(lastTimelineData);
-  }
+  if (!e.ctrlKey) return; // only handle pinch zoom
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 1.1 : 1/1.1;
+  const rect = tlEl.getBoundingClientRect();
+  const mouseX = (e.clientX - rect.left) / rect.width;
+  const oldZoom = tlZoom;
+  tlZoom = Math.max(1, Math.min(1000, tlZoom * delta));
+  tlOffset = Math.max(0, Math.min(1, tlOffset + mouseX * (1/oldZoom - 1/tlZoom)));
+  if (lastTimelineData) renderTimeline(lastTimelineData);
 }, {passive: false});
 
 function renderMemMap(s) {
@@ -607,6 +598,7 @@ cmdInput.addEventListener('keydown', (e) => {
     if (!cmd) return;
     sendCmd(cmd);
     cmdInput.value = '';
+    setTimeout(() => cmdInput.focus(), 100);
   }
 });
 
