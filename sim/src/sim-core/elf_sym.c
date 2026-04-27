@@ -583,14 +583,19 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                         d->loc_offset = read_form_u32(&scan, form, a->attrs[i].implicit_val);
                         d->has_loc = 1;
                     } else if (form == DW_FORM_exprloc) {
-                        /* Simple inline expression — skip for now */
                         uint32_t len = read_uleb(&scan);
-                        if (len == 1 && *scan >= 0x50 && *scan <= 0x6f) {
+                        const uint8_t *expr_start = scan;
+                        if (len >= 1 && *scan >= 0x50 && *scan <= 0x6f) {
                             /* DW_OP_reg0..DW_OP_reg31 */
-                            d->loc_offset = *scan - 0x50; /* store reg number */
-                            d->has_loc = 2; /* 2 = simple register */
+                            d->loc_offset = *scan - 0x50;
+                            d->has_loc = 2; /* simple register */
+                        } else if (len >= 2 && *scan == 0x91) {
+                            /* DW_OP_fbreg: signed offset from frame base */
+                            const uint8_t *ep = scan + 1;
+                            d->loc_offset = (uint32_t)read_sleb(&ep);
+                            d->has_loc = 3; /* 3 = fbreg */
                         }
-                        scan += len;
+                        scan = expr_start + len;
                     } else {
                         skip_form(&scan, form, 4, 0);
                     }
@@ -960,8 +965,14 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
 
         /* Simple register (from inline exprloc) */
         if (v->has_loc == 2) {
-            *reg_out = v->loc_offset; /* stored reg number */
+            *reg_out = v->loc_offset;
             return 1;
+        }
+
+        /* Frame base relative (from inline exprloc DW_OP_fbreg) */
+        if (v->has_loc == 3) {
+            *val_out = v->loc_offset; /* signed offset from SP */
+            return 3;
         }
 
         /* Location list */
