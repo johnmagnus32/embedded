@@ -15,6 +15,5 @@ void board_tick(struct board *b)
 {
     cpu_step(&b->cpu, b->flash, b->ram);
     systick_tick(&b->systick, &b->nvic);
-    /* uart has no per-cycle tick — it acts on register writes via mem.c */
     nvic_update(&b->nvic, &b->cpu, b->flash, b->ram);
 }

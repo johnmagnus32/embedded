@@ -697,8 +697,13 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         }
 
         switch (op) {
-        case 0x0: c->r[rd] = c->r[rn] & imm; break; /* AND */
-        case 0x1: c->r[rd] = c->r[rn] & ~imm; break; /* BIC */
+        case 0x0: { /* AND / TST */
+            uint32_t result = c->r[rn] & imm;
+            if (s && rd == 15) { set_nz(c, result); } /* TST: flags only */
+            else { c->r[rd] = result; if (s) set_nz(c, result); }
+            break;
+        }
+        case 0x1: c->r[rd] = c->r[rn] & ~imm; if (s) set_nz(c, c->r[rd]); break; /* BIC */
         case 0x2: c->r[rd] = (rn == 15) ? imm : c->r[rn] | imm; break; /* ORR / MOV */
         case 0x3: c->r[rd] = (rn == 15) ? ~imm : c->r[rn] | ~imm; break; /* ORN / MVN */
         case 0x4: c->r[rd] = c->r[rn] ^ imm; break; /* EOR */
@@ -707,7 +712,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         case 0xD: { uint64_t r = (uint64_t)c->r[rn] - imm; if (s) set_nzcv_sub(c, c->r[rn], imm, r); break; } /* CMP */
         default: c->r[rd] = imm; break;
         }
-        if (s && op != 0x8 && op != 0xA && op != 0xD) set_nz(c, c->r[rd]);
+        if (s && op != 0x0 && op != 0x1 && op != 0x8 && op != 0xA && op != 0xD) set_nz(c, c->r[rd]);
         return 0;
     }
 

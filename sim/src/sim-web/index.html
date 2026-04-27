@@ -220,9 +220,19 @@ function renderTimeline(s) {
   // Axis labels
   svg += `<text x="0" y="${H}" fill="#484f58" font-size="8">cy ${minCy.toLocaleString()}</text>`;
   svg += `<text x="${W}" y="${H}" fill="#484f58" font-size="8" text-anchor="end">cy ${maxCy.toLocaleString()}</text>`;
-
   svg += '</svg>';
-  el.innerHTML = svg;
+
+  // Legend — unique contexts
+  const seen = new Set();
+  let legend = '<div style="display:flex;gap:10px;padding:2px 4px;flex-wrap:wrap;font-size:9px">';
+  for (const t of tl) {
+    if (seen.has(t.ctx)) continue;
+    seen.add(t.ctx);
+    const col = ctxColor(t.ctx);
+    legend += `<span><span style="display:inline-block;width:8px;height:8px;background:${col};border-radius:1px;margin-right:3px;vertical-align:middle"></span>${t.ctx}</span>`;
+  }
+  legend += '</div>';
+  el.innerHTML = svg + legend;
 }
 
 function renderMemMap(s) {

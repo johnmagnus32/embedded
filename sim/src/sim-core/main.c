@@ -15,7 +15,6 @@
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
 #define STATE_DIR "/tmp/sim-state"
 
-int g_stopped = 1;
 extern struct board *g_board;
 
 static uint32_t breakpoints[32];
@@ -92,9 +91,7 @@ int main(int argc, char **argv)
         LOG("Command: %s", cmd);
 
         if (strcmp(cmd, "c") == 0 || strcmp(cmd, "continue") == 0) {
-            g_stopped = 0;
             do { board_tick(&board); } while (!check_breakpoint(&board));
-            g_stopped = 1;
 
         } else if (strcmp(cmd, "s") == 0 || strcmp(cmd, "step") == 0) {
             int orig_line; line_lookup(board.cpu.r[REG_PC], &orig_line);

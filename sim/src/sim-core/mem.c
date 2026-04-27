@@ -36,8 +36,6 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
 
 void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
 {
-    if (addr >= 0x40000000 && addr < 0x50000000) {
-    }
     if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE) {
         *(uint32_t *)(ram + (addr - RAM_BASE)) = val;
         return;
