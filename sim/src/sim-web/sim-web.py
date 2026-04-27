@@ -49,6 +49,7 @@ class WebDebugger:
         sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
         cmd = [sim_core, self.elf, self.dts, str(SIM_PORT)] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
+        self._buf = b''
         # Wait for sim-core to start listening
         for _ in range(50):
             try:
@@ -65,13 +66,12 @@ class WebDebugger:
 
     def _recv_line(self):
         """Read one newline-terminated JSON line from sim-core."""
-        buf = b''
-        while b'\n' not in buf:
-            chunk = self.sim_sock.recv(4096)
+        while b'\n' not in self._buf:
+            chunk = self.sim_sock.recv(65536)
             if not chunk:
                 return '{}'
-            buf += chunk
-        line = buf.split(b'\n', 1)[0]
+            self._buf += chunk
+        line, self._buf = self._buf.split(b'\n', 1)
         return line.decode()
 
     def send_command(self, cmd_json):

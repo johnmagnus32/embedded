@@ -89,10 +89,16 @@ async function simCmd(cmdObj) {
 
 async function refreshUI() {
   const where = await simCmd({cmd:'where'});
+  console.log('where:', where);
   const regs = await simCmd({cmd:'regs'});
+  console.log('regs:', regs);
   const uart = await simCmd({cmd:'uart'});
+  console.log('uart:', uart);
   let source = null;
-  if (where.file) source = await simCmd({cmd:'source', file: where.file});
+  if (where.file) {
+    source = await simCmd({cmd:'source', file: where.file});
+    console.log('source:', source?.lines?.length, 'lines');
+  }
   render(where, regs, source, uart);
 }
 
