@@ -887,12 +887,21 @@ uint32_t next_line_addr(uint32_t pc)
 
 /* Get the type DIE offset for a variable at the given PC */
 uint32_t var_type_die(const char *name, uint32_t pc)
+
 {
     for (int i = 0; i < nvars; i++) {
         if (strcmp(vars[i].name, name) != 0) continue;
         if (pc < vars[i].func_low || pc >= vars[i].func_high) continue;
         return vars[i].type_die;
     }
+    return 0;
+}
+
+uint32_t type_deref(uint32_t type_die)
+{
+    struct type_info *resolve_type(uint32_t);
+    struct type_info *t = resolve_type(type_die);
+    if (t && t->tag == 0x0F && t->type_ref) return t->type_ref; /* pointer → pointee */
     return 0;
 }
 
@@ -990,7 +999,7 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
 }
 
 /* Follow type chain through typedefs, const, volatile to the real type */
-static struct type_info *resolve_type(uint32_t die_offset) {
+struct type_info *resolve_type(uint32_t die_offset) {
     for (int depth = 0; depth < 10; depth++) {
         struct type_info *t = find_type(die_offset);
         if (!t) return NULL;

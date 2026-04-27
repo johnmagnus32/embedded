@@ -224,21 +224,36 @@ static void handle_command(int fd, struct board *b, const char *line)
         while (*e && *e != '"' && i < 63) expr[i++] = *e++;
         expr[i] = '\0';
 
-        char rbuf[128];
+        /* Check for dereference: *varname */
+        int deref = 0;
+        char *varname = expr;
+        if (expr[0] == '*') { deref = 1; varname = expr + 1; }
+
+        char rbuf[4096];
 
         /* Try local variable via DWARF */
         int reg; uint32_t val;
-        int loc = var_lookup(expr, b->cpu.r[REG_PC], &reg, &val);
+        int loc = var_lookup(varname, b->cpu.r[REG_PC], &reg, &val);
         if (loc == 1) { /* register */
-            uint32_t type_die = var_type_die(expr, b->cpu.r[REG_PC]);
+            uint32_t type_die = var_type_die(varname, b->cpu.r[REG_PC]);
+            uint32_t regval = b->cpu.r[reg];
+            if (deref && type_die) {
+                /* Dereference: follow pointer type to pointee */
+                uint32_t pointee = type_deref(type_die);
+                if (pointee) { /* pointer */
+                    char tbuf[3000];
+                    type_format(pointee, regval, b->ram, b->flash, tbuf, sizeof(tbuf));
+                    snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\"}", expr, tbuf);
+                    send_response(fd, rbuf); return;
+                }
+            }
             if (type_die) {
-                /* For structs/complex types in a register, the register holds an address */
-                char tbuf[2048];
-                type_format(type_die, b->cpu.r[reg], b->ram, b->flash, tbuf, sizeof(tbuf));
+                char tbuf[3000];
+                type_format(type_die, regval, b->ram, b->flash, tbuf, sizeof(tbuf));
                 snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\",\"loc\":\"r%d\"}", expr, tbuf, reg);
             } else {
                 snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\",\"loc\":\"r%d\"}",
-                         expr, b->cpu.r[reg], b->cpu.r[reg], reg);
+                         expr, regval, regval, reg);
             }
             send_response(fd, rbuf); return;
         } else if (loc == 2) { /* constant */
@@ -247,7 +262,7 @@ static void handle_command(int fd, struct board *b, const char *line)
             send_response(fd, rbuf); return;
         } else if (loc == 3) { /* stack (fbreg offset) */
             uint32_t addr = b->cpu.r[REG_SP] + val;
-            uint32_t type_die = var_type_die(expr, b->cpu.r[REG_PC]);
+            uint32_t type_die = var_type_die(varname, b->cpu.r[REG_PC]);
             if (type_die) {
                 char tbuf[2048];
                 type_format(type_die, addr, b->ram, b->flash, tbuf, sizeof(tbuf));
@@ -284,18 +299,32 @@ static void handle_command(int fd, struct board *b, const char *line)
         }
 
         /* Global symbol */
-        uint32_t sym_addr = sym_find_by_name(expr);
+        uint32_t sym_addr = sym_find_by_name(varname);
         if (sym_addr) {
-            uint32_t type_die = var_type_die(expr, b->cpu.r[REG_PC]);
+            uint32_t type_die = var_type_die(varname, b->cpu.r[REG_PC]);
+            if (deref && type_die) {
+                uint32_t ptr = 0;
+                if (sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE)
+                    ptr = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
+                else if (sym_addr >= FLASH_BASE && sym_addr < FLASH_BASE + FLASH_SIZE)
+                    ptr = *(uint32_t*)(b->flash + (sym_addr - FLASH_BASE));
+                uint32_t pointee = type_deref(type_die);
+                if (pointee) {
+                    char tbuf[3000];
+                    type_format(pointee, ptr, b->ram, b->flash, tbuf, sizeof(tbuf));
+                    snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\"}", expr, tbuf);
+                    send_response(fd, rbuf); return;
+                }
+            }
             if (type_die) {
-                char tbuf[2048];
+                char tbuf[3000];
                 type_format(type_die, sym_addr, b->ram, b->flash, tbuf, sizeof(tbuf));
                 snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\",\"addr\":\"0x%08x\"}", expr, tbuf, sym_addr);
             } else {
                 uint32_t v = 0;
                 if (sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE)
                     v = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
-                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\",\"addr\":\"0x%08x\"}", expr, v, v, sym_addr);
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\"}", expr, v, v);
             }
             send_response(fd, rbuf); return;
         }
