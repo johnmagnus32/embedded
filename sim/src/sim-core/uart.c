@@ -6,6 +6,7 @@
  */
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "uart.h"
@@ -38,8 +39,13 @@ int uart_listen(struct uart *u, int port)
 
 void uart_accept(struct uart *u)
 {
-    if (uart_srv_fd >= 0)
+    if (uart_srv_fd >= 0) {
+        /* Non-blocking accept — client may connect later */
+        int flags = fcntl(uart_srv_fd, F_GETFL, 0);
+        fcntl(uart_srv_fd, F_SETFL, flags | O_NONBLOCK);
         u->client_fd = accept(uart_srv_fd, NULL, NULL);
+        fcntl(uart_srv_fd, F_SETFL, flags);  /* restore */
+    }
 }
 
 int uart_handles(struct uart *u, uint32_t addr)
@@ -58,9 +64,12 @@ void uart_write(struct uart *u, uint32_t addr, uint32_t val)
     if (addr != u->base + 0x04) return;
     char c = (char)(val & 0xFF);
 
-    /* Stream byte to connected client */
+    /* Lazy accept if no client yet */
+    if (u->client_fd < 0 && uart_srv_fd >= 0)
+        uart_accept(u);
+
     if (u->client_fd >= 0) {
         if (write(u->client_fd, &c, 1) <= 0)
-            u->client_fd = -1;  /* client disconnected */
+            u->client_fd = -1;
     }
 }

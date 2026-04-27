@@ -23,18 +23,6 @@ with open(os.path.join(_dir, "index.html")) as _f:
 SIM_PORT = 9001
 UART_PORT = 9002
 
-def find_free_port(start=3000):
-    for port in range(start, start + 100):
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(('', port))
-            s.close()
-            return port
-        except OSError:
-            continue
-    return start
-
 class WebDebugger:
     def __init__(self, elf, dts, port, extra_args):
         self.port = port
@@ -173,11 +161,9 @@ def main():
     p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator + Web Debugger')
     p.add_argument('elf', help='Firmware ELF file')
     p.add_argument('dts', help='Board device tree source file')
-    p.add_argument('--port', type=int, default=0, help='HTTP port (default: auto)')
     args, extra = p.parse_known_args()
 
-    port = args.port if args.port else find_free_port()
-    dbg = WebDebugger(args.elf, args.dts, port, extra)
+    dbg = WebDebugger(args.elf, args.dts, 3000, extra)
     try:
         dbg.run()
     except KeyboardInterrupt:
