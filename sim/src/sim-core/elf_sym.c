@@ -613,9 +613,9 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
         for (int i = 0; i < ndies && ntypes < MAX_TYPES; i++) {
             uint16_t tag = dies[i].tag;
             if (tag == 0x24 || tag == 0x0F || tag == 0x16 || tag == 0x13 ||
-                tag == 0x04 || tag == 0x01 || tag == 0x26 || tag == 0x09) {
+                tag == 0x04 || tag == 0x01 || tag == 0x26 || tag == 0x35) {
                 /* base_type(0x24), pointer(0x0F), typedef(0x16), struct(0x13),
-                   enum(0x04), array(0x01), const(0x26), volatile(0x09) */
+                   enum(0x04), array(0x01), const(0x26), volatile(0x35) */
                 struct type_info *t = &types[ntypes++];
                 memset(t, 0, sizeof(*t));
                 t->die_offset = dies[i].offset;
@@ -1062,7 +1062,7 @@ struct type_info *resolve_type(uint32_t die_offset) {
         struct type_info *t = find_type(die_offset);
         if (!t) return NULL;
         /* Follow typedefs, const, volatile, pointer qualifiers to base */
-        if (t->tag == 0x16 || t->tag == 0x26 || t->tag == 0x09) { /* typedef, const, volatile */
+        if (t->tag == 0x16 || t->tag == 0x26 || t->tag == 0x35) { /* typedef, const, volatile */
             if (t->type_ref) { die_offset = t->type_ref; continue; }
         }
         return t;
