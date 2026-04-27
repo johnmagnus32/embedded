@@ -135,7 +135,10 @@ class WebDebugger:
                 lines = data.split('\r\n')
                 req = lines[0] if lines else ''
 
-                if req.startswith('GET /uart'):
+                if req.startswith('GET /init'):
+                    self.http_response(conn, '200 OK', 'application/json', self.last_state)
+
+                elif req.startswith('GET /uart'):
                     import json as _json
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"uart": self.uart_buf}))

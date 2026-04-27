@@ -87,20 +87,16 @@ async function simCmd(cmdObj) {
   return await r.json();
 }
 
-async function refreshUI() {
-  const where = await simCmd({cmd:'where'});
-  console.log('where:', where);
+async function refreshUI(stopInfo) {
   const regs = await simCmd({cmd:'regs'});
-  console.log('regs:', regs);
   let source = null;
-  if (where.file) {
-    source = await simCmd({cmd:'source', file: where.file});
-    console.log('source:', source?.lines?.length, 'lines');
+  if (stopInfo.file) {
+    source = await simCmd({cmd:'source', file: stopInfo.file});
   }
-  render(where, regs, source, null);
+  render(stopInfo, regs, source, null);
 }
 
-// Poll UART independently (it's a live stream, not a debug command)
+// Poll UART independently
 async function pollUart() {
   try {
     const r = await fetch('/uart');
@@ -116,7 +112,6 @@ pollUart();
 async function sendCmd(cmd) {
   log(`<span style="color:#c9d1d9">(dbg) ${esc(cmd)}</span>`);
   try {
-    // Parse user command into protocol command
     let cmdObj;
     if (cmd === 'c' || cmd === 'continue') cmdObj = {cmd:'continue'};
     else if (cmd === 'r' || cmd === 'run') cmdObj = {cmd:'run'};
@@ -132,15 +127,24 @@ async function sendCmd(cmd) {
       log(`Unknown command: ${cmd}`);
       return;
     }
-    await simCmd(cmdObj);
-    await refreshUI();
+    const resp = await simCmd(cmdObj);
+    // Commands that return stop info: step, next, continue, run
+    if (resp.pc !== undefined) {
+      await refreshUI(resp);
+    }
   } catch(e) { log(`Error: ${e.message}`); }
 }
 
-// Initial load
+// Initial load — get stop info from connection handshake
 (async () => {
   log('Connected');
-  await refreshUI();
+  try {
+    const r = await fetch('/init');
+    if (r.ok) {
+      const stopInfo = await r.json();
+      await refreshUI(stopInfo);
+    }
+  } catch(e) { log(`Init error: ${e.message}`); }
 })();
 
 const cmdLog = document.getElementById('cmd-log');

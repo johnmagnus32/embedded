@@ -124,10 +124,7 @@ static void handle_command(int fd, struct board *b, const char *line)
     if (!cmd) return;
     cmd += 7;
 
-    if (strncmp(cmd, "where\"", 6) == 0) {
-        send_stop_info(fd, b);
-
-    } else if (strncmp(cmd, "regs\"", 5) == 0) {
+    if (strncmp(cmd, "regs\"", 5) == 0) {
         send_regs(fd, b);
 
     } else if (strncmp(cmd, "mem\"", 4) == 0) {
