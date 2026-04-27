@@ -137,16 +137,9 @@ async function sendCmd(cmd) {
   } catch(e) { log(`Error: ${e.message}`); }
 }
 
-// Initial load — get stop info from connection handshake
+// Initial load — show connected, wait for user commands
 (async () => {
-  log('Connected');
-  try {
-    const r = await fetch('/init');
-    if (r.ok) {
-      const stopInfo = await r.json();
-      await refreshUI(stopInfo);
-    }
-  } catch(e) { log(`Init error: ${e.message}`); }
+  log('Connected — type "b main" then "r" to start');
 })();
 
 const cmdLog = document.getElementById('cmd-log');

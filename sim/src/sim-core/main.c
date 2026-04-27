@@ -199,13 +199,22 @@ static void handle_command(int fd, struct board *b, const char *line)
             send_source(fd, file);
         }
     } else if (strncmp(cmd, "memmap\"", 7) == 0) {
-        /* Full state dump for memory map (tasks, sections, etc.) */
-        char *buf = malloc(65536);
-        FILE *mf = fmemopen(buf, 65536, "w");
-        state_dump_to(&b->cpu, b->flash, b->ram, mf);
-        fclose(mf);
+        /* Lightweight state for memory map: tasks + sections + SP/MSP */
+        char buf[8192];
+        int n = snprintf(buf, sizeof(buf), "{\"msp\":%u,\"psp\":%u,\"ram_base\":%u,\"ram_size\":%u,",
+                         b->cpu.msp, b->cpu.r[REG_SP], (uint32_t)RAM_BASE, (uint32_t)RAM_SIZE);
+
+        /* ELF sections */
+        const struct elf_section *secs;
+        int nsecs = elf_get_sections(&secs);
+        n += snprintf(buf+n, sizeof(buf)-n, "\"sections\":[");
+        for (int i = 0; i < nsecs; i++) {
+            if (i) buf[n++] = ',';
+            n += snprintf(buf+n, sizeof(buf)-n, "{\"name\":\"%s\",\"addr\":%u,\"size\":%u}",
+                          secs[i].name, secs[i].addr, secs[i].size);
+        }
+        n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":[]}");
         send_response(fd, buf);
-        free(buf);
     }
 }
 
