@@ -937,6 +937,10 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
             while (p < end) {
                 uint8_t entry_kind = *p++;
                 if (entry_kind == 0) break; /* DW_LLE_end_of_list */
+                if (entry_kind == 9) { /* DW_LLE_GNU_view_pair — skip */
+                    read_uleb(&p); read_uleb(&p);
+                    continue;
+                }
                 if (entry_kind == 6) { /* DW_LLE_base_address */
                     base_addr = *(uint32_t*)p; p += 4;
                     continue;
@@ -986,8 +990,14 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
                 }
                 /* Skip view pairs and other entries */
                 if (entry_kind == 8) { /* DW_LLE_start_end */
-                    p += 8; /* start + end */
+                    uint32_t start = *(uint32_t*)p; p += 4;
+                    uint32_t e = *(uint32_t*)p; p += 4;
                     uint16_t expr_len = read_uleb(&p);
+                    if (pc >= start && pc < e && expr_len > 0) {
+                        uint8_t op = *p;
+                        if (op >= 0x50 && op <= 0x6f) { *reg_out = op - 0x50; return 1; }
+                        if (op == 0x91) { const uint8_t *ep = p+1; *val_out = (uint32_t)read_sleb(&ep); return 3; }
+                    }
                     p += expr_len;
                     continue;
                 }

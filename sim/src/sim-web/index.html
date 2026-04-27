@@ -7,15 +7,9 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
        background:#0d1117; color:#c9d1d9; display:flex; flex-direction:column; height:100vh; }
-.top { display:flex; flex:1; overflow:hidden; }
 .panel { border:1px solid #30363d; margin:4px; border-radius:6px; overflow:hidden; display:flex; flex-direction:column; }
 .panel h2 { background:#161b22; padding:6px 10px; font-size:11px; color:#58a6ff; border-bottom:1px solid #30363d; flex-shrink:0; }
 .panel-body { flex:1; overflow-y:auto; padding:8px; }
-#source-panel { flex:3; }
-#mem-panel { flex:2; min-width:220px; }
-#bottom { display:flex; height:200px; min-height:100px; }
-#uart-panel { flex:1; }
-#cmd-panel { flex:1; }
 .src-line { white-space:pre; padding:1px 4px; }
 .src-line.current { background:#1f3a1f; color:#7ee787; font-weight:bold; }
 .src-line .num { color:#484f58; display:inline-block; width:40px; text-align:right; margin-right:8px; }
@@ -45,31 +39,35 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
   <span>PSP <span class="addr" id="hdr-psp">—</span></span>
   <span>MSP <span class="addr" id="hdr-msp">—</span></span>
 </div>
-<div class="top">
-  <div class="panel" id="source-panel">
-    <h2>Source <span id="run-indicator" style="display:none;float:right;color:#7ee787;font-weight:normal">⟳ Running...</span></h2>
-    <div class="panel-body" id="source"></div>
-  </div>
-  <div class="panel" id="mem-panel">
-    <h2>Memory Map — STM32F411RE</h2>
-    <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
-  </div>
-</div>
-<div class="panel" id="timeline-panel" style="margin:0 4px;height:80px;min-height:60px;">
-  <h2>Timeline</h2>
-  <div class="panel-body" id="timeline" style="padding:2px 4px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;"></div>
-</div>
-<div id="bottom">
-  <div class="panel" id="cmd-panel">
-    <h2>Debugger</h2>
-    <div class="panel-body" style="display:flex;flex-direction:column;padding:4px 8px;">
-      <div id="cmd-log"></div>
-      <input id="cmd-input" placeholder="(dbg) type command..." autofocus>
+<div style="display:flex;flex:1;overflow:hidden;">
+  <!-- Left: Source + Debugger -->
+  <div style="flex:3;display:flex;flex-direction:column;overflow:hidden;">
+    <div class="panel" id="source-panel" style="flex:1;">
+      <h2>Source</h2>
+      <div class="panel-body" id="source"></div>
+    </div>
+    <div class="panel" id="cmd-panel" style="height:200px;min-height:120px;">
+      <h2>Debugger</h2>
+      <div class="panel-body" style="display:flex;flex-direction:column;padding:4px 8px;">
+        <div id="cmd-log"></div>
+        <input id="cmd-input" placeholder="(dbg) type command..." autofocus>
+      </div>
     </div>
   </div>
-  <div class="panel" id="uart-panel">
-    <h2>UART Console</h2>
-    <div class="panel-body" id="uart" style="overflow-y:auto"></div>
+  <!-- Right: Memory Map + Timeline + UART -->
+  <div style="flex:2;display:flex;flex-direction:column;overflow:hidden;min-width:250px;">
+    <div class="panel" id="mem-panel" style="flex:1;">
+      <h2>Memory Map</h2>
+      <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
+    </div>
+    <div class="panel" id="timeline-panel" style="height:100px;min-height:60px;">
+      <h2>Timeline</h2>
+      <div class="panel-body" id="timeline" style="padding:2px 4px;overflow-x:auto;overflow-y:hidden;white-space:nowrap;"></div>
+    </div>
+    <div class="panel" id="uart-panel" style="height:150px;min-height:80px;">
+      <h2>UART Console</h2>
+      <div class="panel-body" id="uart" style="overflow-y:auto"></div>
+    </div>
   </div>
 </div>
 
@@ -125,8 +123,11 @@ async function sendCmd(cmd) {
       if (resp.error) log(`<span style="color:#f85149">${resp.expr}: ${resp.error}</span>`);
       else {
         const loc = resp.loc ? ` <span style="color:#484f58">(${resp.loc})</span>` : '';
-        const val = resp.hex ? `${resp.hex} (${resp.val})` : resp.val;
-        log(`<span style="color:#7ee787">${resp.expr} = ${val}${loc}</span>`);
+        let val = resp.hex ? `${resp.hex} (${resp.val})` : resp.val;
+        // Format structs/arrays with newlines
+        val = val.replace(/\{/g, '{\n  ').replace(/\}/g, '\n}').replace(/, /g, ',\n  ')
+                 .replace(/\[/g, '[\n  ').replace(/\]/g, '\n]');
+        log(`<pre style="color:#7ee787;margin:0;white-space:pre-wrap">${resp.expr} = ${val}${loc}</pre>`);
       }
       return;
     } else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {
