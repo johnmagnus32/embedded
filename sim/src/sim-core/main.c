@@ -248,8 +248,13 @@ static void handle_command(int fd, struct board *b, const char *line)
         int loc = var_lookup(base, b->cpu.r[REG_PC], &reg, &val);
         cur_type = var_type_die(base, b->cpu.r[REG_PC]);
 
-        if (loc == 1) { /* register */
-            addr = b->cpu.r[reg];
+        if (loc == 1) { /* register — value is in the register directly */
+            /* Store register value in a temp location so type_format can read it */
+            uint32_t regval = b->cpu.r[reg];
+            /* Use a scratch area at end of RAM */
+            uint32_t scratch = RAM_BASE + RAM_SIZE - 8;
+            *(uint32_t*)(b->ram + RAM_SIZE - 8) = regval;
+            addr = scratch;
             valid = 1;
         } else if (loc == 2) { /* constant */
             addr = val;
