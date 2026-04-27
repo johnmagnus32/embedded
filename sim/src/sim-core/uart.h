@@ -14,7 +14,6 @@ struct uart {
 };
 
 void     uart_init(struct uart *u, uint32_t base);
-void     uart_set_state_dir(const char *dir);
 int      uart_handles(struct uart *u, uint32_t addr);
 uint32_t uart_read(struct uart *u, uint32_t addr);
 void     uart_write(struct uart *u, uint32_t addr, uint32_t val);

@@ -119,8 +119,8 @@ class WebDebugger:
 
                 if req.startswith('GET /uart'):
                     try:
-                        with open('/tmp/sim-state/uart.json', 'r') as uf:
-                            self.http_response(conn, '200 OK', 'application/json', uf.read())
+                        resp = self.send_command('{"cmd":"uart"}')
+                        self.http_response(conn, '200 OK', 'application/json', resp)
                     except:
                         self.http_response(conn, '200 OK', 'application/json', '{"uart":""}')
 

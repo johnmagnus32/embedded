@@ -1,33 +1,14 @@
 /*
  * uart.c — USART device
- *
- * Writes its state to a file whenever a newline is output.
  */
 #include "uart.h"
 #include "cpu.h"
-
-static char uart_state_path[256] = "";
 
 void uart_init(struct uart *u, uint32_t base)
 {
     u->base = base;
     u->head = 0;
     u->count = 0;
-}
-
-void uart_set_state_dir(const char *dir)
-{
-    snprintf(uart_state_path, sizeof(uart_state_path), "%s/uart.json", dir);
-}
-
-static void uart_flush_state(struct uart *u)
-{
-    if (!uart_state_path[0]) return;
-    FILE *f = fopen(uart_state_path, "w");
-    if (!f) return;
-    uart_dump_state(u, f);
-    fprintf(f, "\n");
-    fclose(f);
 }
 
 int uart_handles(struct uart *u, uint32_t addr)
@@ -37,7 +18,6 @@ int uart_handles(struct uart *u, uint32_t addr)
 
 uint32_t uart_read(struct uart *u, uint32_t addr)
 {
-    (void)u;
     if (addr == u->base + 0x00) return (1 << 7) | (1 << 6);
     return 0;
 }
@@ -51,8 +31,6 @@ void uart_write(struct uart *u, uint32_t addr, uint32_t val)
     u->buf[u->head] = c;
     u->head = (u->head + 1) % UART_BUF_SIZE;
     if (u->count < UART_BUF_SIZE) u->count++;
-
-    if (c == '\n') uart_flush_state(u);
 }
 
 void uart_dump_state(struct uart *u, FILE *f)

@@ -9,7 +9,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <netinet/in.h>
 #include "board.h"
 #include "dts.h"
@@ -17,7 +16,6 @@
 #include "state.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
-#define STATE_DIR "/tmp/sim-state"
 #define DEFAULT_PORT 9001
 
 extern struct board *g_board;
@@ -126,7 +124,10 @@ static void handle_command(int fd, struct board *b, const char *line)
     if (!cmd) return;
     cmd += 7;
 
-    if (strncmp(cmd, "regs\"", 5) == 0) {
+    if (strncmp(cmd, "where\"", 6) == 0) {
+        send_stop_info(fd, b);
+
+    } else if (strncmp(cmd, "regs\"", 5) == 0) {
         send_regs(fd, b);
 
     } else if (strncmp(cmd, "mem\"", 4) == 0) {
@@ -209,11 +210,14 @@ static void handle_command(int fd, struct board *b, const char *line)
             send_source(fd, file);
         }
 
-    } else if (strncmp(cmd, "state\"", 6) == 0) {
-        /* Full state dump for backward compat */
-        state_dump_to(&b->cpu, b->flash, b->ram, stdout);
-        fflush(stdout);
-        send_stop_info(fd, b);
+    } else if (strncmp(cmd, "uart\"", 5) == 0) {
+        /* Send UART buffer contents */
+        char buf[UART_BUF_SIZE + 64];
+        int n = 0;
+        FILE *f = fmemopen(buf, sizeof(buf), "w");
+        uart_dump_state(&b->uarts[0], f);
+        fclose(f);
+        send_response(fd, buf);
     }
 }
 
@@ -225,7 +229,6 @@ int main(int argc, char **argv)
     }
 
     int port = (argc >= 4) ? atoi(argv[3]) : DEFAULT_PORT;
-    mkdir(STATE_DIR, 0755);
 
     struct dts dt;
     if (dts_parse(&dt, argv[2]) != 0) {
@@ -240,7 +243,6 @@ int main(int argc, char **argv)
     board.ram   = calloc(1, RAM_SIZE);
     g_board = &board;
 
-    uart_set_state_dir(STATE_DIR);
 
     if (elf_load(argv[1], board.flash, board.ram) != 0) {
         LOG("Failed to load ELF: %s", argv[1]);

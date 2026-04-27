@@ -88,20 +88,12 @@ async function simCmd(cmdObj) {
 }
 
 async function refreshUI() {
-  // Fetch all state in parallel
-  const [stopInfo, regsData, uartData] = await Promise.all([
-    simCmd({cmd:'state'}),
-    simCmd({cmd:'regs'}),
-    fetch('/uart').then(r => r.json()).catch(() => ({uart:''})),
-  ]);
-
-  // Fetch source if we have a file
-  let sourceData = null;
-  if (stopInfo.file) {
-    sourceData = await simCmd({cmd:'source', file: stopInfo.file});
-  }
-
-  render(stopInfo, regsData, sourceData, uartData);
+  const where = await simCmd({cmd:'where'});
+  const regs = await simCmd({cmd:'regs'});
+  const uart = await simCmd({cmd:'uart'});
+  let source = null;
+  if (where.file) source = await simCmd({cmd:'source', file: where.file});
+  render(where, regs, source, uart);
 }
 
 async function sendCmd(cmd) {
