@@ -20,9 +20,9 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
         return *(uint32_t *)(ram + (addr - RAM_BASE));
 
     if (g_board) {
-        if (uart_handles(addr)) {
-            return uart_read(&g_board->uart, addr);
-        }
+        for (int i = 0; i < g_board->nuarts; i++)
+            if (uart_handles(&g_board->uarts[i], addr))
+                return uart_read(&g_board->uarts[i], addr);
         if (systick_handles(addr)) return systick_read(&g_board->systick, addr);
         if (nvic_handles(addr))    return nvic_read(&g_board->nvic, addr);
     }
@@ -42,7 +42,8 @@ void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
     }
 
     if (g_board) {
-        if (uart_handles(addr))    { uart_write(&g_board->uart, addr, val); return; }
+        for (int i = 0; i < g_board->nuarts; i++)
+            if (uart_handles(&g_board->uarts[i], addr)) { uart_write(&g_board->uarts[i], addr, val); return; }
         if (systick_handles(addr)) { systick_write(&g_board->systick, addr, val); return; }
         if (nvic_handles(addr))    { nvic_write(&g_board->nvic, addr, val); return; }
     }

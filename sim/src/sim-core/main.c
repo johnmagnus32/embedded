@@ -1,14 +1,14 @@
 /*
  * sim-core — ARM Cortex-M4 emulator + debugger
  *
- * CPU/debugger state → stdout (JSON per line)
- * Device state → separate files in /tmp/sim-state/
+ * Usage: sim-core <firmware.elf> [board.dts]
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include "board.h"
+#include "dts.h"
 #include "elf_sym.h"
 #include "state.h"
 
@@ -41,15 +41,41 @@ static void run_until_bp(struct board *b)
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        LOG("Usage: %s <firmware.elf>", argv[0]);
+        LOG("Usage: %s <firmware.elf> [board.dts]", argv[0]);
         return 1;
     }
 
-    /* State directory for device files */
     mkdir(STATE_DIR, 0755);
 
+    /* Parse device tree */
+    struct dts dt;
+    memset(&dt, 0, sizeof(dt));
+    if (argc >= 3) {
+        if (dts_parse(&dt, argv[2]) == 0)
+            LOG("Loaded DTS: %s (%d nodes, sysclk=%uHz)", argv[2], dt.nnodes, dt.sysclk_hz);
+        else
+            LOG("Warning: could not parse DTS %s", argv[2]);
+    } else {
+        /* Try to find board.dts next to the ELF */
+        char dts_path[512];
+        strncpy(dts_path, argv[1], 500);
+        char *sl = strrchr(dts_path, '/');
+        if (sl) strcpy(sl + 1, "board.dts"); else strcpy(dts_path, "board.dts");
+        if (dts_parse(&dt, dts_path) == 0)
+            LOG("Loaded DTS: %s (%d nodes)", dts_path, dt.nnodes);
+    }
+
+    /* If no DTS found, create a default USART2 */
+    if (dt.nnodes == 0) {
+        LOG("No DTS — using default USART2 at 0x40004400");
+        dt.nodes[0] = (struct dts_node){ .compatible = "st,stm32-usart", .reg = 0x40004400, .has_reg = 1 };
+        strncpy(dt.nodes[0].label, "usart2", 31);
+        dt.nnodes = 1;
+        dt.sysclk_hz = 16000000;
+    }
+
     struct board board;
-    board_init(&board);
+    board_init(&board, &dt);
     board.flash = calloc(1, FLASH_SIZE);
     board.ram   = calloc(1, RAM_SIZE);
     g_board = &board;
