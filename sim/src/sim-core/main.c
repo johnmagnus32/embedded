@@ -230,21 +230,35 @@ static void handle_command(int fd, struct board *b, const char *line)
         int reg; uint32_t val;
         int loc = var_lookup(expr, b->cpu.r[REG_PC], &reg, &val);
         if (loc == 1) { /* register */
-            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\",\"loc\":\"r%d\"}",
-                     expr, b->cpu.r[reg], b->cpu.r[reg], reg);
+            uint32_t type_die = var_type_die(expr, b->cpu.r[REG_PC]);
+            if (type_die) {
+                /* For structs/complex types in a register, the register holds an address */
+                char tbuf[2048];
+                type_format(type_die, b->cpu.r[reg], b->ram, b->flash, tbuf, sizeof(tbuf));
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\",\"loc\":\"r%d\"}", expr, tbuf, reg);
+            } else {
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\",\"loc\":\"r%d\"}",
+                         expr, b->cpu.r[reg], b->cpu.r[reg], reg);
+            }
             send_response(fd, rbuf); return;
         } else if (loc == 2) { /* constant */
-            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\",\"loc\":\"const\"}",
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\",\"loc\":\"const\"}",
                      expr, val, val);
             send_response(fd, rbuf); return;
         } else if (loc == 3) { /* stack (fbreg offset) */
-            /* Approximate frame base as SP — not always correct but close */
             uint32_t addr = b->cpu.r[REG_SP] + val;
-            uint32_t mval = 0;
-            if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                mval = *(uint32_t*)(b->ram + (addr - RAM_BASE));
-            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":%u,\"hex\":\"0x%08x\",\"loc\":\"[sp+%d]\"}",
-                     expr, mval, mval, (int)val);
+            uint32_t type_die = var_type_die(expr, b->cpu.r[REG_PC]);
+            if (type_die) {
+                char tbuf[2048];
+                type_format(type_die, addr, b->ram, b->flash, tbuf, sizeof(tbuf));
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\",\"loc\":\"[sp+%d]\"}", expr, tbuf, (int)val);
+            } else {
+                uint32_t mval = 0;
+                if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+                    mval = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\",\"loc\":\"[sp+%d]\"}",
+                         expr, mval, mval, (int)val);
+            }
             send_response(fd, rbuf); return;
         }
 
@@ -272,8 +286,11 @@ static void handle_command(int fd, struct board *b, const char *line)
         /* Global symbol */
         uint32_t sym_addr = sym_find_by_name(expr);
         if (sym_addr && sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE) {
+            /* Try to find type info for this global */
+            uint32_t type_die = var_type_die(expr, 0); /* globals: pc=0 won't match func scope */
+            /* Fallback: just read raw value */
             uint32_t v = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
-            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"addr\":\"0x%08x\",\"val\":%u,\"hex\":\"0x%08x\"}",
+            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"addr\":\"0x%08x\",\"val\":\"%u\",\"hex\":\"0x%08x\"}",
                      expr, sym_addr, v, v);
             send_response(fd, rbuf); return;
         }

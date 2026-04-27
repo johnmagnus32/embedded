@@ -23,6 +23,9 @@ const char *line_lookup(uint32_t pc, int *line_out);
 uint32_t resolve_breakpoint(const char *spec);
 uint32_t next_line_addr(uint32_t pc);
 int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out);
+uint32_t var_type_die(const char *name, uint32_t pc);
+int type_format(uint32_t type_die, uint32_t addr, uint8_t *ram, uint8_t *flash,
+                char *buf, int bufsize);
 
 /* ELF section info (allocated sections with addresses) */
 struct elf_section { uint32_t addr; uint32_t size; char name[32]; };

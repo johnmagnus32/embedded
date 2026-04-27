@@ -125,7 +125,8 @@ async function sendCmd(cmd) {
       if (resp.error) log(`<span style="color:#f85149">${resp.expr}: ${resp.error}</span>`);
       else {
         const loc = resp.loc ? ` <span style="color:#484f58">(${resp.loc})</span>` : '';
-        log(`<span style="color:#7ee787">${resp.expr} = ${resp.hex} (${resp.val})${loc}</span>`);
+        const val = resp.hex ? `${resp.hex} (${resp.val})` : resp.val;
+        log(`<span style="color:#7ee787">${resp.expr} = ${val}${loc}</span>`);
       }
       return;
     } else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {

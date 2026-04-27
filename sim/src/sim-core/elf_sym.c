@@ -60,15 +60,39 @@ char elf_comp_dir[512] = "";
 #define MAX_VARS 256
 struct var_info {
     char name[32];
-    uint32_t func_low;   /* containing function's low_pc */
-    uint32_t func_high;  /* containing function's high_pc */
-    int is_const;        /* DW_AT_const_value */
+    uint32_t func_low;
+    uint32_t func_high;
+    int is_const;
     uint32_t const_val;
-    uint32_t loc_offset; /* offset into .debug_loclists */
+    uint32_t loc_offset;
     int has_loc;
+    uint32_t type_die;   /* DIE offset of variable's type */
 };
 static struct var_info vars[MAX_VARS];
 static int nvars = 0;
+
+/* Type info from DWARF */
+#define MAX_TYPES 512
+struct type_info {
+    uint32_t die_offset;
+    uint16_t tag;
+    uint32_t byte_size;
+    uint32_t type_ref;   /* referenced type (pointers, typedefs, arrays) */
+    char name[32];
+    struct { char name[32]; uint32_t offset; uint32_t type_die; } members[16];
+    int nmembers;
+    struct { char name[32]; uint32_t value; } enumerators[16];
+    int nenumerators;
+    int array_count;
+};
+static struct type_info types[MAX_TYPES];
+static int ntypes = 0;
+
+static struct type_info *find_type(uint32_t die_offset) {
+    for (int i = 0; i < ntypes; i++)
+        if (types[i].die_offset == die_offset) return &types[i];
+    return NULL;
+}
 
 /* Location list data */
 static uint8_t *loclists_data = NULL;
@@ -570,7 +594,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                     } else {
                         skip_form(&scan, form, 4, 0);
                     }
-                } else if (attr == 0x1c) { /* DW_AT_const_value */
+                } else if (attr == 0x1c || attr == 0x2f) { /* DW_AT_const_value or DW_AT_upper_bound */
                     d->const_val = read_form_u32(&scan, form, a->attrs[i].implicit_val);
                     d->has_const = 1;
                 } else {
@@ -578,6 +602,51 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 }
             }
             ndies++;
+        }
+
+        /* Extract types from all DIEs */
+        for (int i = 0; i < ndies && ntypes < MAX_TYPES; i++) {
+            uint16_t tag = dies[i].tag;
+            if (tag == 0x24 || tag == 0x0F || tag == 0x16 || tag == 0x13 ||
+                tag == 0x04 || tag == 0x01 || tag == 0x26 || tag == 0x09) {
+                /* base_type(0x24), pointer(0x0F), typedef(0x16), struct(0x13),
+                   enum(0x04), array(0x01), const(0x26), volatile(0x09) */
+                struct type_info *t = &types[ntypes++];
+                memset(t, 0, sizeof(*t));
+                t->die_offset = dies[i].offset;
+                t->tag = tag;
+                t->byte_size = dies[i].byte_size;
+                t->type_ref = dies[i].type_ref ? cu_start + dies[i].type_ref : 0;
+                if (dies[i].name) strncpy(t->name, dies[i].name, 31);
+
+                /* Collect struct members */
+                if (tag == 0x13) {
+                    for (int j = i + 1; j < ndies && t->nmembers < 16; j++) {
+                        if (dies[j].tag != 0x0D) break; /* DW_TAG_member */
+                        if (dies[j].name) strncpy(t->members[t->nmembers].name, dies[j].name, 31);
+                        t->members[t->nmembers].offset = dies[j].member_loc;
+                        t->members[t->nmembers].type_die = dies[j].type_ref ? cu_start + dies[j].type_ref : 0;
+                        t->nmembers++;
+                    }
+                }
+                /* Collect enum values */
+                if (tag == 0x04) {
+                    for (int j = i + 1; j < ndies && t->nenumerators < 16; j++) {
+                        if (dies[j].tag != 0x28) break; /* DW_TAG_enumerator */
+                        if (dies[j].name) strncpy(t->enumerators[t->nenumerators].name, dies[j].name, 31);
+                        t->enumerators[t->nenumerators].value = dies[j].const_val;
+                        t->nenumerators++;
+                    }
+                }
+                /* Array element count */
+                if (tag == 0x01) {
+                    for (int j = i + 1; j < ndies; j++) {
+                        if (dies[j].tag != 0x21) break;
+                        t->array_count = dies[j].const_val + 1;
+                        break;
+                    }
+                }
+            }
         }
 
         /* Extract local variables from subprograms */
@@ -588,7 +657,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 cur_func_high = dies[i].has_high_pc ?
                     (dies[i].high_pc < 0x1000 ? dies[i].low_pc + dies[i].high_pc : dies[i].high_pc) : 0;
             }
-            if ((dies[i].tag == DW_TAG_variable || dies[i].tag == 0x05) /* DW_TAG_formal_parameter */
+            if ((dies[i].tag == DW_TAG_variable || dies[i].tag == 0x05)
                 && dies[i].name && cur_func_low && nvars < MAX_VARS) {
                 struct var_info *v = &vars[nvars++];
                 strncpy(v->name, dies[i].name, 31); v->name[31] = '\0';
@@ -598,6 +667,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 v->const_val = dies[i].const_val;
                 v->loc_offset = dies[i].loc_offset;
                 v->has_loc = dies[i].has_loc;
+                v->type_die = dies[i].type_ref ? cu_start + dies[i].type_ref : 0;
             }
         }
 
@@ -815,6 +885,17 @@ uint32_t next_line_addr(uint32_t pc)
 
 /* ── Breakpoint resolver ── */
 
+/* Get the type DIE offset for a variable at the given PC */
+uint32_t var_type_die(const char *name, uint32_t pc)
+{
+    for (int i = 0; i < nvars; i++) {
+        if (strcmp(vars[i].name, name) != 0) continue;
+        if (pc < vars[i].func_low || pc >= vars[i].func_high) continue;
+        return vars[i].type_die;
+    }
+    return 0;
+}
+
 /* Look up a local variable by name at the given PC.
  * Returns: 0 = not found, 1 = register (reg_out), 2 = constant (val_out),
  *          3 = memory address (val_out) */
@@ -906,6 +987,104 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
         return 0; /* found variable but can't resolve location */
     }
     return 0; /* not found */
+}
+
+/* Follow type chain through typedefs, const, volatile to the real type */
+static struct type_info *resolve_type(uint32_t die_offset) {
+    for (int depth = 0; depth < 10; depth++) {
+        struct type_info *t = find_type(die_offset);
+        if (!t) return NULL;
+        /* Follow typedefs, const, volatile, pointer qualifiers to base */
+        if (t->tag == 0x16 || t->tag == 0x26 || t->tag == 0x09) { /* typedef, const, volatile */
+            if (t->type_ref) { die_offset = t->type_ref; continue; }
+        }
+        return t;
+    }
+    return NULL;
+}
+
+/* Format a typed value into a JSON string. addr = memory address of the value.
+ * Writes to buf, returns chars written. */
+int type_format(uint32_t type_die, uint32_t addr, uint8_t *ram, uint8_t *flash,
+                char *buf, int bufsize)
+{
+    struct type_info *t = resolve_type(type_die);
+    if (!t) {
+        uint32_t val = 0;
+        if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+            val = *(uint32_t*)(ram + (addr - RAM_BASE));
+        return snprintf(buf, bufsize, "%u", val);
+    }
+
+    int n = 0;
+
+    if (t->tag == 0x24) { /* base_type (int, char, etc.) */
+        uint32_t val = 0;
+        if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE) {
+            if (t->byte_size == 1) val = ram[addr - RAM_BASE];
+            else if (t->byte_size == 2) val = *(uint16_t*)(ram + (addr - RAM_BASE));
+            else val = *(uint32_t*)(ram + (addr - RAM_BASE));
+        } else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE) {
+            val = *(uint32_t*)(flash + (addr - FLASH_BASE));
+        }
+        n += snprintf(buf+n, bufsize-n, "%u", val);
+
+    } else if (t->tag == 0x0F) { /* pointer_type */
+        uint32_t val = 0;
+        if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+            val = *(uint32_t*)(ram + (addr - RAM_BASE));
+        else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
+            val = *(uint32_t*)(flash + (addr - FLASH_BASE));
+        /* If it's a char pointer, try to show the string */
+        struct type_info *pointee = t->type_ref ? resolve_type(t->type_ref) : NULL;
+        if (pointee && pointee->byte_size == 1 && val >= FLASH_BASE && val < FLASH_BASE + FLASH_SIZE) {
+            const char *s = (const char*)(flash + (val - FLASH_BASE));
+            n += snprintf(buf+n, bufsize-n, "0x%08x \\\"%.20s\\\"", val, s);
+        } else {
+            n += snprintf(buf+n, bufsize-n, "0x%08x", val);
+        }
+
+    } else if (t->tag == 0x04) { /* enumeration_type */
+        uint32_t val = 0;
+        if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+            val = *(uint32_t*)(ram + (addr - RAM_BASE));
+        const char *ename = NULL;
+        for (int i = 0; i < t->nenumerators; i++)
+            if (t->enumerators[i].value == val) { ename = t->enumerators[i].name; break; }
+        if (ename) n += snprintf(buf+n, bufsize-n, "%s (%u)", ename, val);
+        else n += snprintf(buf+n, bufsize-n, "%u", val);
+
+    } else if (t->tag == 0x13) { /* structure_type */
+        n += snprintf(buf+n, bufsize-n, "{");
+        for (int i = 0; i < t->nmembers && n < bufsize - 50; i++) {
+            if (i) n += snprintf(buf+n, bufsize-n, ", ");
+            n += snprintf(buf+n, bufsize-n, "%s=", t->members[i].name);
+            n += type_format(t->members[i].type_die, addr + t->members[i].offset,
+                           ram, flash, buf+n, bufsize-n);
+        }
+        n += snprintf(buf+n, bufsize-n, "}");
+
+    } else if (t->tag == 0x01) { /* array_type */
+        struct type_info *elem = t->type_ref ? resolve_type(t->type_ref) : NULL;
+        int elem_size = elem ? (elem->byte_size ? elem->byte_size : 4) : 4;
+        int count = t->array_count ? t->array_count : 1;
+        if (count > 8) count = 8; /* limit display */
+        n += snprintf(buf+n, bufsize-n, "[");
+        for (int i = 0; i < count && n < bufsize - 20; i++) {
+            if (i) n += snprintf(buf+n, bufsize-n, ", ");
+            n += type_format(t->type_ref, addr + i * elem_size, ram, flash, buf+n, bufsize-n);
+        }
+        if (t->array_count > 8) n += snprintf(buf+n, bufsize-n, ", ...");
+        n += snprintf(buf+n, bufsize-n, "]");
+
+    } else {
+        uint32_t val = 0;
+        if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
+            val = *(uint32_t*)(ram + (addr - RAM_BASE));
+        n += snprintf(buf+n, bufsize-n, "0x%08x", val);
+    }
+
+    return n;
 }
 
 uint32_t resolve_breakpoint(const char *spec)
