@@ -234,6 +234,7 @@ static void handle_command(int fd, struct board *b, const char *line)
         /* Try local variable via DWARF */
         int reg; uint32_t val;
         int loc = var_lookup(varname, b->cpu.r[REG_PC], &reg, &val);
+        LOG("print '%s' at PC=0x%08X: loc=%d", varname, b->cpu.r[REG_PC], loc);
         if (loc == 1) { /* register */
             uint32_t type_die = var_type_die(varname, b->cpu.r[REG_PC]);
             uint32_t regval = b->cpu.r[reg];

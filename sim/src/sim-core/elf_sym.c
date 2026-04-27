@@ -444,7 +444,7 @@ static uint32_t read_form_u32(const uint8_t **p, uint16_t form, int64_t implicit
     case DW_FORM_data1: case DW_FORM_ref1: case DW_FORM_flag: v = *(*p)++; break;
     case DW_FORM_data2: case DW_FORM_ref2: v = *(uint16_t*)*p; *p += 2; break;
     case DW_FORM_data4: case DW_FORM_ref4: case DW_FORM_strp:
-    case DW_FORM_sec_offset: case DW_FORM_ref_addr:
+    case DW_FORM_sec_offset: case DW_FORM_ref_addr: case DW_FORM_addr:
         v = *(uint32_t*)*p; *p += 4; break;
     case DW_FORM_udata: case DW_FORM_ref_udata: v = read_uleb(p); break;
     case DW_FORM_sdata: v = (uint32_t)read_sleb(p); break;
@@ -721,6 +721,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
 
         p = unit_end;
     } /* end while CU loop */
+    fprintf(stderr, "[sim-core] DWARF: %d vars, %d types extracted\n", nvars, ntypes);
 }
 
 static struct line_entry { uint32_t addr; uint16_t line; uint16_t file_idx; } *lines;
