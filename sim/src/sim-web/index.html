@@ -94,14 +94,10 @@ async function refreshUI(stopInfo) {
   }
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
-  // Fetch trace from the trace chardev stream (not a debug command)
-  try {
-    const r = await fetch('/trace');
-    if (r.ok) {
-      const data = await r.json();
-      if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
-    }
-  } catch(e) {}
+  // Fetch trace async (don't block command flow)
+  fetch('/trace').then(r => r.json()).then(data => {
+    if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
+  }).catch(() => {});
 }
 
 // Poll UART independently
