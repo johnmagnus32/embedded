@@ -235,3 +235,14 @@ void state_dump_to(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, FILE *ou
     if (!out && state_path[0]) fclose(f);
     if (out) fflush(out);
 }
+
+void timeline_dump(FILE *f)
+{
+    fprintf(f, "{\"timeline\":[");
+    for (int i = 0; i < tl_count; i++) {
+        int idx = (tl_count < TL_SIZE) ? i : (tl_head + i) % TL_SIZE;
+        if (i) fprintf(f, ",");
+        fprintf(f, "{\"cy\":%lu,\"ctx\":\"%s\"}", (unsigned long)tl[idx].cycle, tl[idx].ctx);
+    }
+    fprintf(f, "]}");
+}

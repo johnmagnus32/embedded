@@ -88,12 +88,14 @@ async function simCmd(cmdObj) {
 async function refreshUI(stopInfo) {
   const regs = await simCmd({cmd:'regs'});
   const memmap = await simCmd({cmd:'memmap'});
+  const timeline = await simCmd({cmd:'timeline'});
   let source = null;
   if (stopInfo.file) {
     source = await simCmd({cmd:'source', file: stopInfo.file});
   }
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
+  if (timeline) { lastTimelineData = {...stopInfo, ...timeline}; renderTimeline(lastTimelineData); }
 }
 
 // Poll UART independently
@@ -218,29 +220,41 @@ function ctxColor(name) {
   return taskCols[h % taskCols.length];
 }
 
+let tlZoom = 1;
+let tlOffset = 0; // 0..1 scroll position
+
 function renderTimeline(s) {
   const el = document.getElementById('timeline');
   const tl = s.timeline || [];
   if (tl.length < 2) { el.innerHTML = '<span style="color:#484f58;padding:8px">No context switches yet</span>'; return; }
 
   const W = el.clientWidth - 8;
-  const H = el.clientHeight - 4;
+  const H = el.clientHeight - 30; // leave room for legend
   if (W < 50 || H < 20) return;
 
   const minCy = tl[0].cy;
-  const maxCy = Math.max(tl[tl.length-1].cy, s.cycles);
-  const span = maxCy - minCy || 1;
+  const maxCy = Math.max(tl[tl.length-1].cy, s.cycles || 0);
+  const fullSpan = maxCy - minCy || 1;
+
+  // Zoom: show a portion of the full span
+  const visibleSpan = fullSpan / tlZoom;
+  const viewStart = minCy + tlOffset * (fullSpan - visibleSpan);
+  const viewEnd = viewStart + visibleSpan;
 
   let svg = `<svg width="${W}" height="${H}" style="font-family:inherit">`;
 
   for (let i = 0; i < tl.length; i++) {
     const t = tl[i];
     const nextCy = (i+1 < tl.length) ? tl[i+1].cy : maxCy;
-    const x = Math.floor((t.cy - minCy) / span * W);
-    const w = Math.max(1, Math.floor((nextCy - t.cy) / span * W));
+    if (nextCy < viewStart || t.cy > viewEnd) continue; // off screen
+
+    const x = Math.floor((Math.max(t.cy, viewStart) - viewStart) / visibleSpan * W);
+    const x2 = Math.floor((Math.min(nextCy, viewEnd) - viewStart) / visibleSpan * W);
+    const w = Math.max(1, x2 - x);
     const col = ctxColor(t.ctx);
     const isHandler = ['SysTick','PendSV','SVC','IRQ'].includes(t.ctx);
     const y = isHandler ? 0 : 14;
+    const h = isHandler ? 12 : H - 16;
     const h = isHandler ? 12 : H - 16;
 
     svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}" opacity="0.7" rx="1"/>`;
@@ -252,8 +266,9 @@ function renderTimeline(s) {
   }
 
   // Axis labels
-  svg += `<text x="0" y="${H}" fill="#484f58" font-size="8">cy ${minCy.toLocaleString()}</text>`;
-  svg += `<text x="${W}" y="${H}" fill="#484f58" font-size="8" text-anchor="end">cy ${maxCy.toLocaleString()}</text>`;
+  svg += `<text x="0" y="${H}" fill="#484f58" font-size="8">cy ${Math.round(viewStart).toLocaleString()}</text>`;
+  svg += `<text x="${W}" y="${H}" fill="#484f58" font-size="8" text-anchor="end">cy ${Math.round(viewEnd).toLocaleString()}</text>`;
+  if (tlZoom > 1) svg += `<text x="${W/2}" y="${H}" fill="#484f58" font-size="8" text-anchor="middle">${tlZoom.toFixed(1)}×</text>`;
   svg += '</svg>';
 
   // Legend — unique contexts
@@ -268,6 +283,30 @@ function renderTimeline(s) {
   legend += '</div>';
   el.innerHTML = svg + legend;
 }
+
+// Timeline zoom (pinch) and scroll
+let lastTimelineData = null;
+const tlEl = document.getElementById('timeline');
+tlEl.addEventListener('wheel', (e) => {
+  if (e.ctrlKey) {
+    // Pinch zoom
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 1.1 : 1/1.1;
+    const rect = tlEl.getBoundingClientRect();
+    const mouseX = (e.clientX - rect.left) / rect.width;
+    const oldZoom = tlZoom;
+    tlZoom = Math.max(1, Math.min(1000, tlZoom * delta));
+    // Adjust offset to keep mouse position stable
+    tlOffset = Math.max(0, Math.min(1, tlOffset + mouseX * (1/oldZoom - 1/tlZoom)));
+    if (lastTimelineData) renderTimeline(lastTimelineData);
+  } else {
+    // Scroll horizontally
+    e.preventDefault();
+    tlOffset = Math.max(0, Math.min(1, tlOffset + e.deltaX * 0.001 / tlZoom));
+    if (e.deltaY && !e.deltaX) tlOffset = Math.max(0, Math.min(1, tlOffset + e.deltaY * 0.001 / tlZoom));
+    if (lastTimelineData) renderTimeline(lastTimelineData);
+  }
+}, {passive: false});
 
 function renderMemMap(s) {
   const el = document.getElementById('memmap');
