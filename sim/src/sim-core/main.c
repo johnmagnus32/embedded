@@ -285,13 +285,18 @@ static void handle_command(int fd, struct board *b, const char *line)
 
         /* Global symbol */
         uint32_t sym_addr = sym_find_by_name(expr);
-        if (sym_addr && sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE) {
-            /* Try to find type info for this global */
-            uint32_t type_die = var_type_die(expr, 0); /* globals: pc=0 won't match func scope */
-            /* Fallback: just read raw value */
-            uint32_t v = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
-            snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"addr\":\"0x%08x\",\"val\":\"%u\",\"hex\":\"0x%08x\"}",
-                     expr, sym_addr, v, v);
+        if (sym_addr) {
+            uint32_t type_die = var_type_die(expr, b->cpu.r[REG_PC]);
+            if (type_die) {
+                char tbuf[2048];
+                type_format(type_die, sym_addr, b->ram, b->flash, tbuf, sizeof(tbuf));
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\",\"addr\":\"0x%08x\"}", expr, tbuf, sym_addr);
+            } else {
+                uint32_t v = 0;
+                if (sym_addr >= RAM_BASE && sym_addr < RAM_BASE + RAM_SIZE)
+                    v = *(uint32_t*)(b->ram + (sym_addr - RAM_BASE));
+                snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\",\"addr\":\"0x%08x\"}", expr, v, v, sym_addr);
+            }
             send_response(fd, rbuf); return;
         }
 

@@ -658,11 +658,11 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                     (dies[i].high_pc < 0x1000 ? dies[i].low_pc + dies[i].high_pc : dies[i].high_pc) : 0;
             }
             if ((dies[i].tag == DW_TAG_variable || dies[i].tag == 0x05)
-                && dies[i].name && cur_func_low && nvars < MAX_VARS) {
+                && dies[i].name && nvars < MAX_VARS) {
                 struct var_info *v = &vars[nvars++];
                 strncpy(v->name, dies[i].name, 31); v->name[31] = '\0';
-                v->func_low = cur_func_low;
-                v->func_high = cur_func_high;
+                v->func_low = cur_func_low ? cur_func_low : 0;
+                v->func_high = cur_func_low ? cur_func_high : 0xFFFFFFFF;
                 v->is_const = dies[i].has_const;
                 v->const_val = dies[i].const_val;
                 v->loc_offset = dies[i].loc_offset;
