@@ -11,7 +11,7 @@
 #include "board.h"
 
 static char state_path[256];
-static char src_search_dir[256];
+char src_search_dir[256];
 
 void state_set_path(const char *path) { strncpy(state_path, path, sizeof(state_path) - 1); }
 void state_set_source_dir(const char *dir) { strncpy(src_search_dir, dir, sizeof(src_search_dir) - 1); }

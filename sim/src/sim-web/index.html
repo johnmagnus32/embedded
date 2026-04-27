@@ -81,28 +81,58 @@ const log = (msg) => {
   fetch('/log', {method:'POST', body:msg}).catch(()=>{});
 };
 
-let lastCycles = -1;
-async function poll() {
-  try {
-    const r = await fetch('/state');
-    if (r.ok) {
-      const s = await r.json();
-      if (s.cycles !== lastCycles) { lastCycles = s.cycles; render(s); }
-    }
-  } catch(e) {}
-  setTimeout(poll, 200);
+async function simCmd(cmdObj) {
+  const r = await fetch('/cmd', {method:'POST', body: JSON.stringify(cmdObj)});
+  if (!r.ok) throw new Error('sim-core error');
+  return await r.json();
+}
+
+async function refreshUI() {
+  // Fetch all state in parallel
+  const [stopInfo, regsData, uartData] = await Promise.all([
+    simCmd({cmd:'state'}),
+    simCmd({cmd:'regs'}),
+    fetch('/uart').then(r => r.json()).catch(() => ({uart:''})),
+  ]);
+
+  // Fetch source if we have a file
+  let sourceData = null;
+  if (stopInfo.file) {
+    sourceData = await simCmd({cmd:'source', file: stopInfo.file});
+  }
+
+  render(stopInfo, regsData, sourceData, uartData);
 }
 
 async function sendCmd(cmd) {
   log(`<span style="color:#c9d1d9">(dbg) ${esc(cmd)}</span>`);
   try {
-    const r = await fetch('/cmd', {method:'POST', body:cmd});
-    if (r.ok) { const s = await r.json(); lastCycles = s.cycles; render(s); }
+    // Parse user command into protocol command
+    let cmdObj;
+    if (cmd === 'c' || cmd === 'continue') cmdObj = {cmd:'continue'};
+    else if (cmd === 's' || cmd === 'step') cmdObj = {cmd:'step'};
+    else if (cmd === 'n' || cmd === 'next') cmdObj = {cmd:'next'};
+    else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {
+      const spec = cmd.replace(/^(b|break)\s+/, '');
+      cmdObj = {cmd:'break', spec};
+    } else if (cmd.startsWith('d ') || cmd.startsWith('delete ')) {
+      const n = parseInt(cmd.replace(/^(d|delete)\s+/, ''));
+      cmdObj = {cmd:'delete', n};
+    } else {
+      log(`Unknown command: ${cmd}`);
+      return;
+    }
+    await simCmd(cmdObj);
+    await refreshUI();
   } catch(e) { log(`Error: ${e.message}`); }
 }
 
-log('Connected via HTTP polling');
-poll();
+// Initial load
+(async () => {
+  log('Connected');
+  await refreshUI();
+})();
+
 const cmdLog = document.getElementById('cmd-log');
 const cmdInput = document.getElementById('cmd-input');
 
@@ -110,53 +140,37 @@ function hex(n) { return '0x' + (n >>> 0).toString(16).padStart(8,'0'); }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
 let lastState = null;
-function render(s) {
-  lastState = s;
-  document.getElementById('hdr-func').textContent = s.function ? `${s.function}+0x${s.func_offset.toString(16)}` : '???';
-  document.getElementById('hdr-cycles').textContent = `cy ${s.cycles.toLocaleString()}`;
-  document.getElementById('hdr-pc').textContent = hex(s.pc);
-  document.getElementById('hdr-psp').textContent = hex(s.psp);
-  document.getElementById('hdr-msp').textContent = hex(s.msp);
-  document.getElementById('hdr-mode').innerHTML = `<span class="mode ${s.in_handler?'handler':'thread'}">${s.in_handler?'HANDLER':'THREAD'}</span>`;
+function render(stop, regs, source, uart) {
+  lastState = stop;
 
-  // Running indicator
-  const running = !s.stopped;
-  document.getElementById('run-indicator').style.display = running ? 'inline' : 'none';
+  // Header
+  document.getElementById('hdr-func').textContent = stop.func || '???';
+  document.getElementById('hdr-cycles').textContent = `cy ${(stop.cycles||0).toLocaleString()}`;
+  document.getElementById('hdr-pc').textContent = hex(stop.pc || 0);
+  if (regs) {
+    document.getElementById('hdr-psp').textContent = hex(regs.psp || 0);
+    document.getElementById('hdr-msp').textContent = hex(regs.msp || 0);
+  }
 
+  // Source
   const src = document.getElementById('source');
-  if (s.source && s.source.lines.length) {
-    const curLine = running ? -1 : s.source.current_line;  // don't highlight when running
-    src.innerHTML = `<div class="file">${esc(s.source.file)}</div>` +
-      s.source.lines.map(l =>
-        `<div class="src-line ${l.num===curLine?'current':''}" ${l.num===curLine?'id="cur-line"':''}>` +
-        `<span class="num">${l.num===curLine?'→':' '}${l.num}</span>${esc(l.text)}</div>`
-      ).join('');
-    if (!running) {
-      const cur = document.getElementById('cur-line');
-      if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
-    }
+  if (source && source.lines && source.lines.length) {
+    const curLine = stop.line || -1;
+    src.innerHTML = `<div class="file">${esc(source.file)}</div>` +
+      source.lines.map((text, i) => {
+        const num = i + 1;
+        return `<div class="src-line ${num===curLine?'current':''}" ${num===curLine?'id="cur-line"':''}>` +
+          `<span class="num">${num===curLine?'→':' '}${num}</span>${esc(text)}</div>`;
+      }).join('');
+    const cur = document.getElementById('cur-line');
+    if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
   } else {
     src.innerHTML = '<div style="color:#484f58;padding:20px">No source</div>';
   }
 
-  renderMemMap(s);
-  renderTimeline(s);
-
-  if (s.uart) document.getElementById('uart').textContent = s.uart;
+  // UART
+  if (uart && uart.uart) document.getElementById('uart').textContent = uart.uart;
 }
-
-// Poll UART state separately
-async function pollUart() {
-  try {
-    const r = await fetch('/uart');
-    if (r.ok) {
-      const u = await r.json();
-      if (u.uart) document.getElementById('uart').textContent = u.uart;
-    }
-  } catch(e) {}
-  setTimeout(pollUart, 300);
-}
-pollUart();
 
 // STM32F411RE address map — regions shown in the vertical bar
 const regions = [

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Web debugger for the ARM Cortex-M4 emulator.
 
-Spawns sim-core, serves HTML UI, bridges commands/state via HTTP.
+Spawns sim-core, connects via TCP, serves HTML UI.
+Browser sends commands via HTTP, sim-web forwards to sim-core over TCP.
+
 GET /       → HTML UI
-GET /state  → latest JSON state
-POST /cmd   → send command to sim-core, return new state
+GET /uart   → UART state from file
+POST /cmd   → forward command to sim-core, return response
 POST /log   → browser logs printed to terminal
 """
 
-import argparse, json, os, queue, socket, select, struct, subprocess, sys, threading
+import argparse, json, os, socket, select, subprocess, sys, threading, time
 
 def log_web(msg):
     sys.stderr.write(f'[sim-web] {msg}\n')
@@ -17,6 +19,8 @@ def log_web(msg):
 _dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_dir, "index.html")) as _f:
     HTML = _f.read()
+
+SIM_PORT = 9001
 
 def find_free_port(start=3000):
     for port in range(start, start + 100):
@@ -31,44 +35,51 @@ def find_free_port(start=3000):
     return start
 
 class WebDebugger:
-    def __init__(self, elf, port, extra_args):
+    def __init__(self, elf, dts, port, extra_args):
         self.port = port
         self.elf = elf
+        self.dts = dts
         self.extra_args = extra_args
         self.sim = None
+        self.sim_sock = None
         self.last_state = '{}'
-        self.state_queue = queue.Queue()
-        self.state_lock = threading.Lock()
 
     def start_sim(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
-        cmd = [sim_core, self.elf] + self.extra_args
-        self.sim = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    stderr=sys.stderr, bufsize=0)
+        cmd = [sim_core, self.elf, self.dts, str(SIM_PORT)] + self.extra_args
+        self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
+        # Wait for sim-core to start listening
+        for _ in range(50):
+            try:
+                self.sim_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sim_sock.connect(('127.0.0.1', SIM_PORT))
+                self.sim_sock.settimeout(60)
+                log_web(f'Connected to sim-core on port {SIM_PORT}')
+                # Read initial stop info
+                self.last_state = self._recv_line()
+                return
+            except ConnectionRefusedError:
+                time.sleep(0.1)
+        log_web('Failed to connect to sim-core')
 
-    def send_cmd(self, cmd):
-        if self.sim and self.sim.poll() is None:
-            self.sim.stdin.write((cmd + '\n').encode())
-            self.sim.stdin.flush()
+    def _recv_line(self):
+        """Read one newline-terminated JSON line from sim-core."""
+        buf = b''
+        while b'\n' not in buf:
+            chunk = self.sim_sock.recv(4096)
+            if not chunk:
+                return '{}'
+            buf += chunk
+        line = buf.split(b'\n', 1)[0]
+        return line.decode()
 
-    def drain_queue(self):
-        """Drain all queued states, keep the latest."""
-        updated = False
-        while not self.state_queue.empty():
-            self.last_state = self.state_queue.get()
-            updated = True
-        return updated
-
-    def send_cmd_and_wait(self, cmd):
-        """Send command and wait briefly for new state."""
-        self.send_cmd(cmd)
-        # Wait up to 2s for response
-        for _ in range(40):
-            import time; time.sleep(0.05)
-            if self.drain_queue():
-                return self.last_state
-        return self.last_state
+    def send_command(self, cmd_json):
+        """Send a command to sim-core and return the response."""
+        self.sim_sock.sendall((cmd_json + '\n').encode())
+        resp = self._recv_line()
+        self.last_state = resp
+        return resp
 
     def http_response(self, conn, status, content_type, body):
         if isinstance(body, str): body = body.encode()
@@ -83,29 +94,14 @@ class WebDebugger:
     def run(self):
         self.start_sim()
 
-        # Read initial state synchronously
-        line = self.sim.stdout.readline()
-        if line:
-            self.last_state = line.decode().strip()
-
-        # Reader thread: sim-core stdout → queue
-        def reader():
-            while self.sim and self.sim.poll() is None:
-                line = self.sim.stdout.readline()
-                if line:
-                    self.state_queue.put(line.decode().strip())
-        threading.Thread(target=reader, daemon=True).start()
-
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         srv.bind(('', self.port))
         srv.listen(5)
         srv.setblocking(False)
         log_web(f'Debugger: http://localhost:{self.port}')
-        log_web(f'Initial state: {len(self.last_state)} bytes')
 
         while True:
-            self.drain_queue()
             try:
                 readable, _, _ = select.select([srv], [], [], 0.1)
             except:
@@ -120,13 +116,8 @@ class WebDebugger:
                     continue
                 lines = data.split('\r\n')
                 req = lines[0] if lines else ''
-                log_web(f'Request: {req[:60]}')
 
-                if req.startswith('GET /state'):
-                    self.drain_queue()
-                    self.http_response(conn, '200 OK', 'application/json', self.last_state)
-
-                elif req.startswith('GET /uart'):
+                if req.startswith('GET /uart'):
                     try:
                         with open('/tmp/sim-state/uart.json', 'r') as uf:
                             self.http_response(conn, '200 OK', 'application/json', uf.read())
@@ -137,16 +128,12 @@ class WebDebugger:
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     cmd = body.strip()
                     log_web(f'CMD: {cmd}')
-                    if cmd in ('c', 'continue'):
-                        # Non-blocking: send command, return current state immediately
-                        # sim-core will stream states as it runs
-                        self.send_cmd(cmd)
-                        import time; time.sleep(0.05)
-                        self.drain_queue()
-                        self.http_response(conn, '200 OK', 'application/json', self.last_state)
-                    else:
-                        state = self.send_cmd_and_wait(cmd)
-                        self.http_response(conn, '200 OK', 'application/json', state)
+                    try:
+                        resp = self.send_command(cmd)
+                        self.http_response(conn, '200 OK', 'application/json', resp)
+                    except Exception as e:
+                        log_web(f'Error: {e}')
+                        self.http_response(conn, '500 Error', 'application/json', '{"error":"sim-core disconnected"}')
 
                 elif req.startswith('POST /log'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
@@ -155,7 +142,10 @@ class WebDebugger:
                     self.http_response(conn, '200 OK', 'text/plain', '')
 
                 elif req.startswith('GET'):
-                    self.http_response(conn, '200 OK', 'text/html; charset=utf-8', HTML)
+                    html_bytes = HTML.encode()
+                    resp = f'HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\nContent-Length: {len(html_bytes)}\r\n\r\n'
+                    conn.sendall(resp.encode() + html_bytes)
+                    conn.close()
 
                 else:
                     conn.close()
@@ -163,11 +153,12 @@ class WebDebugger:
 def main():
     p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator + Web Debugger')
     p.add_argument('elf', help='Firmware ELF file')
+    p.add_argument('dts', help='Board device tree source file')
     p.add_argument('--port', type=int, default=0, help='HTTP port (default: auto)')
     args, extra = p.parse_known_args()
 
     port = args.port if args.port else find_free_port()
-    dbg = WebDebugger(args.elf, port, extra)
+    dbg = WebDebugger(args.elf, args.dts, port, extra)
     try:
         dbg.run()
     except KeyboardInterrupt:
