@@ -56,19 +56,29 @@ static int n_elf_sections;
 /* Compilation directory from DWARF (DW_AT_comp_dir) */
 char elf_comp_dir[512] = "";
 
-/* Local variable info for print command */
-#define MAX_VARS 256
+/* Scoped variable info — mirrors DWARF's scope tree */
+#define MAX_SCOPES 256
+#define MAX_VARS 512
+
 struct var_info {
     char name[32];
-    uint32_t func_low;
-    uint32_t func_high;
-    uint32_t cu_base;    /* CU's low_pc for offset_pair base */
+    int scope_idx;       /* index into scopes[] */
+    uint32_t cu_base;
     int is_const;
     uint32_t const_val;
     uint32_t loc_offset;
-    int has_loc;
-    uint32_t type_die;   /* DIE offset of variable's type */
+    int has_loc;         /* 0=none, 1=loclist, 2=reg, 3=fbreg */
+    uint32_t type_die;
 };
+
+struct scope_info {
+    uint32_t low_pc;
+    uint32_t high_pc;
+    int parent;          /* parent scope index, -1 for global */
+};
+
+static struct scope_info scopes[MAX_SCOPES];
+static int nscopes = 0;
 static struct var_info vars[MAX_VARS];
 static int nvars = 0;
 
@@ -656,8 +666,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
         }
 
         /* Extract local variables from subprograms */
-        uint32_t cur_func_low = 0, cur_func_high = 0;
-        /* Find CU's low_pc (first compile_unit DIE) */
+        /* Find CU's low_pc */
         uint32_t cu_low_pc = 0;
         for (int i = 0; i < ndies; i++) {
             if (dies[i].tag == DW_TAG_compile_unit && dies[i].low_pc) {
@@ -665,19 +674,54 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 break;
             }
         }
+
+        /* Build scope tree and extract variables */
+        /* Global scope for this CU */
+        int global_scope = -1;
+        if (nscopes < MAX_SCOPES) {
+            global_scope = nscopes;
+            scopes[nscopes++] = (struct scope_info){0, 0xFFFFFFFF, -1};
+        }
+
+        int scope_stack[32];
+        int scope_depth = 0;
+        scope_stack[0] = global_scope;
+
         for (int i = 0; i < ndies; i++) {
-            if (dies[i].tag == 0x2E) { /* DW_TAG_subprogram */
-                cur_func_low = dies[i].low_pc;
-                cur_func_high = dies[i].has_high_pc ?
-                    (dies[i].high_pc < 0x1000 ? dies[i].low_pc + dies[i].high_pc : dies[i].high_pc) : 0;
+            uint16_t tag = dies[i].tag;
+
+            /* Track scope nesting */
+            if (tag == 0x2E || tag == 0x0B) { /* subprogram or lexical_block */
+                uint32_t lo = dies[i].low_pc;
+                uint32_t hi = dies[i].has_high_pc ?
+                    (dies[i].high_pc < 0x1000 ? lo + dies[i].high_pc : dies[i].high_pc) : 0;
+                if (lo && hi && nscopes < MAX_SCOPES) {
+                    int parent = scope_depth > 0 ? scope_stack[scope_depth] : global_scope;
+                    int idx = nscopes;
+                    scopes[nscopes++] = (struct scope_info){lo, hi, parent};
+                    if (scope_depth < 31) scope_stack[++scope_depth] = idx;
+                }
             }
-            if ((dies[i].tag == DW_TAG_variable || dies[i].tag == 0x05)
-                && dies[i].name && nvars < MAX_VARS) {
+
+            /* Pop scopes that ended (heuristic: if current DIE is a new subprogram, reset) */
+            if (tag == 0x2E && scope_depth > 0) {
+                scope_depth = 0; /* reset to global for new function */
+                uint32_t lo = dies[i].low_pc;
+                uint32_t hi = dies[i].has_high_pc ?
+                    (dies[i].high_pc < 0x1000 ? lo + dies[i].high_pc : dies[i].high_pc) : 0;
+                if (lo && hi && nscopes < MAX_SCOPES) {
+                    int idx = nscopes;
+                    scopes[nscopes++] = (struct scope_info){lo, hi, global_scope};
+                    scope_stack[++scope_depth] = idx;
+                }
+            }
+
+            /* Extract variables */
+            if ((tag == DW_TAG_variable || tag == 0x05) && dies[i].name && nvars < MAX_VARS) {
                 struct var_info *v = &vars[nvars++];
                 strncpy(v->name, dies[i].name, 31); v->name[31] = '\0';
-                v->func_low = cur_func_low ? cur_func_low : 0;
+                v->scope_idx = scope_depth > 0 ? scope_stack[scope_depth] : global_scope;
                 v->cu_base = cu_low_pc;
-                v->func_high = cur_func_low ? cur_func_high : 0xFFFFFFFF;
                 v->is_const = dies[i].has_const;
                 v->const_val = dies[i].const_val;
                 v->loc_offset = dies[i].loc_offset;
@@ -902,15 +946,41 @@ uint32_t next_line_addr(uint32_t pc)
 /* ── Breakpoint resolver ── */
 
 /* Get the type DIE offset for a variable at the given PC */
-uint32_t var_type_die(const char *name, uint32_t pc)
-
+/* Check if PC is within a scope */
+static int pc_in_scope(int scope_idx, uint32_t pc)
 {
-    for (int i = 0; i < nvars; i++) {
-        if (strcmp(vars[i].name, name) != 0) continue;
-        if (pc < vars[i].func_low || pc >= vars[i].func_high) continue;
-        return vars[i].type_die;
+    if (scope_idx < 0 || scope_idx >= nscopes) return 0;
+    return pc >= scopes[scope_idx].low_pc && pc < scopes[scope_idx].high_pc;
+}
+
+/* Find variable by name, searching innermost scope first */
+static struct var_info *find_var_in_scope(const char *name, uint32_t pc)
+{
+    /* Collect scopes containing PC, innermost first (highest index = most recently added) */
+    int best_var = -1;
+    int best_depth = -1;
+
+    for (int v = 0; v < nvars; v++) {
+        if (strcmp(vars[v].name, name) != 0) continue;
+        int si = vars[v].scope_idx;
+        if (!pc_in_scope(si, pc)) continue;
+
+        /* Count depth: how many ancestors does this scope have? */
+        int depth = 0;
+        for (int s = si; s >= 0 && depth < 30; s = scopes[s].parent) depth++;
+
+        if (depth > best_depth) {
+            best_depth = depth;
+            best_var = v;
+        }
     }
-    return 0;
+    return best_var >= 0 ? &vars[best_var] : NULL;
+}
+
+uint32_t var_type_die(const char *name, uint32_t pc)
+{
+    struct var_info *v = find_var_in_scope(name, pc);
+    return v ? v->type_die : 0;
 }
 
 uint32_t type_deref(uint32_t type_die)
@@ -962,18 +1032,16 @@ uint32_t type_array_elem(uint32_t array_type_die, uint32_t *elem_size_out)
  *          3 = memory address (val_out) */
 int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
 {
-    for (int i = 0; i < nvars; i++) {
-        struct var_info *v = &vars[i];
-        if (strcmp(v->name, name) != 0) continue;
-        if (pc < v->func_low || pc >= v->func_high) continue;
+    struct var_info *v = find_var_in_scope(name, pc);
+    if (!v) return 0;
 
-        /* Constant value */
-        if (v->is_const) {
-            *val_out = v->const_val;
-            return 2;
-        }
+    /* Constant value */
+    if (v->is_const) {
+        *val_out = v->const_val;
+        return 2;
+    }
 
-        /* Simple register (from inline exprloc) */
+    /* Simple register (from inline exprloc) */
         if (v->has_loc == 2) {
             *reg_out = v->loc_offset;
             return 1;
@@ -1061,9 +1129,7 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
                 break; /* unknown entry, bail */
             }
         }
-        return 0; /* found variable but can't resolve location */
-    }
-    return 0; /* not found */
+    return 0; /* can't resolve location */
 }
 
 /* Follow type chain through typedefs, const, volatile to the real type */
