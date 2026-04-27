@@ -331,9 +331,26 @@ static void handle_command(int fd, struct board *b, const char *line)
 
             } else if (*p == '[') {
                 p++;
-                int idx = atoi(p);
-                while (*p && *p != ']') p++;
+                /* Parse index: literal number or variable name */
+                char idx_expr[32]; int ii = 0;
+                while (*p && *p != ']' && ii < 31) idx_expr[ii++] = *p++;
+                idx_expr[ii] = '\0';
                 if (*p == ']') p++;
+
+                int idx = atoi(idx_expr);
+                if (idx == 0 && idx_expr[0] != '0') {
+                    /* Not a number — try as variable */
+                    int vreg; uint32_t vval;
+                    int vloc = var_lookup(idx_expr, b->cpu.r[REG_PC], &vreg, &vval);
+                    if (vloc == 1) idx = (int)b->cpu.r[vreg];
+                    else if (vloc == 2) idx = (int)vval;
+                    else if (vloc == 3) {
+                        uint32_t a = b->cpu.r[REG_SP] + vval;
+                        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE)
+                            idx = (int)*(uint32_t*)(b->ram + (a - RAM_BASE));
+                    }
+                }
+
                 uint32_t elem_size;
                 uint32_t elem_type = type_array_elem(cur_type, &elem_size);
                 if (elem_type) {
