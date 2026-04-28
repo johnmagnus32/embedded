@@ -35,9 +35,8 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 
     int si_idx = spi_bus_attach(&b->soc.spis[0].bus, &display, ili9341_transfer);
     if (si_idx >= 0) {
-        /* CS pin: GPIOA pin 4 */
-        b->soc.gpio[0].out[4].handler = spi_slave_cs_handler;
-        b->soc.gpio[0].out[4].opaque = &b->soc.spis[0].bus.slaves[si_idx];
+        /* Firmware doesn't drive CS — default to always selected */
+        b->soc.spis[0].bus.slaves[si_idx].cs_active = 1;
     }
     /* DC pin: GPIOA pin 3 */
     b->soc.gpio[0].out[3].handler = ili9341_set_dc;
