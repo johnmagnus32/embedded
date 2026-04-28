@@ -98,6 +98,7 @@ async function refreshUI(stopInfo) {
   }
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
+  lastMemmap = memmap;
   // Fetch trace async (don't block command flow)
   fetch('/trace').then(r => r.json()).then(data => {
     if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
@@ -168,6 +169,7 @@ function hex(n) { return '0x' + (n >>> 0).toString(16).padStart(8,'0'); }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
 let lastState = null;
+let lastMemmap = null;
 function render(stop, regs, source, uart) {
   lastState = stop;
 
@@ -549,7 +551,7 @@ function zoomToRegion(addr, size) {
   const neededZoom = 0.8 / targetFraction;
   memZoom = Math.max(1, Math.min(5000, neededZoom));
 
-  if (lastState) renderMemMap(lastState);
+  if (lastMemmap) renderMemMap(lastMemmap);
 
   // Now scroll to center the section
   // Find the y position of this address in the new SVG
@@ -585,7 +587,7 @@ memEl.addEventListener('wheel', (e) => {
   const delta = e.deltaY < 0 ? 1.05 : 1/1.05;
   memZoom = Math.max(1, Math.min(5000, memZoom * delta));
 
-  if (lastState) renderMemMap(lastState);
+  if (lastMemmap) renderMemMap(lastMemmap);
 
   const newH = memEl.scrollHeight;
   const newMouseY = frac * newH;
