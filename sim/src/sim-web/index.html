@@ -54,14 +54,14 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
       </div>
     </div>
   </div>
-  <!-- Right: Memory Map + Timeline + UART -->
+  <!-- Right: Memory + Timeline + UART -->
   <div style="flex:2;display:flex;flex-direction:column;overflow:hidden;min-width:250px;">
     <div class="panel" id="mem-panel" style="flex:1;">
-      <h2>Memory Map</h2>
+      <h2>Memory</h2>
       <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
     </div>
     <div class="panel" id="timeline-panel" style="height:140px;min-height:100px;">
-      <h2>TraceAnalyzer</h2>
+      <h2>Trace Timeline</h2>
       <div id="timeline-bars" class="panel-body" style="padding:2px;overflow-x:auto;overflow-y:hidden;flex:1;"></div>
       <div id="timeline-stats" style="padding:2px 6px;border-top:1px solid #30363d;font-size:10px;flex-shrink:0;"></div>
     </div>
@@ -204,16 +204,7 @@ function render(stop, regs, source, uart) {
 
 // STM32F411RE address map — regions shown in the vertical bar
 const regions = [
-  { name:'Flash',        base:0x08000000, size:512*1024,  color:'#8b949e' },
-  { name:'System ROM',   base:0x1FFF0000, size:0x7A10,    color:'#8b949e' },
   { name:'SRAM',         base:0x20000000, size:128*1024,  color:'#8b949e' },
-  { name:'APB1',         base:0x40000000, size:0x6800,    color:'#8b949e' },
-  { name:'APB2',         base:0x40010000, size:0x6C00,    color:'#8b949e' },
-  { name:'AHB1',         base:0x40020000, size:0x3C00,    color:'#8b949e' },
-  { name:'AHB2 (USB)',   base:0x50000000, size:0x60C00,   color:'#8b949e' },
-  { name:'ITM/DWT/TPIU', base:0xE0000000, size:0x42000,   color:'#8b949e' },
-  { name:'SysTick+NVIC', base:0xE000E000, size:0x1000,    color:'#8b949e' },
-  { name:'SCB/MPU/FPU',  base:0xE000ED00, size:0x300,     color:'#8b949e' },
 ];
 
 const ctxColors = {
