@@ -189,11 +189,6 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         case 1: { /* CMP */
             uint64_t res = (uint64_t)c->r[rd] - imm8;
             set_nzcv_sub(c, c->r[rd], imm8, res);
-            if (rd == 4 && imm8 == 9) {
-                static FILE *df = NULL;
-                if (!df) df = fopen("/tmp/cmp_debug.txt", "w");
-                if (df) { fprintf(df, "CMP r4=%u, #9 at 0x%08X -> xpsr=0x%08X\n", c->r[rd], pc, c->xpsr); fflush(df); }
-            }
             break;
         }
         case 2: { /* ADD */
@@ -491,13 +486,6 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         if (cond_check(c, cond)) {
             int32_t offset = (int8_t)(insn & 0xFF);
             c->r[REG_PC] = pc + 4 + (offset << 1);
-        } else if (pc == 0x08000218) {
-            static FILE *dbgf = NULL;
-            if (!dbgf) dbgf = fopen("/tmp/bgt_debug.txt", "w");
-            if (dbgf) { fprintf(dbgf, "BGT not taken: r4=%d xpsr=0x%08X N=%d Z=%d C=%d V=%d it_state=0x%02X\n",
-                (int32_t)c->r[4], c->xpsr,
-                (c->xpsr>>31)&1, (c->xpsr>>30)&1, (c->xpsr>>29)&1, (c->xpsr>>28)&1, c->it_state);
-                fflush(dbgf); }
         }
         return 0;
     }
@@ -771,7 +759,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         case 0x4: c->r[rd] = c->r[rn] ^ imm; break; /* EOR */
         case 0x8: { uint64_t r = (uint64_t)c->r[rn] + imm; if (s) set_nzcv_add(c, c->r[rn], imm, r); if (rd != 15) c->r[rd] = (uint32_t)r; break; } /* ADD / CMN */
         case 0xA: { uint64_t r = (uint64_t)c->r[rn] - imm; if (s) set_nzcv_sub(c, c->r[rn], imm, r); c->r[rd] = (uint32_t)r; break; } /* SUB */
-        case 0xD: { uint64_t r = (uint64_t)c->r[rn] - imm; if (s) set_nzcv_sub(c, c->r[rn], imm, r); break; } /* CMP */
+        case 0xD: { uint64_t r = (uint64_t)c->r[rn] - imm; if (rd != 15) c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, c->r[rn], imm, r); break; } /* SUB / CMP */
         case 0xE: { uint64_t r = (uint64_t)imm - c->r[rn]; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, imm, c->r[rn], r); break; } /* RSB */
         default: c->r[rd] = imm; break;
         }
@@ -965,8 +953,14 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         case 0x3: c->r[rd] = (rn == 15) ? ~val : c->r[rn] | ~val; break; /* ORN / MVN */
         case 0x4: c->r[rd] = c->r[rn] ^ val; break;  /* EOR */
         case 0x8: { uint64_t r = (uint64_t)c->r[rn] + val; c->r[rd] = (uint32_t)r; if (s) set_nzcv_add(c, c->r[rn], val, r); break; } /* ADD */
-        case 0xA: { uint64_t r = (uint64_t)c->r[rn] - val; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, c->r[rn], val, r); break; } /* SUB */
-        case 0xD: { uint64_t r = (uint64_t)c->r[rn] - val; if (s) set_nzcv_sub(c, c->r[rn], val, r); break; } /* CMP */
+        case 0xA: { uint64_t r = (uint64_t)c->r[rn] - val; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, c->r[rn], val, r);
+            if (pc == 0x0800022E) { /* sub.w in print_int */
+                static FILE *sf = NULL;
+                if (!sf) sf = fopen("/tmp/sub_debug.txt", "w");
+                if (sf) { fprintf(sf, "SUB.W r%d = r%d(%u) - r%d_shifted(%u) = %u\n", rd, rn, c->r[rn]+(uint32_t)val, rm, (uint32_t)val, c->r[rd]); fflush(sf); }
+            }
+            break; } /* SUB */
+        case 0xD: { uint64_t r = (uint64_t)c->r[rn] - val; if (rd != 15) c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, c->r[rn], val, r); break; } /* SUB / CMP */
         case 0xE: { uint64_t r = (uint64_t)val - c->r[rn]; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, val, c->r[rn], r); break; } /* RSB */
         default: c->r[rd] = val; break;
         }

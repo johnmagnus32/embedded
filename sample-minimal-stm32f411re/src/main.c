@@ -104,9 +104,7 @@ static void task_a(void)
     int count = 0;
     while (1) {
         uart_print("a:");
-        if (count >= 100) uart_poll_out(uart, '0' + (count / 100) % 10);
-        if (count >= 10)  uart_poll_out(uart, '0' + (count / 10) % 10);
-        uart_poll_out(uart, '0' + count % 10);
+        print_int(count);
         uart_print("\n");
         count++;
         sched_sleep_ms(1000);
@@ -118,9 +116,7 @@ static void task_b(void)
     int count = 0;
     while (1) {
         uart_print("b:");
-        if (count >= 100) uart_poll_out(uart, '0' + (count / 100) % 10);
-        if (count >= 10)  uart_poll_out(uart, '0' + (count / 10) % 10);
-        uart_poll_out(uart, '0' + count % 10);
+        print_int(count);
         uart_print("\n");
         count++;
         sched_sleep_ms(1000);
