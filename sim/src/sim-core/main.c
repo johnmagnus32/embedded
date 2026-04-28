@@ -172,8 +172,7 @@ static void poll_gpio(int fd, struct sim_ctx *ctx)
                         armv7m_nvic_set_pending(ctx->nvic, 16 + 6 + pin);
                 }
             }
-            /* Send response */
-            write(fd, "{\"ok\":true}\n", 12);
+            /* No response — sim-web already replied to the HTTP request */
         }
         int rem = glen - (nl - gbuf + 1);
         memmove(gbuf, nl + 1, rem);
