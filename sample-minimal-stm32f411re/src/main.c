@@ -170,6 +170,14 @@ static void task_c(void)
         obs_gap[i] = 20 + (rng() % 20);
     }
 
+    /* Draw background once */
+    lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
+    lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
+
+    int old_player_y = player_y;
+    int old_obs_x[MAX_OBS];
+    for (int i = 0; i < MAX_OBS; i++) old_obs_x[i] = obs_x[i];
+
     while (1) {
         /* Input */
         if (btn_pressed() && on_ground) {
@@ -186,28 +194,36 @@ static void task_c(void)
             on_ground = 1;
         }
 
-        /* Clear: sky + ground */
-        lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
-        lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
+        /* Erase old player */
+        if (old_player_y < GROUND_Y)
+            lcd_fill_rect(PLAYER_X, old_player_y, PLAYER_W, PLAYER_H, RGB565(30, 30, 50));
 
-        /* Draw + move obstacles */
+        /* Erase + move + draw obstacles */
         for (int i = 0; i < MAX_OBS; i++) {
+            /* Erase old position */
+            if (old_obs_x[i] >= 0 && old_obs_x[i] < SCR_W) {
+                int oh = obs_gap[i];
+                lcd_fill_rect(old_obs_x[i], GROUND_Y - oh, OBS_W, oh, RGB565(30, 30, 50));
+                lcd_fill_rect(old_obs_x[i], GROUND_Y, OBS_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
+            }
             obs_x[i] -= SCROLL_SPEED;
             if (obs_x[i] < -OBS_W) {
                 obs_x[i] = SCR_W + (rng() % 100);
                 obs_gap[i] = 20 + (rng() % 20);
                 score++;
             }
+            /* Draw new position */
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W) {
                 int oh = obs_gap[i];
                 lcd_fill_rect(obs_x[i], GROUND_Y - oh, OBS_W, oh, RED);
             }
+            old_obs_x[i] = obs_x[i];
         }
 
         /* Draw player */
         lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
-        /* Eyes */
         lcd_fill_rect(PLAYER_X + 10, player_y + 4, 3, 3, BLACK);
+        old_player_y = player_y;
 
         /* Score bar */
         int bar_w = score * 4;
