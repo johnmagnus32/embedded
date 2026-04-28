@@ -8,7 +8,7 @@
 #include "cpu.h"
 #include "elf_sym.h"
 #include "state.h"
-#include "board.h"
+#include "gameboy.h"
 
 static char state_path[256];
 char src_search_dir[256];

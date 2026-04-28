@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "board.h"
+#include "gameboy.h"
 #include "membus.h"
 #include "chardev.h"
 #include "elf_sym.h"
@@ -21,7 +21,7 @@
 static uint32_t breakpoints[32];
 static int nbp = 0;
 
-static int check_breakpoint(struct board *b)
+static int check_breakpoint(struct gameboy *b)
 {
     uint32_t pc = b->soc.cpu.r[REG_PC];
     for (int i = 0; i < nbp; i++)
@@ -29,9 +29,9 @@ static int check_breakpoint(struct board *b)
     return 0;
 }
 
-static void run_until_bp(struct board *b)
+static void run_until_bp(struct gameboy *b)
 {
-    do { board_tick(b); } while (!check_breakpoint(b));
+    do { gameboy_tick(b); } while (!check_breakpoint(b));
 }
 
 static void send_response(int fd, const char *json)
@@ -40,7 +40,7 @@ static void send_response(int fd, const char *json)
     write(fd, "\n", 1);
 }
 
-static void send_stop_info(int fd, struct board *b)
+static void send_stop_info(int fd, struct gameboy *b)
 {
     uint32_t pc = b->soc.cpu.r[REG_PC];
     uint32_t off;
@@ -54,7 +54,7 @@ static void send_stop_info(int fd, struct board *b)
     send_response(fd, buf);
 }
 
-static void send_regs(int fd, struct board *b)
+static void send_regs(int fd, struct gameboy *b)
 {
     char buf[512];
     int n = snprintf(buf, sizeof(buf), "{\"regs\":[");
@@ -65,7 +65,7 @@ static void send_regs(int fd, struct board *b)
     send_response(fd, buf);
 }
 
-static void send_mem(int fd, struct board *b, uint32_t addr, int len)
+static void send_mem(int fd, struct gameboy *b, uint32_t addr, int len)
 {
     if (len > 1024) len = 1024;
     char buf[4096];
@@ -109,7 +109,7 @@ static void send_source(int fd, const char *file)
     send_response(fd, buf);
 }
 
-static void handle_command(int fd, struct board *b, const char *line)
+static void handle_command(int fd, struct gameboy *b, const char *line)
 {
     const char *cmd = strstr(line, "\"cmd\":\"");
     if (!cmd) return;
@@ -129,7 +129,7 @@ static void handle_command(int fd, struct board *b, const char *line)
     } else if (strncmp(cmd, "step\"", 5) == 0) {
         int orig_line; line_lookup(b->soc.cpu.r[REG_PC], &orig_line);
         do {
-            board_tick(b);
+            gameboy_tick(b);
             int cur_line; line_lookup(b->soc.cpu.r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
@@ -146,7 +146,7 @@ static void handle_command(int fd, struct board *b, const char *line)
                 run_until_bp(b);
                 nbp = old_nbp;
             } else {
-                board_tick(b);
+                gameboy_tick(b);
             }
             int cur_line; line_lookup(b->soc.cpu.r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
@@ -154,12 +154,12 @@ static void handle_command(int fd, struct board *b, const char *line)
         send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "continue\"", 9) == 0) {
-        do { board_tick(b); } while (!check_breakpoint(b));
+        do { gameboy_tick(b); } while (!check_breakpoint(b));
         send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
         cpu_reset(&b->soc.cpu, &b->soc.bus);
-        do { board_tick(b); } while (!check_breakpoint(b));
+        do { gameboy_tick(b); } while (!check_breakpoint(b));
         send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "break\"", 6) == 0) {
@@ -445,8 +445,8 @@ int main(int argc, char **argv)
     chardev_listen_all(&chardevs);
 
     /* Create board */
-    struct board board;
-    board_init(&board, &chardevs);
+    struct gameboy board;
+    gameboy_init(&board, &chardevs);
 
     /* Load firmware */
     if (elf_load(elf_path, board.soc.flash, board.soc.ram) != 0) {

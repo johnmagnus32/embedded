@@ -7,9 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "board.h"
+#include "gameboy.h"
 
-void board_init(struct board *b, struct chardev_table *chardevs)
+void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 {
     stm32f411_init(&b->soc);
     b->display = NULL;
@@ -46,7 +46,7 @@ void board_init(struct board *b, struct chardev_table *chardevs)
     fprintf(stderr, "[board] ILI9341 on SPI1, DC=PA3, CS=PA4\n");
 }
 
-void board_tick(struct board *b)
+void gameboy_tick(struct gameboy *b)
 {
     stm32f411_tick(&b->soc);
 }
