@@ -386,13 +386,14 @@ function renderMemMap(s) {
             labeledAddrs.add(sec.addr);
         }
 
+        const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
+
         for (let i = 0; i < tasks.length; i++) {
           const t = tasks[i];
           if (!t.stack_bot || !t.stack_top) continue;
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
           const col = t.active ? '#c9d1d9' : '#484f58';
           const spCol = '#7ee787';
-          const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
 
           const sy0 = addrToY(t.stack_top);
           const sy1 = addrToY(t.stack_bot);
