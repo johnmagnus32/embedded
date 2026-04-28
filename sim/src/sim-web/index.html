@@ -315,7 +315,7 @@ async function _doRefreshDisplay() {
     const ctx = canvas.getContext('2d');
     const img = ctx.createImageData(w, h);
     for (let i = 0; i < w * h; i++) {
-      const rgb565 = (src[i*2] << 8) | src[i*2+1];
+      const rgb565 = src[i*2] | (src[i*2+1] << 8);
       img.data[i*4]   = (rgb565 >> 8) & 0xF8;
       img.data[i*4+1] = (rgb565 >> 3) & 0xFC;
       img.data[i*4+2] = (rgb565 << 3) & 0xF8;
