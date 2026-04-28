@@ -29,6 +29,10 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .header-bar { background:#161b22; padding:4px 10px; border-bottom:1px solid #30363d;
               display:flex; align-items:center; gap:15px; font-size:11px; flex-shrink:0; }
 .cyc { color:#484f58; }
+.resize-h { width:4px; cursor:col-resize; background:transparent; flex-shrink:0; }
+.resize-h:hover, .resize-h.active { background:#30363d; }
+.resize-v { height:4px; cursor:row-resize; background:transparent; flex-shrink:0; }
+.resize-v:hover, .resize-v.active { background:#30363d; }
 </style>
 </head>
 <body>
@@ -42,11 +46,12 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 </div>
 <div style="display:flex;flex:1;overflow:hidden;">
   <!-- Left: Source + Debugger -->
-  <div style="flex:3;display:flex;flex-direction:column;overflow:hidden;">
+  <div id="col-left" style="flex:3;display:flex;flex-direction:column;overflow:hidden;">
     <div class="panel" id="source-panel" style="flex:1;">
       <h2>Source</h2>
       <div class="panel-body" id="source"></div>
     </div>
+    <div class="resize-v" data-above="source-panel" data-below="cmd-panel"></div>
     <div class="panel" id="cmd-panel" style="height:200px;min-height:120px;">
       <h2>Debugger</h2>
       <div class="panel-body" style="display:flex;flex-direction:column;padding:4px 8px;">
@@ -55,17 +60,20 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
       </div>
     </div>
   </div>
+  <div class="resize-h" id="col-resize"></div>
   <!-- Right: Memory + Timeline + UART -->
-  <div style="flex:2;display:flex;flex-direction:column;overflow:hidden;min-width:250px;">
+  <div id="col-right" style="flex:2;display:flex;flex-direction:column;overflow:hidden;min-width:250px;">
     <div class="panel" id="mem-panel" style="flex:1;">
       <h2>Memory</h2>
       <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
     </div>
+    <div class="resize-v" data-above="mem-panel" data-below="timeline-panel"></div>
     <div class="panel" id="timeline-panel" style="height:140px;min-height:100px;">
       <h2>Trace Timeline</h2>
       <div id="timeline-bars" class="panel-body" style="padding:2px;overflow-x:auto;overflow-y:hidden;flex:1;"></div>
       <div id="timeline-stats" style="padding:2px 6px;border-top:1px solid #30363d;font-size:10px;flex-shrink:0;"></div>
     </div>
+    <div class="resize-v" data-above="timeline-panel" data-below="uart-panel"></div>
     <div class="panel" id="uart-panel" style="height:200px;min-height:100px;">
       <h2>UART Console</h2>
       <div class="panel-body" id="uart" style="overflow-y:auto"></div>
@@ -565,6 +573,61 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'F10') { sendCmd('n'); e.preventDefault(); }
   if (e.key === 'F11') { sendCmd('s'); e.preventDefault(); }
 });
+
+// Panel resize handles
+document.querySelectorAll('.resize-v').forEach(handle => {
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const above = document.getElementById(handle.dataset.above);
+    const below = document.getElementById(handle.dataset.below);
+    if (!above || !below) return;
+    handle.classList.add('active');
+    const startY = e.clientY;
+    const aboveH = above.offsetHeight;
+    const belowH = below.offsetHeight;
+    const onMove = (e) => {
+      const dy = e.clientY - startY;
+      const newAbove = Math.max(60, aboveH + dy);
+      const newBelow = Math.max(60, belowH - dy);
+      above.style.flex = 'none'; above.style.height = newAbove + 'px';
+      below.style.flex = 'none'; below.style.height = newBelow + 'px';
+    };
+    const onUp = () => {
+      handle.classList.remove('active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+});
+
+const colResize = document.getElementById('col-resize');
+if (colResize) {
+  colResize.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    colResize.classList.add('active');
+    const left = document.getElementById('col-left');
+    const right = document.getElementById('col-right');
+    const startX = e.clientX;
+    const leftW = left.offsetWidth;
+    const rightW = right.offsetWidth;
+    const onMove = (e) => {
+      const dx = e.clientX - startX;
+      const newLeft = Math.max(200, leftW + dx);
+      const newRight = Math.max(200, rightW - dx);
+      left.style.flex = 'none'; left.style.width = newLeft + 'px';
+      right.style.flex = 'none'; right.style.width = newRight + 'px';
+    };
+    const onUp = () => {
+      colResize.classList.remove('active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+}
 </script>
 </body>
 </html>
