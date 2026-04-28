@@ -1004,6 +1004,9 @@ uint32_t type_byte_size(uint32_t type_die)
     struct type_info *t = resolve_type(type_die);
     if (!t) return 4;
     if (t->byte_size) return t->byte_size;
+    if (t->tag == 0x01 && t->array_count && t->type_ref) { /* array */
+        return t->array_count * type_byte_size(t->type_ref);
+    }
     if (t->tag == 0x0F) return 4; /* pointer */
     return 4;
 }
