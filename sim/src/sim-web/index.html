@@ -62,7 +62,8 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     </div>
     <div class="panel" id="timeline-panel" style="height:140px;min-height:100px;">
       <h2>TraceAnalyzer</h2>
-      <div class="panel-body" id="timeline" style="padding:2px;overflow-x:auto;overflow-y:hidden;"></div>
+      <div id="timeline-bars" class="panel-body" style="padding:2px;overflow-x:auto;overflow-y:hidden;flex:1;"></div>
+      <div id="timeline-stats" style="padding:2px 6px;border-top:1px solid #30363d;font-size:10px;flex-shrink:0;"></div>
     </div>
     <div class="panel" id="uart-panel" style="height:200px;min-height:100px;">
       <h2>UART Console</h2>
@@ -228,13 +229,13 @@ function ctxColor(name) {
 let tlZoom = 1;
 let tlOffset = 0;
 
-// Ensure scheduler gets a distinct color
 ctxColors['scheduler'] = '#f0883e';
 
 function renderTimeline(s) {
-  const el = document.getElementById('timeline');
+  const barsEl = document.getElementById('timeline-bars');
+  const statsEl = document.getElementById('timeline-stats');
   const tl = s.timeline || [];
-  if (tl.length < 1) { el.innerHTML = '<span style="color:#484f58;padding:8px">No trace events yet</span>'; return; }
+  if (tl.length < 1) { barsEl.innerHTML = '<span style="color:#484f58;padding:8px">No trace events yet</span>'; statsEl.innerHTML = ''; return; }
 
   const spans = [];
   for (let i = 0; i < tl.length; i++) {
@@ -242,21 +243,16 @@ function renderTimeline(s) {
     const nextCy = (i+1 < tl.length && tl[i+1].cy) ? tl[i+1].cy : (s.cycles || tl[i].cy + 1000);
     spans.push({ ctx: tl[i].ctx, start: tl[i].cy, duration: nextCy - tl[i].cy });
   }
-  if (!spans.length) { el.innerHTML = '<span style="color:#484f58;padding:8px">No trace events yet</span>'; return; }
+  if (!spans.length) { barsEl.innerHTML = '<span style="color:#484f58;padding:8px">No trace events yet</span>'; statsEl.innerHTML = ''; return; }
 
   const totalCycles = spans.reduce((a, s) => a + s.duration, 0);
-  const pxPerCycle = Math.max(0.001, (el.clientWidth * tlZoom) / totalCycles);
+  const pxPerCycle = Math.max(0.001, (barsEl.clientWidth * tlZoom) / totalCycles);
   const totalW = Math.ceil(totalCycles * pxPerCycle);
 
-  // Tooltip element
   const tipId = 'tl-tooltip';
-
-  // Bars
-  let html = `<div style="position:relative;">`;
-  html += `<div id="${tipId}" style="display:none;position:fixed;background:#161b22;border:1px solid #30363d;padding:4px 8px;font-size:11px;color:#c9d1d9;border-radius:4px;pointer-events:none;z-index:100;white-space:nowrap"></div>`;
-  html += `<div style="display:flex;height:60px;width:${totalW}px;">`;
-  for (let i = 0; i < spans.length; i++) {
-    const sp = spans[i];
+  let html = `<div id="${tipId}" style="display:none;position:fixed;background:#161b22;border:1px solid #30363d;padding:4px 8px;font-size:11px;color:#c9d1d9;border-radius:4px;pointer-events:none;z-index:100;white-space:nowrap"></div>`;
+  html += `<div style="display:flex;height:100%;width:${totalW}px;">`;
+  for (const sp of spans) {
     const w = Math.max(1, Math.round(sp.duration * pxPerCycle));
     const col = ctxColor(sp.ctx);
     const label = w > 50 ? sp.ctx : '';
@@ -266,34 +262,39 @@ function renderTimeline(s) {
     html += ` onmousemove="const t=document.getElementById('${tipId}');t.style.left=event.clientX+12+'px';t.style.top=event.clientY-30+'px'"`;
     html += ` onmouseleave="document.getElementById('${tipId}').style.display='none'"`;
     html += `>`;
-    if (label) html += `<span style="color:#fff;font-size:10px;font-weight:bold;text-shadow:0 0 3px #000;overflow:hidden">${label}</span>`;
+    if (label) html += `<span style="color:#fff;font-size:10px;font-weight:bold;overflow:hidden">${label}</span>`;
     html += '</div>';
   }
   html += '</div>';
+  barsEl.innerHTML = html;
 
-  // Stats: percentage per context
+  // Stats (fixed, not scrollable)
   const stats = {};
-  for (const sp of spans) {
-    stats[sp.ctx] = (stats[sp.ctx] || 0) + sp.duration;
-  }
-  html += '<div style="display:flex;gap:12px;padding:4px 2px;flex-wrap:wrap;font-size:10px">';
+  for (const sp of spans) stats[sp.ctx] = (stats[sp.ctx] || 0) + sp.duration;
+  let sh = '<div style="display:flex;gap:12px;flex-wrap:wrap">';
   for (const [ctx, cy] of Object.entries(stats).sort((a,b) => b[1]-a[1])) {
     const pct = (cy / totalCycles * 100).toFixed(1);
-    const col = ctxColor(ctx);
-    html += `<span><span style="display:inline-block;width:8px;height:8px;background:${col};border-radius:1px;margin-right:3px;vertical-align:middle"></span>${ctx} <span style="color:#484f58">${pct}%</span></span>`;
+    sh += `<span><span style="display:inline-block;width:8px;height:8px;background:${ctxColor(ctx)};border-radius:1px;margin-right:3px;vertical-align:middle"></span>${ctx} <span style="color:#484f58">${pct}%</span></span>`;
   }
-  html += '</div></div>';
-  el.innerHTML = html;
+  sh += '</div>';
+  statsEl.innerHTML = sh;
 }
 
 // Timeline zoom
 let lastTimelineData = null;
-const tlEl = document.getElementById('timeline');
+const tlEl = document.getElementById('timeline-bars');
 tlEl.addEventListener('wheel', (e) => {
   if (!e.ctrlKey) return;
   e.preventDefault();
+  const rect = tlEl.getBoundingClientRect();
+  const scrollBefore = tlEl.scrollLeft;
+  const mouseX = e.clientX - rect.left + scrollBefore;
+  const oldZoom = tlZoom;
   tlZoom = Math.max(1, Math.min(200, tlZoom * (e.deltaY < 0 ? 1.15 : 1/1.15)));
   if (lastTimelineData) renderTimeline(lastTimelineData);
+  // Adjust scroll to keep mouse position stable
+  const newMouseX = mouseX * (tlZoom / oldZoom);
+  tlEl.scrollLeft = newMouseX - (e.clientX - rect.left);
 }, {passive: false});
 
 function renderMemMap(s) {
