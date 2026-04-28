@@ -223,13 +223,9 @@ async function sendCmd(cmd) {
       if (stop) await refreshUI(stop);
       return;
     }
-    // Commands that return stop info: step, next
+    // Commands that return stop info: step, next, run
     if (resp.pc !== undefined) {
-      _lastStop = resp;
-      _refreshSeq++;
-      const mySeq = _refreshSeq;
-      await new Promise(r => setTimeout(r, 50));
-      if (mySeq === _refreshSeq) await refreshUI(resp);
+      await refreshUI(resp);
     }
   } catch(e) { log(`Error: ${e.message}`); }
 }
