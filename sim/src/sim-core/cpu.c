@@ -26,12 +26,6 @@ static void set_nz(struct cpu_state *c, uint32_t result)
     if (result & 0x80000000) c->xpsr |= FLAG_N;
 }
 
-static void set_nzc(struct cpu_state *c, uint32_t result, int carry)
-{
-    set_nz(c, result);
-    if (carry) c->xpsr |= FLAG_C; else c->xpsr &= ~FLAG_C;
-}
-
 static void set_nzcv_add(struct cpu_state *c, uint32_t a, uint32_t b, uint64_t result)
 {
     uint32_t r = (uint32_t)result;
@@ -1034,10 +1028,6 @@ void take_interrupt(struct cpu_state *c, struct membus *bus, int vector_num)
     /* Jump to vector */
     uint32_t handler = membus_read32(bus, FLASH_BASE + vector_num * 4);
     c->r[REG_PC] = handler & ~1u;
-
-    /* Visualize */
-    const char *names[] = {[11]="SVC", [14]="PendSV (ctx switch)", [15]="SysTick"};
-    const char *name = (vector_num < 16 && names[vector_num]) ? names[vector_num] : "IRQ";
 }
 
 static void exc_return(struct cpu_state *c, struct membus *bus, uint32_t exc_ret)

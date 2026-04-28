@@ -1,13 +1,7 @@
 /*
  * spi_bus.c — Generic SPI bus with multi-slave support
  */
-#include <string.h>
 #include "spi_bus.h"
-
-void spi_bus_init(struct spi_bus *bus)
-{
-    memset(bus, 0, sizeof(*bus));
-}
 
 int spi_bus_attach(struct spi_bus *bus, void *dev, spi_transfer_fn xfer)
 {
@@ -28,10 +22,4 @@ uint8_t spi_bus_transfer(struct spi_bus *bus, uint8_t byte)
             ret = bus->slaves[i].transfer(bus->slaves[i].dev, byte);
     }
     return ret;
-}
-
-void spi_slave_cs_handler(void *opaque, int level)
-{
-    struct spi_slave *slave = (struct spi_slave *)opaque;
-    slave->cs_active = !level;  /* CS is active low */
 }
