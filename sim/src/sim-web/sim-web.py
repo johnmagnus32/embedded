@@ -90,15 +90,18 @@ class WebDebugger:
                         while '\n' in buf:
                             line, buf = buf.split('\n', 1)
                             line = line.strip()
-                            if line.startswith('B:'):
-                                self.trace_events.append({'ctx': line[2:], 'type': 'B'})
-                            elif line.startswith('E'):
-                                self.trace_events.append({'type': 'E'})
-                            elif line.startswith('I:'):
-                                self.trace_events.append({'ctx': line[2:], 'type': 'I'})
-                            elif line.startswith('@'):
-                                if self.trace_events and 'cy' not in self.trace_events[-1]:
-                                    self.trace_events[-1]['cy'] = int(line[1:])
+                            # Format: "B:name@cycle" or "E@cycle" or "I:name@cycle"
+                            cy = None
+                            if '@' in line:
+                                line, cystr = line.rsplit('@', 1)
+                                try: cy = int(cystr)
+                                except: pass
+                            if line.startswith('B:') and cy is not None:
+                                self.trace_events.append({'ctx': line[2:], 'type': 'B', 'cy': cy})
+                            elif line.startswith('E') and cy is not None:
+                                self.trace_events.append({'type': 'E', 'cy': cy})
+                            elif line.startswith('I:') and cy is not None:
+                                self.trace_events.append({'ctx': line[2:], 'type': 'I', 'cy': cy})
                     except: break
             threading.Thread(target=trace_reader, daemon=True).start()
         except:
