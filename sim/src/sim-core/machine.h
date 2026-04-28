@@ -27,6 +27,5 @@ struct machine_desc {
 };
 
 const struct machine_desc *machine_find(const char *name);
-void machine_list(void);
 
 #endif

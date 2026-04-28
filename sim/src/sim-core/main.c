@@ -26,10 +26,7 @@ int main(int argc, char **argv)
     chardev_table_init(&chardevs);
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--list-machines") == 0) {
-            machine_list();
-            return 0;
-        } else if (strcmp(argv[i], "--machine") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--machine") == 0 && i + 1 < argc) {
             machine_name = argv[++i];
         } else if (strcmp(argv[i], "--firmware") == 0 && i + 1 < argc) {
             elf_path = argv[++i];
@@ -42,14 +39,12 @@ int main(int argc, char **argv)
 
     if (!machine_name || !elf_path) {
         LOG("Usage: %s --machine <name> --firmware <elf> --debug <port> [--chardev name=port ...]", argv[0]);
-        machine_list();
         return 1;
     }
 
     const struct machine_desc *mach = machine_find(machine_name);
     if (!mach) {
         LOG("Unknown machine: %s", machine_name);
-        machine_list();
         return 1;
     }
 

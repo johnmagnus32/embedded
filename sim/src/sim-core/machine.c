@@ -17,9 +17,3 @@ const struct machine_desc *machine_find(const char *name)
     return NULL;
 }
 
-void machine_list(void)
-{
-    fprintf(stderr, "Available machines:\n");
-    for (int i = 0; machines[i]; i++)
-        fprintf(stderr, "  %-16s %s\n", machines[i]->name, machines[i]->description);
-}
