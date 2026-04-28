@@ -189,6 +189,11 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         case 1: { /* CMP */
             uint64_t res = (uint64_t)c->r[rd] - imm8;
             set_nzcv_sub(c, c->r[rd], imm8, res);
+            if (rd == 4 && imm8 == 9) {
+                static FILE *df = NULL;
+                if (!df) df = fopen("/tmp/cmp_debug.txt", "w");
+                if (df) { fprintf(df, "CMP r4=%u, #9 at 0x%08X -> xpsr=0x%08X\n", c->r[rd], pc, c->xpsr); fflush(df); }
+            }
             break;
         }
         case 2: { /* ADD */

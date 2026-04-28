@@ -96,13 +96,18 @@ static void print_int(int n)
     uart_poll_out(uart, '0' + (n % 10));
 }
 
+static inline uint32_t irq_save(void) { uint32_t k; __asm volatile("mrs %0, primask\ncpsid i" : "=r"(k)); return k; }
+static inline void irq_restore(uint32_t k) { __asm volatile("msr primask, %0" :: "r"(k)); }
+
 static void task_a(void)
 {
     int count = 0;
     while (1) {
+        uint32_t k = irq_save();
         uart_print("a:");
         print_int(count);
         uart_print("\n");
+        irq_restore(k);
         count++;
         sched_sleep_ms(1000);
     }
@@ -112,9 +117,11 @@ static void task_b(void)
 {
     int count = 0;
     while (1) {
+        uint32_t k = irq_save();
         uart_print("b:");
         print_int(count);
         uart_print("\n");
+        irq_restore(k);
         count++;
         sched_sleep_ms(1000);
     }
