@@ -149,6 +149,24 @@ static uint32_t rng(void) { rng_state ^= rng_state << 13; rng_state ^= rng_state
 #define BTN_PIN 0
 static int btn_pressed(void) { return (GPIOA_IDR >> BTN_PIN) & 1; }
 
+/* NVIC ISER0 — enable external interrupts */
+#define NVIC_ISER0 (*(volatile uint32_t *)0xE000E100)
+
+/* Button → EXTI mapping: PA0=A/Jump, PA1=B, PA2=Left, PA3=Right, PA4=Up, PA5=Down */
+static const char *btn_names[] = {"A", "B", "Left", "Right", "Up", "Down"};
+
+void exti0_handler(void) { uart_print("[btn] A\n"); }
+void exti1_handler(void) { uart_print("[btn] B\n"); }
+void exti2_handler(void) { uart_print("[btn] Left\n"); }
+void exti3_handler(void) { uart_print("[btn] Right\n"); }
+void exti4_handler(void) { uart_print("[btn] Up\n"); }
+
+static void buttons_init(void)
+{
+    /* Enable EXTI0-4 in NVIC (IRQ 6-10 → bits 6-10 of ISER0) */
+    NVIC_ISER0 = (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10);
+}
+
 static void task_c(void)
 {
     /* Set landscape mode */
@@ -230,6 +248,7 @@ void main(void)
 
     heap_init(&_heap_start, (size_t)&_heap_size);
     lcd_init();
+    buttons_init();
 
     uart_print("RTOS demo — heap tracing\n\n");
 

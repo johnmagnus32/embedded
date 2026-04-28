@@ -29,6 +29,9 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .header-bar { background:#161b22; padding:4px 10px; border-bottom:1px solid #30363d;
               display:flex; align-items:center; gap:15px; font-size:11px; flex-shrink:0; }
 .cyc { color:#484f58; }
+.gbtn { width:32px; height:32px; border:1px solid #30363d; background:#21262d; color:#c9d1d9; border-radius:4px; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; }
+.gbtn:active, .gbtn.pressed { background:#1f6feb; border-color:#1f6feb; }
+.gbtn-ab { width:36px; height:36px; border-radius:50%; font-weight:bold; }
 .resize-h { width:4px; cursor:col-resize; background:transparent; flex-shrink:0; }
 .resize-h:hover, .resize-h.active { background:#30363d; }
 .resize-v { height:4px; cursor:row-resize; background:transparent; flex-shrink:0; }
@@ -84,6 +87,27 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     <div class="panel" id="uart-panel" style="height:200px;min-height:100px;">
       <h2>UART Console</h2>
       <div class="panel-body" id="uart" style="overflow-y:auto"></div>
+    </div>
+    <div class="resize-v" data-above="uart-panel" data-below="btn-panel"></div>
+    <div class="panel" id="btn-panel" style="height:120px;min-height:80px;">
+      <h2>Buttons</h2>
+      <div class="panel-body" style="display:flex;align-items:center;justify-content:center;gap:24px;padding:8px;user-select:none;">
+        <div style="display:grid;grid-template-columns:32px 32px 32px;grid-template-rows:32px 32px 32px;gap:2px;">
+          <div></div>
+          <button class="gbtn" data-pin="4" style="grid-column:2">▲</button>
+          <div></div>
+          <button class="gbtn" data-pin="2" style="grid-column:1">◀</button>
+          <div></div>
+          <button class="gbtn" data-pin="3" style="grid-column:3">▶</button>
+          <div></div>
+          <button class="gbtn" data-pin="1" style="grid-column:2">▼</button>
+          <div></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="gbtn gbtn-ab" data-pin="1">B</button>
+          <button class="gbtn gbtn-ab" data-pin="0">A</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -644,15 +668,30 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'F5') { sendCmd('c'); e.preventDefault(); }
   if (e.key === 'F10') { sendCmd('n'); e.preventDefault(); }
   if (e.key === 'F11') { sendCmd('s'); e.preventDefault(); }
-  if (e.key === ' ' || e.key === 'ArrowUp') {
+  const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
+  const pin = keyMap[e.key];
+  if (pin !== undefined) {
     e.preventDefault();
-    fetch('/gpio', {method:'POST', body:'{"cmd":"gpio","pin":0,"val":1}'});
+    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:1})});
   }
 });
 document.addEventListener('keyup', (e) => {
-  if (e.key === ' ' || e.key === 'ArrowUp') {
-    fetch('/gpio', {method:'POST', body:'{"cmd":"gpio","pin":0,"val":0}'});
-  }
+  const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
+  const pin = keyMap[e.key];
+  if (pin !== undefined)
+    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:0})});
+});
+
+/* Button panel click/touch handlers */
+document.querySelectorAll('.gbtn').forEach(btn => {
+  const pin = parseInt(btn.dataset.pin);
+  const press = () => { btn.classList.add('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:1})}); };
+  const release = () => { btn.classList.remove('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:0})}); };
+  btn.addEventListener('mousedown', press);
+  btn.addEventListener('mouseup', release);
+  btn.addEventListener('mouseleave', release);
+  btn.addEventListener('touchstart', (e) => { e.preventDefault(); press(); });
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); release(); });
 });
 
 // Panel resize handles

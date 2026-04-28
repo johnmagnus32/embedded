@@ -36,6 +36,14 @@ void armv7m_nvic_update(struct armv7m_nvic *n, struct cpu_state *cpu, struct mem
     } else if (n->pending & (1u << IRQ_VEC_PENDSV)) {
         vec = IRQ_VEC_PENDSV;
         n->scb_icsr &= ~(1 << 28);
+    } else {
+        /* External IRQs: vectors 16+ (IRQ0=16, IRQ1=17, ...) */
+        for (int i = 16; i < 32; i++) {
+            if ((n->pending & (1u << i)) && (n->iser[0] & (1u << (i - 16)))) {
+                vec = i;
+                break;
+            }
+        }
     }
 
     if (vec) {

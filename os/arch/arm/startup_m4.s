@@ -34,11 +34,11 @@
 .word 0                 /* IRQ 3:  EXTI22/RTC_WKUP */
 .word 0                 /* IRQ 4:  FLASH */
 .word 0                 /* IRQ 5:  RCC */
-.word 0                 /* IRQ 6:  EXTI0 */
-.word 0                 /* IRQ 7:  EXTI1 */
-.word 0                 /* IRQ 8:  EXTI2 */
-.word 0                 /* IRQ 9:  EXTI3 */
-.word 0                 /* IRQ 10: EXTI4 */
+.word exti0_handler     /* IRQ 6:  EXTI0 — Button A / Up */
+.word exti1_handler     /* IRQ 7:  EXTI1 — Button B / Down */
+.word exti2_handler     /* IRQ 8:  EXTI2 — Left */
+.word exti3_handler     /* IRQ 9:  EXTI3 — Right (shared with DC, but IDR is separate) */
+.word exti4_handler     /* IRQ 10: EXTI4 — Start */
 .word 0                 /* IRQ 11: DMA1_Stream0 */
 .word 0                 /* IRQ 12: DMA1_Stream1 */
 .word 0                 /* IRQ 13: DMA1_Stream2 */
@@ -77,6 +77,11 @@
 .weak usart2_isr
 .weak memmanage_handler
 .weak svc_handler
+.weak exti0_handler
+.weak exti1_handler
+.weak exti2_handler
+.weak exti3_handler
+.weak exti4_handler
 .thumb_func
 pendsv_handler:
 .thumb_func
@@ -87,6 +92,16 @@ usart2_isr:
 memmanage_handler:
 .thumb_func
 svc_handler:
+.thumb_func
+exti0_handler:
+.thumb_func
+exti1_handler:
+.thumb_func
+exti2_handler:
+.thumb_func
+exti3_handler:
+.thumb_func
+exti4_handler:
     bx lr
 
 .global reset_handler

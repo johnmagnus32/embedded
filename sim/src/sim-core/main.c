@@ -12,6 +12,7 @@
 #include "gameboy.h"
 #include "membus.h"
 #include "chardev.h"
+#include "armv7m_nvic.h"
 #include "elf_sym.h"
 #include "state.h"
 
@@ -258,8 +259,14 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
         if (p && v) {
             int pin = atoi(p + 6);
             int val = atoi(v + 6);
+            uint32_t old = b->soc.gpio[0].idr;
             if (val) b->soc.gpio[0].idr |= (1 << pin);
             else     b->soc.gpio[0].idr &= ~(1 << pin);
+            /* Trigger EXTI interrupt on rising edge (0→1) for pins 0-4 */
+            if (val && !(old & (1 << pin)) && pin <= 4) {
+                /* EXTI0=IRQ6(vec22), EXTI1=IRQ7(vec23), ... EXTI4=IRQ10(vec26) */
+                armv7m_nvic_set_pending(&b->soc.nvic, 16 + 6 + pin);
+            }
         }
         send_response(fd, "{\"ok\":true}");
 
