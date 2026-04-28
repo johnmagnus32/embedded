@@ -42,6 +42,16 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
     if (g_board && (addr & 0xFFF) == 0x10 && addr >= 0x40020000 && addr < 0x40022000)
         return g_board->gpio_idr;
     if (addr >= 0x40020000 && addr < 0x40021000) return 0;
+
+    /* Warn on first access to unknown address (per 4KB page) */
+    static uint32_t warned[16]; static int nwarned;
+    uint32_t page = addr & 0xFFFFF000;
+    int seen = 0;
+    for (int i = 0; i < nwarned; i++) if (warned[i] == page) { seen = 1; break; }
+    if (!seen && nwarned < 16) {
+        warned[nwarned++] = page;
+        fprintf(stderr, "[mem] Unhandled read at 0x%08X (returning 0)\n", addr);
+    }
     return 0;
 }
 
@@ -85,6 +95,15 @@ void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
     if (addr >= 0x40013000 && addr < 0x40013100) {
         /* SPI range — handled by spi_handles above if configured */
         return;
+    }
+
+    static uint32_t wwarned[16]; static int nwwarned;
+    uint32_t wpage = addr & 0xFFFFF000;
+    int wseen = 0;
+    for (int i = 0; i < nwwarned; i++) if (wwarned[i] == wpage) { wseen = 1; break; }
+    if (!wseen && nwwarned < 16) {
+        wwarned[nwwarned++] = wpage;
+        fprintf(stderr, "[mem] Unhandled write at 0x%08X = 0x%08X (ignored)\n", addr, val);
     }
 }
 
