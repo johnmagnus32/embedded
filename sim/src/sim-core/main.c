@@ -464,9 +464,6 @@ int main(int argc, char **argv)
     /* Create board */
     struct board board;
     board_init(&board, &dt, &chardevs);
-    board.flash = calloc(1, FLASH_SIZE);
-    board.ram   = calloc(1, RAM_SIZE);
-    board_init_membus(&board, &dt);
 
     /* Load firmware */
     if (elf_load(elf_path, board.flash, board.ram) != 0) {

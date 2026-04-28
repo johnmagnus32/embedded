@@ -2,6 +2,7 @@
  * board.c — STM32 board simulation, configured from device tree
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "board.h"
 
@@ -15,6 +16,9 @@ static void     spi_stub_write(void *opaque, uint32_t offset, uint32_t val) { (v
 
 void board_init(struct board *b, const struct dts *dt, struct chardev_table *chardevs)
 {
+    b->flash = calloc(1, FLASH_SIZE);
+    b->ram   = calloc(1, RAM_SIZE);
+
     cpu_init(&b->cpu);
     nvic_init(&b->nvic);
     systick_init(&b->systick);
@@ -24,10 +28,7 @@ void board_init(struct board *b, const struct dts *dt, struct chardev_table *cha
     b->display = NULL;
     b->sysclk_hz = dt->sysclk_hz ? dt->sysclk_hz : 16000000;
 
-    /* Flash and RAM will be set by main.c after allocation.
-     * membus_init is called later in main.c after flash/ram are allocated.
-     * We zero the bus here for safety. */
-    memset(&b->bus, 0, sizeof(b->bus));
+    membus_init(&b->bus, b->flash, b->ram);
 
     /* Trace port — always at 0xE0000000 */
     struct chardev *trace_cd = chardevs ? chardev_find(chardevs, "trace") : NULL;
@@ -92,57 +93,37 @@ void board_init(struct board *b, const struct dts *dt, struct chardev_table *cha
 
     /* Wire GPIO pin to ILI9341 DC line */
     if (dc_gpio_pin >= 0 && dc_gpio_pin < 16 && b->display) {
-        /* Assume DC pin is on GPIOA (port 0) — same as original code */
         b->gpio[0].out[dc_gpio_pin].handler = ili9341_set_dc;
         b->gpio[0].out[dc_gpio_pin].opaque = b->display;
     }
-}
 
-/* Called from main.c after flash/ram are allocated to register all devices on the membus */
-void board_init_membus(struct board *b, const struct dts *dt)
-{
-    membus_init(&b->bus, b->flash, b->ram);
-
-    /* Trace dev at 0xE0000000, size 4 (single register) */
+    /* Register all devices on the membus */
     membus_register(&b->bus, 0xE0000000, 0x04, trace_dev_read, trace_dev_write, &b->trace);
 
-    /* UARTs — re-scan DTS to get base addresses */
-    int ui = 0;
-    for (int i = 0; i < dt->nnodes && ui < b->nuarts; i++) {
+    { int idx = 0;
+    for (int i = 0; i < dt->nnodes && idx < b->nuarts; i++) {
         const struct dts_node *n = &dt->nodes[i];
         if (strcmp(n->compatible, "st,stm32-usart") == 0 && n->has_reg) {
-            membus_register(&b->bus, n->reg, 0x20, uart_read, uart_write, &b->uarts[ui]);
-            ui++;
+            membus_register(&b->bus, n->reg, 0x20, uart_read, uart_write, &b->uarts[idx]);
+            idx++;
         }
-    }
+    } }
 
-    /* SPIs */
-    int si = 0;
-    for (int i = 0; i < dt->nnodes && si < b->nspis; i++) {
+    { int idx = 0;
+    for (int i = 0; i < dt->nnodes && idx < b->nspis; i++) {
         const struct dts_node *n = &dt->nodes[i];
         if (strcmp(n->compatible, "st,stm32-spi") == 0 && n->has_reg) {
-            membus_register(&b->bus, n->reg, 0x24, spi_read, spi_write, &b->spis[si]);
-            si++;
+            membus_register(&b->bus, n->reg, 0x24, spi_read, spi_write, &b->spis[idx]);
+            idx++;
         }
-    }
+    } }
 
-    /* SysTick at 0xE000E010, size 0x10 */
     membus_register(&b->bus, 0xE000E010, 0x10, systick_read, systick_write, &b->systick);
-
-    /* NVIC ISER at 0xE000E100, size 0x10 */
     membus_register(&b->bus, 0xE000E100, 0x10, nvic_iser_read, nvic_iser_write, &b->nvic);
-
-    /* NVIC SCB at 0xE000ED00, size 0xA4 (covers up to MPU TYPE at 0xED90) */
     membus_register(&b->bus, 0xE000ED00, 0xA4, nvic_scb_read, nvic_scb_write, &b->nvic);
-
-    /* GPIO ports */
     membus_register(&b->bus, 0x40020000, 0x1000, gpio_read, gpio_write, &b->gpio[0]);
     membus_register(&b->bus, 0x40021000, 0x1000, gpio_read, gpio_write, &b->gpio[1]);
-
-    /* RCC stub */
     membus_register(&b->bus, 0x40023800, 0x100, rcc_read, rcc_write, NULL);
-
-    /* SPI catch-all stub for unconfigured SPI ranges */
     membus_register(&b->bus, 0x40013000, 0x100, spi_stub_read, spi_stub_write, NULL);
 }
 

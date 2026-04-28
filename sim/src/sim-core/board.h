@@ -36,7 +36,6 @@ struct board {
 };
 
 void board_init(struct board *b, const struct dts *dt, struct chardev_table *chardevs);
-void board_init_membus(struct board *b, const struct dts *dt);
 void board_tick(struct board *b);
 
 #endif
