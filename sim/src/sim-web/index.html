@@ -387,29 +387,26 @@ function renderMemMap(s) {
 
         const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
 
+        const stkCol = '#58a6ff';
         for (let i = 0; i < tasks.length; i++) {
           const t = tasks[i];
           if (!t.stack_bot || !t.stack_top) continue;
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
-          const col = ctxColor(t.name || 't'+i);
 
           const sy0 = addrToY(t.stack_top);
           const sy1 = addrToY(t.stack_bot);
           const sh = Math.max(1, sy1 - sy0);
+          const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
 
-          // Block (same style as heap)
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.35" stroke="${col}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
-          if (sh > 8) {
-            const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
-            svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+3}" fill="${col}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${t.name||'t'+i}</text>`;
-            if (sh > 20) svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+13}" fill="#484f58" text-anchor="middle" font-size="7">${stkSize}${t.active?' ◀':''}</text>`;
-          }
-          svg += `<text x="${barX-4}" y="${sy0+sh/2+3}" fill="${col}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${stkCol}" opacity="0.35" stroke="${stkCol}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
+          if (sh > 8) svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+3}" fill="${stkCol}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${t.name||'t'+i} ${stkSize}</text>`;
+          svg += `<text x="${barX-4}" y="${sy0+sh/2+3}" fill="${stkCol}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
 
-          // SP line
+          // SP line + label
           if (t.sp >= t.stack_bot && t.sp <= t.stack_top) {
             const spY = addrToY(t.sp);
-            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="#7ee787" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${stkCol}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
+            svg += `<text x="${labelX}" y="${spY+3}" fill="${stkCol}" font-size="7">◂ ${t.name||'t'+i} SP</text>`;
           }
         }
 
@@ -417,23 +414,20 @@ function renderMemMap(s) {
         if (s.msp >= RAM_BASE && s.msp <= RAM_BASE + RAM_SIZE) {
           const mspY = seg.y + seg.h - (s.msp - RAM_BASE) / RAM_SIZE * seg.h;
           svg += `<line x1="${barX}" y1="${mspY}" x2="${barX+barW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
-          svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
+          svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">◂ MSP</text>`;
           svg += `<text x="${barX-4}" y="${mspY+3}" fill="#ffa657" text-anchor="end" font-size="7">${hex(s.msp)}</text>`;
         }
 
-        // Heap blocks from trace data
+        // Heap blocks
         const heapCol = '#da8ee7';
         for (const hb of lastHeapData) {
           if (hb.addr < RAM_BASE || hb.addr + hb.size > RAM_BASE + RAM_SIZE) continue;
           const hy0 = addrToY(hb.addr + hb.size);
           const hy1 = addrToY(hb.addr);
           const hh = Math.max(1, hy1 - hy0);
+          const sizeStr = hb.size >= 1024 ? `${(hb.size/1024).toFixed(1)}KB` : `${hb.size}B`;
           svg += `<rect x="${barX+1}" y="${hy0}" width="${barW-2}" height="${hh}" fill="${heapCol}" opacity="0.35" stroke="${heapCol}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
-          if (hh > 8) {
-            const sizeStr = hb.size >= 1024 ? `${(hb.size/1024).toFixed(1)}KB` : `${hb.size}B`;
-            svg += `<text x="${barX+barW/2}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="middle" font-size="${hh > 14 ? 9 : 7}" font-weight="bold">${hb.name}</text>`;
-            if (hh > 20) svg += `<text x="${barX+barW/2}" y="${hy0+hh/2+13}" fill="#484f58" text-anchor="middle" font-size="7">${sizeStr}</text>`;
-          }
+          if (hh > 8) svg += `<text x="${barX+barW/2}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="middle" font-size="${hh > 14 ? 9 : 7}" font-weight="bold">${hb.name} ${sizeStr}</text>`;
           svg += `<text x="${barX-4}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="end" font-size="7">${hex(hb.addr)}</text>`;
         }
       }
