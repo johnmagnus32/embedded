@@ -1,7 +1,7 @@
 /*
  * sim-core — ARM Cortex-M4 emulator + debug server
  *
- * Usage: sim-core <elf> <dts> --debug <port> [--chardev name=port ...]
+ * Usage: sim-core <elf> --debug <port> [--chardev name=port ...]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +12,6 @@
 #include "board.h"
 #include "membus.h"
 #include "chardev.h"
-#include "dts.h"
 #include "elf_sym.h"
 #include "state.h"
 
@@ -24,7 +23,7 @@ static int nbp = 0;
 
 static int check_breakpoint(struct board *b)
 {
-    uint32_t pc = b->cpu.r[REG_PC];
+    uint32_t pc = b->soc.cpu.r[REG_PC];
     for (int i = 0; i < nbp; i++)
         if (pc == breakpoints[i]) return 1;
     return 0;
@@ -43,7 +42,7 @@ static void send_response(int fd, const char *json)
 
 static void send_stop_info(int fd, struct board *b)
 {
-    uint32_t pc = b->cpu.r[REG_PC];
+    uint32_t pc = b->soc.cpu.r[REG_PC];
     uint32_t off;
     const char *fn = sym_lookup(pc, &off);
     int line;
@@ -51,7 +50,7 @@ static void send_stop_info(int fd, struct board *b)
     char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"stopped\":true,\"pc\":%u,\"line\":%d,\"func\":\"%s\",\"file\":\"%s\",\"cycles\":%lu}",
-        pc, line, fn ? fn : "", file ? file : "", (unsigned long)b->cpu.cycle_count);
+        pc, line, fn ? fn : "", file ? file : "", (unsigned long)b->soc.cpu.cycle_count);
     send_response(fd, buf);
 }
 
@@ -60,9 +59,9 @@ static void send_regs(int fd, struct board *b)
     char buf[512];
     int n = snprintf(buf, sizeof(buf), "{\"regs\":[");
     for (int i = 0; i < 16; i++)
-        n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", b->cpu.r[i]);
+        n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", b->soc.cpu.r[i]);
     n += snprintf(buf + n, sizeof(buf) - n, "],\"xpsr\":%u,\"msp\":%u,\"psp\":%u}",
-                  b->cpu.xpsr, b->cpu.msp, b->cpu.psp);
+                  b->soc.cpu.xpsr, b->soc.cpu.msp, b->soc.cpu.psp);
     send_response(fd, buf);
 }
 
@@ -74,8 +73,8 @@ static void send_mem(int fd, struct board *b, uint32_t addr, int len)
     for (int i = 0; i < len; i++) {
         uint8_t byte = 0;
         uint32_t a = addr + i;
-        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE) byte = b->ram[a - RAM_BASE];
-        else if (a >= FLASH_BASE && a < FLASH_BASE + FLASH_SIZE) byte = b->flash[a - FLASH_BASE];
+        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE) byte = b->soc.ram[a - RAM_BASE];
+        else if (a >= FLASH_BASE && a < FLASH_BASE + FLASH_SIZE) byte = b->soc.flash[a - FLASH_BASE];
         n += snprintf(buf + n, sizeof(buf) - n, "%02x", byte);
     }
     n += snprintf(buf + n, sizeof(buf) - n, "\"}");
@@ -128,28 +127,28 @@ static void handle_command(int fd, struct board *b, const char *line)
         send_mem(fd, b, addr, len);
 
     } else if (strncmp(cmd, "step\"", 5) == 0) {
-        int orig_line; line_lookup(b->cpu.r[REG_PC], &orig_line);
+        int orig_line; line_lookup(b->soc.cpu.r[REG_PC], &orig_line);
         do {
             board_tick(b);
-            int cur_line; line_lookup(b->cpu.r[REG_PC], &cur_line);
+            int cur_line; line_lookup(b->soc.cpu.r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
         send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "next\"", 5) == 0) {
-        int orig_line; line_lookup(b->cpu.r[REG_PC], &orig_line);
+        int orig_line; line_lookup(b->soc.cpu.r[REG_PC], &orig_line);
         do {
-            uint16_t insn = membus_read16(&b->bus, b->cpu.r[REG_PC]);
+            uint16_t insn = membus_read16(&b->soc.bus, b->soc.cpu.r[REG_PC]);
             int is_bl = (insn & 0xF800) == 0xF000;
             if (is_bl) {
                 int old_nbp = nbp;
-                breakpoints[nbp++] = b->cpu.r[REG_PC] + 4;
+                breakpoints[nbp++] = b->soc.cpu.r[REG_PC] + 4;
                 run_until_bp(b);
                 nbp = old_nbp;
             } else {
                 board_tick(b);
             }
-            int cur_line; line_lookup(b->cpu.r[REG_PC], &cur_line);
+            int cur_line; line_lookup(b->soc.cpu.r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
         send_stop_info(fd, b);
@@ -159,7 +158,7 @@ static void handle_command(int fd, struct board *b, const char *line)
         send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
-        cpu_reset(&b->cpu, &b->bus);
+        cpu_reset(&b->soc.cpu, &b->soc.bus);
         do { board_tick(b); } while (!check_breakpoint(b));
         send_stop_info(fd, b);
 
@@ -214,7 +213,7 @@ static void handle_command(int fd, struct board *b, const char *line)
     } else if (strncmp(cmd, "memmap\"", 7) == 0) {
         char buf[32768];
         int n = snprintf(buf, sizeof(buf), "{\"msp\":%u,\"psp\":%u,\"ram_base\":%u,\"ram_size\":%u,",
-                         b->cpu.msp, b->cpu.r[REG_SP], (uint32_t)RAM_BASE, (uint32_t)RAM_SIZE);
+                         b->soc.cpu.msp, b->soc.cpu.r[REG_SP], (uint32_t)RAM_BASE, (uint32_t)RAM_SIZE);
 
         /* ELF sections */
         const struct elf_section *secs;
@@ -226,7 +225,7 @@ static void handle_command(int fd, struct board *b, const char *line)
                           secs[i].name, secs[i].addr, secs[i].size);
         }
         n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":");
-        n += state_emit_tasks(&b->cpu, b->flash, b->ram, buf+n, sizeof(buf)-n);
+        n += state_emit_tasks(&b->soc.cpu, b->soc.flash, b->soc.ram, buf+n, sizeof(buf)-n);
 
         /* Global symbols in RAM */
         struct sym_entry globals[64];
@@ -259,8 +258,8 @@ static void handle_command(int fd, struct board *b, const char *line)
         if (p && v) {
             int pin = atoi(p + 6);
             int val = atoi(v + 6);
-            if (val) b->gpio[0].idr |= (1 << pin);
-            else     b->gpio[0].idr &= ~(1 << pin);
+            if (val) b->soc.gpio[0].idr |= (1 << pin);
+            else     b->soc.gpio[0].idr &= ~(1 << pin);
         }
         send_response(fd, "{\"ok\":true}");
 
@@ -293,24 +292,22 @@ static void handle_command(int fd, struct board *b, const char *line)
 
         /* Resolve base variable */
         int reg; uint32_t val;
-        int loc = var_lookup(base, b->cpu.r[REG_PC], &reg, &val);
-        cur_type = var_type_die(base, b->cpu.r[REG_PC]);
-        LOG("expr base='%s' pc=0x%08X loc=%d type=0x%X", base, b->cpu.r[REG_PC], loc, cur_type);
+        int loc = var_lookup(base, b->soc.cpu.r[REG_PC], &reg, &val);
+        cur_type = var_type_die(base, b->soc.cpu.r[REG_PC]);
+        LOG("expr base='%s' pc=0x%08X loc=%d type=0x%X", base, b->soc.cpu.r[REG_PC], loc, cur_type);
 
         if (loc == 1) { /* register — value is in the register directly */
-            /* Store register value in a temp location so type_format can read it */
-            uint32_t regval = b->cpu.r[reg];
-            /* Use a scratch area at end of RAM */
+            uint32_t regval = b->soc.cpu.r[reg];
             uint32_t scratch = RAM_BASE + RAM_SIZE - 8;
-            *(uint32_t*)(b->ram + RAM_SIZE - 8) = regval;
+            *(uint32_t*)(b->soc.ram + RAM_SIZE - 8) = regval;
             addr = scratch;
             valid = 1;
         } else if (loc == 2) { /* constant */
             addr = val;
             valid = 1;
         } else if (loc == 3) { /* stack (fbreg — relative to CFA) */
-            uint32_t cfa = cfa_offset_at_pc(b->cpu.r[REG_PC]);
-            addr = b->cpu.r[REG_SP] + cfa + val;
+            uint32_t cfa = cfa_offset_at_pc(b->soc.cpu.r[REG_PC]);
+            addr = b->soc.cpu.r[REG_SP] + cfa + val;
             valid = 1;
         } else {
             /* Try global symbol */
@@ -320,20 +317,19 @@ static void handle_command(int fd, struct board *b, const char *line)
             static const char *rn[] = {"r0","r1","r2","r3","r4","r5","r6","r7",
                                        "r8","r9","r10","r11","r12","sp","lr","pc"};
             for (int r = 0; r < 16; r++)
-                if (strcmp(base, rn[r]) == 0) { addr = b->cpu.r[r]; valid = 1; break; }
+                if (strcmp(base, rn[r]) == 0) { addr = b->soc.cpu.r[r]; valid = 1; break; }
         }
 
         /* Apply leading dereference */
         if (leading_deref && valid && cur_type) {
             uint32_t pointee = type_deref(cur_type);
             if (pointee) {
-                /* addr is the pointer value (in register or memory) — read it */
                 uint32_t ptr = addr;
-                if (loc != 1 && loc != 2) { /* addr is a memory address, read the pointer */
+                if (loc != 1 && loc != 2) {
                     if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                        ptr = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+                        ptr = *(uint32_t*)(b->soc.ram + (addr - RAM_BASE));
                     else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-                        ptr = *(uint32_t*)(b->flash + (addr - FLASH_BASE));
+                        ptr = *(uint32_t*)(b->soc.flash + (addr - FLASH_BASE));
                 }
                 addr = ptr;
                 cur_type = pointee;
@@ -356,18 +352,16 @@ static void handle_command(int fd, struct board *b, const char *line)
 
             } else if (*p == '-' && *(p+1) == '>') {
                 p += 2;
-                /* Dereference pointer first */
                 uint32_t pointee = type_deref(cur_type);
                 if (pointee) {
                     uint32_t ptr = 0;
                     if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                        ptr = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+                        ptr = *(uint32_t*)(b->soc.ram + (addr - RAM_BASE));
                     else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-                        ptr = *(uint32_t*)(b->flash + (addr - FLASH_BASE));
+                        ptr = *(uint32_t*)(b->soc.flash + (addr - FLASH_BASE));
                     addr = ptr;
                     cur_type = pointee;
                 }
-                /* Then access member */
                 char mem[32]; int mi = 0;
                 while (*p && *p != '.' && *p != '-' && *p != '[' && mi < 31)
                     mem[mi++] = *p++;
@@ -380,7 +374,6 @@ static void handle_command(int fd, struct board *b, const char *line)
 
             } else if (*p == '[') {
                 p++;
-                /* Parse index: literal number or variable name */
                 char idx_expr[32]; int ii = 0;
                 while (*p && *p != ']' && ii < 31) idx_expr[ii++] = *p++;
                 idx_expr[ii] = '\0';
@@ -388,15 +381,14 @@ static void handle_command(int fd, struct board *b, const char *line)
 
                 int idx = atoi(idx_expr);
                 if (idx == 0 && idx_expr[0] != '0') {
-                    /* Not a number — try as variable */
                     int vreg; uint32_t vval;
-                    int vloc = var_lookup(idx_expr, b->cpu.r[REG_PC], &vreg, &vval);
-                    if (vloc == 1) idx = (int)b->cpu.r[vreg];
+                    int vloc = var_lookup(idx_expr, b->soc.cpu.r[REG_PC], &vreg, &vval);
+                    if (vloc == 1) idx = (int)b->soc.cpu.r[vreg];
                     else if (vloc == 2) idx = (int)vval;
                     else if (vloc == 3) {
-                        uint32_t a = b->cpu.r[REG_SP] + vval;
+                        uint32_t a = b->soc.cpu.r[REG_SP] + vval;
                         if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE)
-                            idx = (int)*(uint32_t*)(b->ram + (a - RAM_BASE));
+                            idx = (int)*(uint32_t*)(b->soc.ram + (a - RAM_BASE));
                     }
                 }
 
@@ -413,12 +405,12 @@ static void handle_command(int fd, struct board *b, const char *line)
 
         if (valid && cur_type) {
             char tbuf[3000];
-            type_format(cur_type, addr, b->ram, b->flash, tbuf, sizeof(tbuf));
+            type_format(cur_type, addr, b->soc.ram, b->soc.flash, tbuf, sizeof(tbuf));
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\"}", expr, tbuf);
         } else if (valid) {
             uint32_t v = 0;
             if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                v = *(uint32_t*)(b->ram + (addr - RAM_BASE));
+                v = *(uint32_t*)(b->soc.ram + (addr - RAM_BASE));
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\"}", expr, v, v);
         } else {
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"error\":\"not found\"}", expr);
@@ -429,20 +421,19 @@ static void handle_command(int fd, struct board *b, const char *line)
 
 int main(int argc, char **argv)
 {
-    if (argc < 3) {
-        LOG("Usage: %s <elf> <dts> --debug <port> [--chardev name=port ...]", argv[0]);
+    if (argc < 2) {
+        LOG("Usage: %s <elf> --debug <port> [--chardev name=port ...]", argv[0]);
         return 1;
     }
 
     const char *elf_path = argv[1];
-    const char *dts_path = argv[2];
     int debug_port = 9001;
 
     /* Parse --debug and --chardev args */
     struct chardev_table chardevs;
     chardev_table_init(&chardevs);
 
-    for (int i = 3; i < argc; i++) {
+    for (int i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--debug") == 0 && i + 1 < argc) {
             debug_port = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--chardev") == 0 && i + 1 < argc) {
@@ -450,23 +441,15 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Parse device tree */
-    struct dts dt;
-    if (dts_parse(&dt, dts_path) != 0) {
-        LOG("Failed to parse DTS: %s", dts_path);
-        return 1;
-    }
-    LOG("Loaded DTS: %s (%d nodes)", dts_path, dt.nnodes);
-
     /* Start chardev listeners */
     chardev_listen_all(&chardevs);
 
     /* Create board */
     struct board board;
-    board_init(&board, &dt, &chardevs);
+    board_init(&board, &chardevs);
 
     /* Load firmware */
-    if (elf_load(elf_path, board.flash, board.ram) != 0) {
+    if (elf_load(elf_path, board.soc.flash, board.soc.ram) != 0) {
         LOG("Failed to load ELF: %s", elf_path);
         return 1;
     }
@@ -479,7 +462,7 @@ int main(int argc, char **argv)
         state_set_source_dir(dir);
     }
 
-    cpu_reset(&board.cpu, &board.bus);
+    cpu_reset(&board.soc.cpu, &board.soc.bus);
 
     /* Start debug server */
     int srv = socket(AF_INET, SOCK_STREAM, 0);
@@ -521,7 +504,7 @@ int main(int argc, char **argv)
 
     close(client);
     close(srv);
-    free(board.flash);
-    free(board.ram);
+    free(board.soc.flash);
+    free(board.soc.ram);
     return 0;
 }

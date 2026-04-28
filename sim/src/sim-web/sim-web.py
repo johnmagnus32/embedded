@@ -26,10 +26,9 @@ TRACE_PORT = 9003
 DISPLAY_PORT = 9004
 
 class WebDebugger:
-    def __init__(self, elf, dts, port, extra_args):
+    def __init__(self, elf, port, extra_args):
         self.port = port
         self.elf = elf
-        self.dts = dts
         self.extra_args = extra_args
         self.sim = None
         self.sim_sock = None
@@ -38,7 +37,7 @@ class WebDebugger:
     def start_sim(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         sim_core = os.path.join(script_dir, '..', '..', 'build', 'sim-core')
-        cmd = [sim_core, self.elf, self.dts,
+        cmd = [sim_core, self.elf,
                '--debug', str(SIM_PORT),
                '--chardev', f'usart2={UART_PORT}',
                '--chardev', f'trace={TRACE_PORT}',
@@ -300,10 +299,9 @@ class WebDebugger:
 def main():
     p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator + Web Debugger')
     p.add_argument('elf', help='Firmware ELF file')
-    p.add_argument('dts', help='Board device tree source file')
     args, extra = p.parse_known_args()
 
-    dbg = WebDebugger(args.elf, args.dts, 3000, extra)
+    dbg = WebDebugger(args.elf, 3000, extra)
     try:
         dbg.run()
     except KeyboardInterrupt:
