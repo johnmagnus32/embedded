@@ -72,11 +72,7 @@ static const struct device *uart;
 
 static void uart_print(const char *s)
 {
-    while (*s) {
-        if (*s == '\n')
-            uart_poll_out(uart, '\r');
-        uart_poll_out(uart, *s++);
-    }
+    while (*s) uart_poll_out(uart, *s++);
 }
 
 /* Traced heap wrappers */
