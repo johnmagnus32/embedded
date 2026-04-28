@@ -815,6 +815,23 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             c->r[rd] = c->r[rn] * c->r[rm] + c->r[ra]; /* MLA */
         return 0;
     }
+    /* SMULL / UMULL */
+    if ((hi & 0xFFF0) == 0xFB80 || (hi & 0xFFF0) == 0xFBA0) {
+        int rn = hi & 0xF;
+        int rdlo = (lo >> 12) & 0xF;
+        int rdhi = (lo >> 8) & 0xF;
+        int rm = lo & 0xF;
+        if ((hi & 0xFFF0) == 0xFB80) { /* SMULL */
+            int64_t r = (int64_t)(int32_t)c->r[rn] * (int64_t)(int32_t)c->r[rm];
+            c->r[rdlo] = (uint32_t)r;
+            c->r[rdhi] = (uint32_t)(r >> 32);
+        } else { /* UMULL */
+            uint64_t r = (uint64_t)c->r[rn] * (uint64_t)c->r[rm];
+            c->r[rdlo] = (uint32_t)r;
+            c->r[rdhi] = (uint32_t)(r >> 32);
+        }
+        return 0;
+    }
 
     /* LDRD / STRD (double word load/store) */
     if ((hi & 0xFE50) == 0xE850 || (hi & 0xFE50) == 0xE840) {
