@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cpu.h"
+#include "elf_sym.h"
 
 /* External memory functions */
 extern uint32_t mem_read32(uint8_t *f, uint8_t *r, uint32_t addr);
@@ -497,7 +498,10 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         return 0;
     }
 
-    fprintf(stderr, "Unknown 16-bit insn: 0x%04X at 0x%08X\n", insn, pc);
+    uint32_t _off;
+    const char *_fn = sym_lookup(pc, &_off);
+    fprintf(stderr, "Unknown 16-bit insn: 0x%04X at 0x%08X (%s+0x%x) LR=0x%08X\n",
+            insn, pc, _fn ? _fn : "???", _off, c->r[14]);
     exit(1);
     return -1;
 }
@@ -971,9 +975,12 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         }
         return 0;
     }
-    not_cond_branch:
+    not_cond_branch: ;
 
-    fprintf(stderr, "Unknown 32-bit insn: 0x%08X at 0x%08X\n", insn, pc);
+    uint32_t _off;
+    const char *_fn = sym_lookup(pc, &_off);
+    fprintf(stderr, "Unknown 32-bit insn: 0x%08X at 0x%08X (%s+0x%x) LR=0x%08X\n",
+            insn, pc, _fn ? _fn : "???", _off, c->r[14]);
     exit(1);
     return -1;
 }
