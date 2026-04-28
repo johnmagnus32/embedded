@@ -420,7 +420,7 @@ static void handle_command(int fd, struct sim_ctx *ctx, const char *line)
                 armv7m_nvic_set_pending(ctx->nvic, 16 + 6 + pin);
             }
         }
-        send_response(fd, "{\"ok\":true}");
+        /* No response — sim-web already replied to the browser */
 
     } else if (strncmp(cmd, "print\"", 6) == 0) {
         const char *e = strstr(line, "\"expr\":\"");

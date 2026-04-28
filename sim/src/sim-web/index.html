@@ -204,7 +204,6 @@ async function sendCmd(cmd) {
       return;
     }
     const resp = await simCmd(cmdObj);
-    console.log('CMD:', JSON.stringify(cmdObj), 'RESP:', JSON.stringify(resp));
     // Break command — show address
     if (resp.addr !== undefined) {
       log(`Breakpoint at ${hex(resp.addr)}`);
