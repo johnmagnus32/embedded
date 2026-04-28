@@ -403,14 +403,14 @@ function renderMemMap(s) {
           if (!t.stack_bot || !t.stack_top) continue;
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
 
-          const sy0 = addrToY(t.stack_top);
-          const sy1 = addrToY(t.stack_bot);
+          const sy0 = addrToY(t.stack_top) + 1;
+          const sy1 = addrToY(t.stack_bot) - 1;
           const sh = Math.max(1, sy1 - sy0);
           const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
 
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${stkCol}" opacity="0.35" stroke="${stkCol}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${stkCol}" opacity="0.35" stroke="${stkCol}" stroke-opacity="0.6" stroke-width="0.5" rx="3"/>`;
           if (sh > 8) svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+3}" fill="${stkCol}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${t.name||'t'+i} ${stkSize}</text>`;
-          svg += `<text x="${barX-4}" y="${sy0+sh/2+3}" fill="${stkCol}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
+          svg += `<text x="${barX-4}" y="${sy1+3}" fill="${stkCol}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
 
           // SP line + label
           if (t.sp >= t.stack_bot && t.sp <= t.stack_top) {
