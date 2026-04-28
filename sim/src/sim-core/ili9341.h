@@ -27,5 +27,6 @@ struct ili9341 {
 void    ili9341_init(struct ili9341 *d);
 void    ili9341_set_dc(void *dev, int active); /* DC pin: 0=cmd, 1=data */
 uint8_t ili9341_transfer(void *dev, uint8_t byte);
+void    ili9341_flush(struct ili9341 *d);      /* push framebuffer to chardev if dirty */
 
 #endif

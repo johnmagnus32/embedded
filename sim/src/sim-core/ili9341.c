@@ -10,6 +10,7 @@
  */
 #include <string.h>
 #include "ili9341.h"
+#include "chardev.h"
 
 void ili9341_init(struct ili9341 *d)
 {
@@ -95,4 +96,11 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
         handle_param(d, byte);
     }
     return 0;
+}
+
+void ili9341_flush(struct ili9341 *d)
+{
+    if (!d->dirty || !d->chardev) return;
+    chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
+    d->dirty = 0;
 }

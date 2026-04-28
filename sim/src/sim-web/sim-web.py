@@ -127,10 +127,25 @@ class WebDebugger:
 
         # Connect to display framebuffer stream
         self.display_sock = None
+        self.display_frame = b''
         try:
             self.display_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.display_sock.connect(('127.0.0.1', DISPLAY_PORT))
             log_web(f'Connected to display port {DISPLAY_PORT}')
+            FRAME_SIZE = 240 * 320 * 2
+            def display_reader():
+                buf = b''
+                while True:
+                    try:
+                        data = self.display_sock.recv(65536)
+                        if not data: break
+                        buf += data
+                        # Extract complete frames (last complete frame wins)
+                        while len(buf) >= FRAME_SIZE:
+                            self.display_frame = buf[:FRAME_SIZE]
+                            buf = buf[FRAME_SIZE:]
+                    except: break
+            threading.Thread(target=display_reader, daemon=True).start()
         except:
             log_web('Display not available')
 
@@ -202,31 +217,16 @@ class WebDebugger:
                         _json.dumps({"uart": self.uart_buf}))
 
                 elif req.startswith('GET /display'):
-                    try:
-                        # Tell sim-core to dump framebuffer to display chardev
-                        resp = self.send_command('{"cmd":"display"}')
-                        import json as _json
-                        info = _json.loads(resp)
-                        sz = info.get('sz', 0)
-                        if sz > 0 and self.display_sock:
-                            # Read raw RGB565 bytes from display chardev
-                            raw = b''
-                            while len(raw) < sz:
-                                chunk = self.display_sock.recv(sz - len(raw))
-                                if not chunk: break
-                                raw += chunk
-                            # Serve as binary with dimensions in headers
-                            hdr = (f'HTTP/1.1 200 OK\r\n'
-                                   f'Content-Type: application/octet-stream\r\n'
-                                   f'X-Width: {info["w"]}\r\nX-Height: {info["h"]}\r\n'
-                                   f'Content-Length: {len(raw)}\r\n'
-                                   f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
-                                   f'\r\n').encode()
-                            conn.sendall(hdr + raw)
-                        else:
-                            self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
-                    except Exception as e:
-                        log_web(f'Display error: {e}')
+                    raw = self.display_frame
+                    if raw:
+                        hdr = (f'HTTP/1.1 200 OK\r\n'
+                               f'Content-Type: application/octet-stream\r\n'
+                               f'X-Width: 240\r\nX-Height: 320\r\n'
+                               f'Content-Length: {len(raw)}\r\n'
+                               f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
+                               f'\r\n').encode()
+                        conn.sendall(hdr + raw)
+                    else:
                         self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
 
                 elif req.startswith('POST /cmd'):
