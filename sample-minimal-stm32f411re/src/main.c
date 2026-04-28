@@ -105,9 +105,11 @@ static void task_a(void)
 {
     int count = 0;
     while (1) {
-        uart_print("a\n");
+        uart_print("a:");
+        print_int(count);
+        uart_print("\n");
         count++;
-        sched_sleep_ms(500);
+        sched_sleep_ms(1000);
     }
 }
 
@@ -115,9 +117,11 @@ static void task_b(void)
 {
     int count = 0;
     while (1) {
-        uart_print("b\n");
+        uart_print("b:");
+        print_int(count);
+        uart_print("\n");
         count++;
-        sched_sleep_ms(500);
+        sched_sleep_ms(1000);
     }
 }
 
