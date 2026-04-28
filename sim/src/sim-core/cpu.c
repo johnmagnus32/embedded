@@ -649,6 +649,44 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         return 0;
     }
 
+    /* LDRH.W with pre/post index or register offset */
+    if ((hi & 0xFFF0) == 0xF830) {
+        int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
+        if (lo & 0x0800) {
+            int p = (lo >> 10) & 1; int u = (lo >> 9) & 1; int w = (lo >> 8) & 1;
+            uint32_t imm8 = lo & 0xFF;
+            uint32_t addr = c->r[rn];
+            uint32_t offset = u ? imm8 : -imm8;
+            if (p) addr += offset;
+            c->r[rt] = mem_read16(flash, ram, addr);
+            if (!p) addr += offset;
+            if (w || !p) c->r[rn] = addr;
+        } else {
+            int rm = lo & 0xF; int shift = (lo >> 4) & 3;
+            c->r[rt] = mem_read16(flash, ram, c->r[rn] + (c->r[rm] << shift));
+        }
+        return 0;
+    }
+
+    /* STRH.W with pre/post index or register offset */
+    if ((hi & 0xFFF0) == 0xF820) {
+        int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
+        if (lo & 0x0800) {
+            int p = (lo >> 10) & 1; int u = (lo >> 9) & 1; int w = (lo >> 8) & 1;
+            uint32_t imm8 = lo & 0xFF;
+            uint32_t addr = c->r[rn];
+            uint32_t offset = u ? imm8 : -imm8;
+            if (p) addr += offset;
+            mem_write16(flash, ram, addr, c->r[rt]);
+            if (!p) addr += offset;
+            if (w || !p) c->r[rn] = addr;
+        } else {
+            int rm = lo & 0xF; int shift = (lo >> 4) & 3;
+            mem_write16(flash, ram, c->r[rn] + (c->r[rm] << shift), c->r[rt]);
+        }
+        return 0;
+    }
+
     /* MOV.W / MOVW (16-bit immediate) */
     if ((hi & 0xFBF0) == 0xF240) {
         int rd = (lo >> 8) & 0xF;
