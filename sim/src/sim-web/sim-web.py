@@ -254,10 +254,9 @@ class WebDebugger:
                 elif req.startswith('POST /gpio'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     try:
-                        resp = self.send_command(body.strip())
-                        self.http_response(conn, '200 OK', 'application/json', resp)
-                    except:
-                        self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
+                        self.sim_sock.sendall((body.strip() + '\n').encode())
+                    except: pass
+                    self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
 
                 elif req.startswith('GET /status'):
                     resp = getattr(self, '_async_resp', None)

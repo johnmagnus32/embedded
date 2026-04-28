@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 #include "machine.h"
 #include "cpu.h"
@@ -130,9 +131,63 @@ static int check_breakpoint(struct cpu_state *cpu)
     return 0;
 }
 
-static void run_until_bp(const struct machine_desc *mach, void *board, struct cpu_state *cpu)
+struct sim_ctx {
+    const struct machine_desc *mach;
+    void *board;
+    struct cpu_state *cpu;
+    struct membus *bus;
+    uint8_t **flash;
+    uint8_t **ram;
+    struct armv7m_nvic *nvic;
+};
+
+static void poll_gpio(int fd, struct sim_ctx *ctx)
 {
-    do { mach->tick(board); } while (!check_breakpoint(cpu));
+    /* Non-blocking check for GPIO commands while CPU is running */
+    static char gbuf[256];
+    static int glen = 0;
+    fd_set fds; struct timeval tv = {0, 0};
+    FD_ZERO(&fds); FD_SET(fd, &fds);
+    if (select(fd + 1, &fds, NULL, NULL, &tv) <= 0) return;
+    int n = read(fd, gbuf + glen, sizeof(gbuf) - glen - 1);
+    if (n <= 0) return;
+    glen += n; gbuf[glen] = 0;
+    char *nl;
+    while ((nl = strchr(gbuf, '\n'))) {
+        *nl = 0;
+        /* Only handle GPIO commands inline */
+        const char *cmd = strstr(gbuf, "\"cmd\":\"");
+        if (cmd && strncmp(cmd + 7, "gpio\"", 5) == 0) {
+            const char *p = strstr(gbuf, "\"pin\":");
+            const char *v = strstr(gbuf, "\"val\":");
+            if (p && v) {
+                int pin = atoi(p + 6);
+                int val = atoi(v + 6);
+                struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, 0);
+                if (gpio) {
+                    uint32_t old = gpio->idr;
+                    if (val) gpio->idr |= (1 << pin);
+                    else     gpio->idr &= ~(1 << pin);
+                    if (val && !(old & (1 << pin)) && pin <= 4)
+                        armv7m_nvic_set_pending(ctx->nvic, 16 + 6 + pin);
+                }
+            }
+            /* Send response */
+            write(fd, "{\"ok\":true}\n", 12);
+        }
+        int rem = glen - (nl - gbuf + 1);
+        memmove(gbuf, nl + 1, rem);
+        glen = rem;
+    }
+}
+
+static void run_until_bp(int fd, struct sim_ctx *ctx)
+{
+    int tick = 0;
+    do {
+        ctx->mach->tick(ctx->board);
+        if (++tick % 10000 == 0) poll_gpio(fd, ctx);
+    } while (!check_breakpoint(ctx->cpu));
 }
 
 static void send_response(int fd, const char *json)
@@ -209,16 +264,6 @@ static void send_source(int fd, const char *file)
     send_response(fd, buf);
 }
 
-struct sim_ctx {
-    const struct machine_desc *mach;
-    void *board;
-    struct cpu_state *cpu;
-    struct membus *bus;
-    uint8_t **flash;
-    uint8_t **ram;
-    struct armv7m_nvic *nvic;
-};
-
 static void handle_command(int fd, struct sim_ctx *ctx, const char *line)
 {
     const char *cmd = strstr(line, "\"cmd\":\"");
@@ -253,7 +298,7 @@ static void handle_command(int fd, struct sim_ctx *ctx, const char *line)
             if (is_bl) {
                 int old_nbp = nbp;
                 breakpoints[nbp++] = ctx->cpu->r[REG_PC] + 4;
-                run_until_bp(ctx->mach, ctx->board, ctx->cpu);
+                run_until_bp(fd, ctx);
                 nbp = old_nbp;
             } else {
                 ctx->mach->tick(ctx->board);
@@ -264,12 +309,12 @@ static void handle_command(int fd, struct sim_ctx *ctx, const char *line)
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "continue\"", 9) == 0) {
-        do { ctx->mach->tick(ctx->board); } while (!check_breakpoint(ctx->cpu));
+        run_until_bp(fd, ctx);
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
         cpu_reset(ctx->cpu, ctx->bus);
-        do { ctx->mach->tick(ctx->board); } while (!check_breakpoint(ctx->cpu));
+        run_until_bp(fd, ctx);
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "break\"", 6) == 0) {

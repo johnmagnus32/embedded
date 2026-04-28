@@ -71,10 +71,27 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
       <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
     </div>
     <div class="resize-v" data-above="mem-panel" data-below="display-panel"></div>
-    <div class="panel" id="display-panel" style="height:260px;min-height:100px;">
-      <h2>Display <span onclick="refreshDisplay()" style="cursor:pointer;font-size:10px;color:#484f58;font-weight:normal;margin-left:8px">⟳ refresh</span></h2>
-      <div class="panel-body" style="display:flex;align-items:center;justify-content:center;padding:4px;">
-        <canvas id="lcd" width="320" height="240" style="image-rendering:pixelated;border:1px solid #30363d;max-width:100%;max-height:100%;object-fit:contain;"></canvas>
+    <div class="panel" id="display-panel" style="height:320px;min-height:200px;">
+      <h2>Display</h2>
+      <div class="panel-body" style="display:flex;flex-direction:column;align-items:center;padding:8px;gap:8px;">
+        <canvas id="lcd" width="320" height="240" style="image-rendering:pixelated;border:1px solid #30363d;max-width:100%;object-fit:contain;"></canvas>
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;padding:0 12px;user-select:none;">
+          <div style="display:grid;grid-template-columns:28px 28px 28px;grid-template-rows:28px 28px 28px;gap:2px;">
+            <div></div>
+            <button class="gbtn" data-pin="4">▲</button>
+            <div></div>
+            <button class="gbtn" data-pin="2">◀</button>
+            <div></div>
+            <button class="gbtn" data-pin="3">▶</button>
+            <div></div>
+            <button class="gbtn" data-pin="1">▼</button>
+            <div></div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <button class="gbtn gbtn-ab" data-pin="1">B</button>
+            <button class="gbtn gbtn-ab" data-pin="0">A</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="resize-v" data-above="display-panel" data-below="timeline-panel"></div>
@@ -87,27 +104,6 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     <div class="panel" id="uart-panel" style="height:200px;min-height:100px;">
       <h2>UART Console</h2>
       <div class="panel-body" id="uart" style="overflow-y:auto"></div>
-    </div>
-    <div class="resize-v" data-above="uart-panel" data-below="btn-panel"></div>
-    <div class="panel" id="btn-panel" style="height:120px;min-height:80px;">
-      <h2>Buttons</h2>
-      <div class="panel-body" style="display:flex;align-items:center;justify-content:center;gap:24px;padding:8px;user-select:none;">
-        <div style="display:grid;grid-template-columns:32px 32px 32px;grid-template-rows:32px 32px 32px;gap:2px;">
-          <div></div>
-          <button class="gbtn" data-pin="4" style="grid-column:2">▲</button>
-          <div></div>
-          <button class="gbtn" data-pin="2" style="grid-column:1">◀</button>
-          <div></div>
-          <button class="gbtn" data-pin="3" style="grid-column:3">▶</button>
-          <div></div>
-          <button class="gbtn" data-pin="1" style="grid-column:2">▼</button>
-          <div></div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button class="gbtn gbtn-ab" data-pin="1">B</button>
-          <button class="gbtn gbtn-ab" data-pin="0">A</button>
-        </div>
-      </div>
     </div>
   </div>
 </div>
