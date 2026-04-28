@@ -260,7 +260,6 @@ function renderTimeline(s) {
     const isHandler = ['SysTick','PendSV','SVC','IRQ'].includes(t.ctx);
     const y = isHandler ? 0 : 14;
     const h = isHandler ? 12 : H - 16;
-    const h = isHandler ? 12 : H - 16;
 
     svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}" opacity="0.7" rx="1"/>`;
     // Label if wide enough
