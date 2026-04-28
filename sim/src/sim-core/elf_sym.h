@@ -39,4 +39,9 @@ int elf_get_sections(const struct elf_section **out);
 /* DWARF-derived TCB struct layout. Returns 0 in tcb_size if not found. */
 void dwarf_get_tcb_layout(uint32_t *tcb_size, int *sp_off, int *name_off);
 
+/* Stack variable info for annotation */
+struct stack_var { char name[32]; int32_t sp_offset; uint32_t type_die; };
+int vars_on_stack(uint32_t pc, struct stack_var *out, int max);
+uint32_t cfa_offset_at_pc(uint32_t pc);
+
 #endif

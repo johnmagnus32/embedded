@@ -448,9 +448,9 @@ function renderMemMap(s) {
 
               // Collapse consecutive zeros
               let zeroRun = 0;
-              if (d.val === 0 && !d.sym) {
+              if (d.val === 0 && !d.sym && !d.var) {
                 let j = di;
-                while (j < data.length && data[j].val === 0 && !data[j].sym) { zeroRun++; j++; }
+                while (j < data.length && data[j].val === 0 && !data[j].sym && !data[j].var) { zeroRun++; j++; }
               }
 
               if (zeroRun > 2) {
@@ -477,6 +477,8 @@ function renderMemMap(s) {
                 svg += `<text x="${barX+4}" y="${dy+cellH/2+4}" fill="#c9d1d9" font-size="10">${valStr}</text>`;
                 // Symbol annotation
                 if (d.sym) svg += `<text x="${barX+barW/2+10}" y="${dy+cellH/2+4}" fill="#d2a8ff" font-size="9">${d.sym}</text>`;
+                // DWARF variable annotation
+                else if (d.var) svg += `<text x="${barX+barW/2+10}" y="${dy+cellH/2+4}" fill="#7ee787" font-size="9">${d.var}${d.vsz ? ' ['+d.vsz+'B]' : ''}</text>`;
                 di++;
               }
             }

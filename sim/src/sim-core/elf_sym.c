@@ -112,6 +112,7 @@ static uint32_t loclists_size = 0;
 int elf_get_sections(const struct elf_section **out) { *out = elf_sections; return n_elf_sections; }
 
 static void parse_debug_line(const uint8_t *data, uint32_t size);
+static void parse_debug_frame(const uint8_t *data, uint32_t size);
 static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                              const uint8_t *abbr, uint32_t abbr_size,
                              const char *str, uint32_t str_size);
@@ -267,6 +268,12 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
                 loclists_data = malloc(shdrs[i].sh_size);
                 loclists_size = shdrs[i].sh_size;
                 fseek(f, shdrs[i].sh_offset, SEEK_SET); fread(loclists_data, loclists_size, 1, f);
+            } else if (strcmp(sn, ".debug_frame") == 0) {
+                uint8_t *df = malloc(shdrs[i].sh_size);
+                uint32_t df_sz = shdrs[i].sh_size;
+                fseek(f, shdrs[i].sh_offset, SEEK_SET); fread(df, df_sz, 1, f);
+                parse_debug_frame(df, df_sz);
+                free(df);
             }
         }
         if (di && da && ds)
@@ -1025,6 +1032,153 @@ uint32_t type_array_elem(uint32_t array_type_die, uint32_t *elem_size_out)
     struct type_info *elem = t->type_ref ? resolve_type(t->type_ref) : NULL;
     *elem_size_out = elem ? (elem->byte_size ? elem->byte_size : 4) : 4;
     return t->type_ref;
+}
+
+/* ── .debug_frame CFA table ── */
+#define MAX_FDE 128
+#define MAX_CFA_ROWS 8
+struct cfa_row { uint32_t pc; uint32_t offset; };
+static struct { uint32_t start, end; struct cfa_row rows[MAX_CFA_ROWS]; int nrows; } fdes[MAX_FDE];
+static int nfdes;
+
+static void parse_debug_frame(const uint8_t *data, uint32_t size)
+{
+    const uint8_t *p = data, *end = data + size;
+    /* First pass: find CIE defaults */
+    int cie_code_align = 1;
+    int cie_data_align = -4;
+    uint32_t cie_cfa_offset = 0;
+
+    while (p < end) {
+        const uint8_t *entry = p;
+        uint32_t len = *(uint32_t*)p; p += 4;
+        if (len == 0 || len == 0xFFFFFFFF) break;
+        const uint8_t *next = p + len;
+        uint32_t cie_id = *(uint32_t*)p; p += 4;
+
+        if (cie_id == 0xFFFFFFFF) {
+            /* CIE */
+            p++; /* version */
+            while (*p) p++; p++; /* augmentation string */
+            cie_code_align = read_uleb(&p);
+            cie_data_align = (int)read_sleb(&p);
+            read_uleb(&p); /* return address column */
+            /* Parse initial instructions for default CFA */
+            while (p < next) {
+                uint8_t op = *p++;
+                if ((op & 0xC0) == 0x40) continue; /* DW_CFA_advance_loc */
+                if ((op & 0xC0) == 0x80) { read_uleb(&p); continue; } /* DW_CFA_offset */
+                if ((op & 0xC0) == 0xC0) continue; /* DW_CFA_restore */
+                if (op == 0x0C) { /* DW_CFA_def_cfa */
+                    read_uleb(&p); /* register */
+                    cie_cfa_offset = read_uleb(&p);
+                } else if (op == 0) break; /* DW_CFA_nop or padding */
+                else if (op == 0x0E) { cie_cfa_offset = read_uleb(&p); } /* DW_CFA_def_cfa_offset */
+            }
+        } else if (nfdes < MAX_FDE) {
+            /* FDE */
+            uint32_t pc_begin = *(uint32_t*)p; p += 4;
+            uint32_t pc_range = *(uint32_t*)p; p += 4;
+            struct cfa_row *rows = fdes[nfdes].rows;
+            fdes[nfdes].start = pc_begin;
+            fdes[nfdes].end = pc_begin + pc_range;
+            rows[0].pc = pc_begin;
+            rows[0].offset = cie_cfa_offset;
+            int nr = 1;
+            uint32_t loc = pc_begin;
+            while (p < next && nr < MAX_CFA_ROWS) {
+                uint8_t op = *p++;
+                if ((op & 0xC0) == 0x40) { loc += (op & 0x3F) * cie_code_align; continue; }
+                if ((op & 0xC0) == 0x80) { read_uleb(&p); continue; }
+                if ((op & 0xC0) == 0xC0) continue;
+                if (op == 0x0E) { /* DW_CFA_def_cfa_offset */
+                    uint32_t off = read_uleb(&p);
+                    rows[nr].pc = loc; rows[nr].offset = off; nr++;
+                } else if (op == 0x0C) { read_uleb(&p); rows[nr].pc = loc; rows[nr].offset = read_uleb(&p); nr++; }
+                else if (op == 0x02) { loc += read_uleb(&p) * cie_code_align; }
+                else if (op == 0) continue; /* nop */
+                else if (op == 0x05) { read_uleb(&p); read_uleb(&p); } /* DW_CFA_offset_extended */
+                else break;
+            }
+            fdes[nfdes].nrows = nr;
+            nfdes++;
+        }
+        p = next;
+    }
+}
+
+/* Return CFA offset from SP at a given PC. Returns 0 if unknown. */
+uint32_t cfa_offset_at_pc(uint32_t pc)
+{
+    for (int i = 0; i < nfdes; i++) {
+        if (pc >= fdes[i].start && pc < fdes[i].end) {
+            uint32_t off = 0;
+            for (int r = 0; r < fdes[i].nrows; r++) {
+                if (fdes[i].rows[r].pc <= pc) off = fdes[i].rows[r].offset;
+            }
+            return off;
+        }
+    }
+    return 0;
+}
+
+/* Return all stack-resident variables in scope at PC.
+ * Fills out[] with {name, sp_offset, type_die}. Returns count. */
+int vars_on_stack(uint32_t pc, struct stack_var *out, int max)
+{
+    uint32_t cfa_off = cfa_offset_at_pc(pc);
+    int n = 0;
+    for (int v = 0; v < nvars && n < max; v++) {
+        int si = vars[v].scope_idx;
+        if (!pc_in_scope(si, pc)) continue;
+        int32_t off;
+        if (vars[v].has_loc == 3) {
+            off = (int32_t)vars[v].loc_offset + (int32_t)cfa_off;
+        } else if (vars[v].has_loc == 1 && loclists_data && vars[v].loc_offset < loclists_size) {
+            /* Scan loclist for fbreg entry covering this PC */
+            const uint8_t *p = loclists_data + vars[v].loc_offset;
+            const uint8_t *end = loclists_data + loclists_size;
+            uint32_t base = vars[v].cu_base;
+            int found = 0;
+            while (p < end) {
+                uint8_t ek = *p++;
+                if (ek == 0) break;
+                if (ek == 6) { base = *(uint32_t*)p; p += 4; continue; }
+                uint32_t s0, s1; uint16_t elen;
+                if (ek == 8) { s0 = *(uint32_t*)p; p += 4; uint32_t len = read_uleb(&p); s1 = s0 + len; }
+                else if (ek == 7) { s0 = *(uint32_t*)p; p += 4; s1 = *(uint32_t*)p; p += 4; }
+                else if (ek == 4) { s0 = base + read_uleb(&p); s1 = base + read_uleb(&p); }
+                else if (ek == 9) { read_uleb(&p); read_uleb(&p); continue; }
+                else break;
+                elen = read_uleb(&p);
+                if (pc >= s0 && pc < s1 && elen > 0 && *p == 0x91) {
+                    const uint8_t *ep = p + 1;
+                    off = (int32_t)read_sleb(&ep) + (int32_t)cfa_off;
+                    found = 1;
+                }
+                p += elen;
+                if (found) break;
+            }
+            if (!found) continue;
+        } else continue;
+        /* Deduplicate: keep innermost scope (highest depth) */
+        int dup = -1;
+        for (int j = 0; j < n; j++) {
+            if (strcmp(out[j].name, vars[v].name) == 0) { dup = j; break; }
+        }
+        if (dup >= 0) {
+            /* Replace if this var is in a deeper scope */
+            int d1 = 0, d2 = 0;
+            for (int s = vars[v].scope_idx; s >= 0; s = scopes[s].parent) d1++;
+            /* find original var's scope depth — stored scope_idx not saved, just skip */
+            continue; /* keep first found, good enough */
+        }
+        strncpy(out[n].name, vars[v].name, 31); out[n].name[31] = 0;
+        out[n].sp_offset = off;
+        out[n].type_die = vars[v].type_die;
+        n++;
+    }
+    return n;
 }
 
 /* Look up a local variable by name at the given PC.

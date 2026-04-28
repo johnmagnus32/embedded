@@ -199,8 +199,7 @@ static void handle_command(int fd, struct board *b, const char *line)
             send_source(fd, file);
         }
     } else if (strncmp(cmd, "memmap\"", 7) == 0) {
-        /* Lightweight state for memory map: tasks + sections + SP/MSP */
-        char buf[8192];
+        char buf[32768];
         int n = snprintf(buf, sizeof(buf), "{\"msp\":%u,\"psp\":%u,\"ram_base\":%u,\"ram_size\":%u,",
                          b->cpu.msp, b->cpu.r[REG_SP], (uint32_t)RAM_BASE, (uint32_t)RAM_SIZE);
 
@@ -213,7 +212,9 @@ static void handle_command(int fd, struct board *b, const char *line)
             n += snprintf(buf+n, sizeof(buf)-n, "{\"name\":\"%s\",\"addr\":%u,\"size\":%u}",
                           secs[i].name, secs[i].addr, secs[i].size);
         }
-        n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":[]}");
+        n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":");
+        n += state_emit_tasks(&b->cpu, b->flash, b->ram, buf+n, sizeof(buf)-n);
+        n += snprintf(buf+n, sizeof(buf)-n, "}");
         send_response(fd, buf);
 
     } else if (strncmp(cmd, "print\"", 6) == 0) {
@@ -260,8 +261,9 @@ static void handle_command(int fd, struct board *b, const char *line)
         } else if (loc == 2) { /* constant */
             addr = val;
             valid = 1;
-        } else if (loc == 3) { /* stack */
-            addr = b->cpu.r[REG_SP] + val;
+        } else if (loc == 3) { /* stack (fbreg — relative to CFA) */
+            uint32_t cfa = cfa_offset_at_pc(b->cpu.r[REG_PC]);
+            addr = b->cpu.r[REG_SP] + cfa + val;
             valid = 1;
         } else {
             /* Try global symbol */
