@@ -1251,10 +1251,17 @@ uint32_t resolve_breakpoint(const char *spec)
         return 0;
     }
 
-    /* Try function name — break at function entry */
+    /* Try function name — find address that the loop branches back to */
     for (int i = 0; i < nsyms; i++) {
         if (strcmp(syms[i].name, spec) == 0) {
-            return syms[i].addr;
+            uint32_t addr = syms[i].addr;
+            uint32_t end = addr + syms[i].size;
+            /* Find first line entry strictly after the symbol start */
+            for (int j = 0; j < nlines; j++) {
+                if (lines[j].addr > addr && lines[j].addr < end)
+                    return lines[j].addr;
+            }
+            return addr;
         }
     }
     return 0;
