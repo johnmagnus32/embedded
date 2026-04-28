@@ -10,7 +10,6 @@
  */
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
 #include "ili9341.h"
 #include "chardev.h"
 
@@ -121,16 +120,6 @@ void ili9341_flush(struct ili9341 *d)
 {
     if (!d->dirty || !d->chardev) return;
 
-    static struct timeval last = {0};
-    struct timeval now;
-    gettimeofday(&now, NULL);
-    if (last.tv_sec) {
-        long ms = (now.tv_sec - last.tv_sec) * 1000 + (now.tv_usec - last.tv_usec) / 1000;
-        static int count = 0;
-        if (++count % 30 == 0)
-            fprintf(stderr, "[display] frame %d: %ldms since last flush\n", count, ms);
-    }
-    last = now;
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
     chardev_write_buf(d->chardev, hdr, 4);
