@@ -141,13 +141,6 @@ async function pollUart() {
 }
 pollUart();
 
-// Poll display at ~5Hz
-async function pollDisplay() {
-  await _doRefreshDisplay();
-  setTimeout(pollDisplay, 200);
-}
-pollDisplay();
-
 async function sendCmd(cmd) {
   log(`<span style="color:#c9d1d9">(dbg) ${esc(cmd)}</span>`);
   try {
@@ -674,6 +667,7 @@ if (colResize) {
     document.addEventListener('mouseup', onUp);
   });
 }
+setInterval(_doRefreshDisplay, 200);
 </script>
 </body>
 </html>
