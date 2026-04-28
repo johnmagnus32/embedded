@@ -140,17 +140,18 @@ class WebDebugger:
                 buf = b''
                 while True:
                     try:
-                        data = self.display_sock.recv(65536)
+                        data = self.display_sock.recv(262144)
                         if not data: break
                         buf += data
-                        while len(buf) >= HEADER_SIZE + FRAME_SIZE:
-                            hdr = buf[:HEADER_SIZE]
-                            ew = hdr[0] | (hdr[1] << 8)
-                            eh = hdr[2] | (hdr[3] << 8)
+                        while len(buf) >= HEADER_SIZE:
+                            ew = buf[0] | (buf[1] << 8)
+                            eh = buf[2] | (buf[3] << 8)
+                            fsz = ew * eh * 2
+                            if len(buf) < HEADER_SIZE + fsz: break
                             self.display_w = ew
                             self.display_h = eh
-                            self.display_frame = buf[HEADER_SIZE:HEADER_SIZE + FRAME_SIZE]
-                            buf = buf[HEADER_SIZE + FRAME_SIZE:]
+                            self.display_frame = buf[HEADER_SIZE:HEADER_SIZE + fsz]
+                            buf = buf[HEADER_SIZE + fsz:]
                     except: break
             threading.Thread(target=display_reader, daemon=True).start()
         except:

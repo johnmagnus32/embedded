@@ -117,10 +117,19 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
 void ili9341_flush(struct ili9341 *d)
 {
     if (!d->dirty || !d->chardev) return;
-    /* Send 4-byte header: eff_w (u16 LE), eff_h (u16 LE), then raw fb */
-    uint16_t ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
+    int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
     chardev_write_buf(d->chardev, hdr, 4);
-    chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
+
+    if (d->madctl & 0x20) {
+        /* Landscape: transpose physical (240×320) to logical (320×240) */
+        static uint16_t tbuf[ILI9341_W * ILI9341_H];
+        for (int y = 0; y < eh; y++)
+            for (int x = 0; x < ew; x++)
+                tbuf[y * ew + x] = d->fb[x * ILI9341_W + y];
+        chardev_write_buf(d->chardev, (const uint8_t *)tbuf, ew * eh * 2);
+    } else {
+        chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
+    }
     d->dirty = 0;
 }
