@@ -12,8 +12,8 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .panel-body { flex:1; overflow-y:auto; padding:8px; }
 .src-line { white-space:pre; padding:1px 4px; }
 .src-line.current { background:#1f3a1f; color:#7ee787; font-weight:bold; }
-.src-line .num { color:#484f58; display:inline-block; width:40px; text-align:right; margin-right:4px; cursor:pointer; user-select:none; }
-.src-line .bp { display:inline-block; width:10px; text-align:center; margin-right:2px; }
+.src-line .num { color:#484f58; display:inline-block; width:52px; text-align:right; margin-right:4px; cursor:pointer; user-select:none; }
+.src-line .bp { display:inline-block; width:10px; text-align:center; }
 .src-line.current .num { color:#7ee787; }
 .mode { padding:1px 6px; border-radius:3px; font-size:10px; }
 .mode.thread { background:#1f3a1f; color:#7ee787; }
@@ -22,7 +22,7 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 #cmd-input { width:100%; background:#0d1117; border:1px solid #30363d; color:#c9d1d9;
              font-family:inherit; font-size:12px; padding:6px 8px; border-radius:4px; flex-shrink:0; }
 #cmd-input:focus { outline:none; border-color:#58a6ff; }
-#cmd-log { flex:1; overflow-y:auto; font-size:11px; color:#484f58; }
+#cmd-log { flex:1; overflow-y:auto; font-size:11px; color:#484f58; padding-bottom:8px; }
 .fn { color:#d2a8ff; }
 .addr { color:#58a6ff; }
 .file { color:#484f58; font-size:10px; }
@@ -215,7 +215,7 @@ function render(stop, regs, source, uart) {
         const hasBp = bpLines.has(num);
         const bp = hasBp ? '<span class="bp" style="color:#f85149">●</span>' : '<span class="bp"> </span>';
         return `<div class="src-line ${num===curLine?'current':''}" ${num===curLine?'id="cur-line"':''}>` +
-          `<span class="num" onclick="toggleBp(${num})">${num===curLine?'→':' '}${num}</span>${bp}${esc(text)}</div>`;
+          `<span class="num" onclick="toggleBp(${num})">${bp}${num===curLine?'→':' '}${num}</span>${esc(text)}</div>`;
       }).join('');
     const cur = document.getElementById('cur-line');
     if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
