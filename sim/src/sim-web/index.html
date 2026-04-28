@@ -146,6 +146,15 @@ async function sendCmd(cmd) {
     } else if (cmd.startsWith('d ') || cmd.startsWith('delete ')) {
       const n = parseInt(cmd.replace(/^(d|delete)\s+/, ''));
       cmdObj = {cmd:'delete', n};
+    } else if (cmd === 'info' || cmd === 'i') {
+      const resp = await simCmd({cmd:'info'});
+      const bps = resp.breakpoints || [];
+      if (!bps.length) { log('No breakpoints.'); return; }
+      for (const bp of bps) {
+        const loc = bp.file ? `${bp.file}:${bp.line}` : hex(bp.addr);
+        log(`  #${bp.n}  ${bp.func||''} at ${loc} (${hex(bp.addr)})`);
+      }
+      return;
     } else {
       log(`Unknown command: ${cmd}`);
       return;

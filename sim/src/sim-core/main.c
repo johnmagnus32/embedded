@@ -189,6 +189,20 @@ static void handle_command(int fd, struct board *b, const char *line)
         }
         send_response(fd, "{\"ok\":true}");
 
+    } else if (strncmp(cmd, "info\"", 5) == 0) {
+        char buf[2048];
+        int n = snprintf(buf, sizeof(buf), "{\"breakpoints\":[");
+        for (int i = 0; i < nbp; i++) {
+            if (i) buf[n++] = ',';
+            uint32_t sym_off;
+            const char *fn = sym_lookup(breakpoints[i], &sym_off);
+            int line_num; const char *file = line_lookup(breakpoints[i], &line_num);
+            n += snprintf(buf+n, sizeof(buf)-n, "{\"n\":%d,\"addr\":%u,\"func\":\"%s\",\"file\":\"%s\",\"line\":%d}",
+                          i+1, breakpoints[i], fn?fn:"", file?file:"", line_num);
+        }
+        n += snprintf(buf+n, sizeof(buf)-n, "]}");
+        send_response(fd, buf);
+
     } else if (strncmp(cmd, "source\"", 7) == 0) {
         const char *f = strstr(line, "\"file\":\"");
         if (f) {
