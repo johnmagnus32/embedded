@@ -121,12 +121,11 @@ async function refreshUI(stopInfo) {
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
   lastMemmap = memmap;
-  // Fetch trace async (don't block command flow)
+  // Fetch trace and display async (don't block command flow)
   fetch('/trace').then(r => r.json()).then(data => {
     if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
     if (data.heap) { lastHeapData = data.heap; if (lastMemmap) renderMemMap(lastMemmap); }
   }).catch(() => {});
-  // Fetch display async
   refreshDisplay();
 }
 
@@ -267,8 +266,13 @@ async function toggleBp(line) {
   const dots = document.querySelectorAll('.src-line .bp');
   if (dots[line - 1]) dots[line - 1].innerHTML = bpLines.has(line) ? '<span style="color:#f85149">●</span>' : ' ';
 }
-
-async function refreshDisplay() {
+let _displayTimer = null;
+function refreshDisplay() {
+  if (_displayTimer) clearTimeout(_displayTimer);
+  _displayTimer = setTimeout(_doRefreshDisplay, 300);
+}
+async function _doRefreshDisplay() {
+  _displayTimer = null;
   try {
     const r = await fetch('/display');
     const d = await r.json();
@@ -280,16 +284,14 @@ async function refreshDisplay() {
     for (let i = 0; i < d.w * d.h; i++) {
       const hi = raw.charCodeAt(i * 2), lo = raw.charCodeAt(i * 2 + 1);
       const rgb565 = (hi << 8) | lo;
-      img.data[i*4]   = (rgb565 >> 8) & 0xF8; // R
-      img.data[i*4+1] = (rgb565 >> 3) & 0xFC; // G
-      img.data[i*4+2] = (rgb565 << 3) & 0xF8; // B
+      img.data[i*4]   = (rgb565 >> 8) & 0xF8;
+      img.data[i*4+1] = (rgb565 >> 3) & 0xFC;
+      img.data[i*4+2] = (rgb565 << 3) & 0xF8;
       img.data[i*4+3] = 255;
     }
     ctx.putImageData(img, 0, 0);
   } catch(e) {}
 }
-
-// STM32F411RE address map — regions shown in the vertical bar
 const regions = [
   { name:'SRAM',         base:0x20000000, size:128*1024,  color:'#8b949e' },
 ];

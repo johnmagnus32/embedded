@@ -126,7 +126,7 @@ class WebDebugger:
     def _recv_line(self):
         """Read one newline-terminated JSON line from sim-core."""
         while b'\n' not in self._buf:
-            chunk = self.sim_sock.recv(65536)
+            chunk = self.sim_sock.recv(262144)
             if not chunk:
                 return '{}'
             self._buf += chunk
@@ -194,9 +194,11 @@ class WebDebugger:
                     import json as _json
                     try:
                         resp = self.send_command(_json.dumps({"cmd":"display"}))
+                        self._display_cache = resp
                         self.http_response(conn, '200 OK', 'application/json', resp)
                     except:
-                        self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
+                        self.http_response(conn, '200 OK', 'application/json',
+                            getattr(self, '_display_cache', '{"w":0,"h":0}'))
 
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
