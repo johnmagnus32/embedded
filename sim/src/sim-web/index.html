@@ -429,6 +429,17 @@ function renderMemMap(s) {
 
             let di = 0;
             let lastFrameIdx = -1;
+
+            // Build variable span map: addr → {name, size, startAddr}
+            const varSpans = [];
+            for (const d of data) {
+              if (d.var) {
+                const sz = d.vsz || 4;
+                varSpans.push({start: d.addr, end: d.addr + sz, name: d.var, size: sz});
+              }
+            }
+            const inVarSpan = (addr) => varSpans.find(v => addr >= v.start && addr < v.end);
+
             while (di < data.length) {
               const d = data[di];
               const dy = addrToY(d.addr + 4);
@@ -447,11 +458,29 @@ function renderMemMap(s) {
                 }
               }
 
-              // Collapse consecutive zeros without annotations
+              // Check if this word starts a multi-word variable
+              const vs = d.var ? varSpans.find(v => v.start === d.addr && v.size > 4) : null;
+              if (vs) {
+                // Render entire variable as one block
+                const nwords = Math.ceil(vs.size / 4);
+                const vy0 = addrToY(vs.start + vs.size);
+                const vy1 = addrToY(vs.start);
+                const vh = vy1 - vy0;
+                svg += `<rect x="${barX}" y="${vy0}" width="${barW}" height="${vh}" fill="${colVar}" opacity="0.4" stroke="#30363d" stroke-width="0.5"/>`;
+                if (showText) {
+                  svg += `<text x="${barX+barW/2}" y="${vy0+vh/2+4}" fill="#7ee787" text-anchor="middle" font-size="10">${vs.name} [${vs.size}B]</text>`;
+                  svg += `<text x="${barX-4}" y="${vy0+4+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(vs.start + vs.size)}</text>`;
+                  svg += `<text x="${barX-4}" y="${vy1-2}" fill="#484f58" text-anchor="end" font-size="8">${hex(vs.start)}</text>`;
+                }
+                di += nwords;
+                continue;
+              }
+
+              // Collapse consecutive words that are zero AND not inside a variable span
               let zeroRun = 0;
-              if (d.val === 0 && !d.sym && !d.var) {
+              if (d.val === 0 && !d.sym && !d.var && !inVarSpan(d.addr)) {
                 let j = di;
-                while (j < data.length && data[j].val === 0 && !data[j].sym && !data[j].var) { zeroRun++; j++; }
+                while (j < data.length && data[j].val === 0 && !data[j].sym && !data[j].var && !inVarSpan(data[j].addr)) { zeroRun++; j++; }
               }
 
               if (zeroRun > 2) {
@@ -470,6 +499,7 @@ function renderMemMap(s) {
                 // Determine cell color and label
                 let bg, label, labelCol = '#c9d1d9';
                 const isSP = d.addr === t.sp;
+                const parentVar = inVarSpan(d.addr);
 
                 if (d.sym) {
                   bg = colRet;
@@ -479,8 +509,10 @@ function renderMemMap(s) {
                   bg = colVar;
                   const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8, '0');
                   label = d.var + ' = ' + valStr;
-                  if (d.vsz && d.vsz > 4) label = d.var + ' [' + d.vsz + 'B]';
                   labelCol = '#7ee787';
+                } else if (parentVar) {
+                  // Inside a multi-word variable (shouldn't happen now, but fallback)
+                  bg = colVar; label = ''; labelCol = '#7ee787';
                 } else {
                   bg = colFree;
                   const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8, '0');
@@ -602,7 +634,7 @@ memEl.addEventListener('wheel', (e) => {
   const oldH = memEl.scrollHeight;
   const frac = oldH > 0 ? mouseY / oldH : 0;
 
-  const delta = e.deltaY < 0 ? 1.2 : 1/1.2;
+  const delta = e.deltaY < 0 ? 1.08 : 1/1.08;
   memZoom = Math.max(1, Math.min(50000, memZoom * delta));
 
   if (lastMemmap) renderMemMap(lastMemmap);
