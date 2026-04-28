@@ -92,16 +92,8 @@ static void tfree(void *p)
 static void print_int(int n)
 {
     if (n < 0) { uart_poll_out(uart, '-'); n = -n; }
-    static const int divs[] = {100000, 10000, 1000, 100, 10, 1};
-    int started = 0;
-    for (int i = 0; i < 6; i++) {
-        int d = 0;
-        while (n >= divs[i]) { n -= divs[i]; d++; }
-        if (d || started || divs[i] == 1) {
-            uart_poll_out(uart, '0' + d);
-            started = 1;
-        }
-    }
+    if (n >= 10) print_int(n / 10);
+    uart_poll_out(uart, '0' + (n % 10));
 }
 
 static void task_a(void)

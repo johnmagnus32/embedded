@@ -760,9 +760,10 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         case 0x8: { uint64_t r = (uint64_t)c->r[rn] + imm; if (s) set_nzcv_add(c, c->r[rn], imm, r); if (rd != 15) c->r[rd] = (uint32_t)r; break; } /* ADD / CMN */
         case 0xA: { uint64_t r = (uint64_t)c->r[rn] - imm; if (s) set_nzcv_sub(c, c->r[rn], imm, r); c->r[rd] = (uint32_t)r; break; } /* SUB */
         case 0xD: { uint64_t r = (uint64_t)c->r[rn] - imm; if (s) set_nzcv_sub(c, c->r[rn], imm, r); break; } /* CMP */
+        case 0xE: { uint64_t r = (uint64_t)imm - c->r[rn]; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, imm, c->r[rn], r); break; } /* RSB */
         default: c->r[rd] = imm; break;
         }
-        if (s && op != 0x0 && op != 0x1 && op != 0x8 && op != 0xA && op != 0xD) set_nz(c, c->r[rd]);
+        if (s && op != 0x0 && op != 0x1 && op != 0x8 && op != 0xA && op != 0xD && op != 0xE) set_nz(c, c->r[rd]);
         return 0;
     }
 
@@ -954,6 +955,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         case 0x8: { uint64_t r = (uint64_t)c->r[rn] + val; c->r[rd] = (uint32_t)r; if (s) set_nzcv_add(c, c->r[rn], val, r); break; } /* ADD */
         case 0xA: { uint64_t r = (uint64_t)c->r[rn] - val; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, c->r[rn], val, r); break; } /* SUB */
         case 0xD: { uint64_t r = (uint64_t)c->r[rn] - val; if (s) set_nzcv_sub(c, c->r[rn], val, r); break; } /* CMP */
+        case 0xE: { uint64_t r = (uint64_t)val - c->r[rn]; c->r[rd] = (uint32_t)r; if (s) set_nzcv_sub(c, val, c->r[rn], r); break; } /* RSB */
         default: c->r[rd] = val; break;
         }
         if (s && op != 0x8 && op != 0xA && op != 0xD) set_nz(c, c->r[rd]);
