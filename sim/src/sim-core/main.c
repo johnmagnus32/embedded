@@ -1,7 +1,7 @@
 /*
  * sim-core — ARM Cortex-M4 emulator + debug server
  *
- * Usage: sim-core <elf> --debug <port> [--chardev name=port ...]
+ * Usage: sim-core --machine <name> --firmware <elf> --debug <port> [--chardev name=port ...]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,10 +9,13 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "gameboy.h"
+#include "machine.h"
+#include "cpu.h"
 #include "membus.h"
 #include "chardev.h"
 #include "armv7m_nvic.h"
+#include "stm32_gpio.h"
+#include "ili9341.h"
 #include "elf_sym.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
@@ -119,17 +122,17 @@ static int state_emit_tasks(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
 static uint32_t breakpoints[32];
 static int nbp = 0;
 
-static int check_breakpoint(struct gameboy *b)
+static int check_breakpoint(struct cpu_state *cpu)
 {
-    uint32_t pc = b->soc.cpu.r[REG_PC];
+    uint32_t pc = cpu->r[REG_PC];
     for (int i = 0; i < nbp; i++)
         if (pc == breakpoints[i]) return 1;
     return 0;
 }
 
-static void run_until_bp(struct gameboy *b)
+static void run_until_bp(const struct machine_desc *mach, void *board, struct cpu_state *cpu)
 {
-    do { gameboy_tick(b); } while (!check_breakpoint(b));
+    do { mach->tick(board); } while (!check_breakpoint(cpu));
 }
 
 static void send_response(int fd, const char *json)
@@ -138,9 +141,9 @@ static void send_response(int fd, const char *json)
     write(fd, "\n", 1);
 }
 
-static void send_stop_info(int fd, struct gameboy *b)
+static void send_stop_info(int fd, struct cpu_state *cpu)
 {
-    uint32_t pc = b->soc.cpu.r[REG_PC];
+    uint32_t pc = cpu->r[REG_PC];
     uint32_t off;
     const char *fn = sym_lookup(pc, &off);
     int line;
@@ -148,22 +151,22 @@ static void send_stop_info(int fd, struct gameboy *b)
     char buf[512];
     snprintf(buf, sizeof(buf),
         "{\"stopped\":true,\"pc\":%u,\"line\":%d,\"func\":\"%s\",\"file\":\"%s\",\"cycles\":%lu}",
-        pc, line, fn ? fn : "", file ? file : "", (unsigned long)b->soc.cpu.cycle_count);
+        pc, line, fn ? fn : "", file ? file : "", (unsigned long)cpu->cycle_count);
     send_response(fd, buf);
 }
 
-static void send_regs(int fd, struct gameboy *b)
+static void send_regs(int fd, struct cpu_state *cpu)
 {
     char buf[512];
     int n = snprintf(buf, sizeof(buf), "{\"regs\":[");
     for (int i = 0; i < 16; i++)
-        n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", b->soc.cpu.r[i]);
+        n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", cpu->r[i]);
     n += snprintf(buf + n, sizeof(buf) - n, "],\"xpsr\":%u,\"msp\":%u,\"psp\":%u}",
-                  b->soc.cpu.xpsr, b->soc.cpu.msp, b->soc.cpu.psp);
+                  cpu->xpsr, cpu->msp, cpu->psp);
     send_response(fd, buf);
 }
 
-static void send_mem(int fd, struct gameboy *b, uint32_t addr, int len)
+static void send_mem(int fd, uint8_t *flash, uint8_t *ram, uint32_t addr, int len)
 {
     if (len > 1024) len = 1024;
     char buf[4096];
@@ -171,8 +174,8 @@ static void send_mem(int fd, struct gameboy *b, uint32_t addr, int len)
     for (int i = 0; i < len; i++) {
         uint8_t byte = 0;
         uint32_t a = addr + i;
-        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE) byte = b->soc.ram[a - RAM_BASE];
-        else if (a >= FLASH_BASE && a < FLASH_BASE + FLASH_SIZE) byte = b->soc.flash[a - FLASH_BASE];
+        if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE) byte = ram[a - RAM_BASE];
+        else if (a >= FLASH_BASE && a < FLASH_BASE + FLASH_SIZE) byte = flash[a - FLASH_BASE];
         n += snprintf(buf + n, sizeof(buf) - n, "%02x", byte);
     }
     n += snprintf(buf + n, sizeof(buf) - n, "\"}");
@@ -206,14 +209,24 @@ static void send_source(int fd, const char *file)
     send_response(fd, buf);
 }
 
-static void handle_command(int fd, struct gameboy *b, const char *line)
+struct sim_ctx {
+    const struct machine_desc *mach;
+    void *board;
+    struct cpu_state *cpu;
+    struct membus *bus;
+    uint8_t **flash;
+    uint8_t **ram;
+    struct armv7m_nvic *nvic;
+};
+
+static void handle_command(int fd, struct sim_ctx *ctx, const char *line)
 {
     const char *cmd = strstr(line, "\"cmd\":\"");
     if (!cmd) return;
     cmd += 7;
 
     if (strncmp(cmd, "regs\"", 5) == 0) {
-        send_regs(fd, b);
+        send_regs(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "mem\"", 4) == 0) {
         uint32_t addr = 0; int len = 64;
@@ -221,43 +234,43 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
         const char *l = strstr(line, "\"len\":");
         if (a) addr = (uint32_t)strtoul(a + 7, NULL, 0);
         if (l) len = atoi(l + 6);
-        send_mem(fd, b, addr, len);
+        send_mem(fd, *ctx->flash, *ctx->ram, addr, len);
 
     } else if (strncmp(cmd, "step\"", 5) == 0) {
-        int orig_line; line_lookup(b->soc.cpu.r[REG_PC], &orig_line);
+        int orig_line; line_lookup(ctx->cpu->r[REG_PC], &orig_line);
         do {
-            gameboy_tick(b);
-            int cur_line; line_lookup(b->soc.cpu.r[REG_PC], &cur_line);
+            ctx->mach->tick(ctx->board);
+            int cur_line; line_lookup(ctx->cpu->r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
-        send_stop_info(fd, b);
+        send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "next\"", 5) == 0) {
-        int orig_line; line_lookup(b->soc.cpu.r[REG_PC], &orig_line);
+        int orig_line; line_lookup(ctx->cpu->r[REG_PC], &orig_line);
         do {
-            uint16_t insn = membus_read16(&b->soc.bus, b->soc.cpu.r[REG_PC]);
+            uint16_t insn = membus_read16(ctx->bus, ctx->cpu->r[REG_PC]);
             int is_bl = (insn & 0xF800) == 0xF000;
             if (is_bl) {
                 int old_nbp = nbp;
-                breakpoints[nbp++] = b->soc.cpu.r[REG_PC] + 4;
-                run_until_bp(b);
+                breakpoints[nbp++] = ctx->cpu->r[REG_PC] + 4;
+                run_until_bp(ctx->mach, ctx->board, ctx->cpu);
                 nbp = old_nbp;
             } else {
-                gameboy_tick(b);
+                ctx->mach->tick(ctx->board);
             }
-            int cur_line; line_lookup(b->soc.cpu.r[REG_PC], &cur_line);
+            int cur_line; line_lookup(ctx->cpu->r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
-        send_stop_info(fd, b);
+        send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "continue\"", 9) == 0) {
-        do { gameboy_tick(b); } while (!check_breakpoint(b));
-        send_stop_info(fd, b);
+        do { ctx->mach->tick(ctx->board); } while (!check_breakpoint(ctx->cpu));
+        send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
-        cpu_reset(&b->soc.cpu, &b->soc.bus);
-        do { gameboy_tick(b); } while (!check_breakpoint(b));
-        send_stop_info(fd, b);
+        cpu_reset(ctx->cpu, ctx->bus);
+        do { ctx->mach->tick(ctx->board); } while (!check_breakpoint(ctx->cpu));
+        send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "break\"", 6) == 0) {
         const char *s = strstr(line, "\"spec\":\"");
@@ -310,7 +323,7 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
     } else if (strncmp(cmd, "memmap\"", 7) == 0) {
         char buf[32768];
         int n = snprintf(buf, sizeof(buf), "{\"msp\":%u,\"psp\":%u,\"ram_base\":%u,\"ram_size\":%u,",
-                         b->soc.cpu.msp, b->soc.cpu.r[REG_SP], (uint32_t)RAM_BASE, (uint32_t)RAM_SIZE);
+                         ctx->cpu->msp, ctx->cpu->r[REG_SP], (uint32_t)RAM_BASE, (uint32_t)RAM_SIZE);
 
         /* ELF sections */
         const struct elf_section *secs;
@@ -322,7 +335,7 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
                           secs[i].name, secs[i].addr, secs[i].size);
         }
         n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":");
-        n += state_emit_tasks(&b->soc.cpu, b->soc.flash, b->soc.ram, buf+n, sizeof(buf)-n);
+        n += state_emit_tasks(ctx->cpu, *ctx->flash, *ctx->ram, buf+n, sizeof(buf)-n);
 
         /* Global symbols in RAM */
         struct sym_entry globals[64];
@@ -337,11 +350,11 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
         send_response(fd, buf);
 
     } else if (strncmp(cmd, "display\"", 8) == 0) {
-        if (b->display && b->display->chardev) {
-            /* Dump raw RGB565 framebuffer to display chardev */
-            const uint8_t *src = (const uint8_t *)b->display->fb;
+        struct ili9341 *disp = ctx->mach->get_display ? ctx->mach->get_display(ctx->board) : NULL;
+        if (disp && disp->chardev) {
+            const uint8_t *src = (const uint8_t *)disp->fb;
             int len = ILI9341_W * ILI9341_H * 2;
-            chardev_write_buf(b->display->chardev, src, len);
+            chardev_write_buf(disp->chardev, src, len);
             char buf[64];
             snprintf(buf, sizeof(buf), "{\"w\":%d,\"h\":%d,\"sz\":%d}", ILI9341_W, ILI9341_H, len);
             send_response(fd, buf);
@@ -355,13 +368,12 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
         if (p && v) {
             int pin = atoi(p + 6);
             int val = atoi(v + 6);
-            uint32_t old = b->soc.gpio[0].idr;
-            if (val) b->soc.gpio[0].idr |= (1 << pin);
-            else     b->soc.gpio[0].idr &= ~(1 << pin);
-            /* Trigger EXTI interrupt on rising edge (0→1) for pins 0-4 */
+            struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, 0);
+            uint32_t old = gpio->idr;
+            if (val) gpio->idr |= (1 << pin);
+            else     gpio->idr &= ~(1 << pin);
             if (val && !(old & (1 << pin)) && pin <= 4) {
-                /* EXTI0=IRQ6(vec22), EXTI1=IRQ7(vec23), ... EXTI4=IRQ10(vec26) */
-                armv7m_nvic_set_pending(&b->soc.nvic, 16 + 6 + pin);
+                armv7m_nvic_set_pending(ctx->nvic, 16 + 6 + pin);
             }
         }
         send_response(fd, "{\"ok\":true}");
@@ -395,22 +407,22 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
 
         /* Resolve base variable */
         int reg; uint32_t val;
-        int loc = var_lookup(base, b->soc.cpu.r[REG_PC], &reg, &val);
-        cur_type = var_type_die(base, b->soc.cpu.r[REG_PC]);
-        LOG("expr base='%s' pc=0x%08X loc=%d type=0x%X", base, b->soc.cpu.r[REG_PC], loc, cur_type);
+        int loc = var_lookup(base, ctx->cpu->r[REG_PC], &reg, &val);
+        cur_type = var_type_die(base, ctx->cpu->r[REG_PC]);
+        LOG("expr base='%s' pc=0x%08X loc=%d type=0x%X", base, ctx->cpu->r[REG_PC], loc, cur_type);
 
         if (loc == 1) { /* register — value is in the register directly */
-            uint32_t regval = b->soc.cpu.r[reg];
+            uint32_t regval = ctx->cpu->r[reg];
             uint32_t scratch = RAM_BASE + RAM_SIZE - 8;
-            *(uint32_t*)(b->soc.ram + RAM_SIZE - 8) = regval;
+            *(uint32_t*)(*ctx->ram + RAM_SIZE - 8) = regval;
             addr = scratch;
             valid = 1;
         } else if (loc == 2) { /* constant */
             addr = val;
             valid = 1;
         } else if (loc == 3) { /* stack (fbreg — relative to CFA) */
-            uint32_t cfa = cfa_offset_at_pc(b->soc.cpu.r[REG_PC]);
-            addr = b->soc.cpu.r[REG_SP] + cfa + val;
+            uint32_t cfa = cfa_offset_at_pc(ctx->cpu->r[REG_PC]);
+            addr = ctx->cpu->r[REG_SP] + cfa + val;
             valid = 1;
         } else {
             /* Try global symbol */
@@ -420,7 +432,7 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
             static const char *rn[] = {"r0","r1","r2","r3","r4","r5","r6","r7",
                                        "r8","r9","r10","r11","r12","sp","lr","pc"};
             for (int r = 0; r < 16; r++)
-                if (strcmp(base, rn[r]) == 0) { addr = b->soc.cpu.r[r]; valid = 1; break; }
+                if (strcmp(base, rn[r]) == 0) { addr = ctx->cpu->r[r]; valid = 1; break; }
         }
 
         /* Apply leading dereference */
@@ -430,9 +442,9 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
                 uint32_t ptr = addr;
                 if (loc != 1 && loc != 2) {
                     if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                        ptr = *(uint32_t*)(b->soc.ram + (addr - RAM_BASE));
+                        ptr = *(uint32_t*)(*ctx->ram + (addr - RAM_BASE));
                     else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-                        ptr = *(uint32_t*)(b->soc.flash + (addr - FLASH_BASE));
+                        ptr = *(uint32_t*)(*ctx->flash + (addr - FLASH_BASE));
                 }
                 addr = ptr;
                 cur_type = pointee;
@@ -459,9 +471,9 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
                 if (pointee) {
                     uint32_t ptr = 0;
                     if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                        ptr = *(uint32_t*)(b->soc.ram + (addr - RAM_BASE));
+                        ptr = *(uint32_t*)(*ctx->ram + (addr - RAM_BASE));
                     else if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-                        ptr = *(uint32_t*)(b->soc.flash + (addr - FLASH_BASE));
+                        ptr = *(uint32_t*)(*ctx->flash + (addr - FLASH_BASE));
                     addr = ptr;
                     cur_type = pointee;
                 }
@@ -485,13 +497,13 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
                 int idx = atoi(idx_expr);
                 if (idx == 0 && idx_expr[0] != '0') {
                     int vreg; uint32_t vval;
-                    int vloc = var_lookup(idx_expr, b->soc.cpu.r[REG_PC], &vreg, &vval);
-                    if (vloc == 1) idx = (int)b->soc.cpu.r[vreg];
+                    int vloc = var_lookup(idx_expr, ctx->cpu->r[REG_PC], &vreg, &vval);
+                    if (vloc == 1) idx = (int)ctx->cpu->r[vreg];
                     else if (vloc == 2) idx = (int)vval;
                     else if (vloc == 3) {
-                        uint32_t a = b->soc.cpu.r[REG_SP] + vval;
+                        uint32_t a = ctx->cpu->r[REG_SP] + vval;
                         if (a >= RAM_BASE && a < RAM_BASE + RAM_SIZE)
-                            idx = (int)*(uint32_t*)(b->soc.ram + (a - RAM_BASE));
+                            idx = (int)*(uint32_t*)(*ctx->ram + (a - RAM_BASE));
                     }
                 }
 
@@ -508,12 +520,12 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
 
         if (valid && cur_type) {
             char tbuf[3000];
-            type_format(cur_type, addr, b->soc.ram, b->soc.flash, tbuf, sizeof(tbuf));
+            type_format(cur_type, addr, *ctx->ram, *ctx->flash, tbuf, sizeof(tbuf));
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%s\"}", expr, tbuf);
         } else if (valid) {
             uint32_t v = 0;
             if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-                v = *(uint32_t*)(b->soc.ram + (addr - RAM_BASE));
+                v = *(uint32_t*)(*ctx->ram + (addr - RAM_BASE));
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"val\":\"%u\",\"hex\":\"0x%08x\"}", expr, v, v);
         } else {
             snprintf(rbuf, sizeof(rbuf), "{\"expr\":\"%s\",\"error\":\"not found\"}", expr);
@@ -524,35 +536,55 @@ static void handle_command(int fd, struct gameboy *b, const char *line)
 
 int main(int argc, char **argv)
 {
-    if (argc < 2) {
-        LOG("Usage: %s <elf> --debug <port> [--chardev name=port ...]", argv[0]);
-        return 1;
-    }
-
-    const char *elf_path = argv[1];
+    const char *machine_name = NULL;
+    const char *elf_path = NULL;
     int debug_port = 9001;
 
-    /* Parse --debug and --chardev args */
     struct chardev_table chardevs;
     chardev_table_init(&chardevs);
 
-    for (int i = 2; i < argc; i++) {
-        if (strcmp(argv[i], "--debug") == 0 && i + 1 < argc) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--list-machines") == 0) {
+            machine_list();
+            return 0;
+        } else if (strcmp(argv[i], "--machine") == 0 && i + 1 < argc) {
+            machine_name = argv[++i];
+        } else if (strcmp(argv[i], "--firmware") == 0 && i + 1 < argc) {
+            elf_path = argv[++i];
+        } else if (strcmp(argv[i], "--debug") == 0 && i + 1 < argc) {
             debug_port = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--chardev") == 0 && i + 1 < argc) {
             chardev_add(&chardevs, argv[++i]);
         }
     }
 
+    if (!machine_name || !elf_path) {
+        LOG("Usage: %s --machine <name> --firmware <elf> --debug <port> [--chardev name=port ...]", argv[0]);
+        machine_list();
+        return 1;
+    }
+
+    const struct machine_desc *mach = machine_find(machine_name);
+    if (!mach) {
+        LOG("Unknown machine: %s", machine_name);
+        machine_list();
+        return 1;
+    }
+
     /* Start chardev listeners */
     chardev_listen_all(&chardevs);
 
     /* Create board */
-    struct gameboy board;
-    gameboy_init(&board, &chardevs);
+    void *board = calloc(1, mach->board_size);
+    mach->init(board, &chardevs);
+
+    struct cpu_state *cpu = mach->get_cpu(board);
+    struct membus *bus = mach->get_bus(board);
+    uint8_t **flash = mach->get_flash(board);
+    uint8_t **ram = mach->get_ram(board);
 
     /* Load firmware */
-    if (elf_load(elf_path, board.soc.flash, board.soc.ram) != 0) {
+    if (elf_load(elf_path, *flash, *ram) != 0) {
         LOG("Failed to load ELF: %s", elf_path);
         return 1;
     }
@@ -565,7 +597,13 @@ int main(int argc, char **argv)
         strncpy(src_search_dir, dir, sizeof(src_search_dir) - 1);
     }
 
-    cpu_reset(&board.soc.cpu, &board.soc.bus);
+    cpu_reset(cpu, bus);
+
+    struct sim_ctx ctx = {
+        .mach = mach, .board = board,
+        .cpu = cpu, .bus = bus, .flash = flash, .ram = ram,
+        .nvic = mach->get_nvic(board),
+    };
 
     /* Start debug server */
     int srv = socket(AF_INET, SOCK_STREAM, 0);
@@ -582,7 +620,7 @@ int main(int argc, char **argv)
     int client = accept(srv, NULL, NULL);
     LOG("Debug client connected");
 
-    send_stop_info(client, &board);
+    send_stop_info(client, cpu);
 
     /* Command loop */
     char buf[4096];
@@ -597,7 +635,7 @@ int main(int argc, char **argv)
         while ((nl = strchr(buf, '\n')) != NULL) {
             *nl = '\0';
             LOG("CMD: %s", buf);
-            handle_command(client, &board, buf);
+            handle_command(client, &ctx, buf);
             int remaining = buf_len - (nl - buf + 1);
             memmove(buf, nl + 1, remaining);
             buf_len = remaining;
@@ -607,7 +645,8 @@ int main(int argc, char **argv)
 
     close(client);
     close(srv);
-    free(board.soc.flash);
-    free(board.soc.ram);
+    free(*flash);
+    free(*ram);
+    free(board);
     return 0;
 }

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gameboy.h"
+#include "machine.h"
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 {
@@ -49,3 +50,46 @@ void gameboy_tick(struct gameboy *b)
 {
     stm32f411_tick(&b->soc);
 }
+
+/* Machine registry wrappers */
+static void gameboy_init_wrap(void *board, struct chardev_table *cd)
+{ gameboy_init((struct gameboy *)board, cd); }
+
+static void gameboy_tick_wrap(void *board)
+{ gameboy_tick((struct gameboy *)board); }
+
+static struct cpu_state *gameboy_get_cpu(void *board)
+{ return &((struct gameboy *)board)->soc.cpu; }
+
+static struct membus *gameboy_get_bus(void *board)
+{ return &((struct gameboy *)board)->soc.bus; }
+
+static uint8_t **gameboy_get_flash(void *board)
+{ return &((struct gameboy *)board)->soc.flash; }
+
+static uint8_t **gameboy_get_ram(void *board)
+{ return &((struct gameboy *)board)->soc.ram; }
+
+static struct armv7m_nvic *gameboy_get_nvic(void *board)
+{ return &((struct gameboy *)board)->soc.nvic; }
+
+static struct stm32_gpio *gameboy_get_gpio(void *board, int port)
+{ return &((struct gameboy *)board)->soc.gpio[port]; }
+
+static struct ili9341 *gameboy_get_display(void *board)
+{ return ((struct gameboy *)board)->display; }
+
+const struct machine_desc gameboy_machine = {
+    .name        = "gameboy",
+    .description = "STM32F411 + ILI9341 display",
+    .board_size  = sizeof(struct gameboy),
+    .init        = gameboy_init_wrap,
+    .tick        = gameboy_tick_wrap,
+    .get_cpu     = gameboy_get_cpu,
+    .get_bus     = gameboy_get_bus,
+    .get_flash   = gameboy_get_flash,
+    .get_ram     = gameboy_get_ram,
+    .get_nvic    = gameboy_get_nvic,
+    .get_gpio    = gameboy_get_gpio,
+    .get_display = gameboy_get_display,
+};

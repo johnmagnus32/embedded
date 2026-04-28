@@ -1,8 +1,8 @@
 #!/bin/bash
 # sim — ARM Cortex-M4 Emulator with Web Debugger
-# Usage: ./sim <firmware.elf>
+# Usage: ./sim --firmware <firmware.elf> [--machine <name>]
 DIR="$(cd "$(dirname "$0")" && pwd)"
 pkill -f sim-core 2>/dev/null
 pkill -f sim-web 2>/dev/null
 sleep 0.5
-exec python3 "$DIR/src/sim-web/sim-web.py" "$@"
+exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy "$@"
