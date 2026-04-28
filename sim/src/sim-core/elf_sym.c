@@ -1415,8 +1415,17 @@ uint32_t resolve_breakpoint(const char *spec)
             if (fi >= 0 && fi < nline_files && lines[i].line == target_line) {
                 const char *fname = line_files[fi];
                 int slen = strlen(fname);
-                /* Match suffix (e.g. "test_rtos.c" matches "/path/to/test_rtos.c") */
+                /* Match suffix: "main.c" matches "src/main.c"
+                 * Also try: "main" matches "src/main.c" (strip .c/.h) */
                 if (slen >= flen && memcmp(fname + slen - flen, spec, flen) == 0)
+                    return lines[i].addr;
+                /* Try matching basename without extension */
+                const char *base = fname;
+                for (const char *p = fname; *p; p++) if (*p == '/') base = p + 1;
+                int blen = strlen(base);
+                const char *dot = strrchr(base, '.');
+                int bname_len = dot ? (int)(dot - base) : blen;
+                if (bname_len == flen && memcmp(base, spec, flen) == 0)
                     return lines[i].addr;
             }
         }
