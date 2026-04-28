@@ -246,8 +246,9 @@ async function toggleBp(line) {
     if (resp.addr) { bpLines.add(line); log(`Breakpoint at ${spec} (${hex(resp.addr)})`); }
     else log(`<span style="color:#f85149">No code at ${spec}</span>`);
   }
-  // Re-render source to update dots
-  if (lastState) render(lastState, null, lastSource, null);
+  // Update dot in-place
+  const dots = document.querySelectorAll('.src-line .bp');
+  if (dots[line - 1]) dots[line - 1].innerHTML = bpLines.has(line) ? '<span style="color:#f85149">●</span>' : ' ';
 }
 
 // STM32F411RE address map — regions shown in the vertical bar
