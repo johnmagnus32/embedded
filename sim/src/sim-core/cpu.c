@@ -486,6 +486,13 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         if (cond_check(c, cond)) {
             int32_t offset = (int8_t)(insn & 0xFF);
             c->r[REG_PC] = pc + 4 + (offset << 1);
+        } else if (pc == 0x08000218) {
+            static FILE *dbgf = NULL;
+            if (!dbgf) dbgf = fopen("/tmp/bgt_debug.txt", "w");
+            if (dbgf) { fprintf(dbgf, "BGT not taken: r4=%d xpsr=0x%08X N=%d Z=%d C=%d V=%d it_state=0x%02X\n",
+                (int32_t)c->r[4], c->xpsr,
+                (c->xpsr>>31)&1, (c->xpsr>>30)&1, (c->xpsr>>29)&1, (c->xpsr>>28)&1, c->it_state);
+                fflush(dbgf); }
         }
         return 0;
     }
@@ -1012,7 +1019,14 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
     mem_write32(flash, ram, sp + 16, c->r[12]);
     mem_write32(flash, ram, sp + 20, c->r[REG_LR]);
     mem_write32(flash, ram, sp + 24, c->r[REG_PC] | 1);
-    mem_write32(flash, ram, sp + 28, c->xpsr);
+    /* Encode IT state into xPSR bits [26:25][15:10] before saving */
+    uint32_t saved_xpsr = c->xpsr;
+    if (c->it_state) {
+        saved_xpsr |= ((c->it_state >> 6) & 3) << 25;  /* ICI/IT bits [26:25] */
+        saved_xpsr |= (c->it_state & 0x3F) << 10;       /* ICI/IT bits [15:10] */
+    }
+    mem_write32(flash, ram, sp + 28, saved_xpsr);
+    c->it_state = 0;  /* Clear IT state for exception handler */
     *sp_ptr = sp;
 
     /* Set EXC_RETURN in LR */
@@ -1052,6 +1066,11 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
     c->r[REG_LR] = mem_read32(flash, ram, sp + 20);
     c->r[REG_PC] = mem_read32(flash, ram, sp + 24) & ~1u;
     c->xpsr      = mem_read32(flash, ram, sp + 28) | FLAG_T;
+    /* Restore IT state from xPSR bits [26:25][15:10] */
+    uint32_t restored_xpsr = c->xpsr;
+    c->it_state = ((restored_xpsr >> 25) & 3) << 6 | ((restored_xpsr >> 10) & 0x3F);
+    /* Clear IT bits from xPSR (they live in it_state now) */
+    c->xpsr &= ~((3 << 25) | (0x3F << 10));
     *sp_ptr = sp + 32;
 
     /* Restore stack pointer */
