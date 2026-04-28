@@ -95,21 +95,20 @@ static void tfree(void *p)
 
 static void print_int(int n)
 {
-    char buf[12]; int i = 10;
-    buf[11] = 0;
-    if (n == 0) { uart_print("0"); return; }
-    while (n > 0 && i >= 0) { buf[i--] = '0' + (n % 10); n /= 10; }
-    uart_print(&buf[i + 1]);
+    if (n < 0) { uart_print("-"); n = -n; }
+    if (n >= 10) print_int(n / 10);
+    char c = '0' + (n % 10);
+    uart_poll_out(uart, c);
 }
 
 static void task_a(void)
 {
     int count = 0;
     while (1) {
-        uart_print("task_a: ");
+        uart_print("a:");
         print_int(count++);
         uart_print("\n");
-        sched_sleep_ms(1000);
+        sched_sleep_ms(500);
     }
 }
 
@@ -117,10 +116,10 @@ static void task_b(void)
 {
     int count = 0;
     while (1) {
-        uart_print("task_b: ");
+        uart_print("b:");
         print_int(count++);
         uart_print("\n");
-        sched_sleep_ms(1000);
+        sched_sleep_ms(500);
     }
 }
 
