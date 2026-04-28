@@ -214,7 +214,17 @@ static void handle_command(int fd, struct board *b, const char *line)
         }
         n += snprintf(buf+n, sizeof(buf)-n, "],\"tasks\":");
         n += state_emit_tasks(&b->cpu, b->flash, b->ram, buf+n, sizeof(buf)-n);
-        n += snprintf(buf+n, sizeof(buf)-n, "}");
+
+        /* Global symbols in RAM */
+        struct sym_entry globals[64];
+        int ng = sym_in_range(RAM_BASE, RAM_BASE + RAM_SIZE, globals, 64);
+        n += snprintf(buf+n, sizeof(buf)-n, ",\"globals\":[");
+        for (int i = 0; i < ng; i++) {
+            if (i) buf[n++] = ',';
+            n += snprintf(buf+n, sizeof(buf)-n, "{\"name\":\"%s\",\"addr\":%u,\"size\":%u}",
+                          globals[i].name, globals[i].addr, globals[i].size);
+        }
+        n += snprintf(buf+n, sizeof(buf)-n, "]}");
         send_response(fd, buf);
 
     } else if (strncmp(cmd, "print\"", 6) == 0) {

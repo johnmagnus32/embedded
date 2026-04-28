@@ -145,6 +145,21 @@ uint32_t sym_find_by_name(const char *name)
     return 0;
 }
 
+int sym_in_range(uint32_t lo, uint32_t hi, struct sym_entry *out, int max)
+{
+    int n = 0;
+    for (int i = 0; i < nsyms && n < max; i++) {
+        if (syms[i].addr >= lo && syms[i].addr < hi && syms[i].size > 0) {
+            out[n].addr = syms[i].addr;
+            out[n].size = syms[i].size;
+            strncpy(out[n].name, syms[i].name, 63);
+            out[n].name[63] = 0;
+            n++;
+        }
+    }
+    return n;
+}
+
 /* ── ELF loader ── */
 int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
 {

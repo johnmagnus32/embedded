@@ -36,6 +36,10 @@ uint32_t type_array_elem(uint32_t array_type_die, uint32_t *elem_size_out);
 struct elf_section { uint32_t addr; uint32_t size; char name[32]; };
 int elf_get_sections(const struct elf_section **out);
 
+/* Symbol info for globals */
+struct sym_entry { uint32_t addr; uint32_t size; char name[64]; };
+int sym_in_range(uint32_t lo, uint32_t hi, struct sym_entry *out, int max);
+
 /* DWARF-derived TCB struct layout. Returns 0 in tcb_size if not found. */
 void dwarf_get_tcb_layout(uint32_t *tcb_size, int *sp_off, int *name_off);
 

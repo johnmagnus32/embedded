@@ -385,6 +385,18 @@ function renderMemMap(s) {
 
         const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
 
+        // Global variables from ELF symbol table
+        const globCol = '#8b949e';
+        for (const g of (s.globals || [])) {
+          if (g.addr < RAM_BASE || g.addr + g.size > RAM_BASE + RAM_SIZE) continue;
+          const gy0 = addrToY(g.addr + g.size);
+          const gy1 = addrToY(g.addr);
+          const gh = Math.max(1, gy1 - gy0);
+          const gSize = g.size >= 1024 ? `${(g.size/1024).toFixed(1)}KB` : `${g.size}B`;
+          svg += `<rect x="${barX+1}" y="${gy0}" width="${barW-2}" height="${gh}" fill="${globCol}" opacity="0.25" stroke="${globCol}" stroke-opacity="0.4" stroke-width="0.5" rx="1"/>`;
+          if (gh > 8) svg += `<text x="${barX+barW/2}" y="${gy0+gh/2+3}" fill="${globCol}" text-anchor="middle" font-size="${gh > 14 ? 9 : 7}">${g.name} ${gSize}</text>`;
+        }
+
         const stkCol = '#58a6ff';
         for (let i = 0; i < tasks.length; i++) {
           const t = tasks[i];
