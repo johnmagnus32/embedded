@@ -12,7 +12,8 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .panel-body { flex:1; overflow-y:auto; padding:8px; }
 .src-line { white-space:pre; padding:1px 4px; }
 .src-line.current { background:#1f3a1f; color:#7ee787; font-weight:bold; }
-.src-line .num { color:#484f58; display:inline-block; width:40px; text-align:right; margin-right:8px; }
+.src-line .num { color:#484f58; display:inline-block; width:40px; text-align:right; margin-right:4px; cursor:pointer; user-select:none; }
+.src-line .bp { display:inline-block; width:10px; text-align:center; margin-right:2px; }
 .src-line.current .num { color:#7ee787; }
 .mode { padding:1px 6px; border-radius:3px; font-size:10px; }
 .mode.thread { background:#1f3a1f; color:#7ee787; }
@@ -92,7 +93,13 @@ async function simCmd(cmdObj) {
 async function refreshUI(stopInfo) {
   const regs = await simCmd({cmd:'regs'});
   const memmap = await simCmd({cmd:'memmap'});
+  const bpInfo = await simCmd({cmd:'info'});
   let source = null;
+  currentFile = stopInfo.file || '';
+  bpLines = new Set();
+  for (const bp of (bpInfo.breakpoints || [])) {
+    if (bp.file && bp.file === currentFile) bpLines.add(bp.line);
+  }
   if (stopInfo.file) {
     source = await simCmd({cmd:'source', file: stopInfo.file});
   }
@@ -181,6 +188,9 @@ function esc(s) { const d=document.createElement('div'); d.textContent=s; return
 let lastState = null;
 let lastMemmap = null;
 let lastHeapData = [];
+let bpLines = new Set(); // line numbers with breakpoints in current file
+let currentFile = '';
+let lastSource = null;
 function render(stop, regs, source, uart) {
   lastState = stop;
 
@@ -195,13 +205,17 @@ function render(stop, regs, source, uart) {
 
   // Source
   const src = document.getElementById('source');
-  if (source && source.lines && source.lines.length) {
+  if (source) lastSource = source;
+  const srcData = source || lastSource;
+  if (srcData && srcData.lines && srcData.lines.length) {
     const curLine = stop.line || -1;
-    src.innerHTML = `<div class="file">${esc(source.file)}</div>` +
-      source.lines.map((text, i) => {
+    src.innerHTML = `<div class="file">${esc(srcData.file)}</div>` +
+      srcData.lines.map((text, i) => {
         const num = i + 1;
+        const hasBp = bpLines.has(num);
+        const bp = hasBp ? '<span class="bp" style="color:#f85149">●</span>' : '<span class="bp"> </span>';
         return `<div class="src-line ${num===curLine?'current':''}" ${num===curLine?'id="cur-line"':''}>` +
-          `<span class="num">${num===curLine?'→':' '}${num}</span>${esc(text)}</div>`;
+          `<span class="num" onclick="toggleBp(${num})">${num===curLine?'→':' '}${num}</span>${bp}${esc(text)}</div>`;
       }).join('');
     const cur = document.getElementById('cur-line');
     if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
@@ -211,6 +225,29 @@ function render(stop, regs, source, uart) {
 
   // UART
   if (uart && uart.uart) document.getElementById('uart').textContent = uart.uart;
+}
+
+async function toggleBp(line) {
+  if (!currentFile) return;
+  const spec = currentFile + ':' + line;
+  if (bpLines.has(line)) {
+    // Find and delete this breakpoint
+    const info = await simCmd({cmd:'info'});
+    for (const bp of (info.breakpoints || [])) {
+      if (bp.file === currentFile && bp.line === line) {
+        await simCmd({cmd:'delete', n: bp.n});
+        log(`Deleted breakpoint #${bp.n} at ${spec}`);
+        break;
+      }
+    }
+    bpLines.delete(line);
+  } else {
+    const resp = await simCmd({cmd:'break', spec});
+    if (resp.addr) { bpLines.add(line); log(`Breakpoint at ${spec} (${hex(resp.addr)})`); }
+    else log(`<span style="color:#f85149">No code at ${spec}</span>`);
+  }
+  // Re-render source to update dots
+  if (lastState) render(lastState, null, lastSource, null);
 }
 
 // STM32F411RE address map — regions shown in the vertical bar
