@@ -170,13 +170,7 @@ static void task_c(void)
         obs_gap[i] = 20 + (rng() % 20);
     }
 
-    /* Draw background once */
-    lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
-    lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
-
-    int old_py = player_y;
-    int old_ox[MAX_OBS], old_oh[MAX_OBS];
-    for (int i = 0; i < MAX_OBS; i++) { old_ox[i] = -99; old_oh[i] = 0; }
+    /* Draw background once (will be redrawn each frame) */
 
     while (1) {
         if (btn_pressed() && on_ground) { vel_y = JUMP_VEL; on_ground = 0; }
@@ -184,14 +178,11 @@ static void task_c(void)
         player_y += vel_y;
         if (player_y >= GROUND_Y - PLAYER_H) { player_y = GROUND_Y - PLAYER_H; vel_y = 0; on_ground = 1; }
 
-        /* ERASE all old sprites */
-        lcd_fill_rect(PLAYER_X, old_py, PLAYER_W, PLAYER_H, RGB565(30, 30, 50));
-        for (int i = 0; i < MAX_OBS; i++) {
-            if (old_ox[i] >= 0 && old_ox[i] < SCR_W)
-                lcd_fill_rect(old_ox[i], GROUND_Y - old_oh[i], OBS_W, old_oh[i], RGB565(30, 30, 50));
-        }
+        /* Clear screen */
+        lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
+        lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
 
-        /* UPDATE obstacle positions */
+        /* Move + draw obstacles */
         for (int i = 0; i < MAX_OBS; i++) {
             obs_x[i] -= SCROLL_SPEED;
             if (obs_x[i] < -OBS_W) {
@@ -199,19 +190,15 @@ static void task_c(void)
                 obs_gap[i] = 20 + (rng() % 20);
                 score++;
             }
-        }
-
-        /* DRAW all new sprites */
-        for (int i = 0; i < MAX_OBS; i++) {
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
                 lcd_fill_rect(obs_x[i], GROUND_Y - obs_gap[i], OBS_W, obs_gap[i], RED);
-            old_ox[i] = obs_x[i];
-            old_oh[i] = obs_gap[i];
         }
+
+        /* Draw player */
         lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
         lcd_fill_rect(PLAYER_X + 10, player_y + 4, 3, 3, BLACK);
-        old_py = player_y;
 
+        /* Score bar */
         int bar_w = score * 4;
         if (bar_w > SCR_W) bar_w = SCR_W;
         if (bar_w > 0) lcd_fill_rect(0, 0, bar_w, 3, GREEN);
