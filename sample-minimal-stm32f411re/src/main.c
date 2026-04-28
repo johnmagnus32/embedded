@@ -170,7 +170,9 @@ static void task_c(void)
         obs_gap[i] = 20 + (rng() % 20);
     }
 
-    /* Draw background once (will be redrawn each frame) */
+    /* Initial background */
+    lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
+    lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
 
     while (1) {
         if (btn_pressed() && on_ground) { vel_y = JUMP_VEL; on_ground = 0; }
@@ -178,18 +180,24 @@ static void task_c(void)
         player_y += vel_y;
         if (player_y >= GROUND_Y - PLAYER_H) { player_y = GROUND_Y - PLAYER_H; vel_y = 0; on_ground = 1; }
 
-        /* Clear screen */
-        lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
-        lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
+        /* Clear player column (sky portion) */
+        lcd_fill_rect(PLAYER_X, 0, PLAYER_W, GROUND_Y, RGB565(30, 30, 50));
 
-        /* Move + draw obstacles */
+        /* Move obstacles, clear their columns, draw them */
         for (int i = 0; i < MAX_OBS; i++) {
+            /* Clear old column before moving */
+            if (obs_x[i] >= 0 && obs_x[i] < SCR_W) {
+                lcd_fill_rect(obs_x[i], 0, OBS_W, GROUND_Y, RGB565(30, 30, 50));
+            }
+
             obs_x[i] -= SCROLL_SPEED;
             if (obs_x[i] < -OBS_W) {
                 obs_x[i] = SCR_W + (rng() % 100);
                 obs_gap[i] = 20 + (rng() % 20);
                 score++;
             }
+
+            /* Draw at new position */
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
                 lcd_fill_rect(obs_x[i], GROUND_Y - obs_gap[i], OBS_W, obs_gap[i], RED);
         }
