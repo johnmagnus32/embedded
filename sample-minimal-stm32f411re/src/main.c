@@ -58,6 +58,9 @@ static void lcd_fill_rect(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16
     }
 }
 
+/* NOP command triggers framebuffer flush in emulator */
+static void lcd_vsync(void) { lcd_cmd(0x00); }
+
 /* RGB565 color helpers */
 #define RGB565(r,g,b) ((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|(((b)&0xF8)>>3))
 #define BLACK   0x0000
@@ -211,6 +214,7 @@ static void task_c(void)
         if (bar_w > SCR_W) bar_w = SCR_W;
         lcd_fill_rect(0, 0, bar_w, 3, GREEN);
 
+        lcd_vsync();
         sched_sleep_ms(33); /* ~30fps */
     }
 }

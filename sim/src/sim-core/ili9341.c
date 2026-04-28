@@ -107,6 +107,7 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
         d->cmd = byte;
         d->param_idx = 0;
         d->pixel_hi = 1;
+        if (byte == 0x00) ili9341_flush(d); /* NOP = vsync */
     } else {
         /* Data byte — parameter or pixel */
         handle_param(d, byte);

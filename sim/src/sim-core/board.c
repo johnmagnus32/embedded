@@ -70,7 +70,4 @@ void board_tick(struct board *b)
     cpu_step(&b->cpu, b->flash, b->ram);
     systick_tick(&b->systick, &b->nvic);
     nvic_update(&b->nvic, &b->cpu, b->flash, b->ram);
-    /* Flush display ~60Hz */
-    if (b->display && (b->cpu.cycle_count & 0xFFFF) == 0)
-        ili9341_flush(b->display);
 }
