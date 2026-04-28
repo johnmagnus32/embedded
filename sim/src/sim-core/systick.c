@@ -4,8 +4,6 @@
 #include "systick.h"
 #include "nvic.h"
 
-#define SYSTICK_BASE 0xE000E010
-
 void systick_init(struct systick *st)
 {
     st->csr = 0;
@@ -25,26 +23,23 @@ void systick_tick(struct systick *st, struct nvic *nvic)
     }
 }
 
-int systick_handles(uint32_t addr)
+uint32_t systick_read(void *opaque, uint32_t offset)
 {
-    return addr >= SYSTICK_BASE && addr < SYSTICK_BASE + 0x10;
-}
-
-uint32_t systick_read(struct systick *st, uint32_t addr)
-{
-    switch (addr) {
-    case SYSTICK_BASE + 0x00: return st->csr;
-    case SYSTICK_BASE + 0x04: return st->rvr;
-    case SYSTICK_BASE + 0x08: return st->cvr;
-    default: return 0;
+    struct systick *st = (struct systick *)opaque;
+    switch (offset) {
+    case 0x00: return st->csr;
+    case 0x04: return st->rvr;
+    case 0x08: return st->cvr;
+    default:   return 0;
     }
 }
 
-void systick_write(struct systick *st, uint32_t addr, uint32_t val)
+void systick_write(void *opaque, uint32_t offset, uint32_t val)
 {
-    switch (addr) {
-    case SYSTICK_BASE + 0x00: st->csr = val; break;
-    case SYSTICK_BASE + 0x04: st->rvr = val; break;
-    case SYSTICK_BASE + 0x08: st->cvr = val; break;
+    struct systick *st = (struct systick *)opaque;
+    switch (offset) {
+    case 0x00: st->csr = val; break;
+    case 0x04: st->rvr = val; break;
+    case 0x08: st->cvr = val; break;
     }
 }

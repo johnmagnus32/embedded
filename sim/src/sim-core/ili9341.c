@@ -8,7 +8,9 @@
  * Firmware sends commands (DC=0) and data (DC=1) via SPI.
  * Pixel data is RGB565 (2 bytes per pixel), written into a framebuffer.
  */
+#include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 #include "ili9341.h"
 #include "chardev.h"
 
@@ -20,12 +22,12 @@ void ili9341_init(struct ili9341 *d)
     d->dirty = 1;
 }
 
-/* Called when DC pin changes (via GPIO write) */
-void ili9341_set_dc(void *dev, int active)
+/* Called when DC pin changes (via GPIO line) */
+void ili9341_set_dc(void *opaque, int level)
 {
-    struct ili9341 *d = (struct ili9341 *)dev;
-    d->dc = active;
-    if (!active) {
+    struct ili9341 *d = (struct ili9341 *)opaque;
+    d->dc = level;
+    if (!level) {
         /* Entering command mode — reset param state */
         d->param_idx = 0;
         d->pixel_hi = 1;
@@ -118,6 +120,17 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
 void ili9341_flush(struct ili9341 *d)
 {
     if (!d->dirty || !d->chardev) return;
+
+    static struct timeval last = {0};
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    if (last.tv_sec) {
+        long ms = (now.tv_sec - last.tv_sec) * 1000 + (now.tv_usec - last.tv_usec) / 1000;
+        static int count = 0;
+        if (++count % 30 == 0)
+            fprintf(stderr, "[display] frame %d: %ldms since last flush\n", count, ms);
+    }
+    last = now;
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
     chardev_write_buf(d->chardev, hdr, 4);

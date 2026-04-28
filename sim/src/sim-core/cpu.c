@@ -9,15 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cpu.h"
+#include "membus.h"
 #include "elf_sym.h"
-
-/* External memory functions */
-extern uint32_t mem_read32(uint8_t *f, uint8_t *r, uint32_t addr);
-extern void     mem_write32(uint8_t *f, uint8_t *r, uint32_t addr, uint32_t val);
-extern uint16_t mem_read16(uint8_t *f, uint8_t *r, uint32_t addr);
-extern uint8_t  mem_read8(uint8_t *f, uint8_t *r, uint32_t addr);
-extern void     mem_write16(uint8_t *f, uint8_t *r, uint32_t addr, uint16_t val);
-extern void     mem_write8(uint8_t *f, uint8_t *r, uint32_t addr, uint8_t val);
 
 /* Flags in xPSR */
 #define FLAG_N (1u << 31)
@@ -90,24 +83,24 @@ void cpu_init(struct cpu_state *c)
 /* Visualization hooks */
 /* (vis removed — state visualization is in the web UI) */
 
-void cpu_reset(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
+void cpu_reset(struct cpu_state *c, struct membus *bus)
 {
-    c->msp = mem_read32(flash, ram, FLASH_BASE + 0);
+    c->msp = membus_read32(bus, FLASH_BASE + 0);
     c->r[REG_SP] = c->msp;
-    c->r[REG_PC] = mem_read32(flash, ram, FLASH_BASE + 4) & ~1u;
+    c->r[REG_PC] = membus_read32(bus, FLASH_BASE + 4) & ~1u;
     c->xpsr = FLAG_T;
 }
 
 /* Forward declarations */
-static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t insn);
-static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret);
+static int exec_thumb32(struct cpu_state *c, struct membus *bus, uint32_t insn);
+static void exc_return(struct cpu_state *c, struct membus *bus, uint32_t exc_ret);
 
-int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
+int cpu_step(struct cpu_state *c, struct membus *bus)
 {
 
 
     uint32_t pc = c->r[REG_PC];
-    uint16_t insn = mem_read16(flash, ram, pc);
+    uint16_t insn = membus_read16(bus, pc);
     c->r[REG_PC] = pc + 2;
     c->cycle_count++;
     c->irq_shadow = 0;
@@ -128,11 +121,11 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 
     /* Check if this is a 32-bit Thumb-2 instruction */
     if ((insn & 0xE000) == 0xE000 && (insn & 0x1800) != 0) {
-        uint16_t insn2 = mem_read16(flash, ram, pc + 2);
+        uint16_t insn2 = membus_read16(bus, pc + 2);
         c->r[REG_PC] = pc + 4;
         if (it_skip) return 0;
         uint32_t insn32 = ((uint32_t)insn << 16) | insn2;
-        return exec_thumb32(c, flash, ram, insn32);
+        return exec_thumb32(c, bus, insn32);
     }
 
     if (it_skip) return 0;
@@ -277,7 +270,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
             }
             /* Check for EXC_RETURN (magic values 0xFFFFFFF*) */
             if ((c->r[rm] & 0xFFFFFFF0) == 0xFFFFFFF0) {
-                exc_return(c, flash, ram, c->r[rm]);
+                exc_return(c, bus, c->r[rm]);
             } else {
                 c->r[REG_PC] = c->r[rm] & ~1u;
             }
@@ -291,7 +284,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         int rt = (insn >> 8) & 7;
         uint32_t imm8 = (insn & 0xFF) << 2;
         uint32_t addr = ((pc + 4) & ~3u) + imm8;
-        c->r[rt] = mem_read32(flash, ram, addr);
+        c->r[rt] = membus_read32(bus, addr);
         return 0;
     }
 
@@ -303,14 +296,14 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         int rt = insn & 7;
         uint32_t addr = c->r[rn] + c->r[rm];
         switch (op) {
-        case 0: mem_write32(flash, ram, addr, c->r[rt]); break; /* STR */
-        case 1: mem_write16(flash, ram, addr, c->r[rt]); break; /* STRH */
-        case 2: mem_write8(flash, ram, addr, c->r[rt]); break;  /* STRB */
-        case 3: c->r[rt] = (int8_t)mem_read8(flash, ram, addr); break; /* LDRSB */
-        case 4: c->r[rt] = mem_read32(flash, ram, addr); break; /* LDR */
-        case 5: c->r[rt] = mem_read16(flash, ram, addr); break; /* LDRH */
-        case 6: c->r[rt] = mem_read8(flash, ram, addr); break;  /* LDRB */
-        case 7: c->r[rt] = (int16_t)mem_read16(flash, ram, addr); break; /* LDRSH */
+        case 0: membus_write32(bus, addr, c->r[rt]); break; /* STR */
+        case 1: membus_write16(bus, addr, c->r[rt]); break; /* STRH */
+        case 2: membus_write8(bus, addr, c->r[rt]); break;  /* STRB */
+        case 3: c->r[rt] = (int8_t)membus_read8(bus, addr); break; /* LDRSB */
+        case 4: c->r[rt] = membus_read32(bus, addr); break; /* LDR */
+        case 5: c->r[rt] = membus_read16(bus, addr); break; /* LDRH */
+        case 6: c->r[rt] = membus_read8(bus, addr); break;  /* LDRB */
+        case 7: c->r[rt] = (int16_t)membus_read16(bus, addr); break; /* LDRSH */
         }
         return 0;
     }
@@ -323,9 +316,9 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         int rt = insn & 7;
         uint32_t addr = c->r[rn] + imm5;
         if (is_load)
-            c->r[rt] = mem_read32(flash, ram, addr);
+            c->r[rt] = membus_read32(bus, addr);
         else
-            mem_write32(flash, ram, addr, c->r[rt]);
+            membus_write32(bus, addr, c->r[rt]);
         return 0;
     }
 
@@ -337,9 +330,9 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         int rt = insn & 7;
         uint32_t addr = c->r[rn] + imm5;
         if (is_load)
-            c->r[rt] = mem_read8(flash, ram, addr);
+            c->r[rt] = membus_read8(bus, addr);
         else
-            mem_write8(flash, ram, addr, c->r[rt]);
+            membus_write8(bus, addr, c->r[rt]);
         return 0;
     }
 
@@ -351,9 +344,9 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         int rt = insn & 7;
         uint32_t addr = c->r[rn] + imm5;
         if (is_load)
-            c->r[rt] = mem_read16(flash, ram, addr);
+            c->r[rt] = membus_read16(bus, addr);
         else
-            mem_write16(flash, ram, addr, c->r[rt]);
+            membus_write16(bus, addr, c->r[rt]);
         return 0;
     }
 
@@ -364,9 +357,9 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         uint32_t imm8 = (insn & 0xFF) << 2;
         uint32_t addr = c->r[REG_SP] + imm8;
         if (is_load)
-            c->r[rt] = mem_read32(flash, ram, addr);
+            c->r[rt] = membus_read32(bus, addr);
         else
-            mem_write32(flash, ram, addr, c->r[rt]);
+            membus_write32(bus, addr, c->r[rt]);
         return 0;
     }
 
@@ -395,9 +388,9 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         if ((insn & 0xFE00) == 0xB400) {
             int regs = insn & 0xFF;
             int lr = (insn >> 8) & 1;
-            if (lr) { c->r[REG_SP] -= 4; mem_write32(flash, ram, c->r[REG_SP], c->r[REG_LR]); }
+            if (lr) { c->r[REG_SP] -= 4; membus_write32(bus, c->r[REG_SP], c->r[REG_LR]); }
             for (int i = 7; i >= 0; i--)
-                if (regs & (1 << i)) { c->r[REG_SP] -= 4; mem_write32(flash, ram, c->r[REG_SP], c->r[i]); }
+                if (regs & (1 << i)) { c->r[REG_SP] -= 4; membus_write32(bus, c->r[REG_SP], c->r[i]); }
             return 0;
         }
 
@@ -406,12 +399,12 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
             int regs = insn & 0xFF;
             int pc_bit = (insn >> 8) & 1;
             for (int i = 0; i < 8; i++)
-                if (regs & (1 << i)) { c->r[i] = mem_read32(flash, ram, c->r[REG_SP]); c->r[REG_SP] += 4; }
+                if (regs & (1 << i)) { c->r[i] = membus_read32(bus, c->r[REG_SP]); c->r[REG_SP] += 4; }
             if (pc_bit) {
-                uint32_t val = mem_read32(flash, ram, c->r[REG_SP]);
+                uint32_t val = membus_read32(bus, c->r[REG_SP]);
                 c->r[REG_SP] += 4;
                 if ((val & 0xFFFFFFF0) == 0xFFFFFFF0) {
-                    exc_return(c, flash, ram, val);
+                    exc_return(c, bus, val);
                 } else {
                     c->r[REG_PC] = val & ~1u;
                 }
@@ -466,9 +459,9 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
         for (int i = 0; i < 8; i++) {
             if (regs & (1 << i)) {
                 if (is_load)
-                    c->r[i] = mem_read32(flash, ram, addr);
+                    c->r[i] = membus_read32(bus, addr);
                 else
-                    mem_write32(flash, ram, addr, c->r[i]);
+                    membus_write32(bus, addr, c->r[i]);
                 addr += 4;
             }
         }
@@ -508,7 +501,7 @@ int cpu_step(struct cpu_state *c, uint8_t *flash, uint8_t *ram)
 
 /* ---- 32-bit Thumb-2 instructions ---- */
 
-static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t insn)
+static int exec_thumb32(struct cpu_state *c, struct membus *bus, uint32_t insn)
 {
     uint16_t hi = insn >> 16;
     uint16_t lo = insn & 0xFFFF;
@@ -548,7 +541,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int rn = hi & 0xF;
         int rt = (lo >> 12) & 0xF;
         uint32_t imm12 = lo & 0xFFF;
-        c->r[rt] = mem_read32(flash, ram, c->r[rn] + imm12);
+        c->r[rt] = membus_read32(bus, c->r[rn] + imm12);
         if (rt == REG_PC) c->r[REG_PC] &= ~1u;
         return 0;
     }
@@ -556,7 +549,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         int rn = hi & 0xF;
         int rt = (lo >> 12) & 0xF;
         uint32_t imm12 = lo & 0xFFF;
-        mem_write32(flash, ram, c->r[rn] + imm12, c->r[rt]);
+        membus_write32(bus, c->r[rn] + imm12, c->r[rt]);
         return 0;
     }
 
@@ -572,13 +565,13 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             uint32_t addr = c->r[rn];
             uint32_t offset = u ? imm8 : -imm8;
             if (p) addr += offset;
-            c->r[rt] = mem_read32(flash, ram, addr);
+            c->r[rt] = membus_read32(bus, addr);
             if (!p) addr += offset;
             if (w || !p) c->r[rn] = addr;
         } else { /* register offset */
             int rm = lo & 0xF;
             int shift = (lo >> 4) & 3;
-            c->r[rt] = mem_read32(flash, ram, c->r[rn] + (c->r[rm] << shift));
+            c->r[rt] = membus_read32(bus, c->r[rn] + (c->r[rm] << shift));
         }
         if (rt == REG_PC) c->r[REG_PC] &= ~1u;
         return 0;
@@ -595,7 +588,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         uint32_t addr = c->r[rn];
         uint32_t offset = u ? imm8 : -imm8;
         if (p) addr += offset;
-        mem_write32(flash, ram, addr, c->r[rt]);
+        membus_write32(bus, addr, c->r[rt]);
         if (!p) addr += offset;
         if (w || !p) c->r[rn] = addr;
         return 0;
@@ -604,12 +597,12 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     /* LDRB.W / STRB.W */
     if ((hi & 0xFFF0) == 0xF890) { /* LDRB.W Rt, [Rn, #imm12] */
         int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
-        c->r[rt] = mem_read8(flash, ram, c->r[rn] + (lo & 0xFFF));
+        c->r[rt] = membus_read8(bus, c->r[rn] + (lo & 0xFFF));
         return 0;
     }
     if ((hi & 0xFFF0) == 0xF880) { /* STRB.W */
         int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
-        mem_write8(flash, ram, c->r[rn] + (lo & 0xFFF), c->r[rt]);
+        membus_write8(bus, c->r[rn] + (lo & 0xFFF), c->r[rt]);
         return 0;
     }
 
@@ -622,13 +615,13 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             uint32_t addr = c->r[rn];
             uint32_t offset = u ? imm8 : -imm8;
             if (p) addr += offset;
-            c->r[rt] = mem_read8(flash, ram, addr);
+            c->r[rt] = membus_read8(bus, addr);
             if (!p) addr += offset;
             if (w || !p) c->r[rn] = addr;
         } else { /* register offset */
             int rm = lo & 0xF;
             int shift = (lo >> 4) & 3;
-            c->r[rt] = mem_read8(flash, ram, c->r[rn] + (c->r[rm] << shift));
+            c->r[rt] = membus_read8(bus, c->r[rn] + (c->r[rm] << shift));
         }
         return 0;
     }
@@ -642,13 +635,13 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             uint32_t addr = c->r[rn];
             uint32_t offset = u ? imm8 : -imm8;
             if (p) addr += offset;
-            mem_write8(flash, ram, addr, c->r[rt]);
+            membus_write8(bus, addr, c->r[rt]);
             if (!p) addr += offset;
             if (w || !p) c->r[rn] = addr;
         } else {
             int rm = lo & 0xF;
             int shift = (lo >> 4) & 3;
-            mem_write8(flash, ram, c->r[rn] + (c->r[rm] << shift), c->r[rt]);
+            membus_write8(bus, c->r[rn] + (c->r[rm] << shift), c->r[rt]);
         }
         return 0;
     }
@@ -657,7 +650,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     if ((hi & 0xFFF0) == 0xF8B0) {
         int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
         uint32_t imm12 = lo & 0xFFF;
-        c->r[rt] = mem_read16(flash, ram, c->r[rn] + imm12);
+        c->r[rt] = membus_read16(bus, c->r[rn] + imm12);
         return 0;
     }
 
@@ -670,12 +663,12 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             uint32_t addr = c->r[rn];
             uint32_t offset = u ? imm8 : -imm8;
             if (p) addr += offset;
-            c->r[rt] = mem_read16(flash, ram, addr);
+            c->r[rt] = membus_read16(bus, addr);
             if (!p) addr += offset;
             if (w || !p) c->r[rn] = addr;
         } else {
             int rm = lo & 0xF; int shift = (lo >> 4) & 3;
-            c->r[rt] = mem_read16(flash, ram, c->r[rn] + (c->r[rm] << shift));
+            c->r[rt] = membus_read16(bus, c->r[rn] + (c->r[rm] << shift));
         }
         return 0;
     }
@@ -689,12 +682,12 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
             uint32_t addr = c->r[rn];
             uint32_t offset = u ? imm8 : -imm8;
             if (p) addr += offset;
-            mem_write16(flash, ram, addr, c->r[rt]);
+            membus_write16(bus, addr, c->r[rt]);
             if (!p) addr += offset;
             if (w || !p) c->r[rn] = addr;
         } else {
             int rm = lo & 0xF; int shift = (lo >> 4) & 3;
-            mem_write16(flash, ram, c->r[rn] + (c->r[rm] << shift), c->r[rt]);
+            membus_write16(bus, c->r[rn] + (c->r[rm] << shift), c->r[rt]);
         }
         return 0;
     }
@@ -777,7 +770,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         if (hi & 0x0020) c->r[rn] = addr; /* writeback */
         for (int i = 0; i < 16; i++) {
             if (regs & (1 << i)) {
-                mem_write32(flash, ram, addr, c->r[i]);
+                membus_write32(bus, addr, c->r[i]);
                 addr += 4;
             }
         }
@@ -791,14 +784,14 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         uint32_t addr = c->r[rn];
         for (int i = 0; i < 16; i++) {
             if (regs & (1 << i)) {
-                c->r[i] = mem_read32(flash, ram, addr);
+                c->r[i] = membus_read32(bus, addr);
                 addr += 4;
             }
         }
         if (hi & 0x0020) c->r[rn] = addr; /* writeback */
         if (regs & (1 << REG_PC)) {
             if ((c->r[REG_PC] & 0xFFFFFFF0) == 0xFFFFFFF0)
-                exc_return(c, flash, ram, c->r[REG_PC]);
+                exc_return(c, bus, c->r[REG_PC]);
             else
                 c->r[REG_PC] &= ~1u;
         }
@@ -898,11 +891,11 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         uint32_t offset = u ? imm8 : -imm8;
         if (p) addr += offset;
         if (is_load) {
-            c->r[rt] = mem_read32(flash, ram, addr);
-            c->r[rt2] = mem_read32(flash, ram, addr + 4);
+            c->r[rt] = membus_read32(bus, addr);
+            c->r[rt2] = membus_read32(bus, addr + 4);
         } else {
-            mem_write32(flash, ram, addr, c->r[rt]);
-            mem_write32(flash, ram, addr + 4, c->r[rt2]);
+            membus_write32(bus, addr, c->r[rt]);
+            membus_write32(bus, addr + 4, c->r[rt2]);
         }
         if (!p) addr += offset;
         if (w) c->r[rn] = p ? c->r[rn] + offset : addr;
@@ -995,7 +988,7 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
 
 /* ---- Interrupt entry/exit ---- */
 
-void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vector_num)
+void take_interrupt(struct cpu_state *c, struct membus *bus, int vector_num)
 {
     /* Sync PSP/MSP from the SP register (instructions like PUSH update SP but not psp/msp) */
     if (c->control & 2)
@@ -1011,20 +1004,20 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
         sp_ptr = &c->msp;
 
     uint32_t sp = *sp_ptr - 32;
-    mem_write32(flash, ram, sp + 0,  c->r[0]);
-    mem_write32(flash, ram, sp + 4,  c->r[1]);
-    mem_write32(flash, ram, sp + 8,  c->r[2]);
-    mem_write32(flash, ram, sp + 12, c->r[3]);
-    mem_write32(flash, ram, sp + 16, c->r[12]);
-    mem_write32(flash, ram, sp + 20, c->r[REG_LR]);
-    mem_write32(flash, ram, sp + 24, c->r[REG_PC] | 1);
+    membus_write32(bus, sp + 0,  c->r[0]);
+    membus_write32(bus, sp + 4,  c->r[1]);
+    membus_write32(bus, sp + 8,  c->r[2]);
+    membus_write32(bus, sp + 12, c->r[3]);
+    membus_write32(bus, sp + 16, c->r[12]);
+    membus_write32(bus, sp + 20, c->r[REG_LR]);
+    membus_write32(bus, sp + 24, c->r[REG_PC] | 1);
     /* Encode IT state into xPSR bits [26:25][15:10] before saving */
     uint32_t saved_xpsr = c->xpsr;
     if (c->it_state) {
         saved_xpsr |= ((c->it_state >> 6) & 3) << 25;  /* ICI/IT bits [26:25] */
         saved_xpsr |= (c->it_state & 0x3F) << 10;       /* ICI/IT bits [15:10] */
     }
-    mem_write32(flash, ram, sp + 28, saved_xpsr);
+    membus_write32(bus, sp + 28, saved_xpsr);
     c->it_state = 0;  /* Clear IT state for exception handler */
     *sp_ptr = sp;
 
@@ -1039,7 +1032,7 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
     c->in_handler = 1;
 
     /* Jump to vector */
-    uint32_t handler = mem_read32(flash, ram, FLASH_BASE + vector_num * 4);
+    uint32_t handler = membus_read32(bus, FLASH_BASE + vector_num * 4);
     c->r[REG_PC] = handler & ~1u;
 
     /* Visualize */
@@ -1047,7 +1040,7 @@ void take_interrupt(struct cpu_state *c, uint8_t *flash, uint8_t *ram, int vecto
     const char *name = (vector_num < 16 && names[vector_num]) ? names[vector_num] : "IRQ";
 }
 
-static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32_t exc_ret)
+static void exc_return(struct cpu_state *c, struct membus *bus, uint32_t exc_ret)
 {
     /* Pop exception frame */
     uint32_t *sp_ptr;
@@ -1057,14 +1050,14 @@ static void exc_return(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint32
         sp_ptr = &c->msp;  /* return to MSP */
 
     uint32_t sp = *sp_ptr;
-    c->r[0]      = mem_read32(flash, ram, sp + 0);
-    c->r[1]      = mem_read32(flash, ram, sp + 4);
-    c->r[2]      = mem_read32(flash, ram, sp + 8);
-    c->r[3]      = mem_read32(flash, ram, sp + 12);
-    c->r[12]     = mem_read32(flash, ram, sp + 16);
-    c->r[REG_LR] = mem_read32(flash, ram, sp + 20);
-    c->r[REG_PC] = mem_read32(flash, ram, sp + 24) & ~1u;
-    c->xpsr      = mem_read32(flash, ram, sp + 28) | FLAG_T;
+    c->r[0]      = membus_read32(bus, sp + 0);
+    c->r[1]      = membus_read32(bus, sp + 4);
+    c->r[2]      = membus_read32(bus, sp + 8);
+    c->r[3]      = membus_read32(bus, sp + 12);
+    c->r[12]     = membus_read32(bus, sp + 16);
+    c->r[REG_LR] = membus_read32(bus, sp + 20);
+    c->r[REG_PC] = membus_read32(bus, sp + 24) & ~1u;
+    c->xpsr      = membus_read32(bus, sp + 28) | FLAG_T;
     /* Restore IT state from xPSR bits [26:25][15:10] */
     uint32_t restored_xpsr = c->xpsr;
     c->it_state = ((restored_xpsr >> 25) & 3) << 6 | ((restored_xpsr >> 10) & 0x3F);

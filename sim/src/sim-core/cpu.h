@@ -19,8 +19,8 @@ struct cpu_state {
     uint32_t msp;
     uint32_t psp;
     int in_handler;
-    int irq_shadow;       /* suppress IRQ for one instruction after CPSIE */
-    uint8_t it_state;     /* IT block state */
+    int irq_shadow;
+    uint8_t it_state;
     uint64_t cycle_count;
 };
 
@@ -31,9 +31,11 @@ struct cpu_state {
 #define RAM_SIZE    (128 * 1024)
 #define USART2_BASE 0x40004400
 
+struct membus;
+
 void cpu_init(struct cpu_state *cpu);
-void cpu_reset(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram);
-int  cpu_step(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram);
-void take_interrupt(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram, int vector_num);
+void cpu_reset(struct cpu_state *cpu, struct membus *bus);
+int  cpu_step(struct cpu_state *cpu, struct membus *bus);
+void take_interrupt(struct cpu_state *cpu, struct membus *bus, int vector_num);
 
 #endif

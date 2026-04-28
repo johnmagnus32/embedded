@@ -10,14 +10,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "board.h"
+#include "membus.h"
 #include "chardev.h"
 #include "dts.h"
 #include "elf_sym.h"
 #include "state.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
-
-extern struct board *g_board;
 
 /* Debugger state */
 static uint32_t breakpoints[32];
@@ -140,7 +139,7 @@ static void handle_command(int fd, struct board *b, const char *line)
     } else if (strncmp(cmd, "next\"", 5) == 0) {
         int orig_line; line_lookup(b->cpu.r[REG_PC], &orig_line);
         do {
-            uint16_t insn = mem_read16(b->flash, b->ram, b->cpu.r[REG_PC]);
+            uint16_t insn = membus_read16(&b->bus, b->cpu.r[REG_PC]);
             int is_bl = (insn & 0xF800) == 0xF000;
             if (is_bl) {
                 int old_nbp = nbp;
@@ -160,7 +159,7 @@ static void handle_command(int fd, struct board *b, const char *line)
         send_stop_info(fd, b);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
-        cpu_reset(&b->cpu, b->flash, b->ram);
+        cpu_reset(&b->cpu, &b->bus);
         do { board_tick(b); } while (!check_breakpoint(b));
         send_stop_info(fd, b);
 
@@ -260,8 +259,8 @@ static void handle_command(int fd, struct board *b, const char *line)
         if (p && v) {
             int pin = atoi(p + 6);
             int val = atoi(v + 6);
-            if (val) b->gpio_idr |= (1 << pin);
-            else     b->gpio_idr &= ~(1 << pin);
+            if (val) b->gpio[0].idr |= (1 << pin);
+            else     b->gpio[0].idr &= ~(1 << pin);
         }
         send_response(fd, "{\"ok\":true}");
 
@@ -467,7 +466,7 @@ int main(int argc, char **argv)
     board_init(&board, &dt, &chardevs);
     board.flash = calloc(1, FLASH_SIZE);
     board.ram   = calloc(1, RAM_SIZE);
-    g_board = &board;
+    board_init_membus(&board, &dt);
 
     /* Load firmware */
     if (elf_load(elf_path, board.flash, board.ram) != 0) {
@@ -483,7 +482,7 @@ int main(int argc, char **argv)
         state_set_source_dir(dir);
     }
 
-    cpu_reset(&board.cpu, board.flash, board.ram);
+    cpu_reset(&board.cpu, &board.bus);
 
     /* Start debug server */
     int srv = socket(AF_INET, SOCK_STREAM, 0);

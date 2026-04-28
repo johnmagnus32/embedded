@@ -1,5 +1,5 @@
-#ifndef ILI9341_H
-#define ILI9341_H
+#ifndef ILI9341_DEV_H
+#define ILI9341_DEV_H
 
 #include <stdint.h>
 
@@ -30,7 +30,7 @@ static inline int ili9341_eff_w(struct ili9341 *d) { return (d->madctl & 0x20) ?
 static inline int ili9341_eff_h(struct ili9341 *d) { return (d->madctl & 0x20) ? ILI9341_W : ILI9341_H; }
 
 void    ili9341_init(struct ili9341 *d);
-void    ili9341_set_dc(void *dev, int active); /* DC pin: 0=cmd, 1=data */
+void    ili9341_set_dc(void *opaque, int level); /* gpio_handler_fn: DC pin */
 uint8_t ili9341_transfer(void *dev, uint8_t byte);
 void    ili9341_flush(struct ili9341 *d);      /* push framebuffer to chardev if dirty */
 

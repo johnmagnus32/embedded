@@ -6,13 +6,11 @@
 struct chardev;
 
 struct uart {
-    uint32_t base;
-    struct chardev *chardev;  /* output channel, NULL if none */
+    struct chardev *chardev;
 };
 
-void     uart_init(struct uart *u, uint32_t base, struct chardev *cd);
-int      uart_handles(struct uart *u, uint32_t addr);
-uint32_t uart_read(struct uart *u, uint32_t addr);
-void     uart_write(struct uart *u, uint32_t addr, uint32_t val);
+void     uart_init(struct uart *u, struct chardev *cd);
+uint32_t uart_read(void *opaque, uint32_t offset);
+void     uart_write(void *opaque, uint32_t offset, uint32_t val);
 
 #endif
