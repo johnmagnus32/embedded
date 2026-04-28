@@ -67,7 +67,14 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
       <h2>Memory</h2>
       <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
     </div>
-    <div class="resize-v" data-above="mem-panel" data-below="timeline-panel"></div>
+    <div class="resize-v" data-above="mem-panel" data-below="display-panel"></div>
+    <div class="panel" id="display-panel" style="height:260px;min-height:100px;">
+      <h2>Display</h2>
+      <div class="panel-body" style="display:flex;align-items:center;justify-content:center;padding:4px;">
+        <canvas id="lcd" width="240" height="320" style="image-rendering:pixelated;border:1px solid #30363d;max-width:100%;max-height:100%;object-fit:contain;"></canvas>
+      </div>
+    </div>
+    <div class="resize-v" data-above="display-panel" data-below="timeline-panel"></div>
     <div class="panel" id="timeline-panel" style="height:140px;min-height:100px;">
       <h2>Trace Timeline</h2>
       <div id="timeline-bars" class="panel-body" style="padding:2px;overflow-x:auto;overflow-y:hidden;flex:1;"></div>
@@ -119,6 +126,8 @@ async function refreshUI(stopInfo) {
     if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
     if (data.heap) { lastHeapData = data.heap; if (lastMemmap) renderMemMap(lastMemmap); }
   }).catch(() => {});
+  // Fetch display async
+  refreshDisplay();
 }
 
 // Poll UART independently
@@ -257,6 +266,27 @@ async function toggleBp(line) {
   // Update dot in-place
   const dots = document.querySelectorAll('.src-line .bp');
   if (dots[line - 1]) dots[line - 1].innerHTML = bpLines.has(line) ? '<span style="color:#f85149">●</span>' : ' ';
+}
+
+async function refreshDisplay() {
+  try {
+    const r = await fetch('/display');
+    const d = await r.json();
+    if (!d.w || !d.fb) return;
+    const canvas = document.getElementById('lcd');
+    const ctx = canvas.getContext('2d');
+    const raw = atob(d.fb);
+    const img = ctx.createImageData(d.w, d.h);
+    for (let i = 0; i < d.w * d.h; i++) {
+      const hi = raw.charCodeAt(i * 2), lo = raw.charCodeAt(i * 2 + 1);
+      const rgb565 = (hi << 8) | lo;
+      img.data[i*4]   = (rgb565 >> 8) & 0xF8; // R
+      img.data[i*4+1] = (rgb565 >> 3) & 0xFC; // G
+      img.data[i*4+2] = (rgb565 << 3) & 0xF8; // B
+      img.data[i*4+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  } catch(e) {}
 }
 
 // STM32F411RE address map — regions shown in the vertical bar

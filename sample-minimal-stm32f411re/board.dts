@@ -35,5 +35,17 @@
             baudrate = <115200>;
             status = "okay";
         };
+
+        spi1: spi@40013000 {
+            compatible = "st,stm32-spi";
+            reg = <0x40013000>;
+            status = "okay";
+        };
+
+        ili9341: display@0 {
+            compatible = "ilitek,ili9341";
+            spi-bus = <0x40013000>;
+            dc-pin = <3>;
+        };
     };
 };

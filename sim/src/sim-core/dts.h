@@ -10,6 +10,8 @@ struct dts_node {
     char label[32];
     uint32_t reg;
     int has_reg;
+    int dc_pin;        /* -1 if not set */
+    uint32_t spi_bus;  /* reg of parent SPI bus, 0 if not set */
 };
 
 struct dts {

@@ -8,6 +8,8 @@
 #include "cpu.h"
 #include "board.h"
 #include "trace_dev.h"
+#include "spi.h"
+#include "ili9341.h"
 
 struct board *g_board = NULL;
 
@@ -26,6 +28,9 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
         for (int i = 0; i < g_board->nuarts; i++)
             if (uart_handles(&g_board->uarts[i], addr))
                 return uart_read(&g_board->uarts[i], addr);
+        for (int i = 0; i < g_board->nspis; i++)
+            if (spi_handles(&g_board->spis[i], addr))
+                return spi_read(&g_board->spis[i], addr);
         if (systick_handles(addr)) return systick_read(&g_board->systick, addr);
         if (nvic_handles(addr))    return nvic_read(&g_board->nvic, addr);
     }
@@ -48,6 +53,8 @@ void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
         if (trace_dev_handles(&g_board->trace, addr)) { trace_dev_write(&g_board->trace, addr, val); return; }
         for (int i = 0; i < g_board->nuarts; i++)
             if (uart_handles(&g_board->uarts[i], addr)) { uart_write(&g_board->uarts[i], addr, val); return; }
+        for (int i = 0; i < g_board->nspis; i++)
+            if (spi_handles(&g_board->spis[i], addr)) { spi_write(&g_board->spis[i], addr, val); return; }
         if (systick_handles(addr)) { systick_write(&g_board->systick, addr, val); return; }
         if (nvic_handles(addr))    { nvic_write(&g_board->nvic, addr, val); return; }
     }
@@ -55,8 +62,27 @@ void mem_write32(uint8_t *flash, uint8_t *ram, uint32_t addr, uint32_t val)
     if (addr >= 0xE000ED90 && addr <= 0xE000EDA0) return;
     if (addr >= 0xE000E100 && addr < 0xE000E10C) { nvic_iser[(addr - 0xE000E100) / 4] |= val; return; }
     if (addr >= 0x40023800 && addr < 0x40023900) return;
-    if (addr >= 0x40020000 && addr < 0x40022000) return;
-    if (addr >= 0x40013000 && addr < 0x40013100) return;
+    if (addr >= 0x40020000 && addr < 0x40022000) {
+        /* GPIO write — check for DC pin change */
+        if (g_board && g_board->display && g_board->dc_gpio_pin >= 0) {
+            uint32_t gpio_base = addr & 0xFFFFF000;
+            int pin = g_board->dc_gpio_pin;
+            /* BSRR (offset 0x18): bits [15:0] set, bits [31:16] reset */
+            if ((addr & 0xFFF) == 0x18) {
+                if (val & (1 << pin)) ili9341_set_dc(g_board->display, 1);
+                if (val & (1 << (pin + 16))) ili9341_set_dc(g_board->display, 0);
+            }
+            /* ODR (offset 0x14) */
+            if ((addr & 0xFFF) == 0x14) {
+                ili9341_set_dc(g_board->display, (val >> pin) & 1);
+            }
+        }
+        return;
+    }
+    if (addr >= 0x40013000 && addr < 0x40013100) {
+        /* SPI range — handled by spi_handles above if configured */
+        return;
+    }
 }
 
 uint16_t mem_read16(uint8_t *flash, uint8_t *ram, uint32_t addr)

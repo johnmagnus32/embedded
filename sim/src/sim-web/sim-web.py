@@ -190,6 +190,14 @@ class WebDebugger:
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"uart": self.uart_buf}))
 
+                elif req.startswith('GET /display'):
+                    import json as _json
+                    try:
+                        resp = self.send_command(_json.dumps({"cmd":"display"}))
+                        self.http_response(conn, '200 OK', 'application/json', resp)
+                    except:
+                        self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
+
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     cmd = body.strip()
