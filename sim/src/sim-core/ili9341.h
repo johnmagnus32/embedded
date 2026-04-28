@@ -21,8 +21,13 @@ struct ili9341 {
     int      pixel_hi;
     uint8_t  hi_byte;
     int      dirty;
-    struct chardev *chardev;  /* for framebuffer streaming */
+    uint8_t  madctl;       /* Memory Access Control register */
+    struct chardev *chardev;
 };
+
+/* Effective dimensions based on MADCTL MV bit */
+static inline int ili9341_eff_w(struct ili9341 *d) { return (d->madctl & 0x20) ? ILI9341_H : ILI9341_W; }
+static inline int ili9341_eff_h(struct ili9341 *d) { return (d->madctl & 0x20) ? ILI9341_W : ILI9341_H; }
 
 void    ili9341_init(struct ili9341 *d);
 void    ili9341_set_dc(void *dev, int active); /* DC pin: 0=cmd, 1=data */

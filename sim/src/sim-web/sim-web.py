@@ -128,11 +128,14 @@ class WebDebugger:
         # Connect to display framebuffer stream
         self.display_sock = None
         self.display_frame = b''
+        self.display_w = 240
+        self.display_h = 320
         try:
             self.display_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.display_sock.connect(('127.0.0.1', DISPLAY_PORT))
             log_web(f'Connected to display port {DISPLAY_PORT}')
             FRAME_SIZE = 240 * 320 * 2
+            HEADER_SIZE = 4
             def display_reader():
                 buf = b''
                 while True:
@@ -140,10 +143,14 @@ class WebDebugger:
                         data = self.display_sock.recv(65536)
                         if not data: break
                         buf += data
-                        # Extract complete frames (last complete frame wins)
-                        while len(buf) >= FRAME_SIZE:
-                            self.display_frame = buf[:FRAME_SIZE]
-                            buf = buf[FRAME_SIZE:]
+                        while len(buf) >= HEADER_SIZE + FRAME_SIZE:
+                            hdr = buf[:HEADER_SIZE]
+                            ew = hdr[0] | (hdr[1] << 8)
+                            eh = hdr[2] | (hdr[3] << 8)
+                            self.display_w = ew
+                            self.display_h = eh
+                            self.display_frame = buf[HEADER_SIZE:HEADER_SIZE + FRAME_SIZE]
+                            buf = buf[HEADER_SIZE + FRAME_SIZE:]
                     except: break
             threading.Thread(target=display_reader, daemon=True).start()
         except:
@@ -229,9 +236,11 @@ class WebDebugger:
                 elif req.startswith('GET /display'):
                     raw = self.display_frame
                     if raw:
+                        ew = getattr(self, 'display_w', 240)
+                        eh = getattr(self, 'display_h', 320)
                         hdr = (f'HTTP/1.1 200 OK\r\n'
                                f'Content-Type: application/octet-stream\r\n'
-                               f'X-Width: 240\r\nX-Height: 320\r\n'
+                               f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
                                f'Content-Length: {len(raw)}\r\n'
                                f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
                                f'\r\n').encode()
@@ -239,7 +248,23 @@ class WebDebugger:
                     else:
                         self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
 
+                elif req.startswith('POST /gpio'):
+                    body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
+                    try:
+                        resp = self.send_command(body.strip())
+                        self.http_response(conn, '200 OK', 'application/json', resp)
+                    except:
+                        self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
+
                 elif req.startswith('GET /status'):
+                    resp = getattr(self, '_async_resp', None)
+                    if resp:
+                        self._async_resp = None
+                        self.http_response(conn, '200 OK', 'application/json', resp)
+                    else:
+                        self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
+
+                elif req.startswith('POST /cmd'):
                     # Poll for async command result (continue/run)
                     resp = getattr(self, '_async_resp', None)
                     if resp:

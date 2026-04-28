@@ -119,18 +119,95 @@ static void task_b(void)
     (void)cfg;
 }
 
+/* ── Jump game constants ── */
+#define SCR_W 320
+#define SCR_H 240
+#define GROUND_Y 200
+#define PLAYER_W 16
+#define PLAYER_H 20
+#define PLAYER_X 40
+#define OBS_W 12
+#define OBS_H 30
+#define GRAVITY 1
+#define JUMP_VEL (-10)
+#define SCROLL_SPEED 3
+#define MAX_OBS 4
+
+/* Simple PRNG */
+static uint32_t rng_state = 12345;
+static uint32_t rng(void) { rng_state ^= rng_state << 13; rng_state ^= rng_state >> 17; rng_state ^= rng_state << 5; return rng_state; }
+
+/* Button input — reads GPIO pin 0 (set by browser keyboard) */
+#define GPIOA_IDR (*(volatile uint32_t *)0x40020010)
+#define BTN_PIN 0
+static int btn_pressed(void) { return (GPIOA_IDR >> BTN_PIN) & 1; }
+
 static void task_c(void)
 {
-    static const uint16_t colors[] = {RED, GREEN, BLUE, YELLOW, CYAN, WHITE};
-    int frame = 0;
+    /* Set landscape mode */
+    lcd_cmd(0x36);
+    lcd_data(0x20); /* MV bit = swap X/Y */
+
+    /* Clear screen */
+    lcd_fill_rect(0, 0, SCR_W, SCR_H, BLACK);
+
+    int player_y = GROUND_Y - PLAYER_H;
+    int vel_y = 0;
+    int on_ground = 1;
+    int obs_x[MAX_OBS], obs_gap[MAX_OBS];
+    int score = 0;
+
+    /* Init obstacles off-screen */
+    for (int i = 0; i < MAX_OBS; i++) {
+        obs_x[i] = SCR_W + 80 * i + (rng() % 60);
+        obs_gap[i] = 20 + (rng() % 20);
+    }
+
     while (1) {
-        uint16_t col = colors[frame % 6];
-        /* Draw a moving bar */
-        int y = (frame * 20) % 320;
-        lcd_fill_rect(0, y, 240, 20, col);
-        uart_print("task_c: draw\n");
-        sched_sleep_ms(150);
-        frame++;
+        /* Input */
+        if (btn_pressed() && on_ground) {
+            vel_y = JUMP_VEL;
+            on_ground = 0;
+        }
+
+        /* Physics */
+        vel_y += GRAVITY;
+        player_y += vel_y;
+        if (player_y >= GROUND_Y - PLAYER_H) {
+            player_y = GROUND_Y - PLAYER_H;
+            vel_y = 0;
+            on_ground = 1;
+        }
+
+        /* Clear: sky + ground */
+        lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
+        lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
+
+        /* Draw + move obstacles */
+        for (int i = 0; i < MAX_OBS; i++) {
+            obs_x[i] -= SCROLL_SPEED;
+            if (obs_x[i] < -OBS_W) {
+                obs_x[i] = SCR_W + (rng() % 100);
+                obs_gap[i] = 20 + (rng() % 20);
+                score++;
+            }
+            if (obs_x[i] >= 0 && obs_x[i] < SCR_W) {
+                int oh = obs_gap[i];
+                lcd_fill_rect(obs_x[i], GROUND_Y - oh, OBS_W, oh, RED);
+            }
+        }
+
+        /* Draw player */
+        lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
+        /* Eyes */
+        lcd_fill_rect(PLAYER_X + 10, player_y + 4, 3, 3, BLACK);
+
+        /* Score bar */
+        int bar_w = score * 4;
+        if (bar_w > SCR_W) bar_w = SCR_W;
+        lcd_fill_rect(0, 0, bar_w, 3, GREEN);
+
+        sched_sleep_ms(33); /* ~30fps */
     }
 }
 

@@ -43,15 +43,34 @@ static void advance_cursor(struct ili9341 *d)
     }
 }
 
+static void write_pixel(struct ili9341 *d, uint16_t pixel)
+{
+    int r = d->cur_row, c = d->cur_col;
+    int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
+    if (r < eh && c < ew) {
+        /* Map logical (col, row) to physical framebuffer position */
+        int px, py;
+        if (d->madctl & 0x20) { /* MV: swap x/y */
+            px = r; py = c;
+        } else {
+            px = c; py = r;
+        }
+        if (py < ILI9341_H && px < ILI9341_W)
+            d->fb[py * ILI9341_W + px] = pixel;
+    }
+    advance_cursor(d);
+}
+
 static void handle_param(struct ili9341 *d, uint8_t byte)
 {
+    int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     switch (d->cmd) {
-    case 0x2A: /* Column Address Set: SC_hi, SC_lo, EC_hi, EC_lo */
+    case 0x2A: /* Column Address Set */
         d->params[d->param_idx++] = byte;
         if (d->param_idx == 4) {
             d->col_start = (d->params[0] << 8) | d->params[1];
             d->col_end   = (d->params[2] << 8) | d->params[3];
-            if (d->col_end >= ILI9341_W) d->col_end = ILI9341_W - 1;
+            if (d->col_end >= ew) d->col_end = ew - 1;
             d->cur_col = d->col_start;
         }
         break;
@@ -60,25 +79,22 @@ static void handle_param(struct ili9341 *d, uint8_t byte)
         if (d->param_idx == 4) {
             d->row_start = (d->params[0] << 8) | d->params[1];
             d->row_end   = (d->params[2] << 8) | d->params[3];
-            if (d->row_end >= ILI9341_H) d->row_end = ILI9341_H - 1;
+            if (d->row_end >= eh) d->row_end = eh - 1;
             d->cur_row = d->row_start;
         }
         break;
-    case 0x2C: /* Memory Write — pixel data */
+    case 0x2C: /* Memory Write */
         if (d->pixel_hi) {
             d->hi_byte = byte;
             d->pixel_hi = 0;
         } else {
-            uint16_t pixel = (d->hi_byte << 8) | byte;
-            if (d->cur_row < ILI9341_H && d->cur_col < ILI9341_W)
-                d->fb[d->cur_row * ILI9341_W + d->cur_col] = pixel;
-            advance_cursor(d);
+            write_pixel(d, (d->hi_byte << 8) | byte);
             d->pixel_hi = 1;
             d->dirty = 1;
         }
         break;
     case 0x36: /* Memory Access Control */
-        /* TODO: handle rotation/mirror bits */
+        d->madctl = byte;
         break;
     }
 }
@@ -101,6 +117,10 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
 void ili9341_flush(struct ili9341 *d)
 {
     if (!d->dirty || !d->chardev) return;
+    /* Send 4-byte header: eff_w (u16 LE), eff_h (u16 LE), then raw fb */
+    uint16_t ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
+    uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
+    chardev_write_buf(d->chardev, hdr, 4);
     chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
     d->dirty = 0;
 }

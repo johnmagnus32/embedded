@@ -25,6 +25,7 @@ struct board {
     struct ili9341   *display;       /* NULL if no display */
     uint32_t         dc_gpio_base;   /* GPIO port base for DC pin */
     int              dc_gpio_pin;    /* GPIO pin number for DC */
+    uint32_t         gpio_idr;       /* GPIO input data register (buttons) */
     struct trace_dev trace;
     uint32_t         sysclk_hz;
     uint8_t         *flash;

@@ -628,6 +628,15 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'F5') { sendCmd('c'); e.preventDefault(); }
   if (e.key === 'F10') { sendCmd('n'); e.preventDefault(); }
   if (e.key === 'F11') { sendCmd('s'); e.preventDefault(); }
+  if (e.key === ' ' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    fetch('/gpio', {method:'POST', body:'{"cmd":"gpio","pin":0,"val":1}'});
+  }
+});
+document.addEventListener('keyup', (e) => {
+  if (e.key === ' ' || e.key === 'ArrowUp') {
+    fetch('/gpio', {method:'POST', body:'{"cmd":"gpio","pin":0,"val":0}'});
+  }
 });
 
 // Panel resize handles

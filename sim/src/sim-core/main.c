@@ -254,6 +254,17 @@ static void handle_command(int fd, struct board *b, const char *line)
             send_response(fd, "{\"w\":0,\"h\":0}");
         }
 
+    } else if (strncmp(cmd, "gpio\"", 5) == 0) {
+        const char *p = strstr(line, "\"pin\":");
+        const char *v = strstr(line, "\"val\":");
+        if (p && v) {
+            int pin = atoi(p + 6);
+            int val = atoi(v + 6);
+            if (val) b->gpio_idr |= (1 << pin);
+            else     b->gpio_idr &= ~(1 << pin);
+        }
+        send_response(fd, "{\"ok\":true}");
+
     } else if (strncmp(cmd, "print\"", 6) == 0) {
         const char *e = strstr(line, "\"expr\":\"");
         if (!e) return;

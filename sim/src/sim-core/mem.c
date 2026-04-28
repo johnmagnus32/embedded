@@ -38,6 +38,9 @@ uint32_t mem_read32(uint8_t *flash, uint8_t *ram, uint32_t addr)
     if (addr >= 0xE000E100 && addr < 0xE000E10C) return nvic_iser[(addr - 0xE000E100) / 4];
     if (addr == 0xE000ED90) return 0x00000800;
     if (addr >= 0x40023800 && addr < 0x40023900) return 0xFFFFFFFF;
+    /* GPIO IDR (offset 0x10) */
+    if (g_board && (addr & 0xFFF) == 0x10 && addr >= 0x40020000 && addr < 0x40022000)
+        return g_board->gpio_idr;
     if (addr >= 0x40020000 && addr < 0x40021000) return 0;
     return 0;
 }
