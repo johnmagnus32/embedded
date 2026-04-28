@@ -365,11 +365,9 @@ function renderMemMap(s) {
         if (sec.addr < seg.base || sec.addr >= seg.base + seg.size) continue;
         const sy = seg.y + seg.h - (sec.addr + sec.size - seg.base) / seg.size * seg.h;
         const sh = Math.max(1, sec.size / seg.size * seg.h);
-        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" rx="1" onclick="zoomToRegion(${sec.addr},${sec.size})"/>`;
-        if (sh > 8) {
-          const secSize = sec.size >= 1024 ? `${(sec.size/1024).toFixed(1)}KB` : `${sec.size}B`;
-          svg += `<text x="${labelX+2}" y="${sy+sh/2+3}" fill="${secColor}" font-size="7">${sec.name} ${secSize}</text>`;
-        }
+        const secSize = sec.size >= 1024 ? `${(sec.size/1024).toFixed(1)}KB` : `${sec.size}B`;
+        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" stroke="${secColor}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
+        if (sh > 8) svg += `<text x="${barX+barW/2}" y="${sy+sh/2+3}" fill="${secColor}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${sec.name} ${secSize}</text>`;
         svg += `<text x="${barX-4}" y="${sy+sh/2+3}" fill="${secColor}" text-anchor="end" font-size="7">${hex(sec.addr)}</text>`;
       }
 
