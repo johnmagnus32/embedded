@@ -18,7 +18,7 @@ void board_init(struct board *b, struct chardev_table *chardevs)
     struct chardev *cd;
     cd = chardevs ? chardev_find(chardevs, "usart2") : NULL;
     if (cd) {
-        uart_init(&b->soc.usarts[1], cd);
+        stm32_uart_init(&b->soc.usarts[1], cd);
         fprintf(stderr, "[board] USART2 chardev wired\n");
     }
 

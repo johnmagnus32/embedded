@@ -1,17 +1,17 @@
 /*
- * gpio.c — GPIO port device
+ * stm32_gpio.c — STM32 GPIO port device
  */
 #include <string.h>
-#include "gpio.h"
+#include "stm32_gpio.h"
 
-void gpio_init(struct gpio_port *g)
+void stm32_gpio_init(struct stm32_gpio *g)
 {
     memset(g, 0, sizeof(*g));
 }
 
-uint32_t gpio_read(void *opaque, uint32_t offset)
+uint32_t stm32_gpio_read(void *opaque, uint32_t offset)
 {
-    struct gpio_port *g = (struct gpio_port *)opaque;
+    struct stm32_gpio *g = (struct stm32_gpio *)opaque;
     switch (offset) {
     case 0x10: return g->idr;
     case 0x14: return g->odr;
@@ -19,9 +19,9 @@ uint32_t gpio_read(void *opaque, uint32_t offset)
     }
 }
 
-void gpio_write(void *opaque, uint32_t offset, uint32_t val)
+void stm32_gpio_write(void *opaque, uint32_t offset, uint32_t val)
 {
-    struct gpio_port *g = (struct gpio_port *)opaque;
+    struct stm32_gpio *g = (struct stm32_gpio *)opaque;
     switch (offset) {
     case 0x14: /* ODR */
         for (int i = 0; i < 16; i++) {

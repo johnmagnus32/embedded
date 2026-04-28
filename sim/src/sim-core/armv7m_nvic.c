@@ -1,11 +1,11 @@
 /*
- * nvic.c — Nested Vectored Interrupt Controller
+ * armv7m_nvic.c — ARMv7-M Nested Vectored Interrupt Controller
  */
-#include "nvic.h"
+#include "armv7m_nvic.h"
 #include "cpu.h"
 #include "membus.h"
 
-void nvic_init(struct nvic *n)
+void armv7m_nvic_init(struct armv7m_nvic *n)
 {
     n->pending = 0;
     n->scb_icsr = 0;
@@ -15,12 +15,12 @@ void nvic_init(struct nvic *n)
     n->iser[0] = n->iser[1] = n->iser[2] = 0;
 }
 
-void nvic_set_pending(struct nvic *n, int vector)
+void armv7m_nvic_set_pending(struct armv7m_nvic *n, int vector)
 {
     n->pending |= (1u << vector);
 }
 
-void nvic_update(struct nvic *n, struct cpu_state *cpu, struct membus *bus)
+void armv7m_nvic_update(struct armv7m_nvic *n, struct cpu_state *cpu, struct membus *bus)
 {
     if (n->scb_icsr & (1 << 28))
         n->pending |= (1u << IRQ_VEC_PENDSV);
@@ -44,10 +44,9 @@ void nvic_update(struct nvic *n, struct cpu_state *cpu, struct membus *bus)
     }
 }
 
-/* SCB registers at base 0xE000ED00 */
-uint32_t nvic_scb_read(void *opaque, uint32_t offset)
+uint32_t armv7m_nvic_scb_read(void *opaque, uint32_t offset)
 {
-    struct nvic *n = (struct nvic *)opaque;
+    struct armv7m_nvic *n = (struct armv7m_nvic *)opaque;
     switch (offset) {
     case 0x04: return n->scb_icsr;
     case 0x08: return n->scb_vtor;
@@ -58,30 +57,28 @@ uint32_t nvic_scb_read(void *opaque, uint32_t offset)
     }
 }
 
-void nvic_scb_write(void *opaque, uint32_t offset, uint32_t val)
+void armv7m_nvic_scb_write(void *opaque, uint32_t offset, uint32_t val)
 {
-    struct nvic *n = (struct nvic *)opaque;
+    struct armv7m_nvic *n = (struct armv7m_nvic *)opaque;
     switch (offset) {
     case 0x04: n->scb_icsr = val; break;
     case 0x08: n->scb_vtor = val; break;
     case 0x20: n->scb_shpr3 = val; break;
     case 0x24: n->scb_shcsr = val; break;
-    /* 0x90..0xA0: SCB/MPU writes silently ignored */
     }
 }
 
-/* ISER registers at base 0xE000E100 */
-uint32_t nvic_iser_read(void *opaque, uint32_t offset)
+uint32_t armv7m_nvic_iser_read(void *opaque, uint32_t offset)
 {
-    struct nvic *n = (struct nvic *)opaque;
+    struct armv7m_nvic *n = (struct armv7m_nvic *)opaque;
     int idx = offset / 4;
     if (idx < 3) return n->iser[idx];
     return 0;
 }
 
-void nvic_iser_write(void *opaque, uint32_t offset, uint32_t val)
+void armv7m_nvic_iser_write(void *opaque, uint32_t offset, uint32_t val)
 {
-    struct nvic *n = (struct nvic *)opaque;
+    struct armv7m_nvic *n = (struct armv7m_nvic *)opaque;
     int idx = offset / 4;
     if (idx < 3) n->iser[idx] |= val;
 }
