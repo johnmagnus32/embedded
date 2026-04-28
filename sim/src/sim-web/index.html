@@ -182,9 +182,15 @@ async function sendCmd(cmd) {
       return;
     }
     const resp = await simCmd(cmdObj);
-    // Commands that return stop info: step, next, continue, run
+    // Async commands (continue/run) return {running:true} — poll for stop
+    if (resp.running) {
+      log('<span style="color:#484f58">Running...</span>');
+      const stop = await pollForStop();
+      if (stop) await refreshUI(stop);
+      return;
+    }
+    // Commands that return stop info: step, next
     if (resp.pc !== undefined) {
-      // Debounce: if another command comes in quickly, skip this refresh
       _lastStop = resp;
       _refreshSeq++;
       const mySeq = _refreshSeq;
@@ -194,6 +200,17 @@ async function sendCmd(cmd) {
   } catch(e) { log(`Error: ${e.message}`); }
 }
 let _lastStop = null, _refreshSeq = 0;
+
+async function pollForStop() {
+  while (true) {
+    await new Promise(r => setTimeout(r, 100));
+    try {
+      const r = await fetch('/status');
+      const d = await r.json();
+      if (d.pc !== undefined) return d;
+    } catch(e) {}
+  }
+}
 
 // Initial load — show connected, wait for user commands
 (async () => {

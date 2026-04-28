@@ -166,6 +166,16 @@ class WebDebugger:
         self.last_state = resp
         return resp
 
+    def send_command_async(self, cmd_json):
+        """Send a command that may block (continue/run). Read response on background thread."""
+        self.sim_sock.sendall((cmd_json + '\n').encode())
+        def reader():
+            resp = self._recv_line()
+            self.last_state = resp
+            self._async_resp = resp
+        self._async_resp = None
+        threading.Thread(target=reader, daemon=True).start()
+
     def http_response(self, conn, status, content_type, body):
         if isinstance(body, str): body = body.encode()
         hdr = (f'HTTP/1.1 {status}\r\n'
@@ -229,13 +239,28 @@ class WebDebugger:
                     else:
                         self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
 
+                elif req.startswith('GET /status'):
+                    # Poll for async command result (continue/run)
+                    resp = getattr(self, '_async_resp', None)
+                    if resp:
+                        self._async_resp = None
+                        self.http_response(conn, '200 OK', 'application/json', resp)
+                    else:
+                        self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
+
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     cmd = body.strip()
                     log_web(f'CMD: {cmd}')
                     try:
-                        resp = self.send_command(cmd)
-                        self.http_response(conn, '200 OK', 'application/json', resp)
+                        import json as _json
+                        parsed = _json.loads(cmd)
+                        if parsed.get('cmd') in ('continue', 'run'):
+                            self.send_command_async(cmd)
+                            self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
+                        else:
+                            resp = self.send_command(cmd)
+                            self.http_response(conn, '200 OK', 'application/json', resp)
                     except Exception as e:
                         log_web(f'Error: {e}')
                         self.http_response(conn, '500 Error', 'application/json', '{"error":"sim-core disconnected"}')
