@@ -260,12 +260,15 @@ function renderTimeline(s) {
     const isHandler = ['SysTick','PendSV','SVC','IRQ'].includes(t.ctx);
     const y = isHandler ? 0 : 14;
     const h = isHandler ? 12 : H - 16;
+    const duration = nextCy - Math.max(t.cy, viewStart);
 
-    svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}" opacity="0.7" rx="1"/>`;
+    svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${col}" opacity="0.7" rx="1">`;
+    svg += `<title>${t.ctx} — ${duration.toLocaleString()} cycles (${Math.round(t.cy).toLocaleString()}–${Math.round(nextCy).toLocaleString()})</title>`;
+    svg += `</rect>`;
     // Label if wide enough
-    if (w > 30) {
-      const label = t.ctx.length > w/6 ? t.ctx.substring(0,Math.floor(w/6)) : t.ctx;
-      svg += `<text x="${x+w/2}" y="${y+h/2+4}" fill="#fff" text-anchor="middle" font-size="9" opacity="0.9">${label}</text>`;
+    if (w > 40) {
+      const label = t.ctx.length > w/7 ? t.ctx.substring(0,Math.floor(w/7)) : t.ctx;
+      svg += `<text x="${x+w/2}" y="${y+h/2+4}" fill="#fff" text-anchor="middle" font-size="9" opacity="0.9" style="pointer-events:none">${label}</text>`;
     }
   }
 

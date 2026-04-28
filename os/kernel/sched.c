@@ -249,6 +249,7 @@ void sched_start(void)
     current_task_per_cpu[cpu] = 0;
     tasks[0].state = TASK_RUNNING;
     tasks[0].running_on_cpu = cpu;
+    trace_begin(tasks[0].name);
     uint32_t *sp = tasks[0].sp;
 
 #ifdef CONFIG_CPU_CORTEX_M0PLUS
