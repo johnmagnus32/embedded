@@ -69,7 +69,7 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
     </div>
     <div class="resize-v" data-above="mem-panel" data-below="display-panel"></div>
     <div class="panel" id="display-panel" style="height:260px;min-height:100px;">
-      <h2>Display</h2>
+      <h2>Display <span onclick="refreshDisplay()" style="cursor:pointer;font-size:10px;color:#484f58;font-weight:normal;margin-left:8px">⟳ refresh</span></h2>
       <div class="panel-body" style="display:flex;align-items:center;justify-content:center;padding:4px;">
         <canvas id="lcd" width="240" height="320" style="image-rendering:pixelated;border:1px solid #30363d;max-width:100%;max-height:100%;object-fit:contain;"></canvas>
       </div>
@@ -121,12 +121,11 @@ async function refreshUI(stopInfo) {
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
   lastMemmap = memmap;
-  // Fetch trace and display async (don't block command flow)
+  // Fetch trace async (don't block command flow)
   fetch('/trace').then(r => r.json()).then(data => {
     if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
     if (data.heap) { lastHeapData = data.heap; if (lastMemmap) renderMemMap(lastMemmap); }
   }).catch(() => {});
-  refreshDisplay();
 }
 
 // Poll UART independently
