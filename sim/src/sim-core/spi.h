@@ -3,22 +3,30 @@
 
 #include <stdint.h>
 
+#define SPI_MAX_SLAVES 4
+
 typedef uint8_t (*spi_transfer_fn)(void *dev, uint8_t byte);
-typedef void (*spi_cs_fn)(void *dev, int active);
 
 struct spi_slave {
     void *dev;
     spi_transfer_fn transfer;
-    spi_cs_fn cs;
+    int cs_active;
+};
+
+struct spi_bus {
+    struct spi_slave slaves[SPI_MAX_SLAVES];
+    int nslaves;
 };
 
 struct spi {
     uint32_t cr1, cr2, sr;
-    struct spi_slave slave;
+    struct spi_bus bus;
 };
 
 void     spi_init(struct spi *s);
-void     spi_attach(struct spi *s, void *dev, spi_transfer_fn xfer, spi_cs_fn cs);
+int      spi_bus_attach(struct spi_bus *bus, void *dev, spi_transfer_fn xfer);
+uint8_t  spi_bus_transfer(struct spi_bus *bus, uint8_t byte);
+void     spi_slave_cs_handler(void *opaque, int level);
 uint32_t spi_read(void *opaque, uint32_t offset);
 void     spi_write(void *opaque, uint32_t offset, uint32_t val);
 

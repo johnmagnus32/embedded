@@ -1,16 +1,13 @@
 /*
- * membus.c — QEMU-inspired memory bus with function pointer dispatch
+ * membus.c — memory bus with direct-pointer fast path for RAM/flash regions
  */
 #include <stdio.h>
 #include <string.h>
 #include "membus.h"
-#include "cpu.h"
 
-void membus_init(struct membus *bus, uint8_t *flash, uint8_t *ram)
+void membus_init(struct membus *bus)
 {
     memset(bus, 0, sizeof(*bus));
-    bus->flash = flash;
-    bus->ram = ram;
 }
 
 void membus_register(struct membus *bus, uint32_t base, uint32_t size,
@@ -26,6 +23,25 @@ void membus_register(struct membus *bus, uint32_t base, uint32_t size,
     r->read = read;
     r->write = write;
     r->opaque = opaque;
+    r->direct = NULL;
+    r->read_only = 0;
+}
+
+void membus_register_ram(struct membus *bus, uint32_t base, uint32_t size,
+                         uint8_t *data, int read_only)
+{
+    if (bus->nregions >= MAX_REGIONS) {
+        fprintf(stderr, "[membus] Too many regions\n");
+        return;
+    }
+    struct mem_region *r = &bus->regions[bus->nregions++];
+    r->base = base;
+    r->size = size;
+    r->read = NULL;
+    r->write = NULL;
+    r->opaque = NULL;
+    r->direct = data;
+    r->read_only = read_only;
 }
 
 static struct mem_region *find_region(struct membus *bus, uint32_t addr)
@@ -64,66 +80,88 @@ static void warn_unmapped_write(uint32_t addr, uint32_t val)
 
 uint32_t membus_read32(struct membus *bus, uint32_t addr)
 {
-    /* Fast path: flash */
-    if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-        return *(uint32_t *)(bus->flash + (addr - FLASH_BASE));
-    /* Fast path: RAM */
-    if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-        return *(uint32_t *)(bus->ram + (addr - RAM_BASE));
-    /* Device dispatch */
     struct mem_region *r = find_region(bus, addr);
-    if (r && r->read)
-        return r->read(r->opaque, addr - r->base);
+    if (r) {
+        if (r->direct)
+            return *(uint32_t *)(r->direct + (addr - r->base));
+        if (r->read)
+            return r->read(r->opaque, addr - r->base);
+    }
     warn_unmapped_read(addr);
     return 0;
 }
 
 void membus_write32(struct membus *bus, uint32_t addr, uint32_t val)
 {
-    if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE) {
-        *(uint32_t *)(bus->ram + (addr - RAM_BASE)) = val;
-        return;
-    }
     struct mem_region *r = find_region(bus, addr);
-    if (r && r->write) {
-        r->write(r->opaque, addr - r->base, val);
-        return;
+    if (r) {
+        if (r->direct) {
+            if (!r->read_only)
+                *(uint32_t *)(r->direct + (addr - r->base)) = val;
+            return;
+        }
+        if (r->write) {
+            r->write(r->opaque, addr - r->base, val);
+            return;
+        }
     }
     warn_unmapped_write(addr, val);
 }
 
 uint16_t membus_read16(struct membus *bus, uint32_t addr)
 {
-    if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-        return *(uint16_t *)(bus->flash + (addr - FLASH_BASE));
-    if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-        return *(uint16_t *)(bus->ram + (addr - RAM_BASE));
-    return (uint16_t)membus_read32(bus, addr);
+    struct mem_region *r = find_region(bus, addr);
+    if (r) {
+        if (r->direct)
+            return *(uint16_t *)(r->direct + (addr - r->base));
+        if (r->read)
+            return (uint16_t)r->read(r->opaque, addr - r->base);
+    }
+    return 0;
 }
 
 void membus_write16(struct membus *bus, uint32_t addr, uint16_t val)
 {
-    if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE) {
-        *(uint16_t *)(bus->ram + (addr - RAM_BASE)) = val;
-        return;
+    struct mem_region *r = find_region(bus, addr);
+    if (r) {
+        if (r->direct) {
+            if (!r->read_only)
+                *(uint16_t *)(r->direct + (addr - r->base)) = val;
+            return;
+        }
+        if (r->write) {
+            r->write(r->opaque, addr - r->base, val);
+            return;
+        }
     }
-    membus_write32(bus, addr, val);
+    warn_unmapped_write(addr, val);
 }
 
 uint8_t membus_read8(struct membus *bus, uint32_t addr)
 {
-    if (addr >= FLASH_BASE && addr < FLASH_BASE + FLASH_SIZE)
-        return bus->flash[addr - FLASH_BASE];
-    if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE)
-        return bus->ram[addr - RAM_BASE];
+    struct mem_region *r = find_region(bus, addr);
+    if (r) {
+        if (r->direct)
+            return r->direct[addr - r->base];
+        if (r->read)
+            return (uint8_t)r->read(r->opaque, addr - r->base);
+    }
     return 0;
 }
 
 void membus_write8(struct membus *bus, uint32_t addr, uint8_t val)
 {
-    if (addr >= RAM_BASE && addr < RAM_BASE + RAM_SIZE) {
-        bus->ram[addr - RAM_BASE] = val;
-        return;
+    struct mem_region *r = find_region(bus, addr);
+    if (r) {
+        if (r->direct) {
+            if (!r->read_only)
+                r->direct[addr - r->base] = val;
+            return;
+        }
+        if (r->write) {
+            r->write(r->opaque, addr - r->base, val);
+            return;
+        }
     }
-    membus_write32(bus, addr, val);
+    warn_unmapped_write(addr, val);
 }

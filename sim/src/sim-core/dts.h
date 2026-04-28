@@ -11,6 +11,7 @@ struct dts_node {
     uint32_t reg;
     int has_reg;
     int dc_pin;        /* -1 if not set */
+    int cs_pin;        /* -1 if not set */
     uint32_t spi_bus;  /* reg of parent SPI bus, 0 if not set */
 };
 

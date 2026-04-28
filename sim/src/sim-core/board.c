@@ -28,7 +28,9 @@ void board_init(struct board *b, const struct dts *dt, struct chardev_table *cha
     b->display = NULL;
     b->sysclk_hz = dt->sysclk_hz ? dt->sysclk_hz : 16000000;
 
-    membus_init(&b->bus, b->flash, b->ram);
+    membus_init(&b->bus);
+    membus_register_ram(&b->bus, FLASH_BASE, FLASH_SIZE, b->flash, 1);
+    membus_register_ram(&b->bus, RAM_BASE, RAM_SIZE, b->ram, 0);
 
     /* Trace port — always at 0xE0000000 */
     struct chardev *trace_cd = chardevs ? chardev_find(chardevs, "trace") : NULL;
@@ -83,7 +85,13 @@ void board_init(struct board *b, const struct dts *dt, struct chardev_table *cha
                 static struct ili9341 display;
                 ili9341_init(&display);
                 display.chardev = chardevs ? chardev_find(chardevs, "display") : NULL;
-                spi_attach(bus, &display, ili9341_transfer, NULL);
+                int si_idx = spi_bus_attach(&bus->bus, &display, ili9341_transfer);
+                if (si_idx >= 0 && n->cs_pin >= 0 && n->cs_pin < 16) {
+                    b->gpio[0].out[n->cs_pin].handler = spi_slave_cs_handler;
+                    b->gpio[0].out[n->cs_pin].opaque = &bus->bus.slaves[si_idx];
+                } else if (si_idx >= 0) {
+                    bus->bus.slaves[si_idx].cs_active = 1;
+                }
                 b->display = &display;
                 dc_gpio_pin = n->dc_pin;
                 fprintf(stderr, "[board] ILI9341 on SPI 0x%08X, DC pin %d\n", n->spi_bus, n->dc_pin);

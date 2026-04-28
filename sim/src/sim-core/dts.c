@@ -82,6 +82,7 @@ static void parse_node(const char **p, struct dts *d, int depth)
         node_idx = d->nnodes++;
         memset(&d->nodes[node_idx], 0, sizeof(struct dts_node));
         d->nodes[node_idx].dc_pin = -1;
+        d->nodes[node_idx].cs_pin = -1;
         strncpy(d->nodes[node_idx].label, label, 31);
     }
 
@@ -122,6 +123,8 @@ static void parse_node(const char **p, struct dts *d, int depth)
                 d->sysclk_hz = parse_angle_int(p);
             } else if (node_idx >= 0 && strcmp(prop, "dc-pin") == 0) {
                 d->nodes[node_idx].dc_pin = (int)parse_angle_int(p);
+            } else if (node_idx >= 0 && strcmp(prop, "cs-pin") == 0) {
+                d->nodes[node_idx].cs_pin = (int)parse_angle_int(p);
             } else if (node_idx >= 0 && strcmp(prop, "spi-bus") == 0) {
                 d->nodes[node_idx].spi_bus = parse_angle_int(p);
             } else {

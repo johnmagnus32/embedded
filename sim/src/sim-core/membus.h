@@ -14,18 +14,20 @@ struct mem_region {
     mem_read_fn read;
     mem_write_fn write;
     void *opaque;
+    uint8_t *direct;
+    int read_only;
 };
 
 struct membus {
     struct mem_region regions[MAX_REGIONS];
     int nregions;
-    uint8_t *flash;
-    uint8_t *ram;
 };
 
-void     membus_init(struct membus *bus, uint8_t *flash, uint8_t *ram);
+void     membus_init(struct membus *bus);
 void     membus_register(struct membus *bus, uint32_t base, uint32_t size,
                          mem_read_fn read, mem_write_fn write, void *opaque);
+void     membus_register_ram(struct membus *bus, uint32_t base, uint32_t size,
+                             uint8_t *data, int read_only);
 uint32_t membus_read32(struct membus *bus, uint32_t addr);
 void     membus_write32(struct membus *bus, uint32_t addr, uint32_t val);
 uint16_t membus_read16(struct membus *bus, uint32_t addr);

@@ -1,6 +1,7 @@
 /*
- * spi.c — STM32 SPI peripheral emulation
+ * spi.c — STM32 SPI peripheral emulation with multi-slave bus
  */
+#include <string.h>
 #include "spi.h"
 
 #define SPI_CR1  0x00
@@ -17,16 +18,34 @@ void spi_init(struct spi *s)
     s->cr1 = 0;
     s->cr2 = 0;
     s->sr = SR_TXE;
-    s->slave.dev = 0;
-    s->slave.transfer = 0;
-    s->slave.cs = 0;
+    memset(&s->bus, 0, sizeof(s->bus));
 }
 
-void spi_attach(struct spi *s, void *dev, spi_transfer_fn xfer, spi_cs_fn cs)
+int spi_bus_attach(struct spi_bus *bus, void *dev, spi_transfer_fn xfer)
 {
-    s->slave.dev = dev;
-    s->slave.transfer = xfer;
-    s->slave.cs = cs;
+    if (bus->nslaves >= SPI_MAX_SLAVES)
+        return -1;
+    int idx = bus->nslaves++;
+    bus->slaves[idx].dev = dev;
+    bus->slaves[idx].transfer = xfer;
+    bus->slaves[idx].cs_active = 0;
+    return idx;
+}
+
+uint8_t spi_bus_transfer(struct spi_bus *bus, uint8_t byte)
+{
+    uint8_t ret = 0;
+    for (int i = 0; i < bus->nslaves; i++) {
+        if (bus->slaves[i].cs_active && bus->slaves[i].transfer)
+            ret = bus->slaves[i].transfer(bus->slaves[i].dev, byte);
+    }
+    return ret;
+}
+
+void spi_slave_cs_handler(void *opaque, int level)
+{
+    struct spi_slave *slave = (struct spi_slave *)opaque;
+    slave->cs_active = !level;  /* CS is active low */
 }
 
 uint32_t spi_read(void *opaque, uint32_t offset)
@@ -48,8 +67,7 @@ void spi_write(void *opaque, uint32_t offset, uint32_t val)
     case SPI_CR1: s->cr1 = val; break;
     case SPI_CR2: s->cr2 = val; break;
     case SPI_DR:
-        if (s->slave.transfer)
-            s->slave.transfer(s->slave.dev, (uint8_t)val);
+        spi_bus_transfer(&s->bus, (uint8_t)val);
         s->sr |= SR_TXE | SR_RXNE;
         s->sr &= ~SR_BSY;
         break;
