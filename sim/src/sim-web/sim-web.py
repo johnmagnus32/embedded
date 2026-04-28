@@ -266,15 +266,6 @@ class WebDebugger:
                         self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
 
                 elif req.startswith('POST /cmd'):
-                    # Poll for async command result (continue/run)
-                    resp = getattr(self, '_async_resp', None)
-                    if resp:
-                        self._async_resp = None
-                        self.http_response(conn, '200 OK', 'application/json', resp)
-                    else:
-                        self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
-
-                elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     cmd = body.strip()
                     log_web(f'CMD: {cmd}')
