@@ -39,4 +39,32 @@ static inline void trace_event(const char *name)
     *TRACE_PORT = '\n';
 }
 
+/* Heap tracing: H:name@addr,size  F:addr */
+static inline void trace_alloc(const char *name, void *ptr, unsigned size)
+{
+    *TRACE_PORT = 'H';
+    *TRACE_PORT = ':';
+    while (*name) *TRACE_PORT = *name++;
+    *TRACE_PORT = '@';
+    /* Emit addr as hex */
+    unsigned a = (unsigned)ptr;
+    for (int i = 28; i >= 0; i -= 4)
+        *TRACE_PORT = "0123456789abcdef"[(a >> i) & 0xf];
+    *TRACE_PORT = ',';
+    /* Emit size as hex */
+    for (int i = 28; i >= 0; i -= 4)
+        *TRACE_PORT = "0123456789abcdef"[(size >> i) & 0xf];
+    *TRACE_PORT = '\n';
+}
+
+static inline void trace_free(void *ptr)
+{
+    *TRACE_PORT = 'F';
+    *TRACE_PORT = ':';
+    unsigned a = (unsigned)ptr;
+    for (int i = 28; i >= 0; i -= 4)
+        *TRACE_PORT = "0123456789abcdef"[(a >> i) & 0xf];
+    *TRACE_PORT = '\n';
+}
+
 #endif

@@ -1,5 +1,5 @@
 /*
- * main.c — RTOS demo: three tasks print and sleep
+ * main.c — RTOS demo: three tasks print and sleep, with heap tracing
  */
 
 #include "config.h"
@@ -7,6 +7,8 @@
 #include "device.h"
 #include "drivers/uart.h"
 #include "sched.h"
+#include "heap.h"
+#include "trace.h"
 
 DEVICE_DT_DECLARE(usart2);
 
@@ -21,44 +23,54 @@ static void uart_print(const char *s)
     }
 }
 
-static void __attribute__((noinline)) deep_work(const char *task)
+/* Traced heap wrappers */
+static void *talloc(const char *name, unsigned size)
 {
-    volatile char buf[100];
-    buf[0] = task[0];  /* touch the array so compiler doesn't optimize it out */
-    buf[99] = task[0];
-    uart_print("  deep: ");
-    uart_print(task);
-    uart_print("\n");
+    void *p = heap_alloc(size);
+    if (p) trace_alloc(name, p, size);
+    return p;
 }
 
-static void __attribute__((noinline)) do_work(const char *task)
+static void tfree(void *p)
 {
-    uart_print(task);
-    uart_print(": do_work\n");
-    deep_work(task);
+    if (p) trace_free(p);
+    heap_free(p);
 }
 
 static void task_a(void)
 {
+    void *sensor = talloc("sensor_ctx", 64);
+    void *buf    = talloc("tx_buffer", 128);
     while (1) {
-        do_work("task_a");
-        sched_sleep_ms(100);
+        uart_print("task_a: working\n");
+        sched_sleep_ms(200);
     }
+    (void)sensor; (void)buf;
 }
 
 static void task_b(void)
 {
+    void *cfg = talloc("config", 32);
+    sched_sleep_ms(100);
+    void *tmp = talloc("temp_data", 48);
+    sched_sleep_ms(300);
+    uart_print("task_b: freeing temp_data\n");
+    tfree(tmp);
     while (1) {
-        do_work("task_b");
-        sched_sleep_ms(100);
+        uart_print("task_b: working\n");
+        sched_sleep_ms(200);
     }
+    (void)cfg;
 }
 
 static void task_c(void)
 {
     while (1) {
-        do_work("task_c");
-        sched_sleep_ms(100);
+        void *pkt = talloc("packet", 80);
+        uart_print("task_c: processing packet\n");
+        sched_sleep_ms(150);
+        tfree(pkt);
+        sched_sleep_ms(150);
     }
 }
 
@@ -67,11 +79,16 @@ static void idle_task(void)
     while (1) {}
 }
 
+extern char _heap_start;
+extern char _heap_size;
+
 void main(void)
 {
     uart = DEVICE_DT_GET(usart2);
 
-    uart_print("RTOS demo — 3 tasks printing\n\n");
+    heap_init(&_heap_start, (size_t)&_heap_size);
+
+    uart_print("RTOS demo — heap tracing\n\n");
 
     sched_create_task(task_a,    "task_a", 1);
     sched_create_task(task_b,    "task_b", 1);

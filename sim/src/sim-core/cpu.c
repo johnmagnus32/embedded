@@ -842,8 +842,8 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
     }
 
     /* Register-shifted register: LSL.W, LSR.W, ASR.W, ROR.W */
-    if ((hi & 0xFFE0) == 0xFA00) {
-        int op = (hi >> 1) & 3;
+    if ((hi & 0xFF80) == 0xFA00) {
+        int op = (hi >> 5) & 3;
         int rn = hi & 0xF;
         int rd = (lo >> 8) & 0xF;
         int rm = lo & 0xF;

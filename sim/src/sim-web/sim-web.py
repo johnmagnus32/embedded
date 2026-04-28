@@ -76,6 +76,7 @@ class WebDebugger:
 
         # Connect to trace stream
         self.trace_events = []
+        self.heap_blocks = {}  # addr -> {name, size, cy}
         try:
             self.trace_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.trace_sock.connect(('127.0.0.1', TRACE_PORT))
@@ -102,6 +103,21 @@ class WebDebugger:
                                 self.trace_events.append({'type': 'E', 'cy': cy})
                             elif line.startswith('I:') and cy is not None:
                                 self.trace_events.append({'ctx': line[2:], 'type': 'I', 'cy': cy})
+                            elif line.startswith('H:'):
+                                # H:name@addr,size (hex) — heap alloc
+                                try:
+                                    name, rest = line[2:].split('@', 1)
+                                    addr_s, size_s = rest.split(',', 1)
+                                    addr = int(addr_s, 16)
+                                    size = int(size_s, 16)
+                                    self.heap_blocks[addr] = {'name': name, 'size': size, 'cy': cy or 0}
+                                except: pass
+                            elif line.startswith('F:'):
+                                # F:addr — heap free
+                                try:
+                                    addr = int(line[2:], 16)
+                                    self.heap_blocks.pop(addr, None)
+                                except: pass
                     except: break
             threading.Thread(target=trace_reader, daemon=True).start()
         except:
@@ -165,8 +181,9 @@ class WebDebugger:
 
                 elif req.startswith('GET /trace'):
                     import json as _json
+                    heap = [{'addr': a, **v} for a, v in self.heap_blocks.items()]
                     self.http_response(conn, '200 OK', 'application/json',
-                        _json.dumps({"timeline": self.trace_events[-512:]}))
+                        _json.dumps({"timeline": self.trace_events[-512:], "heap": heap}))
 
                 elif req.startswith('GET /uart'):
                     import json as _json

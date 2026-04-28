@@ -102,6 +102,7 @@ async function refreshUI(stopInfo) {
   // Fetch trace async (don't block command flow)
   fetch('/trace').then(r => r.json()).then(data => {
     if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
+    if (data.heap) { lastHeapData = data.heap; if (lastMemmap) renderMemMap(lastMemmap); }
   }).catch(() => {});
 }
 
@@ -170,6 +171,7 @@ function esc(s) { const d=document.createElement('div'); d.textContent=s; return
 
 let lastState = null;
 let lastMemmap = null;
+let lastHeapData = [];
 function render(stop, regs, source, uart) {
   lastState = stop;
 
@@ -430,16 +432,6 @@ function renderMemMap(s) {
             let di = 0;
             let lastFrameIdx = -1;
 
-            // Build variable span map: addr → {name, size, startAddr}
-            const varSpans = [];
-            for (const d of data) {
-              if (d.var) {
-                const sz = d.vsz || 4;
-                varSpans.push({start: d.addr, end: d.addr + sz, name: d.var, size: sz});
-              }
-            }
-            const inVarSpan = (addr) => varSpans.find(v => addr >= v.start && addr < v.end);
-
             while (di < data.length) {
               const d = data[di];
               const dy = addrToY(d.addr + 4);
@@ -458,29 +450,11 @@ function renderMemMap(s) {
                 }
               }
 
-              // Check if this word starts a multi-word variable
-              const vs = d.var ? varSpans.find(v => v.start === d.addr && v.size > 4) : null;
-              if (vs) {
-                // Render entire variable as one block
-                const nwords = Math.ceil(vs.size / 4);
-                const vy0 = addrToY(vs.start + vs.size);
-                const vy1 = addrToY(vs.start);
-                const vh = vy1 - vy0;
-                svg += `<rect x="${barX}" y="${vy0}" width="${barW}" height="${vh}" fill="${colVar}" opacity="0.4" stroke="#30363d" stroke-width="0.5"/>`;
-                if (showText) {
-                  svg += `<text x="${barX+barW/2}" y="${vy0+vh/2+4}" fill="#7ee787" text-anchor="middle" font-size="10">${vs.name} [${vs.size}B]</text>`;
-                  svg += `<text x="${barX-4}" y="${vy0+4+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(vs.start + vs.size)}</text>`;
-                  svg += `<text x="${barX-4}" y="${vy1-2}" fill="#484f58" text-anchor="end" font-size="8">${hex(vs.start)}</text>`;
-                }
-                di += nwords;
-                continue;
-              }
-
-              // Collapse consecutive words that are zero AND not inside a variable span
+              // Collapse consecutive zeros
               let zeroRun = 0;
-              if (d.val === 0 && !d.sym && !d.var && !inVarSpan(d.addr)) {
+              if (d.val === 0 && !d.sym) {
                 let j = di;
-                while (j < data.length && data[j].val === 0 && !data[j].sym && !data[j].var && !inVarSpan(data[j].addr)) { zeroRun++; j++; }
+                while (j < data.length && data[j].val === 0 && !data[j].sym) { zeroRun++; j++; }
               }
 
               if (zeroRun > 2) {
@@ -496,23 +470,13 @@ function renderMemMap(s) {
                 }
                 di += zeroRun;
               } else {
-                // Determine cell color and label
                 let bg, label, labelCol = '#c9d1d9';
                 const isSP = d.addr === t.sp;
-                const parentVar = inVarSpan(d.addr);
 
                 if (d.sym) {
                   bg = colRet;
                   label = d.sym.includes('+0x') ? 'return → ' + d.sym.split('+')[0] : d.sym;
                   labelCol = '#d2a8ff';
-                } else if (d.var) {
-                  bg = colVar;
-                  const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8, '0');
-                  label = d.var + ' = ' + valStr;
-                  labelCol = '#7ee787';
-                } else if (parentVar) {
-                  // Inside a multi-word variable (shouldn't happen now, but fallback)
-                  bg = colVar; label = ''; labelCol = '#7ee787';
                 } else {
                   bg = colFree;
                   const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8, '0');
@@ -582,6 +546,22 @@ function renderMemMap(s) {
           svg += `<line x1="${barX}" y1="${mspY}" x2="${barX+barW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
           svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">MSP</text>`;
           svg += `<text x="${barX-4}" y="${mspY+3}" fill="#ffa657" text-anchor="end" font-size="7">${hex(s.msp)}</text>`;
+        }
+
+        // Heap blocks from trace data
+        const heapCol = '#da8ee7';
+        for (const hb of lastHeapData) {
+          if (hb.addr < RAM_BASE || hb.addr + hb.size > RAM_BASE + RAM_SIZE) continue;
+          const hy0 = addrToY(hb.addr + hb.size);
+          const hy1 = addrToY(hb.addr);
+          const hh = Math.max(1, hy1 - hy0);
+          svg += `<rect x="${barX+1}" y="${hy0}" width="${barW-2}" height="${hh}" fill="${heapCol}" opacity="0.35" stroke="${heapCol}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
+          if (hh > 8) {
+            const sizeStr = hb.size >= 1024 ? `${(hb.size/1024).toFixed(1)}KB` : `${hb.size}B`;
+            svg += `<text x="${barX+barW/2}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="middle" font-size="${hh > 14 ? 9 : 7}" font-weight="bold">${hb.name}</text>`;
+            if (hh > 20) svg += `<text x="${barX+barW/2}" y="${hy0+hh/2+13}" fill="#484f58" text-anchor="middle" font-size="7">${sizeStr}</text>`;
+          }
+          svg += `<text x="${barX-4}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="end" font-size="7">${hex(hb.addr)}</text>`;
         }
       }
     }
