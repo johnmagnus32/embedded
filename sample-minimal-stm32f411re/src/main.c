@@ -314,9 +314,9 @@ void main(void)
 
     heap_init(&_heap_start, (size_t)&_heap_size);
     lcd_init();
-    buttons_init();
+    /* buttons_init(); -- temporarily disabled for debugging */
 
-    uart_print("RTOS demo — heap tracing\n\n");
+    uart_print("start\n");
 
     sched_create_task(task_a,    "task_a", 1);
     sched_create_task(task_b,    "task_b", 1);
