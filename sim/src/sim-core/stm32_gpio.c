@@ -48,3 +48,12 @@ void stm32_gpio_write(void *opaque, uint32_t offset, uint32_t val)
         break;
     }
 }
+
+void stm32_gpio_set_input(struct stm32_gpio *g, int pin, int level)
+{
+    int old = (g->idr >> pin) & 1;
+    if (level) g->idr |= (1u << pin);
+    else       g->idr &= ~(1u << pin);
+    if (level != old)
+        gpio_set(&g->idr_change[pin], level);
+}

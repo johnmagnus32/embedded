@@ -37,6 +37,25 @@ void stm32f411_init(struct stm32f411 *soc)
     stm32_gpio_init(&soc->gpio[1]);
     stm32_gpio_init(&soc->gpio[2]);
 
+    /* EXTI */
+    stm32_exti_init(&soc->exti);
+
+    /* Wire EXTI outputs 0-4 → NVIC IRQ 6-10 */
+    for (int i = 0; i < 5; i++) {
+        soc->exti_nvic[i].nvic = &soc->nvic;
+        soc->exti_nvic[i].irq = 6 + i;
+        soc->exti.irq_out[i].handler = nvic_irq_line_handler;
+        soc->exti.irq_out[i].opaque = &soc->exti_nvic[i];
+    }
+
+    /* Wire GPIOA idr_change 0-15 → EXTI inputs (default mux) */
+    for (int i = 0; i < 16; i++) {
+        soc->exti_inputs[i].exti = &soc->exti;
+        soc->exti_inputs[i].line = i;
+        soc->gpio[0].idr_change[i].handler = stm32_exti_input_handler;
+        soc->gpio[0].idr_change[i].opaque = &soc->exti_inputs[i];
+    }
+
     /* Memory bus */
     membus_init(&soc->bus);
     membus_register_ram(&soc->bus, FLASH_BASE, FLASH_SIZE, soc->flash, 1);
@@ -63,6 +82,9 @@ void stm32f411_init(struct stm32f411 *soc)
 
     /* RCC */
     membus_register(&soc->bus, 0x40023800, 0x100, rcc_read, rcc_write, NULL);
+
+    /* EXTI */
+    membus_register(&soc->bus, 0x40013C00, 0x18, stm32_exti_read, stm32_exti_write, &soc->exti);
 }
 
 void stm32f411_tick(struct stm32f411 *soc)

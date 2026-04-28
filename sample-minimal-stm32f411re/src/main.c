@@ -144,25 +144,33 @@ static void task_b(void)
 static uint32_t rng_state = 12345;
 static uint32_t rng(void) { rng_state ^= rng_state << 13; rng_state ^= rng_state >> 17; rng_state ^= rng_state << 5; return rng_state; }
 
-/* Button input — reads GPIO pin 0 (set by browser keyboard) */
-#define GPIOA_IDR (*(volatile uint32_t *)0x40020010)
+/* Button input — reads GPIOB pin 0 (set by browser keyboard) */
+#define GPIOB_IDR (*(volatile uint32_t *)0x40020410)
 #define BTN_PIN 0
-static int btn_pressed(void) { return (GPIOA_IDR >> BTN_PIN) & 1; }
+static int btn_pressed(void) { return (GPIOB_IDR >> BTN_PIN) & 1; }
 
 /* NVIC ISER0 — enable external interrupts */
 #define NVIC_ISER0 (*(volatile uint32_t *)0xE000E100)
 
-/* Button → EXTI mapping: PA0=A/Jump, PA1=B, PA2=Left, PA3=Right, PA4=Up, PA5=Down */
+/* EXTI registers */
+#define EXTI_IMR   (*(volatile uint32_t *)0x40013C00)
+#define EXTI_RTSR  (*(volatile uint32_t *)0x40013C08)
+#define EXTI_PR    (*(volatile uint32_t *)0x40013C14)
+
+/* Button → EXTI mapping: PB0=A/Jump, PB1=B, PB2=Left, PB3=Right, PB4=Up */
 static const char *btn_names[] = {"A", "B", "Left", "Right", "Up", "Down"};
 
-void exti0_handler(void) { uart_print("[btn] A\n"); }
-void exti1_handler(void) { uart_print("[btn] B\n"); }
-void exti2_handler(void) { uart_print("[btn] Left\n"); }
-void exti3_handler(void) { uart_print("[btn] Right\n"); }
-void exti4_handler(void) { uart_print("[btn] Up\n"); }
+void exti0_handler(void) { EXTI_PR = (1 << 0); uart_print("[btn] A\n"); }
+void exti1_handler(void) { EXTI_PR = (1 << 1); uart_print("[btn] B\n"); }
+void exti2_handler(void) { EXTI_PR = (1 << 2); uart_print("[btn] Left\n"); }
+void exti3_handler(void) { EXTI_PR = (1 << 3); uart_print("[btn] Right\n"); }
+void exti4_handler(void) { EXTI_PR = (1 << 4); uart_print("[btn] Up\n"); }
 
 static void buttons_init(void)
 {
+    /* Configure EXTI: rising edge trigger on lines 0-4 */
+    EXTI_RTSR = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4);
+    EXTI_IMR  = (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4);
     /* Enable EXTI0-4 in NVIC (IRQ 6-10 → bits 6-10 of ISER0) */
     NVIC_ISER0 = (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9) | (1 << 10);
 }

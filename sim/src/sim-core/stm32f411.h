@@ -8,6 +8,7 @@
 #include "stm32_uart.h"
 #include "stm32_spi.h"
 #include "stm32_gpio.h"
+#include "stm32_exti.h"
 
 #define STM32F411_NUM_USARTS 3
 #define STM32F411_NUM_SPIS   2
@@ -21,6 +22,9 @@ struct stm32f411 {
     struct stm32_uart     usarts[STM32F411_NUM_USARTS];
     struct stm32_spi      spis[STM32F411_NUM_SPIS];
     struct stm32_gpio     gpio[STM32F411_NUM_GPIO];
+    struct stm32_exti     exti;
+    struct exti_input     exti_inputs[16];
+    struct nvic_irq_line  exti_nvic[5];
     uint8_t              *flash;
     uint8_t              *ram;
     uint32_t              sysclk_hz;

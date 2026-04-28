@@ -662,21 +662,21 @@ document.addEventListener('keydown', (e) => {
   const pin = keyMap[e.key];
   if (pin !== undefined) {
     e.preventDefault();
-    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:1})});
+    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:1})});
   }
 });
 document.addEventListener('keyup', (e) => {
   const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
   const pin = keyMap[e.key];
   if (pin !== undefined)
-    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:0})});
+    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:0})});
 });
 
 /* Button panel click/touch handlers */
 document.querySelectorAll('.gbtn').forEach(btn => {
   const pin = parseInt(btn.dataset.pin);
-  const press = () => { btn.classList.add('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:1})}); };
-  const release = () => { btn.classList.remove('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,val:0})}); };
+  const press = () => { btn.classList.add('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:1})}); };
+  const release = () => { btn.classList.remove('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:0})}); };
   btn.addEventListener('mousedown', press);
   btn.addEventListener('mouseup', release);
   btn.addEventListener('mouseleave', release);

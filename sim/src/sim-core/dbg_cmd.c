@@ -56,14 +56,11 @@ static void poll_gpio(int fd, struct sim_ctx *ctx)
             if (p && v) {
                 int pin = atoi(p + 6);
                 int val = atoi(v + 6);
-                struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, 0);
-                if (gpio) {
-                    uint32_t old = gpio->idr;
-                    if (val) gpio->idr |= (1 << pin);
-                    else     gpio->idr &= ~(1 << pin);
-                    if (val && !(old & (1 << pin)) && pin <= 4)
-                        armv7m_nvic_set_pending(ctx->nvic, 16 + 6 + pin);
-                }
+                const char *pt = strstr(gbuf, "\"port\":");
+                int port = pt ? atoi(pt + 7) : 0;
+                struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, port);
+                if (gpio)
+                    stm32_gpio_set_input(gpio, pin, val);
             }
         }
         int rem = glen - (nl - gbuf + 1);
@@ -296,13 +293,11 @@ void dbg_dispatch(int fd, struct sim_ctx *ctx, const char *line)
         if (p && v) {
             int pin = atoi(p + 6);
             int val = atoi(v + 6);
-            struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, 0);
-            uint32_t old = gpio->idr;
-            if (val) gpio->idr |= (1 << pin);
-            else     gpio->idr &= ~(1 << pin);
-            if (val && !(old & (1 << pin)) && pin <= 4) {
-                armv7m_nvic_set_pending(ctx->nvic, 16 + 6 + pin);
-            }
+            const char *pt = strstr(line, "\"port\":");
+            int port = pt ? atoi(pt + 7) : 0;
+            struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, port);
+            if (gpio)
+                stm32_gpio_set_input(gpio, pin, val);
         }
 
     } else if (strncmp(cmd, "print\"", 6) == 0) {
