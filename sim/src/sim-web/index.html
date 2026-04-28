@@ -134,7 +134,11 @@ async function pollUart() {
     const r = await fetch('/uart');
     if (r.ok) {
       const u = await r.json();
-      if (u.uart) document.getElementById('uart').textContent = u.uart;
+      if (u.uart) {
+        const el = document.getElementById('uart');
+        el.textContent = u.uart;
+        el.scrollTop = el.scrollHeight;
+      }
     }
   } catch(e) {}
   setTimeout(pollUart, 300);
@@ -193,6 +197,11 @@ async function sendCmd(cmd) {
     // Async commands (continue/run) return {running:true} — poll for stop
     if (resp.running) {
       log('<span style="color:#484f58">Running...</span>');
+      // Clear source highlight and show running indicator
+      document.querySelectorAll('.src-line.current').forEach(el => el.classList.remove('current'));
+      const cur = document.getElementById('cur-line');
+      if (cur) cur.removeAttribute('id');
+      document.getElementById('hdr-func').textContent = '▶ Running...';
       const stop = await pollForStop();
       if (stop) await refreshUI(stop);
       return;

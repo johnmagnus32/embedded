@@ -93,30 +93,35 @@ static void tfree(void *p)
     heap_free(p);
 }
 
+static void print_int(int n)
+{
+    char buf[12]; int i = 10;
+    buf[11] = 0;
+    if (n == 0) { uart_print("0"); return; }
+    while (n > 0 && i >= 0) { buf[i--] = '0' + (n % 10); n /= 10; }
+    uart_print(&buf[i + 1]);
+}
+
 static void task_a(void)
 {
-    void *sensor = talloc("sensor_ctx", 64);
-    void *buf    = talloc("tx_buffer", 128);
+    int count = 0;
     while (1) {
-        uart_print("task_a: working\n");
-        sched_sleep_ms(200);
+        uart_print("task_a: ");
+        print_int(count++);
+        uart_print("\n");
+        sched_sleep_ms(1000);
     }
-    (void)sensor; (void)buf;
 }
 
 static void task_b(void)
 {
-    void *cfg = talloc("config", 32);
-    sched_sleep_ms(100);
-    void *tmp = talloc("temp_data", 48);
-    sched_sleep_ms(300);
-    uart_print("task_b: freeing temp_data\n");
-    tfree(tmp);
+    int count = 0;
     while (1) {
-        uart_print("task_b: working\n");
-        sched_sleep_ms(200);
+        uart_print("task_b: ");
+        print_int(count++);
+        uart_print("\n");
+        sched_sleep_ms(1000);
     }
-    (void)cfg;
 }
 
 /* ── Jump game constants ── */
