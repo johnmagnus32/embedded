@@ -649,7 +649,15 @@ static int exec_thumb32(struct cpu_state *c, uint8_t *flash, uint8_t *ram, uint3
         return 0;
     }
 
-    /* LDRH.W with pre/post index or register offset */
+    /* LDRH.W — 12-bit immediate offset */
+    if ((hi & 0xFFF0) == 0xF8B0) {
+        int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
+        uint32_t imm12 = lo & 0xFFF;
+        c->r[rt] = mem_read16(flash, ram, c->r[rn] + imm12);
+        return 0;
+    }
+
+    /* LDRH.W — pre/post index or register offset */
     if ((hi & 0xFFF0) == 0xF830) {
         int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
         if (lo & 0x0800) {
