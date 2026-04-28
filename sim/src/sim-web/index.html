@@ -684,7 +684,13 @@ if (colResize) {
     document.addEventListener('mouseup', onUp);
   });
 }
-setInterval(_doRefreshDisplay, 200);
+let _displayBusy = false;
+(function displayLoop() {
+  requestAnimationFrame(displayLoop);
+  if (_displayBusy) return;
+  _displayBusy = true;
+  _doRefreshDisplay().finally(() => { _displayBusy = false; });
+})();
 </script>
 </body>
 </html>
