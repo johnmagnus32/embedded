@@ -91,13 +91,17 @@ static void tfree(void *p)
 
 static void print_int(int n)
 {
-    if (n < 0) { uart_print("-"); n = -n; }
-    char buf[12];
-    char *p = buf + 11;
-    *p = 0;
-    if (n == 0) { *--p = '0'; }
-    else { while (n > 0) { *--p = '0' + (n % 10); n /= 10; } }
-    uart_print(p);
+    if (n < 0) { uart_poll_out(uart, '-'); n = -n; }
+    static const int divs[] = {100000, 10000, 1000, 100, 10, 1};
+    int started = 0;
+    for (int i = 0; i < 6; i++) {
+        int d = 0;
+        while (n >= divs[i]) { n -= divs[i]; d++; }
+        if (d || started || divs[i] == 1) {
+            uart_poll_out(uart, '0' + d);
+            started = 1;
+        }
+    }
 }
 
 static void task_a(void)
