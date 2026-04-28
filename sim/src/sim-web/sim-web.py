@@ -273,7 +273,7 @@ class WebDebugger:
                     try:
                         import json as _json
                         parsed = _json.loads(cmd)
-                        if parsed.get('cmd') in ('continue', 'run'):
+                        if parsed.get('cmd') == 'continue':
                             self.send_command_async(cmd)
                             self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
                         else:
