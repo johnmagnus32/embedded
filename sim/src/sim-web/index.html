@@ -182,6 +182,7 @@ async function sendCmd(cmd) {
       return;
     }
     const resp = await simCmd(cmdObj);
+    log(`<span style="color:#484f58">[dbg] ${JSON.stringify(resp).slice(0,120)}</span>`);
     // Break command — show address
     if (resp.addr !== undefined) {
       log(`Breakpoint at ${hex(resp.addr)}`);
