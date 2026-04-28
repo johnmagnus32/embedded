@@ -40,4 +40,7 @@ void chardev_try_accept(struct chardev *cd);
 /* Write a byte to the chardev's client. No-op if no client. */
 void chardev_write(struct chardev *cd, uint8_t byte);
 
+/* Write a buffer to the chardev's client. No-op if no client. */
+void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len);
+
 #endif

@@ -82,3 +82,17 @@ void chardev_write(struct chardev *cd, uint8_t byte)
             cd->client_fd = -1;
     }
 }
+
+void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len)
+{
+    if (!cd) return;
+    if (cd->client_fd < 0) chardev_try_accept(cd);
+    if (cd->client_fd >= 0) {
+        int sent = 0;
+        while (sent < len) {
+            int n = write(cd->client_fd, data + sent, len - sent);
+            if (n <= 0) { cd->client_fd = -1; return; }
+            sent += n;
+        }
+    }
+}

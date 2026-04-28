@@ -54,6 +54,8 @@ void board_init(struct board *b, const struct dts *dt, struct chardev_table *cha
             if (bus) {
                 static struct ili9341 display;
                 ili9341_init(&display);
+                /* Attach display chardev for framebuffer streaming */
+                display.chardev = chardevs ? chardev_find(chardevs, "display") : NULL;
                 spi_attach(bus, &display, ili9341_transfer, NULL);
                 b->display = &display;
                 if (n->dc_pin >= 0) b->dc_gpio_pin = n->dc_pin;

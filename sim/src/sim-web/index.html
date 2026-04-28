@@ -280,15 +280,17 @@ async function _doRefreshDisplay() {
   _displayTimer = null;
   try {
     const r = await fetch('/display');
-    const d = await r.json();
-    if (!d.w || !d.fb) return;
+    const w = parseInt(r.headers.get('X-Width') || '0');
+    const h = parseInt(r.headers.get('X-Height') || '0');
+    if (!w || !h) return;
+    const buf = await r.arrayBuffer();
+    const src = new Uint8Array(buf);
     const canvas = document.getElementById('lcd');
+    canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext('2d');
-    const raw = atob(d.fb);
-    const img = ctx.createImageData(d.w, d.h);
-    for (let i = 0; i < d.w * d.h; i++) {
-      const hi = raw.charCodeAt(i * 2), lo = raw.charCodeAt(i * 2 + 1);
-      const rgb565 = (hi << 8) | lo;
+    const img = ctx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const rgb565 = (src[i*2] << 8) | src[i*2+1];
       img.data[i*4]   = (rgb565 >> 8) & 0xF8;
       img.data[i*4+1] = (rgb565 >> 3) & 0xFC;
       img.data[i*4+2] = (rgb565 << 3) & 0xF8;

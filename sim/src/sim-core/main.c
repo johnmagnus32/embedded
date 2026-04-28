@@ -242,28 +242,14 @@ static void handle_command(int fd, struct board *b, const char *line)
         send_response(fd, buf);
 
     } else if (strncmp(cmd, "display\"", 8) == 0) {
-        if (b->display) {
-            /* Base64-encode the RGB565 framebuffer */
-            static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        if (b->display && b->display->chardev) {
+            /* Dump raw RGB565 framebuffer to display chardev */
             const uint8_t *src = (const uint8_t *)b->display->fb;
-            int src_len = ILI9341_W * ILI9341_H * 2;
-            int b64_len = ((src_len + 2) / 3) * 4;
-            char *buf = malloc(b64_len + 64);
-            int n = snprintf(buf, 64, "{\"w\":%d,\"h\":%d,\"fb\":\"", ILI9341_W, ILI9341_H);
-            for (int i = 0; i < src_len; i += 3) {
-                uint32_t v = src[i] << 16;
-                if (i+1 < src_len) v |= src[i+1] << 8;
-                if (i+2 < src_len) v |= src[i+2];
-                buf[n++] = b64[(v >> 18) & 63];
-                buf[n++] = b64[(v >> 12) & 63];
-                buf[n++] = (i+1 < src_len) ? b64[(v >> 6) & 63] : '=';
-                buf[n++] = (i+2 < src_len) ? b64[v & 63] : '=';
-            }
-            buf[n++] = '"'; buf[n++] = '}';
-            buf[n] = 0;
+            int len = ILI9341_W * ILI9341_H * 2;
+            chardev_write_buf(b->display->chardev, src, len);
+            char buf[64];
+            snprintf(buf, sizeof(buf), "{\"w\":%d,\"h\":%d,\"sz\":%d}", ILI9341_W, ILI9341_H, len);
             send_response(fd, buf);
-            free(buf);
-            b->display->dirty = 0;
         } else {
             send_response(fd, "{\"w\":0,\"h\":0}");
         }

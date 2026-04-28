@@ -23,6 +23,7 @@ with open(os.path.join(_dir, "index.html")) as _f:
 SIM_PORT = 9001
 UART_PORT = 9002
 TRACE_PORT = 9003
+DISPLAY_PORT = 9004
 
 class WebDebugger:
     def __init__(self, elf, dts, port, extra_args):
@@ -40,7 +41,8 @@ class WebDebugger:
         cmd = [sim_core, self.elf, self.dts,
                '--debug', str(SIM_PORT),
                '--chardev', f'usart2={UART_PORT}',
-               '--chardev', f'trace={TRACE_PORT}'] + self.extra_args
+               '--chardev', f'trace={TRACE_PORT}',
+               '--chardev', f'display={DISPLAY_PORT}'] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
         self._buf = b''
         self.uart_buf = ''
@@ -123,6 +125,15 @@ class WebDebugger:
         except:
             log_web('Trace not available')
 
+        # Connect to display framebuffer stream
+        self.display_sock = None
+        try:
+            self.display_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.display_sock.connect(('127.0.0.1', DISPLAY_PORT))
+            log_web(f'Connected to display port {DISPLAY_PORT}')
+        except:
+            log_web('Display not available')
+
     def _recv_line(self):
         """Read one newline-terminated JSON line from sim-core."""
         while b'\n' not in self._buf:
@@ -191,14 +202,32 @@ class WebDebugger:
                         _json.dumps({"uart": self.uart_buf}))
 
                 elif req.startswith('GET /display'):
-                    import json as _json
                     try:
-                        resp = self.send_command(_json.dumps({"cmd":"display"}))
-                        self._display_cache = resp
-                        self.http_response(conn, '200 OK', 'application/json', resp)
-                    except:
-                        self.http_response(conn, '200 OK', 'application/json',
-                            getattr(self, '_display_cache', '{"w":0,"h":0}'))
+                        # Tell sim-core to dump framebuffer to display chardev
+                        resp = self.send_command('{"cmd":"display"}')
+                        import json as _json
+                        info = _json.loads(resp)
+                        sz = info.get('sz', 0)
+                        if sz > 0 and self.display_sock:
+                            # Read raw RGB565 bytes from display chardev
+                            raw = b''
+                            while len(raw) < sz:
+                                chunk = self.display_sock.recv(sz - len(raw))
+                                if not chunk: break
+                                raw += chunk
+                            # Serve as binary with dimensions in headers
+                            hdr = (f'HTTP/1.1 200 OK\r\n'
+                                   f'Content-Type: application/octet-stream\r\n'
+                                   f'X-Width: {info["w"]}\r\nX-Height: {info["h"]}\r\n'
+                                   f'Content-Length: {len(raw)}\r\n'
+                                   f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
+                                   f'\r\n').encode()
+                            conn.sendall(hdr + raw)
+                        else:
+                            self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
+                    except Exception as e:
+                        log_web(f'Display error: {e}')
+                        self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
 
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
