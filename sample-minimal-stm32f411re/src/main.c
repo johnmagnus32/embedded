@@ -92,9 +92,12 @@ static void tfree(void *p)
 static void print_int(int n)
 {
     if (n < 0) { uart_print("-"); n = -n; }
-    if (n >= 10) print_int(n / 10);
-    char c = '0' + (n % 10);
-    uart_poll_out(uart, c);
+    char buf[12];
+    char *p = buf + 11;
+    *p = 0;
+    if (n == 0) { *--p = '0'; }
+    else { while (n > 0) { *--p = '0' + (n % 10); n /= 10; } }
+    uart_print(p);
 }
 
 static void task_a(void)
