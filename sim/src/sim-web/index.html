@@ -72,6 +72,9 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 </div>
 
 <script>
+window.onerror = (msg, src, line) => {
+  document.getElementById('cmd-log').innerHTML += `<div style="color:red">JS ERROR: ${msg} at line ${line}</div>`;
+};
 const log = (msg) => {
   const el = document.getElementById('cmd-log');
   el.innerHTML += `<div style="color:#888">${msg}</div>`;
@@ -598,6 +601,7 @@ cmdInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     const cmd = cmdInput.value.trim();
     if (!cmd) return;
+    log(`<span style="color:#c9d1d9">sending: ${cmd}</span>`);
     sendCmd(cmd);
     cmdInput.value = '';
     setTimeout(() => cmdInput.focus(), 100);
