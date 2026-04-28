@@ -211,20 +211,19 @@ const regions = [
 
 const ctxColors = {
   'SysTick':'#f0883e', 'PendSV':'#f0883e', 'SVC':'#f0883e', 'IRQ':'#f0883e',
-  'idle_task':'#21262d',
+  'idle':'#21262d', 'idle_task':'#21262d',
+  'scheduler':'#f0883e',
+  'task_a':'#1f6feb', 'task_b':'#238636', 'task_c':'#8957e5',
 };
+const _taskPalette = ['#bf4b8a','#58a6ff','#7ee787','#d2a8ff','#ffa657','#f778ba','#79c0ff','#56d364'];
+let _nextColor = 0;
 function ctxColor(name) {
-  if (ctxColors[name]) return ctxColors[name];
-  // Tasks get distinct muted colors
-  const taskCols = ['#1f6feb','#238636','#8957e5','#bf4b8a','#58a6ff','#7ee787'];
-  let h = 0; for (let i=0;i<name.length;i++) h = (h*31 + name.charCodeAt(i)) & 0xFFFF;
-  return taskCols[h % taskCols.length];
+  if (!ctxColors[name]) ctxColors[name] = _taskPalette[_nextColor++ % _taskPalette.length];
+  return ctxColors[name];
 }
 
 let tlZoom = 1;
 let tlOffset = 0;
-
-ctxColors['scheduler'] = '#f0883e';
 
 function renderTimeline(s) {
   const barsEl = document.getElementById('timeline-bars');
@@ -392,152 +391,25 @@ function renderMemMap(s) {
           const t = tasks[i];
           if (!t.stack_bot || !t.stack_top) continue;
           if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
-          const col = t.active ? '#c9d1d9' : '#484f58';
-          const spCol = '#7ee787';
+          const col = ctxColor(t.name || 't'+i);
 
           const sy0 = addrToY(t.stack_top);
           const sy1 = addrToY(t.stack_bot);
           const sh = Math.max(1, sy1 - sy0);
 
-          // Full allocation fill
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.15" onclick="zoomToRegion(${t.stack_bot},${t.stack_size})"/>`;
-
-          // Top/bottom separator lines
-          svg += `<line x1="${barX}" y1="${sy0}" x2="${barX+barW}" y2="${sy0}" stroke="${col}" stroke-width="1"/>`;
-          svg += `<line x1="${barX}" y1="${sy1}" x2="${barX+barW}" y2="${sy1}" stroke="${col}" stroke-width="1"/>`;
-
-          // Used portion
-          if (t.stack_used > 0 && t.stack_size > 0) {
-            const uh = Math.max(1, t.stack_used / t.stack_size * sh);
-            svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${uh}" fill="${col}" opacity="0.4"/>`;
+          // Block (same style as heap)
+          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${col}" opacity="0.35" stroke="${col}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
+          if (sh > 8) {
+            const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
+            svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+3}" fill="${col}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${t.name||'t'+i}</text>`;
+            if (sh > 20) svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+13}" fill="#484f58" text-anchor="middle" font-size="7">${stkSize}${t.active?' ◀':''}</text>`;
           }
-
-          const data = t.stack_data || [];
-          const frames = t.frames || [];
-          const pxPer4 = (sh / t.stack_size) * 4;  // pixels per 4-byte word
-
-          // Build frame boundaries for lookup
-          const frameBounds = frames.map((fr, fi) => ({
-            sp: fr.sp, func: fr.func,
-            end: (fi+1 < frames.length) ? frames[fi+1].sp : t.stack_top
-          }));
-
-          if (pxPer4 > 3) {
-            // ZOOMED IN: table-style stack layout like a textbook diagram
-            const showText = pxPer4 > 6;
-            // Color scheme: return addrs = muted blue, saved regs = olive, locals = green, free = dark
-            const colRet = '#3b5998';   // return addresses
-            const colVar = '#2d5a3d';   // local variables
-            const colFree = '#21262d';  // unused/zero
-
-            let di = 0;
-            let lastFrameIdx = -1;
-
-            while (di < data.length) {
-              const d = data[di];
-              const dy = addrToY(d.addr + 4);
-              const cellH = pxPer4;
-              const fi = frameBounds.findIndex(f => d.addr >= f.sp && d.addr < f.end);
-
-              // Frame header
-              if (fi >= 0 && fi !== lastFrameIdx) {
-                lastFrameIdx = fi;
-                const fy = addrToY(frameBounds[fi].sp);
-                svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="#7ee787" stroke-width="1"/>`;
-                if (showText) {
-                  svg += `<text x="${labelX}" y="${fy+12}" fill="#7ee787" font-size="11" font-weight="bold">${frameBounds[fi].func}()</text>`;
-                  const fsize = frameBounds[fi].end - frameBounds[fi].sp;
-                  svg += `<text x="${labelX}" y="${fy+24}" fill="#484f58" font-size="9">${fsize} bytes</text>`;
-                }
-              }
-
-              // Collapse consecutive zeros
-              let zeroRun = 0;
-              if (d.val === 0 && !d.sym) {
-                let j = di;
-                while (j < data.length && data[j].val === 0 && !data[j].sym) { zeroRun++; j++; }
-              }
-
-              if (zeroRun > 2) {
-                const startAddr = d.addr;
-                const endAddr = data[di + zeroRun - 1].addr + 4;
-                const zy0 = addrToY(endAddr);
-                const zy1 = addrToY(startAddr);
-                const zh = zy1 - zy0;
-                svg += `<rect x="${barX}" y="${zy0}" width="${barW}" height="${zh}" fill="${colFree}" opacity="0.6" stroke="#30363d" stroke-width="0.5"/>`;
-                if (showText) {
-                  svg += `<text x="${barX+barW/2}" y="${zy0+zh/2+4}" fill="#6e7681" text-anchor="middle" font-size="10">${zeroRun * 4} bytes free</text>`;
-                  svg += `<text x="${barX-4}" y="${zy0+zh/2+4}" fill="#484f58" text-anchor="end" font-size="8">${hex(startAddr)}</text>`;
-                }
-                di += zeroRun;
-              } else {
-                let bg, label, labelCol = '#c9d1d9';
-                const isSP = d.addr === t.sp;
-
-                if (d.sym) {
-                  bg = colRet;
-                  label = d.sym.includes('+0x') ? 'return → ' + d.sym.split('+')[0] : d.sym;
-                  labelCol = '#d2a8ff';
-                } else {
-                  bg = colFree;
-                  const valStr = '0x' + (d.val >>> 0).toString(16).padStart(8, '0');
-                  label = d.val === 0 ? '' : valStr;
-                  labelCol = '#6e7681';
-                }
-
-                // Cell background
-                svg += `<rect x="${barX}" y="${dy}" width="${barW}" height="${cellH}" fill="${bg}" opacity="${d.val === 0 && !d.var && !d.sym ? 0.3 : 0.5}" stroke="#30363d" stroke-width="0.5"/>`;
-                // SP highlight
-                if (isSP) svg += `<rect x="${barX}" y="${dy}" width="${barW}" height="${cellH}" fill="#7ee787" opacity="0.15"/>`;
-                // Address on left
-                if (showText) {
-                  const addrLabel = isSP ? 'SP → ' + hex(d.addr) : hex(d.addr);
-                  svg += `<text x="${barX-4}" y="${dy+cellH/2+4}" fill="${isSP ? '#7ee787' : '#484f58'}" text-anchor="end" font-size="8" font-weight="${isSP?'bold':'normal'}">${addrLabel}</text>`;
-                }
-                // Centered label
-                if (showText && label) svg += `<text x="${barX+barW/2}" y="${dy+cellH/2+4}" fill="${labelCol}" text-anchor="middle" font-size="10">${label}</text>`;
-                di++;
-              }
-            }
-          } else {
-            // OVERVIEW: frame brackets on right with function names
-            for (let fi = 0; fi < frames.length; fi++) {
-              const fr = frames[fi];
-              if (fr.sp < t.stack_bot || fr.sp > t.stack_top) continue;
-              const fy = addrToY(fr.sp);
-              const nextSp = (fi + 1 < frames.length && frames[fi+1].sp <= t.stack_top) ? frames[fi+1].sp : t.stack_top;
-              const fh = addrToY(nextSp) - fy;
-              svg += `<line x1="${barX}" y1="${fy}" x2="${barX+barW}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.6"/>`;
-              const bx = labelX - 2;
-              svg += `<line x1="${bx}" y1="${fy+1}" x2="${bx}" y2="${fy+fh-1}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
-              svg += `<line x1="${bx-3}" y1="${fy}" x2="${bx}" y2="${fy}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
-              svg += `<line x1="${bx-3}" y1="${fy+fh}" x2="${bx}" y2="${fy+fh}" stroke="${col}" stroke-width="0.5" opacity="0.5"/>`;
-              if (fh > 8) svg += `<text x="${bx+4}" y="${fy+fh/2+3}" fill="${col}" font-size="8">${fr.func}</text>`;
-            }
-          }
+          svg += `<text x="${barX-4}" y="${sy0+sh/2+3}" fill="${col}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
 
           // SP line
-          const spAddr = t.sp;
-          if (spAddr >= t.stack_bot && spAddr <= t.stack_top) {
-            const spY = addrToY(spAddr);
-            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${spCol}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-            svg += `<text x="${barX-4}" y="${spY+3}" fill="${spCol}" text-anchor="end" font-size="7">SP ${hex(spAddr)} →</text>`;
-          }
-
-          // Stack bounds labels — deduplicated
-          if (!labeledAddrs.has(t.stack_top)) {
-            svg += `<text x="${barX-4}" y="${sy0+4}" fill="#484f58" text-anchor="end" font-size="7">${hex(t.stack_top)}</text>`;
-            labeledAddrs.add(t.stack_top);
-          }
-          if (!labeledAddrs.has(t.stack_bot)) {
-            svg += `<text x="${barX-4}" y="${sy1+3}" fill="#484f58" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
-            labeledAddrs.add(t.stack_bot);
-          }
-
-          // Task name on right
-          if (sh > 6) {
-            const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
-            svg += `<text x="${labelX}" y="${sy0+sh/2+3}" fill="${col}" font-size="8">${t.name||'t'+i} stack ${stkSize}${t.active?' ◀':''}</text>`;
+          if (t.sp >= t.stack_bot && t.sp <= t.stack_top) {
+            const spY = addrToY(t.sp);
+            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="#7ee787" stroke-width="1.5" stroke-dasharray="4,3"/>`;
           }
         }
 
