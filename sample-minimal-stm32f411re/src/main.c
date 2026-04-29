@@ -394,18 +394,10 @@ static void task_audio(void)
                 int16_t s = square_sample(i, f);
                 i2s_sample(s, s);
             }
-            phase = 0;
-            continue;
         }
 
-        /* Play current melody note */
-        uint16_t freq = melody[note_idx].freq;
-        uint32_t samples = (uint32_t)melody[note_idx].dur_ms * SAMPLE_RATE / 1000;
-        for (uint32_t i = 0; i < samples; i++) {
-            int16_t s = square_sample(phase++, freq);
-            i2s_sample(s, s);
-        }
-        note_idx = (note_idx + 1) % MELODY_LEN;
+        /* No melody — just idle until next SFX */
+        sched_sleep_ms(10);
     }
 }
 
