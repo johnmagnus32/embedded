@@ -219,7 +219,7 @@ class WebDebugger:
             if line.lower().startswith('sec-websocket-key:'):
                 key = line.split(':', 1)[1].strip()
         if not key: return False
-        accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-5AB5DC525C75').encode()).digest()).decode()
+        accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
         resp = (f'HTTP/1.1 101 Switching Protocols\r\n'
                 f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
                 f'Sec-WebSocket-Accept: {accept}\r\n\r\n')
