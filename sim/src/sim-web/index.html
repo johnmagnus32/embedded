@@ -220,7 +220,7 @@ async function sendCmd(cmd) {
       const cur = document.getElementById('cur-line');
       if (cur) cur.removeAttribute('id');
       document.getElementById('hdr-func').textContent = '▶ Running...';
-      const stop = await new Promise(resolve => { _wsStatus.onmessage = (e) => resolve(JSON.parse(e.data)); });
+      const stop = await new Promise(resolve => { _wsStatus.onmessage = (e) => resolve(JSON.parse(new TextDecoder().decode(e.data))); });
       if (stop) await refreshUI(stop);
       return;
     }
@@ -235,6 +235,7 @@ let _lastStop = null, _refreshSeq = 0;
 let _wsStatus;
 function connectStatusWS() {
   _wsStatus = new WebSocket('ws://' + location.host + '/ws-status');
+  _wsStatus.binaryType = 'arraybuffer';
   _wsStatus.onclose = () => setTimeout(connectStatusWS, 1000);
 }
 connectStatusWS();
