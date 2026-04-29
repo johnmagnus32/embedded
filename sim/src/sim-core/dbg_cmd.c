@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "membus.h"
 #include "elf_sym.h"
 #include "chardev.h"
@@ -23,7 +23,7 @@ void dbg_cmd_set_src_dir(const char *dir)
 static uint32_t breakpoints[32];
 static int nbp = 0;
 
-static int check_breakpoint(struct cpu_state *cpu)
+static int check_breakpoint(struct armv7m_cpu *cpu)
 {
     uint32_t pc = cpu->r[REG_PC];
     for (int i = 0; i < nbp; i++)
@@ -39,7 +39,7 @@ static void run_until_bp(int fd, struct sim_ctx *ctx)
     } while (!check_breakpoint(ctx->cpu));
 }
 
-static void send_stop_info(int fd, struct cpu_state *cpu)
+static void send_stop_info(int fd, struct armv7m_cpu *cpu)
 {
     uint32_t pc = cpu->r[REG_PC];
     uint32_t off;
@@ -53,7 +53,7 @@ static void send_stop_info(int fd, struct cpu_state *cpu)
     send_response(fd, buf);
 }
 
-static void send_regs(int fd, struct cpu_state *cpu)
+static void send_regs(int fd, struct armv7m_cpu *cpu)
 {
     char buf[512];
     int n = snprintf(buf, sizeof(buf), "{\"regs\":[");
@@ -158,7 +158,7 @@ void dbg_dispatch(int fd, struct sim_ctx *ctx, const char *line)
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
-        cpu_reset(ctx->cpu, ctx->bus);
+        armv7m_cpu_reset(ctx->cpu, ctx->bus);
         run_until_bp(fd, ctx);
         send_stop_info(fd, ctx->cpu);
 

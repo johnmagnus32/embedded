@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <stdint.h>
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "elf_sym.h"
 #include "dbg_tasks.h"
 
-int dbg_emit_tasks(struct cpu_state *cpu, uint8_t *flash, uint8_t *ram,
+int dbg_emit_tasks(struct armv7m_cpu *cpu, uint8_t *flash, uint8_t *ram,
                    char *buf, int bufsize)
 {
     int n = 0;

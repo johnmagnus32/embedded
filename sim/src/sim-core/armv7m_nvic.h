@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-struct cpu_state;
+struct armv7m_cpu;
 struct membus;
 
 #define IRQ_VEC_SVC     11
@@ -21,7 +21,7 @@ struct armv7m_nvic {
 
 void armv7m_nvic_init(struct armv7m_nvic *n);
 void armv7m_nvic_set_pending(struct armv7m_nvic *n, int vector);
-void armv7m_nvic_update(struct armv7m_nvic *n, struct cpu_state *cpu, struct membus *bus);
+void armv7m_nvic_update(struct armv7m_nvic *n, struct armv7m_cpu *cpu, struct membus *bus);
 
 uint32_t armv7m_nvic_scb_read(void *opaque, uint32_t offset);
 void     armv7m_nvic_scb_write(void *opaque, uint32_t offset, uint32_t val);

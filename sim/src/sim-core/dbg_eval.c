@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "elf_sym.h"
 #include "dbg_eval.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
 
-int dbg_eval(const char *expr, struct cpu_state *cpu, uint8_t *flash,
+int dbg_eval(const char *expr, struct armv7m_cpu *cpu, uint8_t *flash,
              uint8_t *ram, char *buf, int bufsize)
 {
     const char *p = expr;

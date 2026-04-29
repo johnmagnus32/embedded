@@ -6,7 +6,7 @@
 #include <netinet/in.h>
 #include "dbg_server.h"
 #include "dbg_cmd.h"
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "elf_sym.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
@@ -17,7 +17,7 @@ void send_response(int fd, const char *json)
     write(fd, "\n", 1);
 }
 
-static void send_stop_info(int fd, struct cpu_state *cpu)
+static void send_stop_info(int fd, struct armv7m_cpu *cpu)
 {
     uint32_t pc = cpu->r[REG_PC];
     uint32_t off;

@@ -19,7 +19,7 @@ void stm32f411_init(struct stm32f411 *soc)
     soc->ram   = calloc(1, RAM_SIZE);
     soc->sysclk_hz = 16000000;
 
-    cpu_init(&soc->cpu);
+    armv7m_cpu_init(&soc->cpu);
     armv7m_nvic_init(&soc->nvic);
     armv7m_systick_init(&soc->systick);
 
@@ -89,7 +89,7 @@ void stm32f411_init(struct stm32f411 *soc)
 
 void stm32f411_tick(struct stm32f411 *soc)
 {
-    cpu_step(&soc->cpu, &soc->bus);
+    armv7m_cpu_step(&soc->cpu, &soc->bus);
     armv7m_systick_tick(&soc->systick, &soc->nvic);
     armv7m_nvic_update(&soc->nvic, &soc->cpu, &soc->bus);
 }

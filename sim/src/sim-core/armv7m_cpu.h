@@ -1,9 +1,9 @@
 /*
- * cpu.h — Cortex-M4 CPU emulator (pure CPU, no devices or debugger)
+ * armv7m_cpu.h — Cortex-M4 CPU emulator (pure CPU, no devices or debugger)
  */
 
-#ifndef CPU_H
-#define CPU_H
+#ifndef ARMV7M_CPU_H
+#define ARMV7M_CPU_H
 
 #include <stdint.h>
 
@@ -11,7 +11,7 @@
 #define REG_LR 14
 #define REG_PC 15
 
-struct cpu_state {
+struct armv7m_cpu {
     uint32_t r[16];
     uint32_t xpsr;
     uint32_t primask;
@@ -33,9 +33,9 @@ struct cpu_state {
 
 struct membus;
 
-void cpu_init(struct cpu_state *cpu);
-void cpu_reset(struct cpu_state *cpu, struct membus *bus);
-int  cpu_step(struct cpu_state *cpu, struct membus *bus);
-void take_interrupt(struct cpu_state *cpu, struct membus *bus, int vector_num);
+void armv7m_cpu_init(struct armv7m_cpu *cpu);
+void armv7m_cpu_reset(struct armv7m_cpu *cpu, struct membus *bus);
+int  armv7m_cpu_step(struct armv7m_cpu *cpu, struct membus *bus);
+void armv7m_take_interrupt(struct armv7m_cpu *cpu, struct membus *bus, int vector_num);
 
 #endif

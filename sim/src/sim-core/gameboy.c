@@ -103,7 +103,7 @@ static void gameboy_init_wrap(void *board, struct chardev_table *cd)
 static void gameboy_tick_wrap(void *board)
 { gameboy_tick((struct gameboy *)board); }
 
-static struct cpu_state *gameboy_get_cpu(void *board)
+static struct armv7m_cpu *gameboy_get_cpu(void *board)
 { return &((struct gameboy *)board)->soc.cpu; }
 
 static struct membus *gameboy_get_bus(void *board)

@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-struct cpu_state;
+struct armv7m_cpu;
 
-int dbg_eval(const char *expr, struct cpu_state *cpu, uint8_t *flash,
+int dbg_eval(const char *expr, struct armv7m_cpu *cpu, uint8_t *flash,
              uint8_t *ram, char *buf, int bufsize);
 
 #endif

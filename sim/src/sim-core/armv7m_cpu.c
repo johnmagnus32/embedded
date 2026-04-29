@@ -1,5 +1,5 @@
 /*
- * cpu.c — Cortex-M4 Thumb instruction emulator
+ * armv7m_cpu.c — Cortex-M4 Thumb instruction emulator
  *
  * Decodes and executes Thumb (16-bit) and Thumb-2 (32-bit) instructions.
  * Not cycle-accurate — just functionally correct enough to run our RTOS.
@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "membus.h"
 #include "elf_sym.h"
 
@@ -19,14 +19,14 @@
 #define FLAG_V (1u << 28)
 #define FLAG_T (1u << 24)  /* Thumb bit — always 1 on Cortex-M */
 
-static void set_nz(struct cpu_state *c, uint32_t result)
+static void set_nz(struct armv7m_cpu *c, uint32_t result)
 {
     c->xpsr &= ~(FLAG_N | FLAG_Z);
     if (result == 0) c->xpsr |= FLAG_Z;
     if (result & 0x80000000) c->xpsr |= FLAG_N;
 }
 
-static void set_nzcv_add(struct cpu_state *c, uint32_t a, uint32_t b, uint64_t result)
+static void set_nzcv_add(struct armv7m_cpu *c, uint32_t a, uint32_t b, uint64_t result)
 {
     uint32_t r = (uint32_t)result;
     set_nz(c, r);
@@ -34,7 +34,7 @@ static void set_nzcv_add(struct cpu_state *c, uint32_t a, uint32_t b, uint64_t r
     if (((a ^ ~b) & (a ^ r)) & 0x80000000) c->xpsr |= FLAG_V; else c->xpsr &= ~FLAG_V;
 }
 
-static void set_nzcv_sub(struct cpu_state *c, uint32_t a, uint32_t b, uint64_t result)
+static void set_nzcv_sub(struct armv7m_cpu *c, uint32_t a, uint32_t b, uint64_t result)
 {
     uint32_t r = (uint32_t)result;
     set_nz(c, r);
@@ -42,7 +42,7 @@ static void set_nzcv_sub(struct cpu_state *c, uint32_t a, uint32_t b, uint64_t r
     if (((a ^ b) & (a ^ r)) & 0x80000000) c->xpsr |= FLAG_V; else c->xpsr &= ~FLAG_V;
 }
 
-static int cond_check(struct cpu_state *c, int cond)
+static int cond_check(struct armv7m_cpu *c, int cond)
 {
     int n = (c->xpsr >> 31) & 1;
     int z = (c->xpsr >> 30) & 1;
@@ -68,7 +68,7 @@ static int cond_check(struct cpu_state *c, int cond)
     }
 }
 
-void cpu_init(struct cpu_state *c)
+void armv7m_cpu_init(struct armv7m_cpu *c)
 {
     memset(c, 0, sizeof(*c));
     c->xpsr = FLAG_T;  /* Thumb mode */
@@ -77,7 +77,7 @@ void cpu_init(struct cpu_state *c)
 /* Visualization hooks */
 /* (vis removed — state visualization is in the web UI) */
 
-void cpu_reset(struct cpu_state *c, struct membus *bus)
+void armv7m_cpu_reset(struct armv7m_cpu *c, struct membus *bus)
 {
     c->msp = membus_read32(bus, FLASH_BASE + 0);
     c->r[REG_SP] = c->msp;
@@ -86,10 +86,10 @@ void cpu_reset(struct cpu_state *c, struct membus *bus)
 }
 
 /* Forward declarations */
-static int exec_thumb32(struct cpu_state *c, struct membus *bus, uint32_t insn);
-static void exc_return(struct cpu_state *c, struct membus *bus, uint32_t exc_ret);
+static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn);
+static void exc_return(struct armv7m_cpu *c, struct membus *bus, uint32_t exc_ret);
 
-int cpu_step(struct cpu_state *c, struct membus *bus)
+int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
 {
 
 
@@ -495,7 +495,7 @@ int cpu_step(struct cpu_state *c, struct membus *bus)
 
 /* ---- 32-bit Thumb-2 instructions ---- */
 
-static int exec_thumb32(struct cpu_state *c, struct membus *bus, uint32_t insn)
+static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
 {
     uint16_t hi = insn >> 16;
     uint16_t lo = insn & 0xFFFF;
@@ -982,7 +982,7 @@ static int exec_thumb32(struct cpu_state *c, struct membus *bus, uint32_t insn)
 
 /* ---- Interrupt entry/exit ---- */
 
-void take_interrupt(struct cpu_state *c, struct membus *bus, int vector_num)
+void armv7m_take_interrupt(struct armv7m_cpu *c, struct membus *bus, int vector_num)
 {
     /* Sync PSP/MSP from the SP register (instructions like PUSH update SP but not psp/msp) */
     if (c->control & 2)
@@ -1030,7 +1030,7 @@ void take_interrupt(struct cpu_state *c, struct membus *bus, int vector_num)
     c->r[REG_PC] = handler & ~1u;
 }
 
-static void exc_return(struct cpu_state *c, struct membus *bus, uint32_t exc_ret)
+static void exc_return(struct armv7m_cpu *c, struct membus *bus, uint32_t exc_ret)
 {
     /* Pop exception frame */
     uint32_t *sp_ptr;

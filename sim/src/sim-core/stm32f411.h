@@ -1,7 +1,7 @@
 #ifndef STM32F411_H
 #define STM32F411_H
 
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "membus.h"
 #include "armv7m_nvic.h"
 #include "armv7m_systick.h"
@@ -15,7 +15,7 @@
 #define STM32F411_NUM_GPIO   3
 
 struct stm32f411 {
-    struct cpu_state      cpu;
+    struct armv7m_cpu      cpu;
     struct membus         bus;
     struct armv7m_nvic    nvic;
     struct armv7m_systick systick;

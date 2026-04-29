@@ -2,7 +2,7 @@
  * armv7m_nvic.c — ARMv7-M Nested Vectored Interrupt Controller
  */
 #include "armv7m_nvic.h"
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "membus.h"
 
 void armv7m_nvic_init(struct armv7m_nvic *n)
@@ -20,7 +20,7 @@ void armv7m_nvic_set_pending(struct armv7m_nvic *n, int vector)
     n->pending |= (1u << vector);
 }
 
-void armv7m_nvic_update(struct armv7m_nvic *n, struct cpu_state *cpu, struct membus *bus)
+void armv7m_nvic_update(struct armv7m_nvic *n, struct armv7m_cpu *cpu, struct membus *bus)
 {
     if (n->scb_icsr & (1 << 28))
         n->pending |= (1u << IRQ_VEC_PENDSV);
@@ -48,7 +48,7 @@ void armv7m_nvic_update(struct armv7m_nvic *n, struct cpu_state *cpu, struct mem
 
     if (vec) {
         n->pending &= ~(1u << vec);
-        take_interrupt(cpu, bus, vec);
+        armv7m_take_interrupt(cpu, bus, vec);
     }
 }
 

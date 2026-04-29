@@ -2,13 +2,13 @@
 #define DBG_SERVER_H
 
 #include "machine.h"
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "membus.h"
 
 struct sim_ctx {
     const struct machine_desc *mach;
     void *board;
-    struct cpu_state *cpu;
+    struct armv7m_cpu *cpu;
     struct membus *bus;
     uint8_t **flash;
     uint8_t **ram;

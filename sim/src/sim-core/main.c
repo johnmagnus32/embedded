@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "machine.h"
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "membus.h"
 #include "chardev.h"
 #include "elf_sym.h"
@@ -53,7 +53,7 @@ int main(int argc, char **argv)
     void *board = calloc(1, mach->board_size);
     mach->init(board, &chardevs);
 
-    struct cpu_state *cpu = mach->get_cpu(board);
+    struct armv7m_cpu *cpu = mach->get_cpu(board);
     struct membus *bus = mach->get_bus(board);
     uint8_t **flash = mach->get_flash(board);
     uint8_t **ram = mach->get_ram(board);
@@ -71,7 +71,7 @@ int main(int argc, char **argv)
         dbg_cmd_set_src_dir(dir);
     }
 
-    cpu_reset(cpu, bus);
+    armv7m_cpu_reset(cpu, bus);
 
     struct sim_ctx ctx = {
         .mach = mach, .board = board,

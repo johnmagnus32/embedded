@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include "cpu.h"
+#include "armv7m_cpu.h"
 #include "elf_sym.h"
 
 /* ── Minimal ELF32 structures ── */
