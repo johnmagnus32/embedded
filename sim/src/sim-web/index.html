@@ -799,6 +799,8 @@ function initAudio() {
   pollAudio();
 }
 
+let _audioNextTime = 0;
+
 function pollAudio() {
   if (!_audioStarted) return;
   fetch('/audio').then(r => r.arrayBuffer()).then(buf => {
@@ -815,9 +817,12 @@ function pollAudio() {
       const src = _audioCtx.createBufferSource();
       src.buffer = ab;
       src.connect(_audioCtx.destination);
-      src.start();
+      const now = _audioCtx.currentTime;
+      const startTime = Math.max(now, _audioNextTime);
+      src.start(startTime);
+      _audioNextTime = startTime + ab.duration;
     }
-    setTimeout(pollAudio, 100);
+    setTimeout(pollAudio, 50);
   }).catch(() => setTimeout(pollAudio, 500));
 }
 
