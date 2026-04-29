@@ -162,12 +162,13 @@ class WebDebugger:
             self._ws_lock = threading.Lock()
             self._prev_frame = None
             def ws_push_loop():
+                push_count = [0]
                 while True:
-                    time.sleep(0.03)  # ~30fps max push rate
+                    time.sleep(0.03)
                     raw = self.display_frame
                     if not raw: continue
                     prev = self._prev_frame
-                    if prev == raw: continue  # same frame object, skip
+                    if prev is raw: continue
                     self._prev_frame = raw
                     # Build delta
                     if prev and len(prev) == len(raw):
@@ -301,6 +302,7 @@ class WebDebugger:
 
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):
+                        log_web('WebSocket display client connected')
                         with self._ws_lock:
                             self._ws_clients.append(conn)
                         continue  # don't close conn
