@@ -177,21 +177,44 @@ static void buttons_init(void)
 
 static void draw_char(int x, int y, char c, uint16_t color)
 {
-    /* Tiny 5x7 font — just digits and a few letters */
     static const uint8_t font[][5] = {
         [0]={0x3E,0x51,0x49,0x45,0x3E}, [1]={0x00,0x42,0x7F,0x40,0x00},
         [2]={0x42,0x61,0x51,0x49,0x46}, [3]={0x21,0x41,0x45,0x4B,0x31},
         [4]={0x18,0x14,0x12,0x7F,0x10}, [5]={0x27,0x45,0x45,0x45,0x39},
         [6]={0x3C,0x4A,0x49,0x49,0x30}, [7]={0x01,0x71,0x09,0x05,0x03},
         [8]={0x36,0x49,0x49,0x49,0x36}, [9]={0x06,0x49,0x49,0x29,0x1E},
+        [10]={0x7E,0x11,0x11,0x11,0x7E}, /* A */
+        [11]={0x7F,0x49,0x49,0x49,0x36}, /* B */
+        [12]={0x3E,0x41,0x41,0x41,0x22}, /* C */
+        [13]={0x7F,0x41,0x41,0x22,0x1C}, /* D */
+        [14]={0x7F,0x49,0x49,0x49,0x41}, /* E */
+        [15]={0x3E,0x41,0x51,0x21,0x5E}, /* G */
+        [16]={0x7F,0x04,0x08,0x10,0x7F}, /* M (simplified) */
+        [17]={0x3E,0x41,0x41,0x41,0x3E}, /* O */
+        [18]={0x7E,0x09,0x09,0x09,0x06}, /* P */
+        [19]={0x7F,0x09,0x19,0x29,0x46}, /* R */
+        [20]={0x26,0x49,0x49,0x49,0x32}, /* S */
+        [21]={0x01,0x01,0x7F,0x01,0x01}, /* T */
+        [22]={0x3F,0x40,0x40,0x40,0x3F}, /* V */
     };
     const uint8_t *glyph = 0;
     if (c >= '0' && c <= '9') glyph = font[c - '0'];
+    else {
+        static const char map[] = "ABCDEGMOPRSTVA";
+        static const int idx[] = {10,11,12,13,14,15,16,17,18,19,20,21,22,10};
+        for (int i = 0; map[i]; i++)
+            if (c == map[i]) { glyph = font[idx[i]]; break; }
+    }
     if (!glyph) return;
     for (int col = 0; col < 5; col++)
         for (int row = 0; row < 7; row++)
             if (glyph[col] & (1 << row))
                 lcd_fill_rect(x + col * 2, y + row * 2, 2, 2, color);
+}
+
+static void draw_string(int x, int y, const char *s, uint16_t color)
+{
+    while (*s) { draw_char(x, y, *s++, color); x += 12; }
 }
 
 static void draw_number(int x, int y, int n, uint16_t color)
@@ -269,7 +292,11 @@ static void task_c(void)
     } /* end while (!game_over) */
 
     /* Game over screen */
-    lcd_fill_rect(100, 100, 120, 40, RED);
+    lcd_fill_rect(60, 70, 200, 80, RGB565(20, 20, 35));
+    draw_string(80, 80, "GAME OVER", WHITE);
+    draw_string(110, 105, "SCORE", WHITE);
+    draw_number(170, 105, score, YELLOW);
+    draw_string(80, 130, "PRESS A", GREEN);
     lcd_vsync();
     while (!btn_pressed()) sched_sleep_ms(33);
     while (btn_pressed()) sched_sleep_ms(33);
