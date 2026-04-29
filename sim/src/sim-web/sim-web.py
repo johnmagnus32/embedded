@@ -190,7 +190,7 @@ class WebDebugger:
                         dead = []
                         for c in self._ws_clients:
                             try:
-                                c.settimeout(0.05)  # 50ms max per client
+                                c.settimeout(0.5)
                                 c.sendall(frame)
                             except:
                                 dead.append(c)

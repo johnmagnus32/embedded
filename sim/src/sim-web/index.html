@@ -771,18 +771,80 @@ if (colResize) {
 }
 let _displayBusy = false;
 let _fpsCount = 0, _fpsLast = performance.now();
+let _wsConnected = false;
+
+function _updateFps() {
+  _fpsCount++;
+  const now = performance.now();
+  if (now - _fpsLast >= 1000) {
+    document.getElementById('hdr-cycles').textContent = `${_fpsCount} fps`;
+    _fpsCount = 0; _fpsLast = now;
+  }
+}
+
+function _applyFrame(data, isDelta) {
+  if (!_lcdRaw) return;
+  if (isDelta) {
+    const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let off = 0;
+    while (off + 6 <= data.byteLength) {
+      const start = dv.getUint32(off, true);
+      const len = dv.getUint16(off + 4, true);
+      off += 6;
+      _lcdRaw.set(data.subarray(off, off + len), start);
+      off += len;
+    }
+  } else {
+    _lcdRaw.set(data);
+  }
+  const d = _lcdImg.data;
+  for (let i = 0, n = _lcdW * _lcdH; i < n; i++) {
+    const rgb565 = _lcdRaw[i*2] | (_lcdRaw[i*2+1] << 8);
+    const j = i * 4;
+    d[j]   = (rgb565 >> 8) & 0xF8;
+    d[j+1] = (rgb565 >> 3) & 0xFC;
+    d[j+2] = (rgb565 << 3) & 0xF8;
+    d[j+3] = 255;
+  }
+  _lcdCtx.putImageData(_lcdImg, 0, 0);
+  _updateFps();
+}
+
+// Try WebSocket first, fall back to HTTP polling
+const _wsUrl = 'ws://' + location.host + '/ws-display';
+let _ws = null;
+function connectDisplayWS() {
+  _ws = new WebSocket(_wsUrl);
+  _ws.binaryType = 'arraybuffer';
+  _ws.onopen = () => { _wsConnected = true; };
+  _ws.onmessage = (e) => {
+    const data = new Uint8Array(e.data);
+    const type = data[0];
+    const payload = data.subarray(1);
+    if (type === 2) {
+      const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const w = dv.getUint16(0, true), h = dv.getUint16(2, true);
+      if (w !== _lcdW || h !== _lcdH) {
+        _lcdCanvas.width = w; _lcdCanvas.height = h;
+        _lcdW = w; _lcdH = h;
+        _lcdImg = _lcdCtx.createImageData(w, h);
+        _lcdRaw = new Uint8Array(w * h * 2);
+      }
+      return;
+    }
+    _applyFrame(payload, type === 1);
+  };
+  _ws.onclose = () => { _wsConnected = false; setTimeout(connectDisplayWS, 2000); };
+  _ws.onerror = () => { _wsConnected = false; };
+}
+connectDisplayWS();
+
+// HTTP polling fallback when WebSocket is down
 (function displayLoop() {
   requestAnimationFrame(displayLoop);
-  if (_displayBusy) return;
+  if (_wsConnected || _displayBusy) return;
   _displayBusy = true;
-  _doRefreshDisplay().then(() => {
-    _fpsCount++;
-    const now = performance.now();
-    if (now - _fpsLast >= 1000) {
-      document.getElementById('hdr-cycles').textContent = `${_fpsCount} fps`;
-      _fpsCount = 0; _fpsLast = now;
-    }
-  }).finally(() => { _displayBusy = false; });
+  _doRefreshDisplay().finally(() => { _displayBusy = false; });
 })();
 </script>
 </body>
