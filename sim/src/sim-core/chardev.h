@@ -43,4 +43,7 @@ void chardev_write(struct chardev *cd, uint8_t byte);
 /* Write a buffer to the chardev's client. No-op if no client. */
 void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len);
 
+/* Non-blocking read from chardev client. Returns bytes read, 0 if nothing, -1 on disconnect. */
+int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen);
+
 #endif

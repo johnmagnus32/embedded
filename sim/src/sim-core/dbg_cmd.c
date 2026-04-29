@@ -1,15 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/select.h>
 #include "cpu.h"
 #include "membus.h"
 #include "elf_sym.h"
 #include "chardev.h"
-#include "stm32_gpio.h"
-#include "ili9341.h"
-#include "armv7m_nvic.h"
 #include "dbg_server.h"
 #include "dbg_cmd.h"
 #include "dbg_eval.h"
@@ -36,46 +31,11 @@ static int check_breakpoint(struct cpu_state *cpu)
     return 0;
 }
 
-static void poll_gpio(int fd, struct sim_ctx *ctx)
-{
-    static char gbuf[256];
-    static int glen = 0;
-    fd_set fds; struct timeval tv = {0, 0};
-    FD_ZERO(&fds); FD_SET(fd, &fds);
-    if (select(fd + 1, &fds, NULL, NULL, &tv) <= 0) return;
-    int n = read(fd, gbuf + glen, sizeof(gbuf) - glen - 1);
-    if (n <= 0) return;
-    glen += n; gbuf[glen] = 0;
-    char *nl;
-    while ((nl = strchr(gbuf, '\n'))) {
-        *nl = 0;
-        const char *cmd = strstr(gbuf, "\"cmd\":\"");
-        if (cmd && strncmp(cmd + 7, "gpio\"", 5) == 0) {
-            const char *p = strstr(gbuf, "\"pin\":");
-            const char *v = strstr(gbuf, "\"val\":");
-            if (p && v) {
-                int pin = atoi(p + 6);
-                int val = atoi(v + 6);
-                const char *pt = strstr(gbuf, "\"port\":");
-                int port = pt ? atoi(pt + 7) : 0;
-                struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, port);
-                if (gpio)
-                    stm32_gpio_set_input(gpio, pin, val);
-            }
-        }
-        int rem = glen - (nl - gbuf + 1);
-        memmove(gbuf, nl + 1, rem);
-        glen = rem;
-    }
-}
-
 
 static void run_until_bp(int fd, struct sim_ctx *ctx)
 {
-    int tick = 0;
     do {
         ctx->mach->tick(ctx->board);
-        if (++tick % 10000 == 0) poll_gpio(fd, ctx);
     } while (!check_breakpoint(ctx->cpu));
 }
 
@@ -276,32 +236,6 @@ void dbg_dispatch(int fd, struct sim_ctx *ctx, const char *line)
         }
         n += snprintf(buf+n, sizeof(buf)-n, "]}");
         send_response(fd, buf);
-
-    } else if (strncmp(cmd, "display\"", 8) == 0) {
-        struct ili9341 *disp = ctx->mach->get_display ? ctx->mach->get_display(ctx->board) : NULL;
-        if (disp && disp->chardev) {
-            const uint8_t *src = (const uint8_t *)disp->fb;
-            int len = ILI9341_W * ILI9341_H * 2;
-            chardev_write_buf(disp->chardev, src, len);
-            char buf[64];
-            snprintf(buf, sizeof(buf), "{\"w\":%d,\"h\":%d,\"sz\":%d}", ILI9341_W, ILI9341_H, len);
-            send_response(fd, buf);
-        } else {
-            send_response(fd, "{\"w\":0,\"h\":0}");
-        }
-
-    } else if (strncmp(cmd, "gpio\"", 5) == 0) {
-        const char *p = strstr(line, "\"pin\":");
-        const char *v = strstr(line, "\"val\":");
-        if (p && v) {
-            int pin = atoi(p + 6);
-            int val = atoi(v + 6);
-            const char *pt = strstr(line, "\"port\":");
-            int port = pt ? atoi(pt + 7) : 0;
-            struct stm32_gpio *gpio = ctx->mach->get_gpio(ctx->board, port);
-            if (gpio)
-                stm32_gpio_set_input(gpio, pin, val);
-        }
 
     } else if (strncmp(cmd, "print\"", 6) == 0) {
         const char *e = strstr(line, "\"expr\":\"");

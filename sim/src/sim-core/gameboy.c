@@ -10,6 +10,7 @@
 #include "gameboy.h"
 #include "machine.h"
 #include "stm32_exti.h"
+#include "stm32_gpio.h"
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 {
@@ -61,11 +62,38 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     b->i2s_sink.opaque = &b->audio;
     b->soc.spis[1].i2s_sink = &b->i2s_sink;
     fprintf(stderr, "[board] MAX98357A on SPI2/I2S, chardev=%s\n", audio_cd ? "audio" : "none");
+
+    /* Buttons chardev for external button input */
+    b->buttons_chardev = chardevs ? chardev_find(chardevs, "buttons") : NULL;
+}
+
+static void gameboy_poll_buttons(struct gameboy *b)
+{
+    static char buf[256];
+    static int len = 0;
+    uint8_t tmp[128];
+    int n = chardev_read_nonblock(b->buttons_chardev, tmp, sizeof(tmp));
+    if (n <= 0) return;
+    if (len + n >= (int)sizeof(buf)) len = 0; /* overflow: reset */
+    memcpy(buf + len, tmp, n);
+    len += n; buf[len] = 0;
+    char *nl;
+    while ((nl = strchr(buf, '\n'))) {
+        *nl = 0;
+        int port, pin, level;
+        if (sscanf(buf, "%d:%d:%d", &port, &pin, &level) == 3)
+            stm32_gpio_set_input(&b->soc.gpio[port], pin, level);
+        int rem = len - (int)(nl - buf + 1);
+        memmove(buf, nl + 1, rem);
+        len = rem;
+    }
 }
 
 void gameboy_tick(struct gameboy *b)
 {
     stm32f411_tick(&b->soc);
+    if (b->buttons_chardev && b->soc.cpu.cycle_count % 10000 == 0)
+        gameboy_poll_buttons(b);
 }
 
 /* Machine registry wrappers */
@@ -87,15 +115,6 @@ static uint8_t **gameboy_get_flash(void *board)
 static uint8_t **gameboy_get_ram(void *board)
 { return &((struct gameboy *)board)->soc.ram; }
 
-static struct armv7m_nvic *gameboy_get_nvic(void *board)
-{ return &((struct gameboy *)board)->soc.nvic; }
-
-static struct stm32_gpio *gameboy_get_gpio(void *board, int port)
-{ return &((struct gameboy *)board)->soc.gpio[port]; }
-
-static struct ili9341 *gameboy_get_display(void *board)
-{ return ((struct gameboy *)board)->display; }
-
 const struct machine_desc gameboy_machine = {
     .name        = "gameboy",
     .description = "STM32F411 + ILI9341 display",
@@ -106,7 +125,4 @@ const struct machine_desc gameboy_machine = {
     .get_bus     = gameboy_get_bus,
     .get_flash   = gameboy_get_flash,
     .get_ram     = gameboy_get_ram,
-    .get_nvic    = gameboy_get_nvic,
-    .get_gpio    = gameboy_get_gpio,
-    .get_display = gameboy_get_display,
 };

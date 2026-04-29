@@ -14,6 +14,7 @@ struct gameboy {
     struct trace_dev  trace;
     struct max98357a  audio;
     struct i2s_sink   i2s_sink;
+    struct chardev   *buttons_chardev;
 };
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs);

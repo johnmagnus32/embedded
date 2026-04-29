@@ -6,6 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include "chardev.h"
@@ -95,4 +96,17 @@ void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len)
             sent += n;
         }
     }
+}
+
+int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen)
+{
+    if (!cd) return 0;
+    if (cd->client_fd < 0) chardev_try_accept(cd);
+    if (cd->client_fd < 0) return 0;
+    fd_set fds; struct timeval tv = {0, 0};
+    FD_ZERO(&fds); FD_SET(cd->client_fd, &fds);
+    if (select(cd->client_fd + 1, &fds, NULL, NULL, &tv) <= 0) return 0;
+    int n = read(cd->client_fd, buf, maxlen);
+    if (n <= 0) { cd->client_fd = -1; return -1; }
+    return n;
 }

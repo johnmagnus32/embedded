@@ -76,7 +76,6 @@ int main(int argc, char **argv)
     struct sim_ctx ctx = {
         .mach = mach, .board = board,
         .cpu = cpu, .bus = bus, .flash = flash, .ram = ram,
-        .nvic = mach->get_nvic(board),
     };
 
     dbg_server_run(&ctx, debug_port);
