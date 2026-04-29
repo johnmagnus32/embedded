@@ -304,6 +304,7 @@ class WebDebugger:
                         _json.dumps({"uart": self.uart_buf}))
 
                 elif req.startswith('GET /ws-test'):
+                    log_web(f'WS-TEST raw request: {repr(data[:200])}')
                     if self._ws_upgrade(conn, data):
                         log_web('WS test client connected')
                         def test_push(c):
