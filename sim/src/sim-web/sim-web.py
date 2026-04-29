@@ -66,7 +66,6 @@ class WebDebugger:
             self.uart_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.uart_sock.connect(('127.0.0.1', UART_PORT))
             log_web(f'Connected to UART on port {UART_PORT}')
-            # Read UART in background thread
             def uart_reader():
                 while True:
                     try:
@@ -95,7 +94,6 @@ class WebDebugger:
                         while '\n' in buf:
                             line, buf = buf.split('\n', 1)
                             line = line.strip()
-                            # Format: "B:name@cycle" or "E@cycle" or "I:name@cycle"
                             cy = None
                             if '@' in line:
                                 line, cystr = line.rsplit('@', 1)
@@ -108,7 +106,6 @@ class WebDebugger:
                             elif line.startswith('I:') and cy is not None:
                                 self.trace_events.append({'ctx': line[2:], 'type': 'I', 'cy': cy})
                             elif line.startswith('H:'):
-                                # H:name@addr,size (hex) — heap alloc
                                 try:
                                     name, rest = line[2:].split('@', 1)
                                     addr_s, size_s = rest.split(',', 1)
@@ -117,7 +114,6 @@ class WebDebugger:
                                     self.heap_blocks[addr] = {'name': name, 'size': size, 'cy': cy or 0}
                                 except: pass
                             elif line.startswith('F:'):
-                                # F:addr — heap free
                                 try:
                                     addr = int(line[2:], 16)
                                     self.heap_blocks.pop(addr, None)
@@ -160,9 +156,8 @@ class WebDebugger:
             # WebSocket display push thread
             self._ws_clients = []
             self._ws_lock = threading.Lock()
-            self._prev_frame = b'\x00' * (240 * 320 * 2)  # init to black
+            self._prev_frame = None
             def ws_push_loop():
-                push_count = [0]
                 while True:
                     time.sleep(0.03)
                     raw = self.display_frame
@@ -170,8 +165,8 @@ class WebDebugger:
                     prev = self._prev_frame
                     if prev is raw: continue
                     self._prev_frame = raw
-                    # Build delta
-                    if prev and len(prev) == len(raw):
+                    # Build delta (or full frame if first push or size changed)
+                    if prev is not None and len(prev) == len(raw):
                         delta = bytearray()
                         i = 0; n = len(raw)
                         while i < n:
@@ -184,7 +179,6 @@ class WebDebugger:
                         payload = bytes([1]) + bytes(delta)  # 1 = delta
                     else:
                         payload = bytes([0]) + raw  # 0 = full frame
-                    # Push to all WS clients
                     frame = self._ws_encode(payload)
                     with self._ws_lock:
                         dead = []
@@ -198,7 +192,6 @@ class WebDebugger:
                             try: c.close()
                             except: pass
                             self._ws_clients.remove(c)
-                        push_count[0] += 1
             threading.Thread(target=ws_push_loop, daemon=True).start()
         except:
             log_web('Display not available')
@@ -212,6 +205,17 @@ class WebDebugger:
         else: b.append(127); b += struct.pack('>Q', n)
         return bytes(b) + data
 
+    # ── WebSocket RFC 6455 handshake ──────────────────────────────────
+    # Implements the opening handshake per RFC 6455 §4.2.2.
+    # The magic GUID must be exactly 258EAFA5-E914-47DA-95CA-C5AB0DC85B11
+    # — Chrome validates the Sec-WebSocket-Accept hash and rejects the
+    # connection if the GUID is wrong.
+    #
+    # After upgrade the server sends binary frames (opcode 0x82) with
+    # delta-compressed display data:
+    #   Frame format: type byte (0=full frame, 1=delta) + payload
+    #   Delta format: repeated (uint32_le offset, uint16_le length, data) runs
+    # ──────────────────────────────────────────────────────────────────
     def _ws_upgrade(self, conn, headers):
         """Perform WebSocket handshake."""
         key = None
@@ -224,7 +228,6 @@ class WebDebugger:
                 f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
                 f'Sec-WebSocket-Accept: {accept}\r\n\r\n')
         conn.sendall(resp.encode())
-        log_web(f'WS handshake response: {repr(resp[:150])}')
         return True
 
     def _recv_line(self):
@@ -274,29 +277,6 @@ class WebDebugger:
         srv.setblocking(False)
         log_web(f'Debugger: http://localhost:{self.port}')
 
-        # Separate WebSocket server for display on port+1
-        ws_port = self.port + 1
-        ws_srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        ws_srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        ws_srv.bind(('', ws_port))
-        ws_srv.listen(5)
-        ws_srv.setblocking(False)
-        log_web(f'WebSocket display on port {ws_port}')
-
-        def ws_accept_loop():
-            while True:
-                try:
-                    r, _, _ = select.select([ws_srv], [], [], 1)
-                    for _ in r:
-                        conn, addr = ws_srv.accept()
-                        data = conn.recv(8192).decode(errors='ignore')
-                        if self._ws_upgrade(conn, data):
-                            log_web('WS display client connected (dedicated port)')
-                            with self._ws_lock:
-                                self._ws_clients.append(conn)
-                except: pass
-        threading.Thread(target=ws_accept_loop, daemon=True).start()
-
         while True:
             try:
                 readable, _, _ = select.select([srv], [], [], 0.1)
@@ -312,7 +292,6 @@ class WebDebugger:
                     continue
                 lines = data.split('\r\n')
                 req = lines[0] if lines else ''
-                if '/ws' in req: log_web(f'REQ: {req}')
 
                 if req.startswith('GET /init'):
                     self.http_response(conn, '200 OK', 'application/json', self.last_state)
@@ -328,32 +307,8 @@ class WebDebugger:
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"uart": self.uart_buf}))
 
-                elif req.startswith('GET /ws-test'):
-                    log_web(f'WS-TEST raw request: {repr(data[:500])}')
-                    if self._ws_upgrade(conn, data):
-                        log_web('WS test client connected')
-                        def test_push(c):
-                            time.sleep(0.1)  # let handshake settle
-                            for i in range(10):
-                                try:
-                                    c.settimeout(2)
-                                    msg = f'hello {i}'.encode()
-                                    # Text frame: opcode 0x81
-                                    frame = bytearray([0x81, len(msg)]) + msg
-                                    c.sendall(bytes(frame))
-                                    log_web(f'WS test sent: hello {i}')
-                                    time.sleep(1)
-                                except Exception as e:
-                                    log_web(f'WS test error: {e}')
-                                    break
-                            try: c.close()
-                            except: pass
-                        threading.Thread(target=test_push, args=(conn,), daemon=True).start()
-                        continue
-
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):
-                        log_web('WebSocket display client connected')
                         with self._ws_lock:
                             self._ws_clients.append(conn)
                         continue  # don't close conn
@@ -361,11 +316,8 @@ class WebDebugger:
                 elif req.startswith('GET /display'):
                     raw = self.display_frame
                     if raw:
-                        # Delta compression: only send changed bytes
-                        prev = getattr(self, '_prev_frame', None)
+                        prev = getattr(self, '_http_prev_frame', None)
                         if prev and len(prev) == len(raw):
-                            # Build delta: list of (offset, length, data) runs
-                            import struct
                             delta = bytearray()
                             i = 0
                             n = len(raw)
@@ -378,7 +330,7 @@ class WebDebugger:
                                     delta += raw[start:i]
                                 else:
                                     i += 1
-                            self._prev_frame = raw
+                            self._http_prev_frame = raw
                             ew = getattr(self, 'display_w', 240)
                             eh = getattr(self, 'display_h', 320)
                             hdr = (f'HTTP/1.1 200 OK\r\n'
@@ -391,19 +343,16 @@ class WebDebugger:
                             conn.sendall(hdr)
                             conn.sendall(bytes(delta))
                         else:
-                            # Full frame (first frame or size change)
-                            self._prev_frame = raw
-                            if not hasattr(self, '_display_hdr') or len(raw) != getattr(self, '_display_len', 0):
-                                ew = getattr(self, 'display_w', 240)
-                                eh = getattr(self, 'display_h', 320)
-                                self._display_hdr = (f'HTTP/1.1 200 OK\r\n'
-                                       f'Content-Type: application/octet-stream\r\n'
-                                       f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
-                                       f'Content-Length: {len(raw)}\r\n'
-                                       f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
-                                       f'\r\n').encode()
-                                self._display_len = len(raw)
-                            conn.sendall(self._display_hdr)
+                            self._http_prev_frame = raw
+                            ew = getattr(self, 'display_w', 240)
+                            eh = getattr(self, 'display_h', 320)
+                            hdr = (f'HTTP/1.1 200 OK\r\n'
+                                   f'Content-Type: application/octet-stream\r\n'
+                                   f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
+                                   f'Content-Length: {len(raw)}\r\n'
+                                   f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
+                                   f'\r\n').encode()
+                            conn.sendall(hdr)
                             conn.sendall(raw)
                     else:
                         self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')

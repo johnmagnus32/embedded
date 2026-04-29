@@ -810,18 +810,12 @@ function _applyFrame(data, isDelta) {
   _updateFps();
 }
 
-// WebSocket test
-(function() {
-  const ws = new WebSocket('ws://' + location.hostname + ':' + (parseInt(location.port) + 1) + '/ws-test');
-  ws.binaryType = 'arraybuffer';
-  ws.onopen = () => log('<span style="color:#7ee787">[ws-test] connected</span>');
-  ws.onmessage = (e) => log('<span style="color:#7ee787">[ws-test] ' + new TextDecoder().decode(e.data) + '</span>');
-  ws.onclose = () => log('<span style="color:#f85149">[ws-test] closed</span>');
-  ws.onerror = () => log('<span style="color:#f85149">[ws-test] error</span>');
-})();
-
-// Try WebSocket first, fall back to HTTP polling
-const _wsUrl = 'ws://' + location.hostname + ':' + (parseInt(location.port) + 1) + '/ws-display';
+// WebSocket display protocol:
+// Server sends binary frames with a 1-byte type prefix:
+//   0 = full frame (raw RGB565 pixel data, w*h*2 bytes)
+//   1 = delta frame: repeated (uint32_le offset, uint16_le length, data) runs
+// Falls back to HTTP polling (/display) when WebSocket is unavailable.
+const _wsUrl = 'ws://' + location.host + '/ws-display';
 let _ws = null;
 function connectDisplayWS() {
   _ws = new WebSocket(_wsUrl);
