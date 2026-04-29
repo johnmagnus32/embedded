@@ -39,13 +39,13 @@
 .word exti2_handler     /* IRQ 8:  EXTI2 — Left */
 .word exti3_handler     /* IRQ 9:  EXTI3 — Right (shared with DC, but IDR is separate) */
 .word exti4_handler     /* IRQ 10: EXTI4 — Start */
-.word 0                 /* IRQ 11: DMA1_Stream0 */
-.word 0                 /* IRQ 12: DMA1_Stream1 */
-.word 0                 /* IRQ 13: DMA1_Stream2 */
-.word 0                 /* IRQ 14: DMA1_Stream3 */
+.word dma1_stream0_handler /* IRQ 11: DMA1_Stream0 */
+.word dma1_stream1_handler /* IRQ 12: DMA1_Stream1 */
+.word dma1_stream2_handler /* IRQ 13: DMA1_Stream2 */
+.word dma1_stream3_handler /* IRQ 14: DMA1_Stream3 */
 .word dma1_stream4_handler /* IRQ 15: DMA1_Stream4 */
-.word 0                 /* IRQ 16: DMA1_Stream5 */
-.word 0                 /* IRQ 17: DMA1_Stream6 */
+.word dma1_stream5_handler /* IRQ 16: DMA1_Stream5 */
+.word dma1_stream6_handler /* IRQ 17: DMA1_Stream6 */
 .word 0                 /* IRQ 18: ADC */
 .word 0                 /* IRQ 19-22: reserved */
 .word 0
@@ -82,7 +82,13 @@
 .weak exti2_handler
 .weak exti3_handler
 .weak exti4_handler
+.weak dma1_stream0_handler
+.weak dma1_stream1_handler
+.weak dma1_stream2_handler
+.weak dma1_stream3_handler
 .weak dma1_stream4_handler
+.weak dma1_stream5_handler
+.weak dma1_stream6_handler
 .thumb_func
 pendsv_handler:
 .thumb_func
@@ -104,7 +110,19 @@ exti3_handler:
 .thumb_func
 exti4_handler:
 .thumb_func
+dma1_stream0_handler:
+.thumb_func
+dma1_stream1_handler:
+.thumb_func
+dma1_stream2_handler:
+.thumb_func
+dma1_stream3_handler:
+.thumb_func
 dma1_stream4_handler:
+.thumb_func
+dma1_stream5_handler:
+.thumb_func
+dma1_stream6_handler:
     bx lr
 
 .global reset_handler

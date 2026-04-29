@@ -58,6 +58,11 @@ config I2S_STM32
     default n
     depends on CLOCK
 
+config DMA_STM32
+    bool "STM32 DMA controller driver"
+    default n
+    depends on CLOCK
+
 config ADC_STM32
     bool "STM32 ADC driver"
     default n

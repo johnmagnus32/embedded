@@ -71,6 +71,13 @@
             status = "okay";
         };
 
+        dma1: dma@40026000 {
+            compatible = "st,stm32-dma";
+            reg = <0x40026000>;
+            clocks = <&rcc 0 21>;
+            status = "okay";
+        };
+
         adc1: adc@40012000 {
             compatible = "st,stm32-adc";
             reg = <0x40012000>;
