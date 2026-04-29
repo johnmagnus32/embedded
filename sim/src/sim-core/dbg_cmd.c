@@ -69,16 +69,14 @@ static void poll_gpio(int fd, struct sim_ctx *ctx)
     }
 }
 
+
 static void run_until_bp(int fd, struct sim_ctx *ctx)
 {
     int tick = 0;
     do {
         ctx->mach->tick(ctx->board);
         if (++tick % 10000 == 0) poll_gpio(fd, ctx);
-        if (tick % 10000000 == 0)
-            fprintf(stderr, "[perf] %dM ticks, PC=0x%08X\n", tick/1000000, ctx->cpu->r[15]);
     } while (!check_breakpoint(ctx->cpu));
-    fprintf(stderr, "[perf] stopped after %d ticks\n", tick);
 }
 
 static void send_stop_info(int fd, struct cpu_state *cpu)
