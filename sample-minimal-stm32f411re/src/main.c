@@ -415,7 +415,7 @@ void main(void)
 
     heap_init(&_heap_start, (size_t)&_heap_size);
     lcd_init();
-    /* buttons_init(); -- temporarily disabled for debugging */
+    buttons_init();
 
     uart_print("start\n");
 
