@@ -239,15 +239,18 @@ class WebDebugger:
                 elif req.startswith('GET /display'):
                     raw = self.display_frame
                     if raw:
-                        ew = getattr(self, 'display_w', 240)
-                        eh = getattr(self, 'display_h', 320)
-                        hdr = (f'HTTP/1.1 200 OK\r\n'
-                               f'Content-Type: application/octet-stream\r\n'
-                               f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
-                               f'Content-Length: {len(raw)}\r\n'
-                               f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
-                               f'\r\n').encode()
-                        conn.sendall(hdr + raw)
+                        if not hasattr(self, '_display_hdr') or len(raw) != self._display_len:
+                            ew = getattr(self, 'display_w', 240)
+                            eh = getattr(self, 'display_h', 320)
+                            self._display_hdr = (f'HTTP/1.1 200 OK\r\n'
+                                   f'Content-Type: application/octet-stream\r\n'
+                                   f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
+                                   f'Content-Length: {len(raw)}\r\n'
+                                   f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
+                                   f'\r\n').encode()
+                            self._display_len = len(raw)
+                        conn.sendall(self._display_hdr)
+                        conn.sendall(raw)
                     else:
                         self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
 
