@@ -63,16 +63,16 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     b->soc.spis[1].i2s_sink = &b->i2s_sink;
     fprintf(stderr, "[board] MAX98357A on SPI2/I2S, chardev=%s\n", audio_cd ? "audio" : "none");
 
-    /* Buttons chardev for external button input */
-    b->buttons_chardev = chardevs ? chardev_find(chardevs, "buttons") : NULL;
+    /* Board I/O chardev for external input */
+    b->io_chardev = chardevs ? chardev_find(chardevs, "io") : NULL;
 }
 
-static void gameboy_poll_buttons(struct gameboy *b)
+static void gameboy_poll_io(struct gameboy *b)
 {
     static char buf[256];
     static int len = 0;
     uint8_t tmp[128];
-    int n = chardev_read_nonblock(b->buttons_chardev, tmp, sizeof(tmp));
+    int n = chardev_read_nonblock(b->io_chardev, tmp, sizeof(tmp));
     if (n <= 0) return;
     if (len + n >= (int)sizeof(buf)) len = 0; /* overflow: reset */
     memcpy(buf + len, tmp, n);
@@ -81,7 +81,7 @@ static void gameboy_poll_buttons(struct gameboy *b)
     while ((nl = strchr(buf, '\n'))) {
         *nl = 0;
         int port, pin, level;
-        if (sscanf(buf, "%d:%d:%d", &port, &pin, &level) == 3)
+        if (sscanf(buf, "gpio:%d:%d:%d", &port, &pin, &level) == 3)
             stm32_gpio_set_input(&b->soc.gpio[port], pin, level);
         int rem = len - (int)(nl - buf + 1);
         memmove(buf, nl + 1, rem);
@@ -92,8 +92,8 @@ static void gameboy_poll_buttons(struct gameboy *b)
 void gameboy_tick(struct gameboy *b)
 {
     stm32f411_tick(&b->soc);
-    if (b->buttons_chardev && b->soc.cpu.cycle_count % 10000 == 0)
-        gameboy_poll_buttons(b);
+    if (b->io_chardev && b->soc.cpu.cycle_count % 10000 == 0)
+        gameboy_poll_io(b);
 }
 
 /* Machine registry wrappers */

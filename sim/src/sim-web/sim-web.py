@@ -24,7 +24,7 @@ UART_PORT = 9002
 TRACE_PORT = 9003
 DISPLAY_PORT = 9004
 AUDIO_PORT = 9005
-BUTTONS_PORT = 9006
+IO_PORT = 9006
 
 class WebDebugger:
     def __init__(self, machine, elf, port, extra_args):
@@ -48,7 +48,7 @@ class WebDebugger:
                '--chardev', f'trace={TRACE_PORT}',
                '--chardev', f'display={DISPLAY_PORT}',
                '--chardev', f'audio={AUDIO_PORT}',
-               '--chardev', f'buttons={BUTTONS_PORT}'] + self.extra_args
+               '--chardev', f'io={IO_PORT}'] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
         self._buf = b''
         self.uart_buf = ''
@@ -230,14 +230,14 @@ class WebDebugger:
         except:
             log_web('Audio not available')
 
-        # Connect to buttons chardev
-        self.buttons_sock = None
+        # Connect to board I/O chardev
+        self.io_sock = None
         try:
-            self.buttons_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.buttons_sock.connect(('127.0.0.1', BUTTONS_PORT))
-            log_web(f'Connected to buttons port {BUTTONS_PORT}')
+            self.io_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.io_sock.connect(('127.0.0.1', IO_PORT))
+            log_web(f'Connected to I/O port {IO_PORT}')
         except:
-            log_web('Buttons chardev not available')
+            log_web('I/O chardev not available')
 
     def _ws_encode(self, data):
         """Encode a WebSocket binary frame."""
@@ -376,8 +376,8 @@ class WebDebugger:
                         port = msg.get('port', 0)
                         pin = msg.get('pin', 0)
                         val = msg.get('val', 0)
-                        if self.buttons_sock:
-                            self.buttons_sock.sendall(f'{port}:{pin}:{val}\n'.encode())
+                        if self.io_sock:
+                            self.io_sock.sendall(f'gpio:{port}:{pin}:{val}\n'.encode())
                     except: pass
                     self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
 
