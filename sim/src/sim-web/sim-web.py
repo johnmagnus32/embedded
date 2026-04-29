@@ -274,6 +274,29 @@ class WebDebugger:
         srv.setblocking(False)
         log_web(f'Debugger: http://localhost:{self.port}')
 
+        # Separate WebSocket server for display on port+1
+        ws_port = self.port + 1
+        ws_srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ws_srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        ws_srv.bind(('', ws_port))
+        ws_srv.listen(5)
+        ws_srv.setblocking(False)
+        log_web(f'WebSocket display on port {ws_port}')
+
+        def ws_accept_loop():
+            while True:
+                try:
+                    r, _, _ = select.select([ws_srv], [], [], 1)
+                    for _ in r:
+                        conn, addr = ws_srv.accept()
+                        data = conn.recv(8192).decode(errors='ignore')
+                        if self._ws_upgrade(conn, data):
+                            log_web('WS display client connected (dedicated port)')
+                            with self._ws_lock:
+                                self._ws_clients.append(conn)
+                except: pass
+        threading.Thread(target=ws_accept_loop, daemon=True).start()
+
         while True:
             try:
                 readable, _, _ = select.select([srv], [], [], 0.1)

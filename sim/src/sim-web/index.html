@@ -812,7 +812,7 @@ function _applyFrame(data, isDelta) {
 
 // WebSocket test
 (function() {
-  const ws = new WebSocket('ws://' + location.host + '/ws-test');
+  const ws = new WebSocket('ws://' + location.hostname + ':' + (parseInt(location.port) + 1) + '/ws-test');
   ws.binaryType = 'arraybuffer';
   ws.onopen = () => log('<span style="color:#7ee787">[ws-test] connected</span>');
   ws.onmessage = (e) => log('<span style="color:#7ee787">[ws-test] ' + new TextDecoder().decode(e.data) + '</span>');
@@ -821,7 +821,7 @@ function _applyFrame(data, isDelta) {
 })();
 
 // Try WebSocket first, fall back to HTTP polling
-const _wsUrl = 'ws://' + location.host + '/ws-display';
+const _wsUrl = 'ws://' + location.hostname + ':' + (parseInt(location.port) + 1) + '/ws-display';
 let _ws = null;
 function connectDisplayWS() {
   _ws = new WebSocket(_wsUrl);
