@@ -57,11 +57,11 @@ GENERATED = $(BUILD)/config.h $(BUILD)/devicetree.h
 
 # ---- Targets ----
 
-all: $(BUILD)/hello.bin
-	@$(SIZE) $(BUILD)/hello.elf
+all: $(BUILD)/gameboy.bin
+	@$(SIZE) $(BUILD)/gameboy.elf
 	@echo ""
 	@echo "Enabled: $(words $(OBJS)) objects"
-	@echo "Flash: st-flash write $(BUILD)/hello.bin 0x08000000"
+	@echo "Flash: st-flash write $(BUILD)/gameboy.bin 0x08000000"
 
 $(BUILD)/config.h $(BUILD)/config.mk: .config $(OS)/gen_config.py
 	@mkdir -p $(BUILD)
@@ -71,10 +71,10 @@ $(BUILD)/devicetree.h: board.dts $(OS)/gen_devicetree.py
 	@mkdir -p $(BUILD)
 	python3 $(OS)/gen_devicetree.py $< $@
 
-$(BUILD)/hello.elf: $(OBJS) linker.ld
+$(BUILD)/gameboy.elf: $(OBJS) linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-$(BUILD)/hello.bin: $(BUILD)/hello.elf
+$(BUILD)/gameboy.bin: $(BUILD)/gameboy.elf
 	$(OBJCOPY) -O binary $< $@
 
 # ---- Pattern rules ----
@@ -132,13 +132,13 @@ $(BUILD)/%.o: $(OS)/drivers/ethernet/%.c $(GENERATED)
 
 # ---- Inspection ----
 
-disasm: $(BUILD)/hello.elf
+disasm: $(BUILD)/gameboy.elf
 	$(OBJDUMP) -d $<
 
-sections: $(BUILD)/hello.elf
+sections: $(BUILD)/gameboy.elf
 	$(SIZE) -A $<
 
-symbols: $(BUILD)/hello.elf
+symbols: $(BUILD)/gameboy.elf
 	$(NM) -n $<
 
 defconfig:
