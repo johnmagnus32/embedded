@@ -63,11 +63,6 @@ config ADC_STM32
     default n
     depends on CLOCK
 
-config INPUT_EXTI
-    bool "EXTI button input driver"
-    default n
-    depends on GPIO
-
 config IPC_STM32H745
     bool "STM32H745 shared memory IPC"
     default n

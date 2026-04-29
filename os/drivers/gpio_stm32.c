@@ -1,8 +1,8 @@
 /*
- * gpio.c — STM32 GPIO driver
+ * gpio_stm32.c — STM32 GPIO driver with EXTI interrupt support
  *
  * Uses the clock driver to enable port clocks.
- * No hardcoded RCC address.
+ * Owns EXTI configuration for pins 0-15.
  */
 
 #include <stdint.h>
@@ -16,6 +16,15 @@
 #define GPIO_IDR     0x10
 #define GPIO_BSRR    0x18
 
+/* EXTI registers */
+#define EXTI_BASE    0x40013C00
+#define EXTI_IMR     0x00
+#define EXTI_RTSR    0x08
+#define EXTI_FTSR    0x0C
+#define EXTI_PR      0x14
+
+#define NVIC_ISER0   (*(volatile uint32_t *)0xE000E100)
+
 #define REG(base, off) (*(volatile uint32_t *)((base) + (off)))
 
 struct gpio_stm32_config {
@@ -25,6 +34,13 @@ struct gpio_stm32_config {
 };
 
 DEVICE_DT_DECLARE(rcc);
+
+/* Per-pin EXTI callback and device tracking */
+static gpio_callback_t exti_callbacks[16];
+static const struct device *exti_devices[16];
+
+/* Map EXTI line 0-4 to NVIC IRQ number */
+static const uint8_t exti_irq[] = { 6, 7, 8, 9, 10 };
 
 static int gpio_stm32_pin_configure(const struct device *dev, uint8_t pin, uint8_t flags)
 {
@@ -60,10 +76,60 @@ static void gpio_stm32_pin_set(const struct device *dev, uint8_t pin, int value)
         REG(cfg->base, GPIO_BSRR) = (1 << (pin + 16));
 }
 
+static int gpio_stm32_pin_interrupt_configure(const struct device *dev, uint8_t pin, uint8_t flags)
+{
+    if (pin > 15) return -1;
+
+    uint32_t mask = (1U << pin);
+
+    if (flags == GPIO_INT_DISABLE) {
+        REG(EXTI_BASE, EXTI_IMR) &= ~mask;
+        return 0;
+    }
+
+    if (flags & GPIO_INT_EDGE_RISING)
+        REG(EXTI_BASE, EXTI_RTSR) |= mask;
+    if (flags & GPIO_INT_EDGE_FALLING)
+        REG(EXTI_BASE, EXTI_FTSR) |= mask;
+
+    REG(EXTI_BASE, EXTI_IMR) |= mask;
+
+    exti_devices[pin] = dev;
+
+    /* Enable NVIC for EXTI0-4 (dedicated IRQs) */
+    if (pin < 5)
+        NVIC_ISER0 = (1U << exti_irq[pin]);
+
+    return 0;
+}
+
+static int gpio_stm32_pin_register_callback(const struct device *dev, uint8_t pin, gpio_callback_t cb)
+{
+    if (pin > 15) return -1;
+    exti_callbacks[pin] = cb;
+    return 0;
+}
+
+/* EXTI ISR common handler */
+static void exti_common_handler(uint8_t pin)
+{
+    REG(EXTI_BASE, EXTI_PR) = (1U << pin);
+    if (exti_callbacks[pin])
+        exti_callbacks[pin](pin);
+}
+
+void exti0_handler(void) { exti_common_handler(0); }
+void exti1_handler(void) { exti_common_handler(1); }
+void exti2_handler(void) { exti_common_handler(2); }
+void exti3_handler(void) { exti_common_handler(3); }
+void exti4_handler(void) { exti_common_handler(4); }
+
 static const struct gpio_driver_api gpio_stm32_api = {
-    .pin_configure = gpio_stm32_pin_configure,
-    .pin_get = gpio_stm32_pin_get,
-    .pin_set = gpio_stm32_pin_set,
+    .pin_configure           = gpio_stm32_pin_configure,
+    .pin_get                 = gpio_stm32_pin_get,
+    .pin_set                 = gpio_stm32_pin_set,
+    .pin_interrupt_configure = gpio_stm32_pin_interrupt_configure,
+    .pin_register_callback   = gpio_stm32_pin_register_callback,
 };
 
 #define _GPIO_INST_LABEL(n) DT_INST_ST_STM32_GPIO_##n##_LABEL

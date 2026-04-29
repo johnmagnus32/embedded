@@ -9,7 +9,6 @@ obj-$(CONFIG_GPIO_LEDS)    += gpio_leds.o
 obj-$(CONFIG_DISPLAY_ILI9341) += display_ili9341.o
 obj-$(CONFIG_I2S_STM32)    += i2s_stm32.o
 obj-$(CONFIG_ADC_STM32)    += adc_stm32.o
-obj-$(CONFIG_INPUT_EXTI)   += input_exti.o
 
 # RP2040 drivers
 obj-$(CONFIG_CLOCK_RP2040) += clock_rp2040.o

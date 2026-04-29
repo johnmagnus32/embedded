@@ -79,14 +79,6 @@
             status = "okay";
         };
 
-        buttons: exti@40013C00 {
-            compatible = "st,stm32-exti";
-            reg = <0x40013C00>;
-            gpio-port = <&gpiob>;
-            pin-mask = <31>;
-            status = "okay";
-        };
-
         ili9341: display@1 {
             compatible = "ilitek,ili9341";
             dc-port = <&gpioa>;

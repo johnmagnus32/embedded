@@ -11,7 +11,7 @@
 #include "drivers/display.h"
 #include "drivers/audio.h"
 #include "drivers/adc.h"
-#include "drivers/input.h"
+#include "drivers/gpio.h"
 #include "sched.h"
 #include "heap.h"
 #include "app.h"
@@ -20,13 +20,13 @@ DEVICE_DT_DECLARE(usart2);
 DEVICE_DT_DECLARE(ili9341);
 DEVICE_DT_DECLARE(i2s2);
 DEVICE_DT_DECLARE(adc1);
-DEVICE_DT_DECLARE(buttons);
+DEVICE_DT_DECLARE(gpiob);
 
 const struct device *uart;
 const struct device *display;
 const struct device *audio_dev;
 const struct device *adc_dev;
-const struct device *buttons;
+const struct device *dev_gpiob;
 
 void uart_print(const char *s)
 {
@@ -49,12 +49,12 @@ void main(void)
     display   = DEVICE_DT_GET(ili9341);
     audio_dev = DEVICE_DT_GET(i2s2);
     adc_dev   = DEVICE_DT_GET(adc1);
-    buttons   = DEVICE_DT_GET(buttons);
+    dev_gpiob = DEVICE_DT_GET(gpiob);
 
     heap_init(&_heap_start, (size_t)&_heap_size);
 
-    /* Register input callback */
-    input_app_callback = input_handler;
+    /* Configure button pins and register EXTI callbacks */
+    buttons_init();
 
     uart_print("start\n");
 

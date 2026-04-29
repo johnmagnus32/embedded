@@ -13,11 +13,14 @@ extern const struct device *uart;
 extern const struct device *display;
 extern const struct device *audio_dev;
 extern const struct device *adc_dev;
-extern const struct device *buttons;
+extern const struct device *dev_gpiob;
 
 /* Utility functions */
 void uart_print(const char *s);
 void print_int(int n);
+
+/* Button init — configures GPIO interrupts */
+void buttons_init(void);
 
 /* Task entry points */
 void task_a(void);
@@ -25,9 +28,6 @@ void task_b(void);
 void idle_task(void);
 void task_game(void);
 void task_audio(void);
-
-/* Input callback (called from ISR) */
-void input_handler(uint8_t pin);
 
 /* SFX triggers (called from input, consumed by audio) */
 void sfx_jump(void);
