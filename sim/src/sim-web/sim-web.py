@@ -192,6 +192,9 @@ class WebDebugger:
                             try: c.sendall(frame)
                             except: dead.append(c)
                         for c in dead: self._ws_clients.remove(c)
+                        if push_count[0] % 30 == 0 and self._ws_clients:
+                            log_web(f'WS push #{push_count[0]}, {len(self._ws_clients)} clients, {len(payload)}B')
+                        push_count[0] += 1
             threading.Thread(target=ws_push_loop, daemon=True).start()
         except:
             log_web('Display not available')
