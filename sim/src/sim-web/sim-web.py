@@ -307,6 +307,24 @@ class WebDebugger:
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"uart": self.uart_buf}))
 
+                elif req.startswith('GET /ws-test'):
+                    if self._ws_upgrade(conn, data):
+                        log_web('WS test client connected')
+                        def test_push(c):
+                            for i in range(10):
+                                try:
+                                    c.settimeout(2)
+                                    c.sendall(self._ws_encode(f'hello {i}'.encode()))
+                                    log_web(f'WS test sent: hello {i}')
+                                    time.sleep(1)
+                                except Exception as e:
+                                    log_web(f'WS test error: {e}')
+                                    break
+                            try: c.close()
+                            except: pass
+                        threading.Thread(target=test_push, args=(conn,), daemon=True).start()
+                        continue
+
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):
                         log_web('WebSocket display client connected')
