@@ -572,19 +572,25 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
     }
 
     /* STR.W with pre/post index */
-    if ((hi & 0xFFF0) == 0xF840 && (lo & 0x0800)) {
+    if ((hi & 0xFFF0) == 0xF840) {
         int rn = hi & 0xF;
         int rt = (lo >> 12) & 0xF;
-        int p = (lo >> 10) & 1;
-        int u = (lo >> 9) & 1;
-        int w = (lo >> 8) & 1;
-        uint32_t imm8 = lo & 0xFF;
-        uint32_t addr = c->r[rn];
-        uint32_t offset = u ? imm8 : -imm8;
-        if (p) addr += offset;
-        membus_write32(bus, addr, c->r[rt]);
-        if (!p) addr += offset;
-        if (w || !p) c->r[rn] = addr;
+        if (lo & 0x0800) { /* pre/post indexed */
+            int p = (lo >> 10) & 1;
+            int u = (lo >> 9) & 1;
+            int w = (lo >> 8) & 1;
+            uint32_t imm8 = lo & 0xFF;
+            uint32_t addr = c->r[rn];
+            uint32_t offset = u ? imm8 : -imm8;
+            if (p) addr += offset;
+            membus_write32(bus, addr, c->r[rt]);
+            if (!p) addr += offset;
+            if (w || !p) c->r[rn] = addr;
+        } else { /* register offset */
+            int rm = lo & 0xF;
+            int shift = (lo >> 4) & 3;
+            membus_write32(bus, c->r[rn] + (c->r[rm] << shift), c->r[rt]);
+        }
         return 0;
     }
 
