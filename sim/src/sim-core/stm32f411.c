@@ -40,6 +40,9 @@ void stm32f411_init(struct stm32f411 *soc)
     /* EXTI */
     stm32_exti_init(&soc->exti);
 
+    /* ADC1 */
+    stm32_adc_init(&soc->adc);
+
     /* Wire EXTI outputs 0-4 → NVIC IRQ 6-10 */
     for (int i = 0; i < 5; i++) {
         soc->exti_nvic[i].nvic = &soc->nvic;
@@ -85,6 +88,9 @@ void stm32f411_init(struct stm32f411 *soc)
 
     /* EXTI */
     membus_register(&soc->bus, 0x40013C00, 0x18, stm32_exti_read, stm32_exti_write, &soc->exti);
+
+    /* ADC1 */
+    membus_register(&soc->bus, 0x40012000, 0x400, stm32_adc_read, stm32_adc_write, &soc->adc);
 }
 
 void stm32f411_tick(struct stm32f411 *soc)

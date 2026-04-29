@@ -83,6 +83,9 @@ static void gameboy_poll_io(struct gameboy *b)
         int port, pin, level;
         if (sscanf(buf, "gpio:%d:%d:%d", &port, &pin, &level) == 3)
             stm32_gpio_set_input(&b->soc.gpio[port], pin, level);
+        int ch, val;
+        if (sscanf(buf, "dial:%d:%d", &ch, &val) == 2 && ch >= 0 && ch < 16)
+            b->soc.adc.channels[ch] = (uint32_t)val;
         int rem = len - (int)(nl - buf + 1);
         memmove(buf, nl + 1, rem);
         len = rem;

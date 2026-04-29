@@ -368,6 +368,12 @@ class WebDebugger:
                             self._ws_clients.append(conn)
                         continue  # don't close conn
 
+                elif req.startswith('POST /io'):
+                    body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
+                    if self.io_sock:
+                        self.io_sock.sendall((body.strip() + '\n').encode())
+                    self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
+
                 elif req.startswith('POST /gpio'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     try:

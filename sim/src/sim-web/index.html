@@ -96,6 +96,11 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
           <button class="gbtn gbtn-ab" data-pin="1" style="margin-bottom:0">B</button>
           <button class="gbtn gbtn-ab" data-pin="0" style="margin-bottom:20px">A</button>
         </div>
+        <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;gap:2px;">
+          <label style="font-size:9px;color:#484f58;">VOL</label>
+          <input type="range" id="vol-slider" min="0" max="4095" value="2048" orient="vertical"
+                 style="writing-mode:vertical-lr;direction:rtl;height:80px;width:20px;accent-color:#58a6ff;">
+        </div>
       </div>
     </div>
     <div class="resize-v" data-above="display-panel" data-below="uart-panel"></div>
@@ -828,6 +833,11 @@ function pollAudio() {
 
 document.addEventListener('click',   initAudio, {once: true});
 document.addEventListener('keydown', initAudio, {once: true});
+
+/* Volume slider → POST /io with dial:0:VALUE */
+document.getElementById('vol-slider').addEventListener('input', function() {
+  fetch('/io', {method:'POST', body:'dial:0:' + this.value});
+});
 </script>
 </body>
 </html>

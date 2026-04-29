@@ -328,6 +328,30 @@ static void i2s_init(void)
     I2S_PR   = 0;
 }
 
+/* ── ADC for volume potentiometer ── */
+#define ADC1_BASE  0x40012000
+#define ADC_SR     (*(volatile uint32_t *)(ADC1_BASE + 0x00))
+#define ADC_CR1    (*(volatile uint32_t *)(ADC1_BASE + 0x04))
+#define ADC_CR2    (*(volatile uint32_t *)(ADC1_BASE + 0x08))
+#define ADC_SQR3   (*(volatile uint32_t *)(ADC1_BASE + 0x34))
+#define ADC_DR     (*(volatile uint32_t *)(ADC1_BASE + 0x4C))
+#define ADC_SR_EOC    (1 << 1)
+#define ADC_CR2_ADON  (1 << 0)
+#define ADC_CR2_SWSTART (1 << 30)
+
+static void adc_init(void)
+{
+    ADC_CR2 = ADC_CR2_ADON;
+    ADC_SQR3 = 0; /* channel 0 */
+}
+
+static uint32_t adc_read(void)
+{
+    ADC_CR2 = ADC_CR2_ADON | ADC_CR2_SWSTART;
+    while (!(ADC_SR & ADC_SR_EOC)) {}
+    return ADC_DR;
+}
+
 static void i2s_sample(int16_t left, int16_t right)
 {
     while (!(I2S_SR & I2S_TXE)) {}
@@ -380,9 +404,12 @@ static int16_t square_sample(uint32_t phase, uint16_t freq)
 static void task_audio(void)
 {
     i2s_init();
+    adc_init();
     uart_print("audio: init\n");
     uint32_t phase = 0;
     int note_idx = 0;
+    uint32_t volume = 2048; /* 12-bit ADC mid-scale */
+    uint32_t sample_count = 0;
 
     while (1) {
         /* Check for SFX trigger */
@@ -391,13 +418,24 @@ static void task_audio(void)
             uint32_t samples = (uint32_t)sfx_dur_ms * SAMPLE_RATE / 1000;
             sfx_active = 0;
             for (uint32_t i = 0; i < samples; i++) {
+                if (++sample_count >= 256) { volume = adc_read(); sample_count = 0; }
                 int16_t s = square_sample(i, f);
+                s = (int16_t)((int32_t)s * (int32_t)volume / 4095);
                 i2s_sample(s, s);
             }
         }
 
-        /* No melody — just idle until next SFX */
-        sched_sleep_ms(10);
+        /* Play melody */
+        uint16_t freq = melody[note_idx].freq;
+        uint32_t samples = (uint32_t)melody[note_idx].dur_ms * SAMPLE_RATE / 1000;
+        for (uint32_t i = 0; i < samples; i++) {
+            if (++sample_count >= 256) { volume = adc_read(); sample_count = 0; }
+            int16_t s = square_sample(phase + i, freq);
+            s = (int16_t)((int32_t)s * (int32_t)volume / 4095);
+            i2s_sample(s, s);
+        }
+        phase += samples;
+        note_idx = (note_idx + 1) % MELODY_LEN;
     }
 }
 
