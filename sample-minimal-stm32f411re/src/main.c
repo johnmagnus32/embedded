@@ -189,7 +189,7 @@ static void draw_char(int x, int y, char c, uint16_t color)
         [12]={0x3E,0x41,0x41,0x41,0x22}, /* C */
         [13]={0x7F,0x41,0x41,0x22,0x1C}, /* D */
         [14]={0x7F,0x49,0x49,0x49,0x41}, /* E */
-        [15]={0x3E,0x41,0x51,0x21,0x5E}, /* G */
+        [15]={0x3E,0x41,0x49,0x49,0x3A}, /* G */
         [16]={0x7F,0x04,0x08,0x10,0x7F}, /* M (simplified) */
         [17]={0x3E,0x41,0x41,0x41,0x3E}, /* O */
         [18]={0x7E,0x09,0x09,0x09,0x06}, /* P */
@@ -197,12 +197,16 @@ static void draw_char(int x, int y, char c, uint16_t color)
         [20]={0x26,0x49,0x49,0x49,0x32}, /* S */
         [21]={0x01,0x01,0x7F,0x01,0x01}, /* T */
         [22]={0x3F,0x40,0x40,0x40,0x3F}, /* V */
+        [23]={0x00,0x41,0x7F,0x41,0x00}, /* I */
+        [24]={0x7F,0x40,0x40,0x40,0x40}, /* L */
+        [25]={0x7F,0x04,0x08,0x10,0x7F}, /* N */
+        [26]={0x07,0x08,0x70,0x08,0x07}, /* Y */
     };
     const uint8_t *glyph = 0;
     if (c >= '0' && c <= '9') glyph = font[c - '0'];
     else {
-        static const char map[] = "ABCDEGMOPRSTVA";
-        static const int idx[] = {10,11,12,13,14,15,16,17,18,19,20,21,22,10};
+        static const char map[] = "ABCDEGMOPRSTVILNY";
+        static const int idx[] = {10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26};
         for (int i = 0; map[i]; i++)
             if (c == map[i]) { glyph = font[idx[i]]; break; }
     }
@@ -271,6 +275,7 @@ static void task_c(void)
 
         lcd_fill_rect(PLAYER_X, 0, PLAYER_W, GROUND_Y, RGB565(30, 30, 50));
         lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
+        lcd_fill_rect(PLAYER_X + 10, player_y + 5, 3, 3, BLACK);
 
         for (int i = 0; i < MAX_OBS; i++) {
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
@@ -293,14 +298,11 @@ static void task_c(void)
     } /* end while (!game_over) */
 
     /* Game over screen */
-    lcd_fill_rect(50, 60, 220, 100, RGB565(15, 15, 25));
-    /* GAME OVER: 9 chars × 12px = 108px, centered at (320-108)/2 = 106 */
-    draw_string(106, 75, "GAME OVER", WHITE);
-    /* SCORE: 5 chars + digits, roughly centered */
-    draw_string(118, 100, "SCORE", WHITE);
-    draw_number(190, 100, score, YELLOW);
-    /* PRESS A: 7 chars × 12px = 84px, centered at (320-84)/2 = 118 */
-    draw_string(118, 125, "PRESS A", GREEN);
+    lcd_fill_rect(30, 55, 260, 120, RGB565(15, 15, 25));
+    draw_string(106, 70, "GAME OVER", WHITE);
+    draw_string(118, 95, "SCORE", WHITE);
+    draw_number(190, 95, score, YELLOW);
+    draw_string(46, 120, "PRESS A TO PLAY AGAIN", GREEN);
     lcd_vsync();
     while (!btn_pressed()) sched_sleep_ms(33);
     while (btn_pressed()) sched_sleep_ms(33);
