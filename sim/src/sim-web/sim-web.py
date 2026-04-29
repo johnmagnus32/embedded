@@ -309,10 +309,14 @@ class WebDebugger:
                     if self._ws_upgrade(conn, data):
                         log_web('WS test client connected')
                         def test_push(c):
+                            time.sleep(0.1)  # let handshake settle
                             for i in range(10):
                                 try:
                                     c.settimeout(2)
-                                    c.sendall(self._ws_encode(f'hello {i}'.encode()))
+                                    msg = f'hello {i}'.encode()
+                                    # Text frame: opcode 0x81
+                                    frame = bytearray([0x81, len(msg)]) + msg
+                                    c.sendall(bytes(frame))
                                     log_web(f'WS test sent: hello {i}')
                                     time.sleep(1)
                                 except Exception as e:
