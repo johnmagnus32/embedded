@@ -25,6 +25,14 @@ SECTIONS
         *(.rodata.*)
     } > FLASH
 
+    /* Device descriptors — iterated at boot to call init() */
+    .device_area :
+    {
+        _device_start = .;
+        KEEP(*(device_area))
+        _device_end = .;
+    } > FLASH
+
     /* Initialized data: stored in flash, copied to RAM at boot */
     _data_flash = LOADADDR(.data);
     .data :

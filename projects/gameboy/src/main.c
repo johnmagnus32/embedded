@@ -53,6 +53,9 @@ void main(void)
 
     heap_init(&_heap_start, (size_t)&_heap_size);
 
+    /* Initialize all device drivers (iterates device_area section) */
+    device_init_all();
+
     /* Configure button pins and register EXTI callbacks */
     buttons_init();
 

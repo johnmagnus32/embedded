@@ -72,4 +72,14 @@ struct device {
 #define DT_INST_FOREACH_STATUS_OKAY(compat, macro) \
     DT_INST_##compat##_FOREACH(macro)
 
+/* Iterate all devices in the device_area section and call init() */
+static inline void device_init_all(void)
+{
+    extern const struct device _device_start;
+    extern const struct device _device_end;
+    for (const struct device *d = &_device_start; d < &_device_end; d++) {
+        if (d->init) d->init(d);
+    }
+}
+
 #endif
