@@ -23,8 +23,9 @@ static const struct device *uart;
 
 #define GPIOA_BSRR (*(volatile uint32_t *)0x40020018)
 #define DC_PIN 3
-#define DC_CMD()  GPIOA_BSRR = (1 << (DC_PIN + 16))  /* DC low = command */
-#define DC_DATA() GPIOA_BSRR = (1 << DC_PIN)          /* DC high = data */
+#define GPIOA_ODR  (*(volatile uint32_t *)0x40020014)
+#define DC_CMD()  do { if (GPIOA_ODR & (1 << DC_PIN)) GPIOA_BSRR = (1 << (DC_PIN + 16)); } while(0)
+#define DC_DATA() do { if (!(GPIOA_ODR & (1 << DC_PIN))) GPIOA_BSRR = (1 << DC_PIN); } while(0)
 
 static void spi_send(uint8_t b) { SPI_DR = b; }
 

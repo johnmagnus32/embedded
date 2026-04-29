@@ -18,10 +18,13 @@ struct mem_region {
     int read_only;
 };
 
+#define MEMBUS_HASH_BITS 12
+#define MEMBUS_HASH_SIZE (1 << MEMBUS_HASH_BITS)
+
 struct membus {
     struct mem_region regions[MAX_REGIONS];
     int nregions;
-    struct mem_region *last_region; /* cache for fast path */
+    struct mem_region *hash[MEMBUS_HASH_SIZE]; /* addr>>20 lookup */
 };
 
 void     membus_init(struct membus *bus);
