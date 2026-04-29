@@ -58,7 +58,7 @@ class WebDebugger:
             try:
                 self.sim_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.sim_sock.connect(('127.0.0.1', SIM_PORT))
-                self.sim_sock.settimeout(60)
+                self.sim_sock.settimeout(None)  # blocking — async reader waits indefinitely
                 log_web(f'Connected to sim-core on port {SIM_PORT}')
                 self.last_state = self._recv_line()
                 break
