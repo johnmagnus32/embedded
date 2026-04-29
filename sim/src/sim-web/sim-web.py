@@ -224,10 +224,6 @@ class WebDebugger:
                 f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
                 f'Sec-WebSocket-Accept: {accept}\r\n\r\n')
         conn.sendall(resp.encode())
-        # Send initial full frame with dimensions header
-        ew = self.display_w; eh = self.display_h
-        init = struct.pack('<HH', ew, eh)  # 4-byte dimensions header
-        conn.sendall(self._ws_encode(bytes([2]) + init))  # 2 = init
         return True
 
     def _recv_line(self):
