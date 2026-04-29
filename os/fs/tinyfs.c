@@ -11,7 +11,7 @@
  */
 
 #include "fs.h"
-#include "flash.h"
+#include "drivers/flash.h"
 #include <stdint.h>
 
 #define FS_MAX_FILES    15

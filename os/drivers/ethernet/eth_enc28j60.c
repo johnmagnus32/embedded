@@ -22,7 +22,7 @@
 #include "devicetree.h"
 #include "device.h"
 #include "net.h"
-#include "spi.h"
+#include "drivers/spi.h"
 
 static void mcpy(void *d, const void *s, size_t n) {
     uint8_t *dd = d; const uint8_t *ss = s;

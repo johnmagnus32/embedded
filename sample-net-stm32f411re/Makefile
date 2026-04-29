@@ -17,7 +17,7 @@ BUILD   = build
 
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
           -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
-          -I$(OS)/fs -I$(OS)/net -I$(OS)/drivers -I$(OS)
+          -I$(OS)/fs -I$(OS)/net -I$(OS)
 LDFLAGS = -T linker.ld -nostdlib
 
 # ---- Load .config ----
@@ -105,7 +105,37 @@ $(BUILD)/%.o: $(OS)/fs/%.c $(GENERATED)
 $(BUILD)/%.o: $(OS)/net/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-$(BUILD)/%.o: $(OS)/drivers/%.c $(GENERATED)
+$(BUILD)/%.o: $(OS)/drivers/gpio/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/spi/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/serial/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/clock/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/dma/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/adc/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/i2s/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/display/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/flash/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/ipc/%.c $(GENERATED)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/%.o: $(OS)/drivers/ethernet/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # ---- Inspection ----
