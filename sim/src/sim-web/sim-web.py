@@ -160,7 +160,7 @@ class WebDebugger:
             # WebSocket display push thread
             self._ws_clients = []
             self._ws_lock = threading.Lock()
-            self._prev_frame = None
+            self._prev_frame = b'\x00' * (240 * 320 * 2)  # init to black
             def ws_push_loop():
                 push_count = [0]
                 while True:
@@ -189,11 +189,15 @@ class WebDebugger:
                     with self._ws_lock:
                         dead = []
                         for c in self._ws_clients:
-                            try: c.sendall(frame)
-                            except: dead.append(c)
-                        for c in dead: self._ws_clients.remove(c)
-                        if push_count[0] % 30 == 0 and self._ws_clients:
-                            log_web(f'WS push #{push_count[0]}, {len(self._ws_clients)} clients, {len(payload)}B')
+                            try:
+                                c.settimeout(0.05)  # 50ms max per client
+                                c.sendall(frame)
+                            except:
+                                dead.append(c)
+                        for c in dead:
+                            try: c.close()
+                            except: pass
+                            self._ws_clients.remove(c)
                         push_count[0] += 1
             threading.Thread(target=ws_push_loop, daemon=True).start()
         except:
