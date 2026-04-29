@@ -2,8 +2,6 @@
 #
 # Build this sample against the OS:
 #   cd sample-stm32f411re && make
-#
-# Like Zephyr: cd my-app && west build -b nucleo_f411re
 
 TC      = /home/johmagnu/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi
 CC      = $(TC)-gcc
@@ -12,20 +10,22 @@ SIZE    = $(TC)-size
 OBJDUMP = $(TC)-objdump
 NM      = $(TC)-nm
 
-OS      = ../os
+OS      = ../../os
 BUILD   = build
 
-CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
-          -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
+CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -Og -g \
+          -I$(BUILD) -Isrc -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
           -I$(OS)/fs -I$(OS)
 LDFLAGS = -T linker.ld -nostdlib
 
 # ---- Load .config ----
 -include $(BUILD)/config.mk
 
-# ---- Collect objects from OS ----
+# ---- Collect app objects (all src/*.c) ----
+APP_SRCS := $(wildcard src/*.c)
+OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(APP_SRCS))
 
-OBJS := $(BUILD)/main.o
+# ---- Collect objects from OS ----
 
 obj-y :=
 obj-n :=
@@ -57,11 +57,11 @@ GENERATED = $(BUILD)/config.h $(BUILD)/devicetree.h
 
 # ---- Targets ----
 
-all: $(BUILD)/hello.bin
-	@$(SIZE) $(BUILD)/hello.elf
+all: $(BUILD)/gameboy.bin
+	@$(SIZE) $(BUILD)/gameboy.elf
 	@echo ""
 	@echo "Enabled: $(words $(OBJS)) objects"
-	@echo "Flash: st-flash write $(BUILD)/hello.bin 0x08000000"
+	@echo "Flash: st-flash write $(BUILD)/gameboy.bin 0x08000000"
 
 $(BUILD)/config.h $(BUILD)/config.mk: .config $(OS)/gen_config.py
 	@mkdir -p $(BUILD)
@@ -71,10 +71,10 @@ $(BUILD)/devicetree.h: board.dts $(OS)/gen_devicetree.py
 	@mkdir -p $(BUILD)
 	python3 $(OS)/gen_devicetree.py $< $@
 
-$(BUILD)/hello.elf: $(OBJS) linker.ld
+$(BUILD)/gameboy.elf: $(OBJS) linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-$(BUILD)/hello.bin: $(BUILD)/hello.elf
+$(BUILD)/gameboy.bin: $(BUILD)/gameboy.elf
 	$(OBJCOPY) -O binary $< $@
 
 # ---- Pattern rules ----
@@ -132,13 +132,13 @@ $(BUILD)/%.o: $(OS)/drivers/ethernet/%.c $(GENERATED)
 
 # ---- Inspection ----
 
-disasm: $(BUILD)/hello.elf
+disasm: $(BUILD)/gameboy.elf
 	$(OBJDUMP) -d $<
 
-sections: $(BUILD)/hello.elf
+sections: $(BUILD)/gameboy.elf
 	$(SIZE) -A $<
 
-symbols: $(BUILD)/hello.elf
+symbols: $(BUILD)/gameboy.elf
 	$(NM) -n $<
 
 defconfig:

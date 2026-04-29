@@ -1,9 +1,6 @@
-# sample-stm32f411re/Makefile
+# sample-rp2040/Makefile
 #
-# Build this sample against the OS:
-#   cd sample-stm32f411re && make
-#
-# Like Zephyr: cd my-app && west build -b nucleo_f411re
+# Build: cd sample-rp2040 && make
 
 TC      = /home/johmagnu/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi
 CC      = $(TC)-gcc
@@ -12,18 +9,18 @@ SIZE    = $(TC)-size
 OBJDUMP = $(TC)-objdump
 NM      = $(TC)-nm
 
-OS      = ../os
+OS      = ../../os
 BUILD   = build
 
-CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -O2 \
+# Cortex-M0+ flags (different from M4!)
+CFLAGS  = -mcpu=cortex-m0plus -mthumb -nostdlib -ffreestanding -Wall -O2 \
           -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
-          -I$(OS)/fs -I$(OS)/net -I$(OS)
-LDFLAGS = -T linker.ld -nostdlib
+          -I$(OS)/fs -I$(OS)
+LDFLAGS = -T linker.ld -nostdlib -lgcc
 
-# ---- Load .config ----
 -include $(BUILD)/config.mk
 
-# ---- Collect objects from OS ----
+# ---- Collect objects ----
 
 OBJS := $(BUILD)/main.o
 
@@ -49,24 +46,15 @@ OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
 obj-y :=
 obj-n :=
-include $(OS)/net/Makefile
-OBJS += $(addprefix $(BUILD)/,$(obj-y))
-
-obj-y :=
-obj-n :=
 include $(OS)/drivers/Makefile
 OBJS += $(addprefix $(BUILD)/,$(obj-y))
 
-# ---- Generated headers ----
 GENERATED = $(BUILD)/config.h $(BUILD)/devicetree.h
 
-# ---- Targets ----
-
-all: $(BUILD)/hello.bin
-	@$(SIZE) $(BUILD)/hello.elf
+all: $(BUILD)/firmware.bin
+	@$(SIZE) $(BUILD)/firmware.elf
 	@echo ""
 	@echo "Enabled: $(words $(OBJS)) objects"
-	@echo "Flash: st-flash write $(BUILD)/hello.bin 0x08000000"
 
 $(BUILD)/config.h $(BUILD)/config.mk: .config $(OS)/gen_config.py
 	@mkdir -p $(BUILD)
@@ -76,13 +64,11 @@ $(BUILD)/devicetree.h: board.dts $(OS)/gen_devicetree.py
 	@mkdir -p $(BUILD)
 	python3 $(OS)/gen_devicetree.py $< $@
 
-$(BUILD)/hello.elf: $(OBJS) linker.ld
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
+$(BUILD)/firmware.elf: $(OBJS) linker.ld
+	$(CC) $(CFLAGS) -T linker.ld -nostdlib -o $@ $(OBJS) -lgcc
 
-$(BUILD)/hello.bin: $(BUILD)/hello.elf
+$(BUILD)/firmware.bin: $(BUILD)/firmware.elf
 	$(OBJCOPY) -O binary $< $@
-
-# ---- Pattern rules ----
 
 $(BUILD)/%.o: src/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -100,9 +86,6 @@ $(BUILD)/%.o: $(OS)/lib/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/%.o: $(OS)/fs/%.c $(GENERATED)
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-$(BUILD)/%.o: $(OS)/net/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/%.o: $(OS)/drivers/gpio/%.c $(GENERATED)
@@ -138,22 +121,10 @@ $(BUILD)/%.o: $(OS)/drivers/ipc/%.c $(GENERATED)
 $(BUILD)/%.o: $(OS)/drivers/ethernet/%.c $(GENERATED)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# ---- Inspection ----
-
-disasm: $(BUILD)/hello.elf
-	$(OBJDUMP) -d $<
-
-sections: $(BUILD)/hello.elf
-	$(SIZE) -A $<
-
-symbols: $(BUILD)/hello.elf
+symbols: $(BUILD)/firmware.elf
 	$(NM) -n $<
-
-defconfig:
-	python3 $(OS)/gen_kconfig.py $(OS)/Kconfig
-	mv .config .config 2>/dev/null; true
 
 clean:
 	rm -f $(BUILD)/*
 
-.PHONY: all clean disasm sections symbols defconfig
+.PHONY: all clean symbols
