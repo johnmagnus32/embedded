@@ -239,18 +239,50 @@ class WebDebugger:
                 elif req.startswith('GET /display'):
                     raw = self.display_frame
                     if raw:
-                        if not hasattr(self, '_display_hdr') or len(raw) != self._display_len:
+                        # Delta compression: only send changed bytes
+                        prev = getattr(self, '_prev_frame', None)
+                        if prev and len(prev) == len(raw):
+                            # Build delta: list of (offset, length, data) runs
+                            import struct
+                            delta = bytearray()
+                            i = 0
+                            n = len(raw)
+                            while i < n:
+                                if raw[i] != prev[i]:
+                                    start = i
+                                    while i < n and i - start < 65535 and raw[i] != prev[i]:
+                                        i += 1
+                                    delta += struct.pack('<HH', start, i - start)
+                                    delta += raw[start:i]
+                                else:
+                                    i += 1
+                            self._prev_frame = raw
                             ew = getattr(self, 'display_w', 240)
                             eh = getattr(self, 'display_h', 320)
-                            self._display_hdr = (f'HTTP/1.1 200 OK\r\n'
+                            hdr = (f'HTTP/1.1 200 OK\r\n'
                                    f'Content-Type: application/octet-stream\r\n'
                                    f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
-                                   f'Content-Length: {len(raw)}\r\n'
-                                   f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
+                                   f'X-Delta: 1\r\n'
+                                   f'Content-Length: {len(delta)}\r\n'
+                                   f'Access-Control-Expose-Headers: X-Width, X-Height, X-Delta\r\n'
                                    f'\r\n').encode()
-                            self._display_len = len(raw)
-                        conn.sendall(self._display_hdr)
-                        conn.sendall(raw)
+                            conn.sendall(hdr)
+                            conn.sendall(bytes(delta))
+                        else:
+                            # Full frame (first frame or size change)
+                            self._prev_frame = raw
+                            if not hasattr(self, '_display_hdr') or len(raw) != getattr(self, '_display_len', 0):
+                                ew = getattr(self, 'display_w', 240)
+                                eh = getattr(self, 'display_h', 320)
+                                self._display_hdr = (f'HTTP/1.1 200 OK\r\n'
+                                       f'Content-Type: application/octet-stream\r\n'
+                                       f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
+                                       f'Content-Length: {len(raw)}\r\n'
+                                       f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
+                                       f'\r\n').encode()
+                                self._display_len = len(raw)
+                            conn.sendall(self._display_hdr)
+                            conn.sendall(raw)
                     else:
                         self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
 

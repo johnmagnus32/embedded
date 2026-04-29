@@ -327,6 +327,7 @@ const _lcdCanvas = document.getElementById('lcd');
 const _lcdCtx = _lcdCanvas.getContext('2d');
 let _lcdImg = null;
 let _lcdW = 0, _lcdH = 0;
+let _lcdRaw = null; // raw RGB565 buffer for delta patching
 
 async function _doRefreshDisplay() {
   _displayTimer = null;
@@ -335,14 +336,36 @@ async function _doRefreshDisplay() {
     const w = parseInt(r.headers.get('X-Width') || '0');
     const h = parseInt(r.headers.get('X-Height') || '0');
     if (!w || !h) return;
+    const isDelta = r.headers.get('X-Delta') === '1';
     const buf = await r.arrayBuffer();
-    const src = new Uint8Array(buf);
+
     if (w !== _lcdW || h !== _lcdH) {
       _lcdCanvas.width = w; _lcdCanvas.height = h;
       _lcdW = w; _lcdH = h;
       _lcdImg = _lcdCtx.createImageData(w, h);
+      _lcdRaw = new Uint8Array(w * h * 2);
     }
+
+    if (isDelta) {
+      // Apply delta patches to _lcdRaw
+      const dv = new DataView(buf);
+      let off = 0;
+      while (off + 4 <= buf.byteLength) {
+        const start = dv.getUint16(off, true);
+        const len = dv.getUint16(off + 2, true);
+        off += 4;
+        const patch = new Uint8Array(buf, off, len);
+        _lcdRaw.set(patch, start);
+        off += len;
+      }
+    } else {
+      // Full frame
+      _lcdRaw.set(new Uint8Array(buf));
+    }
+
+    // Convert RGB565 → RGBA
     const d = _lcdImg.data;
+    const src = _lcdRaw;
     for (let i = 0, n = w * h; i < n; i++) {
       const rgb565 = src[i*2] | (src[i*2+1] << 8);
       const j = i * 4;
