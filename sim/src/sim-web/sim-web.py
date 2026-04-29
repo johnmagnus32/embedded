@@ -224,6 +224,7 @@ class WebDebugger:
                 f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
                 f'Sec-WebSocket-Accept: {accept}\r\n\r\n')
         conn.sendall(resp.encode())
+        log_web(f'WS handshake response: {repr(resp[:150])}')
         return True
 
     def _recv_line(self):
@@ -305,7 +306,7 @@ class WebDebugger:
                         _json.dumps({"uart": self.uart_buf}))
 
                 elif req.startswith('GET /ws-test'):
-                    log_web(f'WS-TEST raw request: {repr(data[:200])}')
+                    log_web(f'WS-TEST raw request: {repr(data[:500])}')
                     if self._ws_upgrade(conn, data):
                         log_web('WS test client connected')
                         def test_push(c):
