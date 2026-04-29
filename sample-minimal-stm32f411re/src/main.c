@@ -137,9 +137,9 @@ static void task_b(void)
 #define OBS_W 12
 #define OBS_H 30
 #define GRAVITY 1
-#define JUMP_VEL (-10)
+#define JUMP_VEL (-12)
 #define SCROLL_SPEED 3
-#define MAX_OBS 4
+#define MAX_OBS 3
 
 /* Simple PRNG */
 static uint32_t rng_state = 12345;
@@ -254,8 +254,8 @@ static void task_c(void)
     int game_over = 0;
 
     for (int i = 0; i < MAX_OBS; i++) {
-        obs_x[i] = SCR_W + 80 * i + (rng() % 60);
-        obs_gap[i] = 20 + (rng() % 20);
+        obs_x[i] = SCR_W + 120 * i + (rng() % 80);
+        obs_gap[i] = 20 + (rng() % 15);
     }
 
     lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
@@ -277,8 +277,8 @@ static void task_c(void)
                 lcd_fill_rect(obs_x[i], 0, OBS_W, GROUND_Y, RGB565(30, 30, 50));
             obs_x[i] -= SCROLL_SPEED;
             if (obs_x[i] < -OBS_W) {
-                obs_x[i] = SCR_W + (rng() % 100);
-                obs_gap[i] = 20 + (rng() % 20);
+                obs_x[i] = SCR_W + 60 + (rng() % 120);
+                obs_gap[i] = 20 + (rng() % 15);
                 score++;
             }
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
@@ -293,11 +293,14 @@ static void task_c(void)
     } /* end while (!game_over) */
 
     /* Game over screen */
-    lcd_fill_rect(60, 70, 200, 80, RGB565(20, 20, 35));
-    draw_string(80, 80, "GAME OVER", WHITE);
-    draw_string(110, 105, "SCORE", WHITE);
-    draw_number(170, 105, score, YELLOW);
-    draw_string(80, 130, "PRESS A", GREEN);
+    lcd_fill_rect(50, 60, 220, 100, RGB565(15, 15, 25));
+    /* GAME OVER: 9 chars × 12px = 108px, centered at (320-108)/2 = 106 */
+    draw_string(106, 75, "GAME OVER", WHITE);
+    /* SCORE: 5 chars + digits, roughly centered */
+    draw_string(118, 100, "SCORE", WHITE);
+    draw_number(190, 100, score, YELLOW);
+    /* PRESS A: 7 chars × 12px = 84px, centered at (320-84)/2 = 118 */
+    draw_string(118, 125, "PRESS A", GREEN);
     lcd_vsync();
     while (!btn_pressed()) sched_sleep_ms(33);
     while (btn_pressed()) sched_sleep_ms(33);
