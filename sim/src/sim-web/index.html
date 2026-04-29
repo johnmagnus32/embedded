@@ -786,6 +786,43 @@ function connectDisplayWS() {
   _ws.onerror = () => { _wsConnected = false; };
 }
 connectDisplayWS();
+/* ── Audio playback via Web Audio API ── */
+let _audioCtx = null;
+let _audioStarted = false;
+const AUDIO_SAMPLE_RATE = 22050;
+
+function initAudio() {
+  if (_audioStarted) return;
+  _audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: AUDIO_SAMPLE_RATE});
+  _audioStarted = true;
+  log('Audio started');
+  pollAudio();
+}
+
+function pollAudio() {
+  if (!_audioStarted) return;
+  fetch('/audio').then(r => r.arrayBuffer()).then(buf => {
+    if (buf.byteLength >= 4) {
+      const samples = new Int16Array(buf);
+      const nFrames = samples.length / 2;
+      const ab = _audioCtx.createBuffer(2, nFrames, AUDIO_SAMPLE_RATE);
+      const chL = ab.getChannelData(0);
+      const chR = ab.getChannelData(1);
+      for (let i = 0; i < nFrames; i++) {
+        chL[i] = samples[i * 2]     / 32768;
+        chR[i] = samples[i * 2 + 1] / 32768;
+      }
+      const src = _audioCtx.createBufferSource();
+      src.buffer = ab;
+      src.connect(_audioCtx.destination);
+      src.start();
+    }
+    setTimeout(pollAudio, 100);
+  }).catch(() => setTimeout(pollAudio, 500));
+}
+
+document.addEventListener('click',   initAudio, {once: true});
+document.addEventListener('keydown', initAudio, {once: true});
 </script>
 </body>
 </html>

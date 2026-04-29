@@ -21,6 +21,15 @@ static const struct device *uart;
 #define SPI_SR    (*(volatile uint32_t *)(SPI1_BASE + 0x08))
 #define SPI_DR    (*(volatile uint32_t *)(SPI1_BASE + 0x0C))
 
+/* ── I2S audio on SPI2 ── */
+#define SPI2_BASE   0x40003800
+#define I2S_CR1     (*(volatile uint32_t *)(SPI2_BASE + 0x00))
+#define I2S_SR      (*(volatile uint32_t *)(SPI2_BASE + 0x08))
+#define I2S_DR      (*(volatile uint32_t *)(SPI2_BASE + 0x0C))
+#define I2S_CFGR    (*(volatile uint32_t *)(SPI2_BASE + 0x1C))
+#define I2S_PR      (*(volatile uint32_t *)(SPI2_BASE + 0x20))
+#define I2S_TXE     (1 << 1)
+
 #define GPIOA_BSRR (*(volatile uint32_t *)0x40020018)
 #define DC_PIN 3
 #define GPIOA_ODR  (*(volatile uint32_t *)0x40020014)
@@ -161,8 +170,11 @@ static int btn_pressed(void) { return (GPIOB_IDR >> BTN_PIN) & 1; }
 /* Button → EXTI mapping: PB0=A/Jump, PB1=B, PB2=Left, PB3=Right, PB4=Up */
 static const char *btn_names[] = {"A", "B", "Left", "Right", "Up", "Down"};
 
-void exti0_handler(void) { EXTI_PR = (1 << 0); uart_print("[btn] A\n"); }
-void exti1_handler(void) { EXTI_PR = (1 << 1); uart_print("[btn] B\n"); }
+static void sfx_jump(void);
+static void sfx_beep(void);
+
+void exti0_handler(void) { EXTI_PR = (1 << 0); uart_print("[btn] A\n"); sfx_jump(); }
+void exti1_handler(void) { EXTI_PR = (1 << 1); uart_print("[btn] B\n"); sfx_beep(); }
 void exti2_handler(void) { EXTI_PR = (1 << 2); uart_print("[btn] Left\n"); }
 void exti3_handler(void) { EXTI_PR = (1 << 3); uart_print("[btn] Right\n"); }
 void exti4_handler(void) { EXTI_PR = (1 << 4); uart_print("[btn] Up\n"); }
@@ -309,6 +321,94 @@ static void task_c(void)
     } /* end for(;;) restart loop */
 }
 
+/* ── I2S audio engine ── */
+static void i2s_init(void)
+{
+    I2S_CFGR = (1 << 11) | (1 << 10); /* I2SMOD=1, I2SE=1 */
+    I2S_PR   = 0;
+}
+
+static void i2s_sample(int16_t left, int16_t right)
+{
+    while (!(I2S_SR & I2S_TXE)) {}
+    I2S_DR = (uint16_t)left;
+    while (!(I2S_SR & I2S_TXE)) {}
+    I2S_DR = (uint16_t)right;
+}
+
+/* Note frequencies (Hz) for a simple chiptune scale */
+#define NOTE_C4  262
+#define NOTE_D4  294
+#define NOTE_E4  330
+#define NOTE_F4  349
+#define NOTE_G4  392
+#define NOTE_A4  440
+#define NOTE_B4  494
+#define NOTE_C5  523
+#define NOTE_REST 0
+
+#define SAMPLE_RATE 22050
+
+/* Melody: simple loop */
+static const struct { uint16_t freq; uint16_t dur_ms; } melody[] = {
+    {NOTE_C4, 200}, {NOTE_E4, 200}, {NOTE_G4, 200}, {NOTE_C5, 400},
+    {NOTE_G4, 200}, {NOTE_E4, 200}, {NOTE_C4, 400},
+    {NOTE_REST, 200},
+    {NOTE_D4, 200}, {NOTE_F4, 200}, {NOTE_A4, 200}, {NOTE_B4, 400},
+    {NOTE_A4, 200}, {NOTE_F4, 200}, {NOTE_D4, 400},
+    {NOTE_REST, 200},
+};
+#define MELODY_LEN (sizeof(melody)/sizeof(melody[0]))
+
+/* SFX state — set from ISR, consumed by audio task */
+static volatile int sfx_active;
+static volatile uint16_t sfx_freq;
+static volatile uint16_t sfx_dur_ms;
+
+static void sfx_jump(void) { sfx_freq = 880; sfx_dur_ms = 80; sfx_active = 1; }
+static void sfx_beep(void) { sfx_freq = 1200; sfx_dur_ms = 50; sfx_active = 1; }
+
+/* Square wave generator */
+static int16_t square_sample(uint32_t phase, uint16_t freq)
+{
+    if (freq == 0) return 0;
+    uint32_t half_period = SAMPLE_RATE / (2 * freq);
+    if (half_period == 0) half_period = 1;
+    return (phase % (half_period * 2)) < half_period ? 8000 : -8000;
+}
+
+static void task_audio(void)
+{
+    i2s_init();
+    uart_print("audio: init\n");
+    uint32_t phase = 0;
+    int note_idx = 0;
+
+    while (1) {
+        /* Check for SFX trigger */
+        if (sfx_active) {
+            uint16_t f = sfx_freq;
+            uint32_t samples = (uint32_t)sfx_dur_ms * SAMPLE_RATE / 1000;
+            sfx_active = 0;
+            for (uint32_t i = 0; i < samples; i++) {
+                int16_t s = square_sample(i, f);
+                i2s_sample(s, s);
+            }
+            phase = 0;
+            continue;
+        }
+
+        /* Play current melody note */
+        uint16_t freq = melody[note_idx].freq;
+        uint32_t samples = (uint32_t)melody[note_idx].dur_ms * SAMPLE_RATE / 1000;
+        for (uint32_t i = 0; i < samples; i++) {
+            int16_t s = square_sample(phase++, freq);
+            i2s_sample(s, s);
+        }
+        note_idx = (note_idx + 1) % MELODY_LEN;
+    }
+}
+
 static void idle_task(void)
 {
     while (1) {}
@@ -330,6 +430,7 @@ void main(void)
     sched_create_task(task_a,    "task_a", 1);
     sched_create_task(task_b,    "task_b", 1);
     sched_create_task(task_c,    "task_c", 1);
+    sched_create_task(task_audio,"audio",  0);
     sched_create_task(idle_task, "idle",   255);
 
     extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);

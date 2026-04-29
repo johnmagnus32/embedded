@@ -23,6 +23,7 @@ SIM_PORT = 9001
 UART_PORT = 9002
 TRACE_PORT = 9003
 DISPLAY_PORT = 9004
+AUDIO_PORT = 9005
 
 class WebDebugger:
     def __init__(self, machine, elf, port, extra_args):
@@ -44,7 +45,8 @@ class WebDebugger:
                '--debug', str(SIM_PORT),
                '--chardev', f'usart2={UART_PORT}',
                '--chardev', f'trace={TRACE_PORT}',
-               '--chardev', f'display={DISPLAY_PORT}'] + self.extra_args
+               '--chardev', f'display={DISPLAY_PORT}',
+               '--chardev', f'audio={AUDIO_PORT}'] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
         self._buf = b''
         self.uart_buf = ''
@@ -204,6 +206,28 @@ class WebDebugger:
         except:
             log_web('Display not available')
 
+        # Connect to audio stream
+        self.audio_buf = b''
+        self._audio_lock = threading.Lock()
+        try:
+            self.audio_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.audio_sock.connect(('127.0.0.1', AUDIO_PORT))
+            log_web(f'Connected to audio port {AUDIO_PORT}')
+            def audio_reader():
+                while True:
+                    try:
+                        data = self.audio_sock.recv(8192)
+                        if not data: break
+                        with self._audio_lock:
+                            self.audio_buf += data
+                            # Cap buffer at 64KB to avoid unbounded growth
+                            if len(self.audio_buf) > 65536:
+                                self.audio_buf = self.audio_buf[-65536:]
+                    except: break
+            threading.Thread(target=audio_reader, daemon=True).start()
+        except:
+            log_web('Audio not available')
+
     def _ws_encode(self, data):
         """Encode a WebSocket binary frame."""
         b = bytearray([0x82])  # FIN + binary opcode
@@ -339,6 +363,12 @@ class WebDebugger:
                         self.sim_sock.sendall((body.strip() + '\n').encode())
                     except: pass
                     self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
+
+                elif req.startswith('GET /audio'):
+                    with self._audio_lock:
+                        data = self.audio_buf
+                        self.audio_buf = b''
+                    self.http_response(conn, '200 OK', 'application/octet-stream', data)
 
                 elif req.startswith('GET /ws-status'):
                     if self._ws_upgrade(conn, data):

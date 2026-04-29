@@ -3,10 +3,17 @@
 
 #include <stdint.h>
 #include "spi_bus.h"
+#include "i2s_sink.h"
 
 struct stm32_spi {
     uint32_t cr1, cr2, sr;
     struct spi_bus bus;
+    /* I2S extension */
+    uint32_t        i2scfgr, i2spr;
+    int             i2s_mode;
+    int             i2s_lr;          /* 0 = next write is left, 1 = right */
+    int16_t         i2s_pending_left;
+    struct i2s_sink *i2s_sink;
 };
 
 void     stm32_spi_init(struct stm32_spi *s);

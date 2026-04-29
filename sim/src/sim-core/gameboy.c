@@ -53,6 +53,14 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     }
 
     fprintf(stderr, "[board] ILI9341 on SPI1, DC=PA3, CS=PA4\n");
+
+    /* MAX98357A audio DAC on SPI2 (I2S mode) */
+    struct chardev *audio_cd = chardevs ? chardev_find(chardevs, "audio") : NULL;
+    max98357a_init(&b->audio, audio_cd);
+    b->i2s_sink.write  = max98357a_write;
+    b->i2s_sink.opaque = &b->audio;
+    b->soc.spis[1].i2s_sink = &b->i2s_sink;
+    fprintf(stderr, "[board] MAX98357A on SPI2/I2S, chardev=%s\n", audio_cd ? "audio" : "none");
 }
 
 void gameboy_tick(struct gameboy *b)
