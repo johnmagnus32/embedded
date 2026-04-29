@@ -288,6 +288,7 @@ class WebDebugger:
                     continue
                 lines = data.split('\r\n')
                 req = lines[0] if lines else ''
+                if '/ws' in req: log_web(f'REQ: {req}')
 
                 if req.startswith('GET /init'):
                     self.http_response(conn, '200 OK', 'application/json', self.last_state)
