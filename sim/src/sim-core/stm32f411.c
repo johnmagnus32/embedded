@@ -43,6 +43,13 @@ void stm32f411_init(struct stm32f411 *soc)
     /* ADC1 */
     stm32_adc_init(&soc->adc);
 
+    /* DMA controllers */
+    stm32_dma_init(&soc->dma1, &soc->nvic, &soc->bus);
+    stm32_dma_init(&soc->dma2, &soc->nvic, &soc->bus);
+
+    /* Wire SPI2 (spis[1]) DMA TX → DMA1 Stream 4 */
+    soc->spis[1].dma_tx = &soc->dma1.streams[4];
+
     /* Wire EXTI outputs 0-4 → NVIC IRQ 6-10 */
     for (int i = 0; i < 5; i++) {
         soc->exti_nvic[i].nvic = &soc->nvic;
@@ -91,11 +98,17 @@ void stm32f411_init(struct stm32f411 *soc)
 
     /* ADC1 */
     membus_register(&soc->bus, 0x40012000, 0x400, stm32_adc_read, stm32_adc_write, &soc->adc);
+
+    /* DMA1 0x40026000, DMA2 0x40026400 */
+    membus_register(&soc->bus, 0x40026000, 0x400, stm32_dma_read, stm32_dma_write, &soc->dma1);
+    membus_register(&soc->bus, 0x40026400, 0x400, stm32_dma_read, stm32_dma_write, &soc->dma2);
 }
 
 void stm32f411_tick(struct stm32f411 *soc)
 {
     armv7m_cpu_step(&soc->cpu, &soc->bus);
     armv7m_systick_tick(&soc->systick, &soc->nvic);
+    if (soc->dma1.any_active) stm32_dma_tick(&soc->dma1);
+    if (soc->dma2.any_active) stm32_dma_tick(&soc->dma2);
     armv7m_nvic_update(&soc->nvic, &soc->cpu, &soc->bus);
 }

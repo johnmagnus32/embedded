@@ -43,7 +43,7 @@
 .word 0                 /* IRQ 12: DMA1_Stream1 */
 .word 0                 /* IRQ 13: DMA1_Stream2 */
 .word 0                 /* IRQ 14: DMA1_Stream3 */
-.word 0                 /* IRQ 15: DMA1_Stream4 */
+.word dma1_stream4_handler /* IRQ 15: DMA1_Stream4 */
 .word 0                 /* IRQ 16: DMA1_Stream5 */
 .word 0                 /* IRQ 17: DMA1_Stream6 */
 .word 0                 /* IRQ 18: ADC */
@@ -82,6 +82,7 @@
 .weak exti2_handler
 .weak exti3_handler
 .weak exti4_handler
+.weak dma1_stream4_handler
 .thumb_func
 pendsv_handler:
 .thumb_func
@@ -102,6 +103,8 @@ exti2_handler:
 exti3_handler:
 .thumb_func
 exti4_handler:
+.thumb_func
+dma1_stream4_handler:
     bx lr
 
 .global reset_handler

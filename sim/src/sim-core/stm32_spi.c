@@ -3,6 +3,7 @@
  */
 #include <string.h>
 #include "stm32_spi.h"
+#include "stm32_dma.h"
 
 #define SPI_CR1  0x00
 #define SPI_CR2  0x04
@@ -27,6 +28,7 @@ void stm32_spi_init(struct stm32_spi *s)
     s->i2s_lr = 0;
     s->i2s_pending_left = 0;
     s->i2s_sink = NULL;
+    s->dma_tx = NULL;
 }
 
 uint32_t stm32_spi_read(void *opaque, uint32_t offset)
@@ -61,6 +63,9 @@ void stm32_spi_write(void *opaque, uint32_t offset, uint32_t val)
                 s->i2s_lr = 0;
             }
             s->sr |= SR_TXE;
+            /* Re-assert DMA request when TXE and TXDMAEN */
+            if ((s->cr2 & (1 << 1)) && s->dma_tx)
+                s->dma_tx->request_pending = 1;
         } else {
             spi_bus_transfer(&s->bus, (uint8_t)val);
             s->sr |= SR_TXE | SR_RXNE;
@@ -70,6 +75,9 @@ void stm32_spi_write(void *opaque, uint32_t offset, uint32_t val)
     case SPI_I2SCFGR:
         s->i2scfgr = val;
         s->i2s_mode = (val & (1 << 11)) ? 1 : 0; /* I2SMOD bit */
+        /* If enabling I2S with TXDMAEN, kick off first DMA transfer */
+        if (s->i2s_mode && (val & (1 << 10)) && (s->cr2 & (1 << 1)) && s->dma_tx)
+            s->dma_tx->request_pending = 1;
         break;
     case SPI_I2SPR:
         s->i2spr = val;
