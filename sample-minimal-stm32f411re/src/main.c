@@ -430,7 +430,7 @@ void main(void)
     sched_create_task(task_a,    "task_a", 1);
     sched_create_task(task_b,    "task_b", 1);
     sched_create_task(task_c,    "task_c", 1);
-    sched_create_task(task_audio,"audio",  0);
+    sched_create_task(task_audio,"audio",  1);
     sched_create_task(idle_task, "idle",   255);
 
     extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
