@@ -48,6 +48,26 @@ config GPIO_LEDS
     default y
     depends on GPIO
 
+config DISPLAY_ILI9341
+    bool "ILI9341 display driver"
+    default n
+    depends on SPI && GPIO
+
+config I2S_STM32
+    bool "STM32 I2S audio driver"
+    default n
+    depends on CLOCK
+
+config ADC_STM32
+    bool "STM32 ADC driver"
+    default n
+    depends on CLOCK
+
+config INPUT_EXTI
+    bool "EXTI button input driver"
+    default n
+    depends on GPIO
+
 config IPC_STM32H745
     bool "STM32H745 shared memory IPC"
     default n

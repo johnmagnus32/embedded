@@ -2,8 +2,6 @@
 #
 # Build this sample against the OS:
 #   cd sample-stm32f411re && make
-#
-# Like Zephyr: cd my-app && west build -b nucleo_f411re
 
 TC      = /home/johmagnu/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi
 CC      = $(TC)-gcc
@@ -16,16 +14,18 @@ OS      = ../os
 BUILD   = build
 
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -Og -g \
-          -I$(BUILD) -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
+          -I$(BUILD) -Isrc -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib \
           -I$(OS)/fs -I$(OS)/drivers -I$(OS)
 LDFLAGS = -T linker.ld -nostdlib
 
 # ---- Load .config ----
 -include $(BUILD)/config.mk
 
-# ---- Collect objects from OS ----
+# ---- Collect app objects (all src/*.c) ----
+APP_SRCS := $(wildcard src/*.c)
+OBJS := $(patsubst src/%.c,$(BUILD)/%.o,$(APP_SRCS))
 
-OBJS := $(BUILD)/main.o
+# ---- Collect objects from OS ----
 
 obj-y :=
 obj-n :=

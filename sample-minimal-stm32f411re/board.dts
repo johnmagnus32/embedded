@@ -1,4 +1,4 @@
-/* Minimal STM32F411RE — just enough for UART */
+/* STM32F411RE board — full device tree */
 
 / {
     clocks {
@@ -25,6 +25,13 @@
             status = "okay";
         };
 
+        gpiob: gpio@40020400 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020400>;
+            clocks = <&rcc 0 1>;
+            status = "okay";
+        };
+
         usart2: serial@40004400 {
             compatible = "st,stm32-usart";
             reg = <0x40004400>;
@@ -39,13 +46,52 @@
         spi1: spi@40013000 {
             compatible = "st,stm32-spi";
             reg = <0x40013000>;
+            clocks = <&rcc 2 12>;
+            sck-port = <&gpioa>;
+            sck-pin = <5>;
+            sck-af = <5>;
+            miso-port = <&gpioa>;
+            miso-pin = <6>;
+            miso-af = <5>;
+            mosi-port = <&gpioa>;
+            mosi-pin = <7>;
+            mosi-af = <5>;
+            status = "okay";
+
+            flash@0 {
+                cs-port = <&gpioa>;
+                cs-pin = <4>;
+            };
+        };
+
+        i2s2: i2s@40003800 {
+            compatible = "st,stm32-i2s";
+            reg = <0x40003800>;
+            clocks = <&rcc 1 14>;
             status = "okay";
         };
 
-        ili9341: display@0 {
+        adc1: adc@40012000 {
+            compatible = "st,stm32-adc";
+            reg = <0x40012000>;
+            clocks = <&rcc 2 8>;
+            channel = <0>;
+            status = "okay";
+        };
+
+        buttons: exti@40013C00 {
+            compatible = "st,stm32-exti";
+            reg = <0x40013C00>;
+            gpio-port = <&gpiob>;
+            pin-mask = <31>;
+            status = "okay";
+        };
+
+        ili9341: display@1 {
             compatible = "ilitek,ili9341";
-            spi-bus = <0x40013000>;
+            dc-port = <&gpioa>;
             dc-pin = <3>;
+            status = "okay";
         };
     };
 };
