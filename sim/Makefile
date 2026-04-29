@@ -15,7 +15,7 @@ SRCS = src/main.c \
        src/devices/ili9341.c src/devices/max98357a.c src/devices/trace_dev.c \
        src/soc/stm32f411.c \
        src/machine/gameboy.c src/machine/machine.c \
-       src/debug/dbg_server.c src/debug/dbg_cmd.c src/debug/dbg_eval.c src/debug/dbg_tasks.c src/debug/elf_sym.c
+       src/debug/dbg_server.c src/debug/dbg_cmd.c src/debug/dbg_eval.c src/debug/dbg_tasks.c src/core/elf_sym.c
 
 OBJS = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 HDRS = $(foreach d,$(SRC_DIRS),$(wildcard $(d)/*.h))
