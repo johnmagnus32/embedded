@@ -134,8 +134,8 @@ class WebDebugger:
         # Connect to display framebuffer stream
         self.display_sock = None
         self.display_frame = b''
-        self.display_w = 240
-        self.display_h = 320
+        self.display_w = 320
+        self.display_h = 240
         try:
             self.display_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.display_sock.connect(('127.0.0.1', DISPLAY_PORT))
