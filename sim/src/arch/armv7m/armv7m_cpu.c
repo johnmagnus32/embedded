@@ -777,6 +777,21 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
         return 0;
     }
 
+    /* STMIA.W (store multiple, increment after) */
+    if ((hi & 0xFFD0) == 0xE880) {
+        int rn = hi & 0xF;
+        int regs = lo;
+        uint32_t addr = c->r[rn];
+        for (int i = 0; i < 16; i++) {
+            if (regs & (1 << i)) {
+                membus_write32(bus, addr, c->r[i]);
+                addr += 4;
+            }
+        }
+        if (hi & 0x0020) c->r[rn] = addr; /* writeback */
+        return 0;
+    }
+
     /* LDMIA.W (pop multiple, increment after) */
     if ((hi & 0xFFD0) == 0xE890) {
         int rn = hi & 0xF;
