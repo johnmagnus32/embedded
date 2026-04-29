@@ -215,6 +215,7 @@ static int check_collision(int py, int obs_x[], int obs_gap[], int n)
 
 static void task_c(void)
 {
+    uart_print("task_c: init\n");
     lcd_cmd(0x36);
     lcd_data(0x20);
 
@@ -231,69 +232,44 @@ restart:;
         obs_gap[i] = 20 + (rng() % 20);
     }
 
-    /* Draw background */
+    uart_print("game start\n");
     lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
     lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
 
     while (1) {
         if (game_over) {
-            /* Game Over screen */
-            lcd_fill_rect(80, 80, 160, 60, RGB565(20, 20, 30));
-            /* "GAME OVER" text area */
-            lcd_fill_rect(110, 90, 100, 14, RED);
-            /* Score */
-            draw_number(140, 110, score, WHITE);
-            /* "Press A" hint */
-            lcd_fill_rect(120, 126, 80, 8, RGB565(50, 50, 70));
+            lcd_fill_rect(100, 100, 120, 40, RED);
             lcd_vsync();
-
-            /* Wait for A button */
             while (!btn_pressed()) sched_sleep_ms(33);
             while (btn_pressed()) sched_sleep_ms(33);
             goto restart;
         }
 
-        /* Input: A button = jump */
         if (btn_pressed() && on_ground) { vel_y = JUMP_VEL; on_ground = 0; }
-
-        /* Physics */
         vel_y += GRAVITY;
         player_y += vel_y;
         if (player_y >= GROUND_Y - PLAYER_H) { player_y = GROUND_Y - PLAYER_H; vel_y = 0; on_ground = 1; }
 
-        /* Clear player column */
+        /* Clear + draw player */
         lcd_fill_rect(PLAYER_X, 0, PLAYER_W, GROUND_Y, RGB565(30, 30, 50));
+        lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
 
         /* Move + draw obstacles */
         for (int i = 0; i < MAX_OBS; i++) {
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
                 lcd_fill_rect(obs_x[i], 0, OBS_W, GROUND_Y, RGB565(30, 30, 50));
-
             obs_x[i] -= SCROLL_SPEED;
             if (obs_x[i] < -OBS_W) {
                 obs_x[i] = SCR_W + (rng() % 100);
                 obs_gap[i] = 20 + (rng() % 20);
                 score++;
             }
-
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
                 lcd_fill_rect(obs_x[i], GROUND_Y - obs_gap[i], OBS_W, obs_gap[i], RED);
         }
 
-        /* Draw player */
-        lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
-        lcd_fill_rect(PLAYER_X + 10, player_y + 4, 3, 3, BLACK);
-
-        /* Score display */
-        draw_number(SCR_W - 40, 6, score, WHITE);
-
-        /* Collision check */
-        if (check_collision(player_y, obs_x, obs_gap, MAX_OBS)) {
+        if (check_collision(player_y, obs_x, obs_gap, MAX_OBS))
             game_over = 1;
-            uart_print("Game Over! Score: ");
-            print_int(score);
-            uart_print("\n");
-        }
 
         lcd_vsync();
         sched_sleep_ms(33);

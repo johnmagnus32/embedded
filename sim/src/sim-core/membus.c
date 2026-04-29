@@ -46,6 +46,7 @@ void membus_register_ram(struct membus *bus, uint32_t base, uint32_t size,
 
 static struct mem_region *find_region(struct membus *bus, uint32_t addr)
 {
+    if (!bus || bus->nregions < 0 || bus->nregions > MAX_REGIONS) return NULL;
     for (int i = 0; i < bus->nregions; i++) {
         struct mem_region *r = &bus->regions[i];
         if (addr >= r->base && addr < r->base + r->size)

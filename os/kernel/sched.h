@@ -16,7 +16,7 @@
 #include <stdint.h>
 
 #define MAX_TASKS 8
-#define TASK_STACK_SIZE 1024
+#define TASK_STACK_SIZE 4096
 
 typedef void (*task_fn)(void);
 
