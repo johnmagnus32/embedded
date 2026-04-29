@@ -771,19 +771,71 @@ if (colResize) {
 }
 let _displayBusy = false;
 let _fpsCount = 0, _fpsLast = performance.now();
-(function displayLoop() {
-  requestAnimationFrame(displayLoop);
-  if (_displayBusy) return;
-  _displayBusy = true;
-  _doRefreshDisplay().then(() => {
+
+// WebSocket display — server pushes frames
+const _wsUrl = 'ws://' + location.host + '/ws-display';
+let _ws = null;
+function connectDisplayWS() {
+  _ws = new WebSocket(_wsUrl);
+  _ws.binaryType = 'arraybuffer';
+  _ws.onmessage = (e) => {
+    const data = new Uint8Array(e.data);
+    const type = data[0]; // 0=full, 1=delta, 2=init
+    const payload = data.subarray(1);
+
+    if (type === 2) {
+      // Init: dimensions
+      const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const w = dv.getUint16(0, true), h = dv.getUint16(2, true);
+      if (w !== _lcdW || h !== _lcdH) {
+        _lcdCanvas.width = w; _lcdCanvas.height = h;
+        _lcdW = w; _lcdH = h;
+        _lcdImg = _lcdCtx.createImageData(w, h);
+        _lcdRaw = new Uint8Array(w * h * 2);
+      }
+      return;
+    }
+
+    if (!_lcdRaw) return;
+
+    if (type === 1) {
+      // Delta
+      const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      let off = 0;
+      while (off + 6 <= payload.byteLength) {
+        const start = dv.getUint32(off, true);
+        const len = dv.getUint16(off + 4, true);
+        off += 6;
+        _lcdRaw.set(payload.subarray(off, off + len), start);
+        off += len;
+      }
+    } else {
+      // Full frame
+      _lcdRaw.set(payload);
+    }
+
+    // Convert RGB565 → RGBA
+    const d = _lcdImg.data;
+    for (let i = 0, n = _lcdW * _lcdH; i < n; i++) {
+      const rgb565 = _lcdRaw[i*2] | (_lcdRaw[i*2+1] << 8);
+      const j = i * 4;
+      d[j]   = (rgb565 >> 8) & 0xF8;
+      d[j+1] = (rgb565 >> 3) & 0xFC;
+      d[j+2] = (rgb565 << 3) & 0xF8;
+      d[j+3] = 255;
+    }
+    _lcdCtx.putImageData(_lcdImg, 0, 0);
+
     _fpsCount++;
     const now = performance.now();
     if (now - _fpsLast >= 1000) {
       document.getElementById('hdr-cycles').textContent = `${_fpsCount} fps`;
       _fpsCount = 0; _fpsLast = now;
     }
-  }).finally(() => { _displayBusy = false; });
-})();
+  };
+  _ws.onclose = () => setTimeout(connectDisplayWS, 1000);
+}
+connectDisplayWS();
 </script>
 </body>
 </html>

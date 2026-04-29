@@ -10,7 +10,7 @@ POST /cmd   → forward command to sim-core, return response
 POST /log   → browser logs printed to terminal
 """
 
-import argparse, json, os, socket, select, subprocess, sys, threading, time
+import argparse, json, os, socket, select, subprocess, sys, threading, time, struct, hashlib, base64
 
 def log_web(msg):
     sys.stderr.write(f'[sim-web] {msg}\n')
@@ -156,8 +156,71 @@ class WebDebugger:
                             buf = buf[HEADER_SIZE + fsz:]
                     except: break
             threading.Thread(target=display_reader, daemon=True).start()
+
+            # WebSocket display push thread
+            self._ws_clients = []
+            self._ws_lock = threading.Lock()
+            self._prev_frame = None
+            def ws_push_loop():
+                while True:
+                    time.sleep(0.03)  # ~30fps max push rate
+                    raw = self.display_frame
+                    if not raw: continue
+                    prev = self._prev_frame
+                    if prev == raw: continue  # same frame object, skip
+                    self._prev_frame = raw
+                    # Build delta
+                    if prev and len(prev) == len(raw):
+                        delta = bytearray()
+                        i = 0; n = len(raw)
+                        while i < n:
+                            if raw[i] != prev[i]:
+                                start = i
+                                while i < n and i - start < 65535 and raw[i] != prev[i]: i += 1
+                                delta += struct.pack('<IH', start, i - start)
+                                delta += raw[start:i]
+                            else: i += 1
+                        payload = bytes([1]) + bytes(delta)  # 1 = delta
+                    else:
+                        payload = bytes([0]) + raw  # 0 = full frame
+                    # Push to all WS clients
+                    frame = self._ws_encode(payload)
+                    with self._ws_lock:
+                        dead = []
+                        for c in self._ws_clients:
+                            try: c.sendall(frame)
+                            except: dead.append(c)
+                        for c in dead: self._ws_clients.remove(c)
+            threading.Thread(target=ws_push_loop, daemon=True).start()
         except:
             log_web('Display not available')
+
+    def _ws_encode(self, data):
+        """Encode a WebSocket binary frame."""
+        b = bytearray([0x82])  # FIN + binary opcode
+        n = len(data)
+        if n < 126: b.append(n)
+        elif n < 65536: b.append(126); b += struct.pack('>H', n)
+        else: b.append(127); b += struct.pack('>Q', n)
+        return bytes(b) + data
+
+    def _ws_upgrade(self, conn, headers):
+        """Perform WebSocket handshake."""
+        key = None
+        for line in headers.split('\r\n'):
+            if line.lower().startswith('sec-websocket-key:'):
+                key = line.split(':', 1)[1].strip()
+        if not key: return False
+        accept = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-5AB5DC525C75').encode()).digest()).decode()
+        resp = (f'HTTP/1.1 101 Switching Protocols\r\n'
+                f'Upgrade: websocket\r\nConnection: Upgrade\r\n'
+                f'Sec-WebSocket-Accept: {accept}\r\n\r\n')
+        conn.sendall(resp.encode())
+        # Send initial full frame with dimensions header
+        ew = self.display_w; eh = self.display_h
+        init = struct.pack('<HH', ew, eh)  # 4-byte dimensions header
+        conn.sendall(self._ws_encode(bytes([2]) + init))  # 2 = init
+        return True
 
     def _recv_line(self):
         """Read one newline-terminated JSON line from sim-core."""
@@ -235,6 +298,12 @@ class WebDebugger:
                     import json as _json
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"uart": self.uart_buf}))
+
+                elif req.startswith('GET /ws-display'):
+                    if self._ws_upgrade(conn, data):
+                        with self._ws_lock:
+                            self._ws_clients.append(conn)
+                        continue  # don't close conn
 
                 elif req.startswith('GET /display'):
                     raw = self.display_frame
