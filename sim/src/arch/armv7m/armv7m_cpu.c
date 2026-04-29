@@ -829,6 +829,28 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
     /* ISB / DSB / DMB */
     if ((hi & 0xFFF0) == 0xF3B0) return 0;
 
+    /* UBFX: unsigned bit field extract */
+    if ((hi & 0xFFF0) == 0xF3C0) {
+        int rn = hi & 0xF;
+        int rd = (lo >> 8) & 0xF;
+        int lsb = ((lo >> 12) & 7) << 2 | ((lo >> 6) & 3);
+        int width = (lo & 0x1F) + 1;
+        c->r[rd] = (c->r[rn] >> lsb) & ((1u << width) - 1);
+        return 0;
+    }
+
+    /* SBFX: signed bit field extract */
+    if ((hi & 0xFFF0) == 0xF340) {
+        int rn = hi & 0xF;
+        int rd = (lo >> 8) & 0xF;
+        int lsb = ((lo >> 12) & 7) << 2 | ((lo >> 6) & 3);
+        int width = (lo & 0x1F) + 1;
+        uint32_t val = (c->r[rn] >> lsb) & ((1u << width) - 1);
+        if (val & (1u << (width - 1))) val |= ~((1u << width) - 1); /* sign extend */
+        c->r[rd] = val;
+        return 0;
+    }
+
     /* UDIV / SDIV */
     if ((hi & 0xFFF0) == 0xFBB0) { /* UDIV */
         int rn = hi & 0xF;
