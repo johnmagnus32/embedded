@@ -325,6 +325,10 @@ class WebDebugger:
 
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):
+                        # Send init message with display dimensions
+                        ew = self.display_w; eh = self.display_h
+                        init = bytes([2]) + struct.pack('<HH', ew, eh)
+                        conn.sendall(self._ws_encode(init))
                         with self._ws_lock:
                             self._ws_clients.append(conn)
                         continue  # don't close conn
