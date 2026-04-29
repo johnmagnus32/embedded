@@ -14,6 +14,7 @@
 #include "drivers/gpio.h"
 #include "sched.h"
 #include "heap.h"
+#include "log.h"
 #include "app.h"
 
 DEVICE_DT_DECLARE(usart2);
@@ -52,12 +53,14 @@ void main(void)
     dev_gpiob = DEVICE_DT_GET(gpiob);
 
     heap_init(&_heap_start, (size_t)&_heap_size);
+    log_init();
 
     /* Configure button pins and register EXTI callbacks */
     buttons_init();
 
     uart_print("start\n");
 
+    sched_create_task(log_task,   "log",    0);
     sched_create_task(task_a,     "task_a", 1);
     sched_create_task(task_b,     "task_b", 1);
     sched_create_task(task_game,  "game",   1);

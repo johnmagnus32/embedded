@@ -3,15 +3,13 @@
  */
 
 #include "sched.h"
-#include "app.h"
+#include "log.h"
 
 void task_a(void)
 {
     int count = 0;
     while (1) {
-        uart_print("a:");
-        print_int(count++);
-        uart_print("\n");
+        log_printf("a:%d", count++);
         sched_sleep_ms(1000);
     }
 }
@@ -20,9 +18,7 @@ void task_b(void)
 {
     int count = 0;
     while (1) {
-        uart_print("b:");
-        print_int(count++);
-        uart_print("\n");
+        log_printf("b:%d", count++);
         sched_sleep_ms(1000);
     }
 }
