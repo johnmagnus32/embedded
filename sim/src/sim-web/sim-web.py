@@ -252,7 +252,7 @@ class WebDebugger:
                                     start = i
                                     while i < n and i - start < 65535 and raw[i] != prev[i]:
                                         i += 1
-                                    delta += struct.pack('<HH', start, i - start)
+                                    delta += struct.pack('<IH', start, i - start)
                                     delta += raw[start:i]
                                 else:
                                     i += 1

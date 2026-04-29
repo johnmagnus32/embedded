@@ -350,10 +350,10 @@ async function _doRefreshDisplay() {
       // Apply delta patches to _lcdRaw
       const dv = new DataView(buf);
       let off = 0;
-      while (off + 4 <= buf.byteLength) {
-        const start = dv.getUint16(off, true);
-        const len = dv.getUint16(off + 2, true);
-        off += 4;
+      while (off + 6 <= buf.byteLength) {
+        const start = dv.getUint32(off, true);
+        const len = dv.getUint16(off + 4, true);
+        off += 6;
         const patch = new Uint8Array(buf, off, len);
         _lcdRaw.set(patch, start);
         off += len;
