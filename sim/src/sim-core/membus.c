@@ -46,11 +46,16 @@ void membus_register_ram(struct membus *bus, uint32_t base, uint32_t size,
 
 static struct mem_region *find_region(struct membus *bus, uint32_t addr)
 {
-    if (!bus || bus->nregions < 0 || bus->nregions > MAX_REGIONS) return NULL;
+    /* Fast path: check last-used region first */
+    if (bus->last_region && addr >= bus->last_region->base &&
+        addr < bus->last_region->base + bus->last_region->size)
+        return bus->last_region;
     for (int i = 0; i < bus->nregions; i++) {
         struct mem_region *r = &bus->regions[i];
-        if (addr >= r->base && addr < r->base + r->size)
+        if (addr >= r->base && addr < r->base + r->size) {
+            bus->last_region = r;
             return r;
+        }
     }
     return NULL;
 }

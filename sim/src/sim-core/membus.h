@@ -21,6 +21,7 @@ struct mem_region {
 struct membus {
     struct mem_region regions[MAX_REGIONS];
     int nregions;
+    struct mem_region *last_region; /* cache for fast path */
 };
 
 void     membus_init(struct membus *bus);
