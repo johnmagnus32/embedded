@@ -406,7 +406,6 @@ static void task_audio(void)
             i2s_sample(s, s);
         }
         note_idx = (note_idx + 1) % MELODY_LEN;
-        sched_sleep_ms(1); /* yield to other tasks between notes */
     }
 }
 
