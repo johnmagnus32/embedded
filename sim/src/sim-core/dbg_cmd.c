@@ -176,7 +176,9 @@ void dbg_dispatch(int fd, struct sim_ctx *ctx, const char *line)
         int orig_line; line_lookup(ctx->cpu->r[REG_PC], &orig_line);
         do {
             uint16_t insn = membus_read16(ctx->bus, ctx->cpu->r[REG_PC]);
-            int is_bl = (insn & 0xF800) == 0xF000;
+            uint16_t insn2 = membus_read16(ctx->bus, ctx->cpu->r[REG_PC] + 2);
+            /* BL: first halfword 0xF___  with second halfword bit[14:12] = 1x1 */
+            int is_bl = (insn & 0xF800) == 0xF000 && (insn2 & 0xD000) == 0xD000;
             if (is_bl) {
                 int old_nbp = nbp;
                 breakpoints[nbp++] = ctx->cpu->r[REG_PC] + 4;
