@@ -66,12 +66,20 @@ class WebDebugger:
             self.uart_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.uart_sock.connect(('127.0.0.1', UART_PORT))
             log_web(f'Connected to UART on port {UART_PORT}')
+            self._ws_uart_clients = []
             def uart_reader():
                 while True:
                     try:
                         data = self.uart_sock.recv(4096)
                         if not data: break
                         self.uart_buf += data.decode(errors='replace')
+                        # Push to WebSocket UART clients
+                        frame = self._ws_encode(data)  # send raw bytes as binary
+                        dead = []
+                        for c in self._ws_uart_clients:
+                            try: c.sendall(frame)
+                            except: dead.append(c)
+                        for c in dead: self._ws_uart_clients.remove(c)
                     except: break
             threading.Thread(target=uart_reader, daemon=True).start()
         except:
@@ -306,6 +314,14 @@ class WebDebugger:
                     import json as _json
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"uart": self.uart_buf}))
+
+                elif req.startswith('GET /ws-uart'):
+                    if self._ws_upgrade(conn, data):
+                        # Send existing buffer as initial data
+                        if self.uart_buf:
+                            conn.sendall(self._ws_encode(self.uart_buf.encode()))
+                        self._ws_uart_clients.append(conn)
+                        continue
 
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):

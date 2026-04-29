@@ -146,22 +146,31 @@ async function refreshUI(stopInfo) {
   }).catch(() => {});
 }
 
-// Poll UART independently
-async function pollUart() {
-  try {
-    const r = await fetch('/uart');
-    if (r.ok) {
-      const u = await r.json();
-      if (u.uart) {
-        const el = document.getElementById('uart');
-        el.textContent = u.uart;
-        el.scrollTop = el.scrollHeight;
-      }
+// UART via WebSocket — instant character delivery
+(function() {
+  const uartEl = document.getElementById('uart');
+  const ws = new WebSocket('ws://' + location.host + '/ws-uart');
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = (e) => {
+    const text = new TextDecoder().decode(e.data);
+    uartEl.textContent += text;
+    uartEl.scrollTop = uartEl.scrollHeight;
+  };
+  ws.onclose = () => setTimeout(() => {
+    // Fallback to HTTP polling if WS dies
+    async function pollUart() {
+      try {
+        const r = await fetch('/uart');
+        if (r.ok) {
+          const u = await r.json();
+          if (u.uart) { uartEl.textContent = u.uart; uartEl.scrollTop = uartEl.scrollHeight; }
+        }
+      } catch(e) {}
+      setTimeout(pollUart, 300);
     }
-  } catch(e) {}
-  setTimeout(pollUart, 300);
-}
-pollUart();
+    pollUart();
+  }, 1000);
+})();
 
 async function sendCmd(cmd) {
   log(`<span style="color:#c9d1d9">(dbg) ${esc(cmd)}</span>`);
