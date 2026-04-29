@@ -219,7 +219,9 @@ static void task_c(void)
     lcd_cmd(0x36);
     lcd_data(0x20);
 
-restart:;
+    uart_print("game start\n");
+
+    for (;;) { /* outer loop for restart */
     int player_y = GROUND_Y - PLAYER_H;
     int vel_y = 0;
     int on_ground = 1;
@@ -232,29 +234,20 @@ restart:;
         obs_gap[i] = 20 + (rng() % 20);
     }
 
-    uart_print("game start\n");
     lcd_fill_rect(0, 0, SCR_W, GROUND_Y, RGB565(30, 30, 50));
     lcd_fill_rect(0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50, 120, 50));
 
-    while (1) {
-        if (game_over) {
-            lcd_fill_rect(100, 100, 120, 40, RED);
-            lcd_vsync();
-            while (!btn_pressed()) sched_sleep_ms(33);
-            while (btn_pressed()) sched_sleep_ms(33);
-            goto restart;
-        }
+    while (!game_over) {
+        /* game_over block disabled for testing */
 
         if (btn_pressed() && on_ground) { vel_y = JUMP_VEL; on_ground = 0; }
         vel_y += GRAVITY;
         player_y += vel_y;
         if (player_y >= GROUND_Y - PLAYER_H) { player_y = GROUND_Y - PLAYER_H; vel_y = 0; on_ground = 1; }
 
-        /* Clear + draw player */
         lcd_fill_rect(PLAYER_X, 0, PLAYER_W, GROUND_Y, RGB565(30, 30, 50));
         lcd_fill_rect(PLAYER_X, player_y, PLAYER_W, PLAYER_H, YELLOW);
 
-        /* Move + draw obstacles */
         for (int i = 0; i < MAX_OBS; i++) {
             if (obs_x[i] >= 0 && obs_x[i] < SCR_W)
                 lcd_fill_rect(obs_x[i], 0, OBS_W, GROUND_Y, RGB565(30, 30, 50));
@@ -273,7 +266,14 @@ restart:;
 
         lcd_vsync();
         sched_sleep_ms(33);
-    }
+    } /* end while (!game_over) */
+
+    /* Game over screen */
+    lcd_fill_rect(100, 100, 120, 40, RED);
+    lcd_vsync();
+    while (!btn_pressed()) sched_sleep_ms(33);
+    while (btn_pressed()) sched_sleep_ms(33);
+    } /* end for(;;) restart loop */
 }
 
 static void idle_task(void)
