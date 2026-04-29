@@ -5,7 +5,6 @@ Spawns sim-core, connects via TCP, serves HTML UI.
 Browser sends commands via HTTP, sim-web forwards to sim-core over TCP.
 
 GET /       → HTML UI
-GET /uart   → UART state from file
 POST /cmd   → forward command to sim-core, return response
 POST /log   → browser logs printed to terminal
 """
@@ -34,6 +33,7 @@ class WebDebugger:
         self.sim = None
         self.sim_sock = None
         self.last_state = '{}'
+        self._ws_status_client = None
 
     def start_sim(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -261,8 +261,13 @@ class WebDebugger:
         def reader():
             resp = self._recv_line()
             self.last_state = resp
-            self._async_resp = resp
-        self._async_resp = None
+            c = self._ws_status_client
+            if c:
+                try:
+                    c.sendall(self._ws_encode(resp.encode()))
+                except:
+                    self._ws_status_client = None
+        self._ws_status_client = getattr(self, '_ws_status_client', None)
         threading.Thread(target=reader, daemon=True).start()
 
     def http_response(self, conn, status, content_type, body):
@@ -310,11 +315,6 @@ class WebDebugger:
                     self.http_response(conn, '200 OK', 'application/json',
                         _json.dumps({"timeline": self.trace_events[-512:], "heap": heap}))
 
-                elif req.startswith('GET /uart'):
-                    import json as _json
-                    self.http_response(conn, '200 OK', 'application/json',
-                        _json.dumps({"uart": self.uart_buf}))
-
                 elif req.startswith('GET /ws-uart'):
                     if self._ws_upgrade(conn, data):
                         # Send existing buffer as initial data
@@ -329,50 +329,6 @@ class WebDebugger:
                             self._ws_clients.append(conn)
                         continue  # don't close conn
 
-                elif req.startswith('GET /display'):
-                    raw = self.display_frame
-                    if raw:
-                        prev = getattr(self, '_http_prev_frame', None)
-                        if prev and len(prev) == len(raw):
-                            delta = bytearray()
-                            i = 0
-                            n = len(raw)
-                            while i < n:
-                                if raw[i] != prev[i]:
-                                    start = i
-                                    while i < n and i - start < 65535 and raw[i] != prev[i]:
-                                        i += 1
-                                    delta += struct.pack('<IH', start, i - start)
-                                    delta += raw[start:i]
-                                else:
-                                    i += 1
-                            self._http_prev_frame = raw
-                            ew = getattr(self, 'display_w', 240)
-                            eh = getattr(self, 'display_h', 320)
-                            hdr = (f'HTTP/1.1 200 OK\r\n'
-                                   f'Content-Type: application/octet-stream\r\n'
-                                   f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
-                                   f'X-Delta: 1\r\n'
-                                   f'Content-Length: {len(delta)}\r\n'
-                                   f'Access-Control-Expose-Headers: X-Width, X-Height, X-Delta\r\n'
-                                   f'\r\n').encode()
-                            conn.sendall(hdr)
-                            conn.sendall(bytes(delta))
-                        else:
-                            self._http_prev_frame = raw
-                            ew = getattr(self, 'display_w', 240)
-                            eh = getattr(self, 'display_h', 320)
-                            hdr = (f'HTTP/1.1 200 OK\r\n'
-                                   f'Content-Type: application/octet-stream\r\n'
-                                   f'X-Width: {ew}\r\nX-Height: {eh}\r\n'
-                                   f'Content-Length: {len(raw)}\r\n'
-                                   f'Access-Control-Expose-Headers: X-Width, X-Height\r\n'
-                                   f'\r\n').encode()
-                            conn.sendall(hdr)
-                            conn.sendall(raw)
-                    else:
-                        self.http_response(conn, '200 OK', 'application/json', '{"w":0,"h":0}')
-
                 elif req.startswith('POST /gpio'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     try:
@@ -380,13 +336,10 @@ class WebDebugger:
                     except: pass
                     self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
 
-                elif req.startswith('GET /status'):
-                    resp = getattr(self, '_async_resp', None)
-                    if resp:
-                        self._async_resp = None
-                        self.http_response(conn, '200 OK', 'application/json', resp)
-                    else:
-                        self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
+                elif req.startswith('GET /ws-status'):
+                    if self._ws_upgrade(conn, data):
+                        self._ws_status_client = conn
+                        continue
 
                 elif req.startswith('POST /cmd'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''

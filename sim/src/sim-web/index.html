@@ -157,18 +157,11 @@ async function refreshUI(stopInfo) {
     uartEl.scrollTop = uartEl.scrollHeight;
   };
   ws.onclose = () => setTimeout(() => {
-    // Fallback to HTTP polling if WS dies
-    async function pollUart() {
-      try {
-        const r = await fetch('/uart');
-        if (r.ok) {
-          const u = await r.json();
-          if (u.uart) { uartEl.textContent = u.uart; uartEl.scrollTop = uartEl.scrollHeight; }
-        }
-      } catch(e) {}
-      setTimeout(pollUart, 300);
-    }
-    pollUart();
+    // Reconnect WebSocket
+    const ws2 = new WebSocket('ws://' + location.host + '/ws-uart');
+    ws2.binaryType = 'arraybuffer';
+    ws2.onmessage = ws.onmessage;
+    ws2.onclose = ws.onclose;
   }, 1000);
 })();
 
@@ -223,12 +216,11 @@ async function sendCmd(cmd) {
     // Async commands (continue/run) return {running:true} — poll for stop
     if (resp.running) {
       log('<span style="color:#484f58">Running...</span>');
-      // Clear source highlight and show running indicator
       document.querySelectorAll('.src-line.current').forEach(el => el.classList.remove('current'));
       const cur = document.getElementById('cur-line');
       if (cur) cur.removeAttribute('id');
       document.getElementById('hdr-func').textContent = '▶ Running...';
-      const stop = await pollForStop();
+      const stop = await new Promise(resolve => { _wsStatus.onmessage = (e) => resolve(JSON.parse(e.data)); });
       if (stop) await refreshUI(stop);
       return;
     }
@@ -240,16 +232,12 @@ async function sendCmd(cmd) {
 }
 let _lastStop = null, _refreshSeq = 0;
 
-async function pollForStop() {
-  while (true) {
-    await new Promise(r => setTimeout(r, 100));
-    try {
-      const r = await fetch('/status');
-      const d = await r.json();
-      if (d.pc !== undefined) return d;
-    } catch(e) {}
-  }
+let _wsStatus;
+function connectStatusWS() {
+  _wsStatus = new WebSocket('ws://' + location.host + '/ws-status');
+  _wsStatus.onclose = () => setTimeout(connectStatusWS, 1000);
 }
+connectStatusWS();
 
 // Initial load — show connected, wait for user commands
 (async () => {
@@ -327,65 +315,12 @@ async function toggleBp(line) {
   const dots = document.querySelectorAll('.src-line .bp');
   if (dots[line - 1]) dots[line - 1].innerHTML = bpLines.has(line) ? '<span style="color:#f85149">●</span>' : ' ';
 }
-let _displayTimer = null;
-function refreshDisplay() {
-  if (_displayTimer) clearTimeout(_displayTimer);
-  _displayTimer = setTimeout(_doRefreshDisplay, 100);
-}
 const _lcdCanvas = document.getElementById('lcd');
 const _lcdCtx = _lcdCanvas.getContext('2d');
 let _lcdImg = null;
 let _lcdW = 0, _lcdH = 0;
 let _lcdRaw = null; // raw RGB565 buffer for delta patching
 
-async function _doRefreshDisplay() {
-  _displayTimer = null;
-  try {
-    const r = await fetch('/display');
-    const w = parseInt(r.headers.get('X-Width') || '0');
-    const h = parseInt(r.headers.get('X-Height') || '0');
-    if (!w || !h) return;
-    const isDelta = r.headers.get('X-Delta') === '1';
-    const buf = await r.arrayBuffer();
-
-    if (w !== _lcdW || h !== _lcdH) {
-      _lcdCanvas.width = w; _lcdCanvas.height = h;
-      _lcdW = w; _lcdH = h;
-      _lcdImg = _lcdCtx.createImageData(w, h);
-      _lcdRaw = new Uint8Array(w * h * 2);
-    }
-
-    if (isDelta) {
-      // Apply delta patches to _lcdRaw
-      const dv = new DataView(buf);
-      let off = 0;
-      while (off + 6 <= buf.byteLength) {
-        const start = dv.getUint32(off, true);
-        const len = dv.getUint16(off + 4, true);
-        off += 6;
-        const patch = new Uint8Array(buf, off, len);
-        _lcdRaw.set(patch, start);
-        off += len;
-      }
-    } else {
-      // Full frame
-      _lcdRaw.set(new Uint8Array(buf));
-    }
-
-    // Convert RGB565 → RGBA
-    const d = _lcdImg.data;
-    const src = _lcdRaw;
-    for (let i = 0, n = w * h; i < n; i++) {
-      const rgb565 = src[i*2] | (src[i*2+1] << 8);
-      const j = i * 4;
-      d[j]   = (rgb565 >> 8) & 0xF8;
-      d[j+1] = (rgb565 >> 3) & 0xFC;
-      d[j+2] = (rgb565 << 3) & 0xF8;
-      d[j+3] = 255;
-    }
-    _lcdCtx.putImageData(_lcdImg, 0, 0);
-  } catch(e) {}
-}
 const regions = [
   { name:'SRAM',         base:0x20000000, size:128*1024,  color:'#8b949e' },
 ];
@@ -778,7 +713,6 @@ if (colResize) {
     document.addEventListener('mouseup', onUp);
   });
 }
-let _displayBusy = false;
 let _fpsCount = 0, _fpsLast = performance.now();
 let _wsConnected = false;
 
@@ -851,14 +785,6 @@ function connectDisplayWS() {
   _ws.onerror = () => { _wsConnected = false; };
 }
 connectDisplayWS();
-
-// HTTP polling fallback when WebSocket is down
-(function displayLoop() {
-  requestAnimationFrame(displayLoop);
-  if (_wsConnected || _displayBusy) return;
-  _displayBusy = true;
-  _doRefreshDisplay().finally(() => { _displayBusy = false; });
-})();
 </script>
 </body>
 </html>
