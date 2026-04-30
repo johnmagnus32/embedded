@@ -176,7 +176,9 @@ class WebDebugger:
                             self.display_h = eh
                             self.display_frame = buf[HEADER_SIZE:HEADER_SIZE + fsz]
                             buf = buf[HEADER_SIZE + fsz:]
+                            self._frame_event.set()
                     except: break
+            self._frame_event = threading.Event()
             threading.Thread(target=display_reader, daemon=True).start()
 
             # WebSocket display push thread
@@ -185,7 +187,8 @@ class WebDebugger:
             self._prev_frame = None
             def ws_push_loop():
                 while True:
-                    time.sleep(0.03)
+                    self._frame_event.wait()
+                    self._frame_event.clear()
                     raw = self.display_frame
                     if not raw: continue
                     prev = self._prev_frame
