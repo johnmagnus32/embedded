@@ -12,6 +12,7 @@ struct sim_ctx {
     struct membus *bus;
     uint8_t **flash;
     uint8_t **ram;
+    struct chardev_table *chardevs;
 };
 
 void dbg_server_run(struct sim_ctx *ctx, int port);

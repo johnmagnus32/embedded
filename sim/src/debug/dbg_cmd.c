@@ -46,7 +46,8 @@ static void run_until_bp(int fd, struct sim_ctx *ctx)
                 double elapsed = (now.tv_sec - last_ts.tv_sec)
                                + (now.tv_nsec - last_ts.tv_nsec) / 1e9;
                 double mips = (ctx->cpu->cycle_count - last_cycles) / elapsed / 1e6;
-                fprintf(stderr, "\r[perf] %.1f MIPS ", mips);
+                uint32_t tc = membus_read32(ctx->bus, 0x20000034);
+                fprintf(stderr, "\r[perf] %.1f MIPS tc=%u ", mips, tc);
             }
             last_cycles = ctx->cpu->cycle_count;
             last_ts = now;
@@ -147,6 +148,7 @@ void dbg_dispatch(int fd, struct sim_ctx *ctx, const char *line)
             int cur_line; line_lookup(ctx->cpu->r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
+        chardev_flush_all(ctx->chardevs);
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "next\"", 5) == 0) {
@@ -167,15 +169,18 @@ void dbg_dispatch(int fd, struct sim_ctx *ctx, const char *line)
             int cur_line; line_lookup(ctx->cpu->r[REG_PC], &cur_line);
             if (cur_line > 0 && cur_line != orig_line) break;
         } while (1);
+        chardev_flush_all(ctx->chardevs);
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "continue\"", 9) == 0) {
         run_until_bp(fd, ctx);
+        chardev_flush_all(ctx->chardevs);
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "run\"", 4) == 0) {
         armv7m_cpu_reset(ctx->cpu, ctx->bus);
         run_until_bp(fd, ctx);
+        chardev_flush_all(ctx->chardevs);
         send_stop_info(fd, ctx->cpu);
 
     } else if (strncmp(cmd, "break\"", 6) == 0) {

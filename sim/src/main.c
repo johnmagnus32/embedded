@@ -97,6 +97,7 @@ int main(int argc, char **argv)
     struct sim_ctx ctx = {
         .mach = mach, .board = board,
         .cpu = cpu, .bus = bus, .flash = flash, .ram = ram,
+        .chardevs = no_chardev ? NULL : &chardevs,
     };
 
     dbg_server_run(&ctx, debug_port);
