@@ -7,8 +7,7 @@
 #include "app.h"
 #include "drivers/audio.h"
 #include "drivers/adc.h"
-#include "sched.h"
-#include "sync.h"
+#include "trace.h"
 
 #define NOTE_C4  262
 #define NOTE_D4  294
@@ -58,6 +57,7 @@ static int16_t square_sample(uint32_t p, uint16_t freq)
 /* Called from DMA ISR context via I2S driver */
 static void fill_audio(int16_t *buf, int count, void *user_data)
 {
+    trace_begin("audio_fill");
     (void)user_data;
 
     for (int i = 0; i < count; i++) {
@@ -94,14 +94,10 @@ static void fill_audio(int16_t *buf, int count, void *user_data)
         if ((uint32_t)count >= sfx_samples)
             sfx_active = 0;
     }
+    trace_end();
 }
 
-void task_audio(void)
+void start_audio(void)
 {
-    uart_print("audio: start\n");
     audio_start(audio_dev, fill_audio, 0);
-
-    /* DMA runs autonomously; nothing more to do */
-    while (1)
-        sched_yield();
 }
