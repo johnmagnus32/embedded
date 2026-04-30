@@ -134,3 +134,44 @@ only runs ~90 times/sec (every 10K ticks when wall clock says samples are due).
 
 3. **Inline hot membus paths** — membus_read16/read32/write32 total ~6%,
    could be reduced with inlining or direct RAM access for known address ranges
+
+## Display FPS Measurements (Full Stack, 15 seconds)
+
+### Test 1: With audio
+```
+[display] 59.8 FPS | min=9.7ms avg=16.7ms max=17.6ms | glitches: 0/30
+[display] 57.4 FPS | min=17.1ms avg=17.4ms max=17.6ms | glitches: 0/30
+[display] 37.3 FPS | min=18.2ms avg=26.8ms max=32.2ms | glitches: 0/30
+```
+
+### Test 2: Without audio
+```
+[display] 65.1 FPS | min=9.0ms avg=15.4ms max=16.1ms | glitches: 0/30
+[display] 62.4 FPS | min=16.0ms avg=16.0ms max=16.1ms | glitches: 0/30
+[display] 40.7 FPS | min=16.7ms avg=24.5ms max=29.4ms | glitches: 0/30
+```
+
+### Summary
+
+| Metric | With audio | Without audio | Delta |
+|--------|-----------|---------------|-------|
+| Steady FPS | 57 | 62 | -8% |
+| Avg interval | 17.4ms | 16.0ms | +1.4ms |
+| Max interval | 32.2ms | 29.4ms | +2.8ms |
+| Glitches | 0 | 0 | — |
+
+### Conclusion
+
+The FPS difference between audio and no-audio is only ~8% (57 vs 62 FPS).
+Both configurations show zero glitches (no frame > 2× average). The initial
+burst is faster (~60 FPS) because the game draws the first background fill
+which is a single large fill_rect. Steady state settles to ~37-40 FPS as
+the game loop draws obstacles, player, and text (many small fill_rects).
+
+The perceived choppiness is likely from the FPS dropping from 57 to 37 as
+the game scene becomes more complex (more fill_rect calls per frame), not
+from audio interrupts. The max interval of 32ms with audio vs 29ms without
+is only a 3ms difference — barely perceptible.
+
+The audio ISR adds ~1.4ms per frame interval on average, consistent with
+the 6.3% CPU usage seen in the trace timeline.

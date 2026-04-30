@@ -1,0 +1,12 @@
+[chardev] usart2 listening on port 9002
+[chardev] display listening on port 9004
+[chardev] audio listening on port 9005
+[board] USART2 chardev wired
+[board] ILI9341 on SPI1, DC=PA3, CS=PA4
+[board] MAX98357A on DMA1_S4, chardev=audio
+[sim-core] DWARF: task_tcb size=32 sp@0 name@4
+[sim-core] DWARF: 474 vars, 512 types extracted
+[sim-core] Loaded /local/home/johmagnu/learning/simple-stm32/sim/../projects/gameboy/build/gameboy.elf
+[sim-core] Debug server on port 9001
+[sim-core] Debug client connected
+[sim-core] CMD: {"cmd":"continue"}

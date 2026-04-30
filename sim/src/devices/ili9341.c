@@ -161,9 +161,10 @@ void ili9341_flush(struct ili9341 *d)
         if (ms > dperf.max_ms) dperf.max_ms = ms;
         double avg = dperf.sum_ms / dperf.window_frames;
         if (ms > avg * 2 && dperf.window_frames > 5) dperf.glitch_count++;
-        if (dperf.window_frames >= 100) {
-            fprintf(stderr, "[display] %.1f FPS | min=%.1fms avg=%.1fms max=%.1fms | glitches: %d/100\n",
-                    1000.0 / avg, dperf.min_ms, avg, dperf.max_ms, dperf.glitch_count);
+        if (dperf.window_frames >= 30) {
+            fprintf(stderr, "[display] %.1f FPS | min=%.1fms avg=%.1fms max=%.1fms | glitches: %d/%d\n",
+                    1000.0 / avg, dperf.min_ms, avg, dperf.max_ms, dperf.glitch_count, dperf.window_frames);
+            fflush(stderr);
             dperf.min_ms = dperf.max_ms = dperf.sum_ms = 0;
             dperf.glitch_count = dperf.window_frames = 0;
         }
