@@ -186,9 +186,9 @@ sim-core ili9341_flush → TCP chardev → sim-web.py → WebSocket → browser
          Point 1                Point 2              Point 3
 ```
 
-### Run 1: sim-core with chardev consumer (20 seconds, with audio)
+### Run 1: sim-core only, chardev direct (20s, with audio)
 
-**Point 1: ili9341_flush (sim-core stderr)**
+**Point 1: ili9341_flush**
 ```
 [display] 59.5 FPS | min=9.7ms avg=16.8ms max=18.3ms | glitches: 0/30
 [display] 57.3 FPS | min=17.0ms avg=17.5ms max=18.0ms | glitches: 0/30
@@ -197,12 +197,66 @@ sim-core ili9341_flush → TCP chardev → sim-web.py → WebSocket → browser
 
 **Point 2: Chardev TCP direct**
 ```
-Total frames: 93
-Average FPS: 46.9
+Total frames: 93, Average FPS: 46.9
 Interval: min=9.6ms avg=21.3ms max=98.9ms stddev=9.7ms
 Glitches (>2x avg): 1/92 (1.1%)
-Longest gap: 98.9ms at t=3.1s (frame 92)
 ```
+
+### Run 2: Full stack via sim-web.py (20s, with audio)
+
+**Point 1: ili9341_flush**
+```
+[display] 42.7 FPS | min=13.9ms avg=23.4ms max=25.5ms | glitches: 0/30
+[display] 41.0 FPS | min=23.4ms avg=24.4ms max=25.5ms | glitches: 0/30
+[display] 26.1 FPS | min=26.0ms avg=38.3ms max=45.5ms | glitches: 0/30
+```
+
+**Point 3: WebSocket /ws-display**
+```
+Total frames: 45, Average FPS: 21.2
+Interval: min=30.8ms avg=47.3ms max=137.8ms stddev=14.9ms
+Glitches (>2x avg): 1/44 (2.3%)
+```
+
+### Comparison
+
+| Metric | Run 1 Point 1 | Run 1 Point 2 | Run 2 Point 1 | Run 2 Point 3 |
+|--------|--------------|---------------|---------------|---------------|
+| | (flush, core only) | (chardev direct) | (flush, full stack) | (WebSocket) |
+| Frames (20s) | ~90 | 93 | ~90 | 45 |
+| Steady FPS | 37-57 | 46.9 | 26-42 | 21.2 |
+| Max interval | 32.2ms | 98.9ms | 45.5ms | 137.8ms |
+| Glitches | 0 | 1.1% | 0 | 2.3% |
+
+### Analysis
+
+**sim-core only vs full stack:**
+Point 1 FPS drops from 57→42 (initial) and 37→26 (steady) when sim-web.py
+is running. sim-web.py's display_reader, WebSocket push loop, trace reader,
+and UART reader threads compete for host CPU with sim-core.
+
+**Point 1 vs Point 3 (full stack):**
+Point 1 produces ~90 frames but Point 3 only receives 45. The WebSocket
+push loop runs at 30ms intervals (`time.sleep(0.03)`) and skips frames
+if the display hasn't changed. It also does delta compression. So ~50%
+of frames are dropped by design — the push loop sends at most ~33 FPS.
+
+**Where frames are lost:**
+- sim-core → chardev TCP: 0% loss (Run 1: 90 produced ≈ 93 received)
+- sim-web.py push loop: ~50% dropped (by design — 30ms sleep between pushes)
+- WebSocket delivery: ~0% loss (what's pushed is received)
+
+### Conclusion
+
+The display pipeline has two bottlenecks:
+1. **sim-web.py overhead** reduces sim-core throughput by ~30% (57→42 FPS)
+   due to Python threads competing for host CPU
+2. **WebSocket push loop** caps delivery at ~33 FPS by design (30ms sleep)
+   and drops intermediate frames
+
+The emulator produces frames faster than the browser receives them.
+The perceived choppiness is from the 30ms push interval creating
+uneven frame delivery, not from audio.
 
 ### Analysis
 
