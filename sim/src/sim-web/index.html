@@ -157,9 +157,11 @@ const heapBlocks = {};
 let traceRenderPending = false;
 (function() {
   const ws = new WebSocket('ws://' + location.host + '/ws-trace');
+  ws.binaryType = 'arraybuffer';
   ws.onmessage = (e) => {
     try {
-      const evt = JSON.parse(e.data);
+      const text = (e.data instanceof ArrayBuffer) ? new TextDecoder().decode(e.data) : e.data;
+      const evt = JSON.parse(text);
       if (evt.type === 'B' || evt.type === 'E' || evt.type === 'I') {
         traceEvents.push(evt);
         if (traceEvents.length > 2048) traceEvents.splice(0, traceEvents.length - 1024);

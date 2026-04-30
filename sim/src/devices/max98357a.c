@@ -6,6 +6,7 @@
  * the correct rate so the firmware audio task wakes up realistically.
  */
 #include <string.h>
+#include <stdio.h>
 #include "max98357a.h"
 #include "stm32_dma.h"
 #include "membus.h"
