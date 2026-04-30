@@ -36,6 +36,7 @@ class WebDebugger:
         self.sim_sock = None
         self.last_state = '{}'
         self._ws_status_client = None
+        self._ws_trace_clients = []
 
     def start_sim(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -97,6 +98,7 @@ class WebDebugger:
             self.trace_sock.connect(('127.0.0.1', TRACE_PORT))
             log_web(f'Connected to trace port {TRACE_PORT}')
             def trace_reader():
+                import json as _json
                 buf = ''
                 while True:
                     try:
@@ -111,12 +113,13 @@ class WebDebugger:
                                 line, cystr = line.rsplit('@', 1)
                                 try: cy = int(cystr)
                                 except: pass
+                            evt = None
                             if line.startswith('B:') and cy is not None:
-                                self.trace_events.append({'ctx': line[2:], 'type': 'B', 'cy': cy})
+                                evt = {'ctx': line[2:], 'type': 'B', 'cy': cy}
                             elif line.startswith('E') and cy is not None:
-                                self.trace_events.append({'type': 'E', 'cy': cy})
+                                evt = {'type': 'E', 'cy': cy}
                             elif line.startswith('I:') and cy is not None:
-                                self.trace_events.append({'ctx': line[2:], 'type': 'I', 'cy': cy})
+                                evt = {'ctx': line[2:], 'type': 'I', 'cy': cy}
                             elif line.startswith('H:'):
                                 try:
                                     name, rest = line[2:].split('@', 1)
@@ -124,12 +127,23 @@ class WebDebugger:
                                     addr = int(addr_s, 16)
                                     size = int(size_s, 16)
                                     self.heap_blocks[addr] = {'name': name, 'size': size, 'cy': cy or 0}
+                                    evt = {'type': 'H', 'name': name, 'addr': addr, 'size': size, 'cy': cy or 0}
                                 except: pass
                             elif line.startswith('F:'):
                                 try:
                                     addr = int(line[2:], 16)
                                     self.heap_blocks.pop(addr, None)
+                                    evt = {'type': 'F', 'addr': addr}
                                 except: pass
+                            if evt:
+                                if evt['type'] in ('B', 'E', 'I'):
+                                    self.trace_events.append(evt)
+                                # Push to WS clients
+                                dead = []
+                                for c in self._ws_trace_clients:
+                                    try: c.sendall(self._ws_encode(_json.dumps(evt).encode()))
+                                    except: dead.append(c)
+                                for c in dead: self._ws_trace_clients.remove(c)
                     except: break
             threading.Thread(target=trace_reader, daemon=True).start()
         except:
@@ -344,12 +358,6 @@ class WebDebugger:
                 if req.startswith('GET /init'):
                     self.http_response(conn, '200 OK', 'application/json', self.last_state)
 
-                elif req.startswith('GET /trace'):
-                    import json as _json
-                    heap = [{'addr': a, **v} for a, v in self.heap_blocks.items()]
-                    self.http_response(conn, '200 OK', 'application/json',
-                        _json.dumps({"timeline": self.trace_events[-512:], "heap": heap}))
-
                 elif req.startswith('GET /ws-uart'):
                     if self._ws_upgrade(conn, data):
                         # Send existing buffer as initial data
@@ -392,6 +400,16 @@ class WebDebugger:
                         data = self.audio_buf
                         self.audio_buf = b''
                     self.http_response(conn, '200 OK', 'application/octet-stream', data)
+
+                elif req.startswith('GET /ws-trace'):
+                    if self._ws_upgrade(conn, data):
+                        import json as _json
+                        # Send existing events as initial batch
+                        for evt in self.trace_events[-512:]:
+                            try: conn.sendall(self._ws_encode(_json.dumps(evt).encode()))
+                            except: break
+                        self._ws_trace_clients.append(conn)
+                        continue
 
                 elif req.startswith('GET /ws-status'):
                     if self._ws_upgrade(conn, data):

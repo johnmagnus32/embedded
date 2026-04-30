@@ -144,12 +144,42 @@ async function refreshUI(stopInfo) {
   render(stopInfo, regs, source, null);
   renderMemMap(memmap);
   lastMemmap = memmap;
-  // Fetch trace async (don't block command flow)
-  fetch('/trace').then(r => r.json()).then(data => {
-    if (data.timeline) { lastTimelineData = {...stopInfo, timeline: data.timeline}; renderTimeline(lastTimelineData); }
-    if (data.heap) { lastHeapData = data.heap; if (lastMemmap) renderMemMap(lastMemmap); }
-  }).catch(() => {});
+  // Timeline re-renders from live WS data
+  if (traceEvents.length) {
+    lastTimelineData = {...stopInfo, timeline: traceEvents.slice(-512)};
+    renderTimeline(lastTimelineData);
+  }
 }
+
+// Trace via WebSocket — live streaming
+const traceEvents = [];
+const heapBlocks = {};
+let traceRenderPending = false;
+(function() {
+  const ws = new WebSocket('ws://' + location.host + '/ws-trace');
+  ws.onmessage = (e) => {
+    try {
+      const evt = JSON.parse(e.data);
+      if (evt.type === 'B' || evt.type === 'E' || evt.type === 'I') {
+        traceEvents.push(evt);
+        if (traceEvents.length > 2048) traceEvents.splice(0, traceEvents.length - 1024);
+      } else if (evt.type === 'H') {
+        heapBlocks[evt.addr] = {name: evt.name, size: evt.size, cy: evt.cy};
+      } else if (evt.type === 'F') {
+        delete heapBlocks[evt.addr];
+      }
+      // Throttle live rendering to ~10fps
+      if (!traceRenderPending) {
+        traceRenderPending = true;
+        requestAnimationFrame(() => {
+          traceRenderPending = false;
+          lastTimelineData = {timeline: traceEvents.slice(-512), cycles: traceEvents.length ? traceEvents[traceEvents.length-1].cy : 0};
+          renderTimeline(lastTimelineData);
+        });
+      }
+    } catch(e) {}
+  };
+})();
 
 // UART via WebSocket — instant character delivery
 (function() {
