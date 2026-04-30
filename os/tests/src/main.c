@@ -20,6 +20,8 @@ extern void test_sync_run(void);
 extern void test_context_run(void);
 extern void test_sleep2_run(void);
 extern void test_sync2_run(void);
+extern void test_heap_run(void);
+extern void test_stress_run(void);
 
 static void idle_task(void)
 {
@@ -36,6 +38,8 @@ static void test_runner(void)
     test_sleep2_run();
     test_sync_run();
     test_sync2_run();
+    test_heap_run();
+    test_stress_run();
 
     uart_print("\nDONE: ");
     print_int(test_pass_count);

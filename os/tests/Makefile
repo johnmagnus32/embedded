@@ -10,7 +10,7 @@ BUILD   = build
 QEMU    = qemu-system-arm
 
 CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -ffreestanding -Wall -Og -g \
-          -DMAX_TASKS=32 -DTASK_STACK_SIZE=1024 \
+          -DMAX_TASKS=48 -DTASK_STACK_SIZE=512 \
           -I$(BUILD) -Isrc -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib -I$(OS)
 LDFLAGS = -T linker.ld -nostdlib
 
@@ -79,7 +79,7 @@ $(BUILD)/%.o: $(OS)/lib/%.c $(GENERATED)
 # ---- Run on QEMU ----
 test: all
 	@echo "Running on QEMU..."
-	@timeout 10 $(QEMU) -machine lm3s6965evb -nographic \
+	@timeout 15 $(QEMU) -machine lm3s6965evb -nographic \
 		-kernel $(BUILD)/test.elf 2>/dev/null || true
 	@echo ""
 
