@@ -65,8 +65,6 @@ void main(void)
     extern void start_audio(void);
     start_audio();
 
-    sched_create_task(task_a,     "task_a", 1);
-    sched_create_task(task_b,     "task_b", 1);
     sched_create_task(task_game,  "game",   1);
     sched_create_task(idle_task,  "idle",   255);
 
