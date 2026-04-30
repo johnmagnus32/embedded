@@ -71,6 +71,8 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     b->io_chardev = chardevs ? chardev_find(chardevs, "io") : NULL;
 }
 
+static uint64_t gpio_hold_until[3][16]; /* per port/pin: cycle count to hold until */
+
 static void gameboy_poll_io(struct gameboy *b)
 {
     static char buf[256];
@@ -78,15 +80,24 @@ static void gameboy_poll_io(struct gameboy *b)
     uint8_t tmp[128];
     int n = chardev_read_nonblock(b->io_chardev, tmp, sizeof(tmp));
     if (n <= 0) return;
-    if (len + n >= (int)sizeof(buf)) len = 0; /* overflow: reset */
+    if (len + n >= (int)sizeof(buf)) len = 0;
     memcpy(buf + len, tmp, n);
     len += n; buf[len] = 0;
     char *nl;
     while ((nl = strchr(buf, '\n'))) {
         *nl = 0;
         int port, pin, level;
-        if (sscanf(buf, "gpio:%d:%d:%d", &port, &pin, &level) == 3)
-            stm32_gpio_set_input(&b->soc.gpio[port], pin, level);
+        if (sscanf(buf, "gpio:%d:%d:%d", &port, &pin, &level) == 3
+            && port >= 0 && port < 3 && pin >= 0 && pin < 16) {
+            if (level) {
+                /* Hold press for at least 100K cycles (~6ms at 16MHz) */
+                gpio_hold_until[port][pin] = b->soc.cpu.cycle_count + 100000;
+                stm32_gpio_set_input(&b->soc.gpio[port], pin, 1);
+            } else if (b->soc.cpu.cycle_count >= gpio_hold_until[port][pin]) {
+                stm32_gpio_set_input(&b->soc.gpio[port], pin, 0);
+            }
+            /* else: release ignored, hold timer still active */
+        }
         int ch, val;
         if (sscanf(buf, "dial:%d:%d", &ch, &val) == 2 && ch >= 0 && ch < 16)
             b->soc.adc.channels[ch] = (uint32_t)val;
@@ -94,6 +105,17 @@ static void gameboy_poll_io(struct gameboy *b)
         memmove(buf, nl + 1, rem);
         len = rem;
     }
+
+    /* Release held buttons whose timer expired */
+    for (int port = 0; port < 3; port++)
+        for (int pin = 0; pin < 16; pin++)
+            if (gpio_hold_until[port][pin] &&
+                b->soc.cpu.cycle_count >= gpio_hold_until[port][pin]) {
+                /* Only release if IDR is still high (wasn't re-pressed) */
+                if ((b->soc.gpio[port].idr >> pin) & 1)
+                    stm32_gpio_set_input(&b->soc.gpio[port], pin, 0);
+                gpio_hold_until[port][pin] = 0;
+            }
 }
 
 void gameboy_tick(struct gameboy *b)

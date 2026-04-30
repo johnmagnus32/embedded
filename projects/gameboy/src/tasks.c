@@ -4,6 +4,7 @@
 
 #include "sched.h"
 #include "app.h"
+#include "trace.h"
 
 void task_a(void)
 {
@@ -25,5 +26,6 @@ void task_b(void)
 
 void idle_task(void)
 {
+    trace_begin("idle");
     while (1) {}
 }
