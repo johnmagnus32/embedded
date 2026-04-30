@@ -148,4 +148,7 @@ defconfig:
 clean:
 	rm -f $(BUILD)/*
 
-.PHONY: all clean disasm sections symbols defconfig
+test: all
+	cd ../../tests && make perf-bench
+
+.PHONY: all clean disasm sections symbols defconfig test

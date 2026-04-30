@@ -32,4 +32,10 @@ $(BUILD)/%.o: src/%.c $(HDRS)
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all clean
+test: all
+	cd ../tests && make perf-bench
+
+perf: all
+	cd ../tests && make perf
+
+.PHONY: all clean test perf

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "armv7m_cpu.h"
 #include "membus.h"
 #include "elf_sym.h"
@@ -34,9 +35,24 @@ static int check_breakpoint(struct armv7m_cpu *cpu)
 
 static void run_until_bp(int fd, struct sim_ctx *ctx)
 {
+    static uint64_t last_cycles = 0;
+    static struct timespec last_ts = {0, 0};
     do {
         ctx->mach->tick(ctx->board);
+        if (ctx->cpu->cycle_count - last_cycles >= 1000000) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (last_ts.tv_sec) {
+                double elapsed = (now.tv_sec - last_ts.tv_sec)
+                               + (now.tv_nsec - last_ts.tv_nsec) / 1e9;
+                double mips = (ctx->cpu->cycle_count - last_cycles) / elapsed / 1e6;
+                fprintf(stderr, "\r[perf] %.1f MIPS ", mips);
+            }
+            last_cycles = ctx->cpu->cycle_count;
+            last_ts = now;
+        }
     } while (!check_breakpoint(ctx->cpu));
+    fprintf(stderr, "\n");
 }
 
 static void send_stop_info(int fd, struct armv7m_cpu *cpu)
