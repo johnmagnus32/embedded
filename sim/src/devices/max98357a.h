@@ -2,18 +2,26 @@
 #define MAX98357A_H
 
 #include <stdint.h>
-#include "i2s_sink.h"
+#include <time.h>
 #include "chardev.h"
 
-#define MAX98357A_BUF_SAMPLES 1024
+struct stm32_dma;
+struct stm32_dma_stream;
+struct membus;
+struct armv7m_nvic;
 
 struct max98357a {
-    int16_t        buf[MAX98357A_BUF_SAMPLES * 2]; /* interleaved L,R */
-    int            count;                           /* sample pairs buffered */
-    struct chardev *cd;
+    struct chardev          *cd;
+    int                      sample_rate;
+    struct stm32_dma        *dma;
+    int                      dma_stream_idx;
+    struct stm32_dma_stream *dma_stream;
+    struct membus           *bus;
+    struct timespec          last_pull;
+    int                      started;
 };
 
-void max98357a_init(struct max98357a *d, struct chardev *cd);
-void max98357a_write(void *opaque, int16_t left, int16_t right);
+void max98357a_init(struct max98357a *d);
+void max98357a_tick(struct max98357a *d);
 
 #endif

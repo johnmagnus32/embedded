@@ -1,5 +1,9 @@
 /*
  * stm32_spi.c — STM32 SPI peripheral register interface
+ *
+ * In I2S mode with DMA, the SPI peripheral just accepts DR writes and
+ * sets TXE. The actual data movement is handled by the DMA model and
+ * the MAX98357A device reads from guest RAM on a wall-clock timer.
  */
 #include <string.h>
 #include "stm32_spi.h"
@@ -25,9 +29,6 @@ void stm32_spi_init(struct stm32_spi *s)
     s->i2scfgr = 0;
     s->i2spr = 0;
     s->i2s_mode = 0;
-    s->i2s_lr = 0;
-    s->i2s_pending_left = 0;
-    s->i2s_sink = NULL;
     s->dma_tx = NULL;
 }
 
@@ -53,19 +54,10 @@ void stm32_spi_write(void *opaque, uint32_t offset, uint32_t val)
     case SPI_CR2: s->cr2 = val; break;
     case SPI_DR:
         if (s->i2s_mode) {
-            int16_t sample = (int16_t)(val & 0xFFFF);
-            if (s->i2s_lr == 0) {
-                s->i2s_pending_left = sample;
-                s->i2s_lr = 1;
-            } else {
-                if (s->i2s_sink && s->i2s_sink->write)
-                    s->i2s_sink->write(s->i2s_sink->opaque, s->i2s_pending_left, sample);
-                s->i2s_lr = 0;
-            }
+            /* In I2S+DMA mode, DR writes are from DMA. Just set TXE
+             * so DMA knows it can send the next word. The actual sample
+             * data is read from RAM by the MAX98357A on its own timer. */
             s->sr |= SR_TXE;
-            /* Re-assert DMA request when TXE and TXDMAEN */
-            if ((s->cr2 & (1 << 1)) && s->dma_tx)
-                s->dma_tx->request_pending = 1;
         } else {
             spi_bus_transfer(&s->bus, (uint8_t)val);
             s->sr |= SR_TXE | SR_RXNE;
@@ -74,10 +66,7 @@ void stm32_spi_write(void *opaque, uint32_t offset, uint32_t val)
         break;
     case SPI_I2SCFGR:
         s->i2scfgr = val;
-        s->i2s_mode = (val & (1 << 11)) ? 1 : 0; /* I2SMOD bit */
-        /* If enabling I2S with TXDMAEN, kick off first DMA transfer */
-        if (s->i2s_mode && (val & (1 << 10)) && (s->cr2 & (1 << 1)) && s->dma_tx)
-            s->dma_tx->request_pending = 1;
+        s->i2s_mode = (val & (1 << 11)) ? 1 : 0;
         break;
     case SPI_I2SPR:
         s->i2spr = val;

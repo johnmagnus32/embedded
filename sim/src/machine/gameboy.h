@@ -6,14 +6,12 @@
 #include "trace_dev.h"
 #include "chardev.h"
 #include "max98357a.h"
-#include "i2s_sink.h"
 
 struct gameboy {
     struct stm32f411  soc;
     struct ili9341   *display;
     struct trace_dev  trace;
     struct max98357a  audio;
-    struct i2s_sink   i2s_sink;
     struct chardev   *io_chardev;
 };
 

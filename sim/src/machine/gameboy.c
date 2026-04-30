@@ -55,13 +55,17 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 
     fprintf(stderr, "[board] ILI9341 on SPI1, DC=PA3, CS=PA4\n");
 
-    /* MAX98357A audio DAC on SPI2 (I2S mode) */
+    /* MAX98357A audio DAC — pulls from DMA1 Stream 4 on wall-clock timer */
     struct chardev *audio_cd = chardevs ? chardev_find(chardevs, "audio") : NULL;
-    max98357a_init(&b->audio, audio_cd);
-    b->i2s_sink.write  = max98357a_write;
-    b->i2s_sink.opaque = &b->audio;
-    b->soc.spis[1].i2s_sink = &b->i2s_sink;
-    fprintf(stderr, "[board] MAX98357A on SPI2/I2S, chardev=%s\n", audio_cd ? "audio" : "none");
+    max98357a_init(&b->audio);
+    b->audio.cd             = audio_cd;
+    b->audio.sample_rate    = 22050;
+    b->audio.bus            = &b->soc.bus;
+    b->audio.dma            = &b->soc.dma1;
+    b->audio.dma_stream_idx = 4;
+    b->audio.dma_stream     = &b->soc.dma1.streams[4];
+    b->soc.dma1.streams[4].externally_driven = 1;
+    fprintf(stderr, "[board] MAX98357A on DMA1_S4, chardev=%s\n", audio_cd ? "audio" : "none");
 
     /* Board I/O chardev for external input */
     b->io_chardev = chardevs ? chardev_find(chardevs, "io") : NULL;
@@ -95,8 +99,10 @@ static void gameboy_poll_io(struct gameboy *b)
 void gameboy_tick(struct gameboy *b)
 {
     stm32f411_tick(&b->soc);
-    if (b->io_chardev && b->soc.cpu.cycle_count % 10000 == 0)
-        gameboy_poll_io(b);
+    if (b->soc.cpu.cycle_count % 10000 == 0) {
+        if (b->io_chardev) gameboy_poll_io(b);
+        max98357a_tick(&b->audio);
+    }
 }
 
 /* Machine registry wrappers */

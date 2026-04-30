@@ -111,6 +111,8 @@ void stm32_dma_tick(struct stm32_dma *d)
         struct stm32_dma_stream *s = &d->streams[i];
         if (!(s->cr & CR_EN) || !s->request_pending)
             continue;
+        if (s->externally_driven)
+            continue;
 
         still_active = 1;
         s->request_pending = 0;
@@ -188,4 +190,30 @@ void stm32_dma_tick(struct stm32_dma *d)
         }
     }
     d->any_active = still_active;
+}
+
+void stm32_dma_fire_htif(struct stm32_dma *d, int i)
+{
+    struct stm32_dma_stream *s = &d->streams[i];
+    if (s->cr & CR_HTIE) {
+        uint32_t *sr = (i < 4) ? &d->lisr : &d->hisr;
+        *sr |= (1u << htif_bit[i]);
+        armv7m_nvic_set_pending(d->nvic, dma1_irq_vec[i]);
+    }
+}
+
+void stm32_dma_fire_tcif(struct stm32_dma *d, int i)
+{
+    struct stm32_dma_stream *s = &d->streams[i];
+    uint32_t *sr = (i < 4) ? &d->lisr : &d->hisr;
+    if (s->cr & CR_CIRC) {
+        s->ndtr = s->ndtr_orig;
+        s->m0ar = s->m0ar_orig;
+    } else {
+        s->cr &= ~CR_EN;
+    }
+    if (s->cr & CR_TCIE) {
+        *sr |= (1u << tcif_bit[i]);
+        armv7m_nvic_set_pending(d->nvic, dma1_irq_vec[i]);
+    }
 }
