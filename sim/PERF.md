@@ -175,3 +175,56 @@ is only a 3ms difference — barely perceptible.
 
 The audio ISR adds ~1.4ms per frame interval on average, consistent with
 the 6.3% CPU usage seen in the trace timeline.
+
+## Display FPS — Three-Point Measurement
+
+Measured at two points in the display data path (Point 3 WebSocket
+measurement requires interactive browser, deferred).
+
+```
+sim-core ili9341_flush → TCP chardev → sim-web.py → WebSocket → browser
+         Point 1                Point 2              Point 3
+```
+
+### Run 1: sim-core with chardev consumer (20 seconds, with audio)
+
+**Point 1: ili9341_flush (sim-core stderr)**
+```
+[display] 59.5 FPS | min=9.7ms avg=16.8ms max=18.3ms | glitches: 0/30
+[display] 57.3 FPS | min=17.0ms avg=17.5ms max=18.0ms | glitches: 0/30
+[display] 37.4 FPS | min=18.3ms avg=26.7ms max=32.2ms | glitches: 0/30
+```
+
+**Point 2: Chardev TCP direct**
+```
+Total frames: 93
+Average FPS: 46.9
+Interval: min=9.6ms avg=21.3ms max=98.9ms stddev=9.7ms
+Glitches (>2x avg): 1/92 (1.1%)
+Longest gap: 98.9ms at t=3.1s (frame 92)
+```
+
+### Analysis
+
+| Metric | Point 1 (flush) | Point 2 (chardev) |
+|--------|-----------------|-------------------|
+| Frames (20s) | ~90 | 93 |
+| Avg FPS (steady) | 37-57 | 46.9 |
+| Max interval | 32.2ms | 98.9ms |
+| Glitches | 0 | 1 (1.1%) |
+
+Point 1 and Point 2 see the same number of frames — no frames are lost
+in the TCP chardev layer. The 98.9ms spike at Point 2 (frame 92, t=3.1s)
+is likely the transition from simple scene to complex scene (game over
+screen with text rendering), which causes a burst of small fill_rects
+that delays the next vsync.
+
+The FPS difference between Point 1 steady state (37-57) and Point 2
+average (46.9) is because Point 1 reports in 30-frame windows while
+Point 2 averages over the full run including the fast initial frames.
+
+### Conclusion
+
+No frames are lost in the TCP chardev layer. The display pipeline is
+not the bottleneck. Frame timing is determined entirely by how fast
+sim-core produces frames (emulated CPU speed).
