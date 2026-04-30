@@ -1,6 +1,7 @@
 /*
  * armv7m_systick.c — ARMv7-M SysTick Timer
  */
+#include <stdio.h>
 #include "armv7m_systick.h"
 #include "armv7m_nvic.h"
 
