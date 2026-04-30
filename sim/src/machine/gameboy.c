@@ -69,6 +69,7 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 
     /* Board I/O chardev for external input */
     b->io_chardev = chardevs ? chardev_find(chardevs, "io") : NULL;
+    b->chardevs = chardevs;
 }
 
 static uint64_t gpio_hold_until[3][16]; /* per port/pin: cycle count to hold until */
@@ -124,6 +125,7 @@ void gameboy_tick(struct gameboy *b)
     if (b->soc.cpu.cycle_count % 10000 == 0) {
         if (b->io_chardev) gameboy_poll_io(b);
         max98357a_tick(&b->audio);
+        chardev_flush_all(b->chardevs);
     }
 }
 

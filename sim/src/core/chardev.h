@@ -16,6 +16,8 @@ struct chardev {
     int port;         /* TCP port to listen on */
     int srv_fd;       /* listening socket */
     int client_fd;    /* connected client, -1 if none */
+    uint8_t wbuf[8192]; /* write buffer — flushed periodically */
+    int wbuf_len;
 };
 
 struct chardev_table {
@@ -45,5 +47,9 @@ void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len);
 
 /* Non-blocking read from chardev client. Returns bytes read, 0 if nothing, -1 on disconnect. */
 int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen);
+
+/* Flush buffered writes to TCP. Call periodically outside the hot loop. */
+void chardev_flush(struct chardev *cd);
+void chardev_flush_all(struct chardev_table *t);
 
 #endif

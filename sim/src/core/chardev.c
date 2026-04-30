@@ -73,38 +73,54 @@ void chardev_try_accept(struct chardev *cd)
     fcntl(cd->srv_fd, F_SETFL, flags | O_NONBLOCK);
     cd->client_fd = accept(cd->srv_fd, NULL, NULL);
     fcntl(cd->srv_fd, F_SETFL, flags);
+    /* Set client socket non-blocking so writes never stall the emulator */
+    if (cd->client_fd >= 0) {
+        int cflags = fcntl(cd->client_fd, F_GETFL, 0);
+        fcntl(cd->client_fd, F_SETFL, cflags | O_NONBLOCK);
+    }
 }
 
 void chardev_write(struct chardev *cd, uint8_t byte)
 {
     if (!cd) return;
-    if (cd->client_fd < 0) chardev_try_accept(cd);
-    if (cd->client_fd >= 0) {
-        if (write(cd->client_fd, &byte, 1) <= 0)
-            cd->client_fd = -1;
-    }
+    if (cd->wbuf_len < (int)sizeof(cd->wbuf))
+        cd->wbuf[cd->wbuf_len++] = byte;
 }
 
 void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len)
 {
     if (!cd) return;
-    if (cd->client_fd < 0) chardev_try_accept(cd);
-    if (cd->client_fd < 0) return;
-
-    /* Non-blocking: send what fits, drop the rest.
-     * TCP stream consumers (sim-web.py) buffer and reassemble. */
-    int flags = fcntl(cd->client_fd, F_GETFL, 0);
-    fcntl(cd->client_fd, F_SETFL, flags | O_NONBLOCK);
-    int sent = 0;
-    while (sent < len) {
-        int n = write(cd->client_fd, data + sent, len - sent);
-        if (n > 0) { sent += n; continue; }
-        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-            break; /* buffer full — drop remaining */
-        cd->client_fd = -1; /* real error — disconnect */
-        break;
+    int space = (int)sizeof(cd->wbuf) - cd->wbuf_len;
+    if (len > space) len = space;
+    if (len > 0) {
+        memcpy(cd->wbuf + cd->wbuf_len, data, len);
+        cd->wbuf_len += len;
     }
-    fcntl(cd->client_fd, F_SETFL, flags);
+}
+
+void chardev_flush(struct chardev *cd)
+{
+    if (!cd || cd->wbuf_len == 0) return;
+    if (cd->client_fd < 0) chardev_try_accept(cd);
+    if (cd->client_fd >= 0) {
+        int sent = 0;
+        while (sent < cd->wbuf_len) {
+            int n = write(cd->client_fd, cd->wbuf + sent, cd->wbuf_len - sent);
+            if (n > 0) { sent += n; continue; }
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+                break;
+            cd->client_fd = -1;
+            break;
+        }
+    }
+    cd->wbuf_len = 0; /* drop unsent data */
+}
+
+void chardev_flush_all(struct chardev_table *t)
+{
+    if (!t) return;
+    for (int i = 0; i < t->count; i++)
+        chardev_flush(&t->devs[i]);
 }
 
 int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen)

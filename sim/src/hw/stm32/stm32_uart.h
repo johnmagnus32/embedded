@@ -7,6 +7,8 @@ struct chardev;
 
 struct stm32_uart {
     struct chardev *chardev;
+    uint8_t tx_buf[128];
+    int tx_len;
 };
 
 void     stm32_uart_init(struct stm32_uart *u, struct chardev *cd);
