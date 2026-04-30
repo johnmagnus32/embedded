@@ -1,0 +1,4 @@
+/* lm3s6965evb — minimal DTS for OS tests */
+/ {
+    sysclk-hz = <16000000>;
+};
