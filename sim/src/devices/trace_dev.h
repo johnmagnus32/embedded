@@ -8,6 +8,8 @@ struct chardev;
 struct trace_dev {
     struct chardev *chardev;
     uint64_t *cycle_count;
+    char buf[128];
+    int buf_len;
 };
 
 void     trace_dev_init(struct trace_dev *t, struct chardev *cd, uint64_t *cycle_count);

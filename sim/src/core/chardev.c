@@ -90,13 +90,12 @@ void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len)
     if (!cd) return;
     if (cd->client_fd < 0) chardev_try_accept(cd);
     if (cd->client_fd >= 0) {
-        /* Non-blocking write — drop data rather than stall the emulator */
-        int flags = fcntl(cd->client_fd, F_GETFL, 0);
-        fcntl(cd->client_fd, F_SETFL, flags | O_NONBLOCK);
-        int n = write(cd->client_fd, data, len);
-        fcntl(cd->client_fd, F_SETFL, flags);
-        if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
-            cd->client_fd = -1;
+        int sent = 0;
+        while (sent < len) {
+            int n = write(cd->client_fd, data + sent, len - sent);
+            if (n <= 0) { cd->client_fd = -1; return; }
+            sent += n;
+        }
     }
 }
 
