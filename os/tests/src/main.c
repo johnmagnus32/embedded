@@ -17,6 +17,9 @@ int test_fail_count;
 extern void test_sched_run(void);
 extern void test_sleep_run(void);
 extern void test_sync_run(void);
+extern void test_context_run(void);
+extern void test_sleep2_run(void);
+extern void test_sync2_run(void);
 
 static void idle_task(void)
 {
@@ -28,8 +31,11 @@ static void test_runner(void)
     uart_print("=== OS Test Suite ===\n");
 
     test_sched_run();
+    test_context_run();
     test_sleep_run();
+    test_sleep2_run();
     test_sync_run();
+    test_sync2_run();
 
     uart_print("\nDONE: ");
     print_int(test_pass_count);

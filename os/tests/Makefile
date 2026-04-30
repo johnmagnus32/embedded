@@ -10,7 +10,7 @@ BUILD   = build
 QEMU    = qemu-system-arm
 
 CFLAGS  = -mcpu=cortex-m3 -mthumb -nostdlib -ffreestanding -Wall -Og -g \
-          -DMAX_TASKS=16 -DTASK_STACK_SIZE=2048 \
+          -DMAX_TASKS=32 -DTASK_STACK_SIZE=1024 \
           -I$(BUILD) -Isrc -I$(OS)/include -I$(OS)/kernel -I$(OS)/lib -I$(OS)
 LDFLAGS = -T linker.ld -nostdlib
 

@@ -63,7 +63,7 @@ void test_sleep_run(void)
 
     /* Test 3: background task runs during sleep */
     bg_counter = 0;
-    sched_create_task(background_counter, "bg", 2);
+    sched_create_task(background_counter, "bg", 1);
     sched_sleep_ms(100);
     TEST_ASSERT(bg_counter > 50, "background task should run during sleep");
 

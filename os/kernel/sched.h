@@ -37,7 +37,7 @@ enum task_state {
  * Like Zephyr's _wait_q_t / Linux's wait_queue_head_t.
  */
 struct wait_queue {
-    uint16_t waiters;  /* bitmask of task IDs waiting */
+    uint32_t waiters;  /* bitmask of task IDs waiting */
 };
 
 #define WAIT_QUEUE_INIT { .waiters = 0 }
