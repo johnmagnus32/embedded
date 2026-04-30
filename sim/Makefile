@@ -20,7 +20,7 @@ SRCS = src/main.c \
 OBJS = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 HDRS = $(foreach d,$(SRC_DIRS),$(wildcard $(d)/*.h))
 
-all: $(BUILD)/sim-core
+all: $(BUILD)/sim-core test
 
 $(BUILD)/sim-core: $(OBJS)
 	$(CC) -o $@ $^
@@ -29,13 +29,11 @@ $(BUILD)/%.o: src/%.c $(HDRS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
+test: $(BUILD)/sim-core
+	python3 tests/run_tests.py
+
 clean:
 	rm -rf $(BUILD)
+	make -C tests/firmware clean
 
-test: all
-	cd ../tests && make perf-bench
-
-perf: all
-	cd ../tests && make perf
-
-.PHONY: all clean test perf
+.PHONY: all clean test

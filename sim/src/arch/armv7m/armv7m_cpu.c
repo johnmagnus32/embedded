@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "armv7m_cpu.h"
 #include "membus.h"
 #include "elf_sym.h"
@@ -101,7 +102,9 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
 
     /* IT block: check condition for current instruction */
     int it_skip = 0;
+    int in_it = 0;
     if (c->it_state) {
+        in_it = 1;
         /* Top 4 bits = condition for this instruction */
         int cond = (c->it_state >> 4) & 0xF;
         it_skip = !cond_check(c, cond);
@@ -124,6 +127,10 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
 
     if (it_skip) return 0;
 
+    /* In IT block: 16-bit instructions must NOT update flags.
+     * Save flags before execution; restored at done_16 label. */
+    uint32_t saved_flags = c->xpsr & (FLAG_N | FLAG_Z | FLAG_C | FLAG_V);
+
     /* ---- 16-bit Thumb instructions ---- */
 
     /* LSL/LSR/ASR immediate (shift) */
@@ -141,7 +148,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             c->r[rd] = (imm5 == 0) ? ((int32_t)val >> 31) : (uint32_t)((int32_t)val >> imm5);
         }
         set_nz(c, c->r[rd]);
-        return 0;
+        goto done_16;
     }
 
     /* ADD/SUB register/immediate (3-bit) */
@@ -160,7 +167,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             set_nzcv_add(c, c->r[rn], operand, result);
         }
         c->r[rd] = (uint32_t)result;
-        return 0;
+        goto done_16;
     }
 
     /* MOV/CMP/ADD/SUB immediate (8-bit) */
@@ -191,7 +198,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             break;
         }
         }
-        return 0;
+        goto done_16;
     }
 
     /* ADD/SUB 3-register or 3-bit immediate */
@@ -211,7 +218,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             set_nzcv_sub(c, c->r[rn], operand, res);
             c->r[rd] = (uint32_t)res;
         }
-        return 0;
+        goto done_16;
     }
 
     /* Data processing (ALU operations between low registers) */
@@ -226,16 +233,19 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
         case 0x2: c->r[rd] = a << (b & 31); set_nz(c, c->r[rd]); break; /* LSL */
         case 0x3: c->r[rd] = a >> (b & 31); set_nz(c, c->r[rd]); break; /* LSR */
         case 0x4: c->r[rd] = (uint32_t)((int32_t)a >> (b & 31)); set_nz(c, c->r[rd]); break; /* ASR */
-        case 0x7: c->r[rd] = a & ~b; set_nz(c, c->r[rd]); break; /* BIC */
-        case 0x8: { uint64_t r = (uint64_t)a - b; set_nzcv_sub(c, a, b, r); break; } /* TST→CMP? actually TST */
+        case 0x5: { uint64_t r = (uint64_t)a + b + ((c->xpsr >> 29) & 1); set_nzcv_add(c, a, b + ((c->xpsr >> 29) & 1), r); c->r[rd] = (uint32_t)r; break; } /* ADC */
+        case 0x6: { uint64_t r = (uint64_t)a - b - (((c->xpsr >> 29) & 1) ^ 1); set_nzcv_sub(c, a, b, r); c->r[rd] = (uint32_t)r; break; } /* SBC */
+        case 0x7: { uint32_t s = b & 31; c->r[rd] = s ? (a >> s) | (a << (32 - s)) : a; set_nz(c, c->r[rd]); break; } /* ROR */
+        case 0x8: { uint32_t r = a & b; set_nz(c, r); break; } /* TST */
+        case 0x9: { uint64_t r = (uint64_t)0 - b; set_nzcv_sub(c, 0, b, r); c->r[rd] = (uint32_t)r; break; } /* RSB (NEG) */
         case 0xA: { uint64_t r = (uint64_t)a - b; set_nzcv_sub(c, a, b, r); break; } /* CMP */
         case 0xB: { uint64_t r = (uint64_t)a + b; set_nzcv_add(c, a, b, r); break; } /* CMN */
         case 0xC: c->r[rd] = a | b; set_nz(c, c->r[rd]); break; /* ORR */
         case 0xD: c->r[rd] = a * b; set_nz(c, c->r[rd]); break; /* MUL */
+        case 0xE: c->r[rd] = a & ~b; set_nz(c, c->r[rd]); break; /* BIC */
         case 0xF: c->r[rd] = ~b; set_nz(c, c->r[rd]); break; /* MVN */
-        default: break;
         }
-        return 0;
+        goto done_16;
     }
 
     /* Special data / branch exchange (high registers) */
@@ -270,7 +280,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             }
             break;
         }
-        return 0;
+        goto done_16;
     }
 
     /* LDR (PC-relative) */
@@ -279,7 +289,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
         uint32_t imm8 = (insn & 0xFF) << 2;
         uint32_t addr = ((pc + 4) & ~3u) + imm8;
         c->r[rt] = membus_read32(bus, addr);
-        return 0;
+        goto done_16;
     }
 
     /* LDR/STR register offset */
@@ -299,7 +309,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
         case 6: c->r[rt] = membus_read8(bus, addr); break;  /* LDRB */
         case 7: c->r[rt] = (int16_t)membus_read16(bus, addr); break; /* LDRSH */
         }
-        return 0;
+        goto done_16;
     }
 
     /* LDR/STR immediate offset (word) */
@@ -313,7 +323,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             c->r[rt] = membus_read32(bus, addr);
         else
             membus_write32(bus, addr, c->r[rt]);
-        return 0;
+        goto done_16;
     }
 
     /* LDRB/STRB immediate offset */
@@ -327,7 +337,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             c->r[rt] = membus_read8(bus, addr);
         else
             membus_write8(bus, addr, c->r[rt]);
-        return 0;
+        goto done_16;
     }
 
     /* LDRH/STRH immediate offset */
@@ -341,7 +351,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             c->r[rt] = membus_read16(bus, addr);
         else
             membus_write16(bus, addr, c->r[rt]);
-        return 0;
+        goto done_16;
     }
 
     /* LDR/STR SP-relative */
@@ -354,7 +364,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             c->r[rt] = membus_read32(bus, addr);
         else
             membus_write32(bus, addr, c->r[rt]);
-        return 0;
+        goto done_16;
     }
 
     /* ADD SP/PC (generate address) */
@@ -363,7 +373,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
         int rd = (insn >> 8) & 7;
         uint32_t imm8 = (insn & 0xFF) << 2;
         c->r[rd] = (sp ? c->r[REG_SP] : ((pc + 4) & ~3u)) + imm8;
-        return 0;
+        goto done_16;
     }
 
     /* Misc: ADD/SUB SP, PUSH, POP, CPSID/CPSIE, etc. */
@@ -375,7 +385,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
                 c->r[REG_SP] -= imm7;
             else
                 c->r[REG_SP] += imm7;
-            return 0;
+            goto done_16;
         }
 
         /* PUSH */
@@ -385,7 +395,7 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             if (lr) { c->r[REG_SP] -= 4; membus_write32(bus, c->r[REG_SP], c->r[REG_LR]); }
             for (int i = 7; i >= 0; i--)
                 if (regs & (1 << i)) { c->r[REG_SP] -= 4; membus_write32(bus, c->r[REG_SP], c->r[i]); }
-            return 0;
+            goto done_16;
         }
 
         /* POP */
@@ -403,20 +413,20 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
                     c->r[REG_PC] = val & ~1u;
                 }
             }
-            return 0;
+            goto done_16;
         }
 
         /* CPSID i / CPSIE i */
-        if ((insn & 0xFFEF) == 0xB672) { c->primask = 1; return 0; } /* CPSID */
-        if ((insn & 0xFFEF) == 0xB662) { c->primask = 0; c->irq_shadow = 1; return 0; } /* CPSIE — shadow: don't fire IRQ until next insn */
+        if (insn == 0xB672) { c->primask = 1; goto done_16; } /* CPSID i */
+        if (insn == 0xB662) { c->primask = 0; c->irq_shadow = 1; goto done_16; } /* CPSIE i */
 
         /* IT (If-Then) block */
         if ((insn & 0xFF00) == 0xBF00) {
             uint8_t mask = insn & 0xF;
-            if (mask == 0) return 0; /* NOP/YIELD/WFI/WFE/SEV (mask=0) */
+            if (mask == 0) goto done_16; /* NOP/YIELD/WFI/WFE/SEV (mask=0) */
             uint8_t cond = (insn >> 4) & 0xF;
             c->it_state = (cond << 4) | mask;
-            return 0;
+            goto done_16;
         }
 
         /* CBZ / CBNZ (compare and branch if zero/nonzero) */
@@ -426,21 +436,68 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             int imm = ((insn >> 3) & 0x1F) << 1 | ((insn >> 9) & 1) << 6;
             if (nz ? (c->r[rn] != 0) : (c->r[rn] == 0))
                 c->r[REG_PC] = pc + 4 + imm;
-            return 0;
+            goto done_16;
         }
 
         /* SXTB, SXTH, UXTB, UXTH */
-        if ((insn & 0xFF00) == 0xB200) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = (int16_t)(c->r[rm] & 0xFFFF); return 0; } /* SXTH */
-        if ((insn & 0xFF00) == 0xB240) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = (int8_t)(c->r[rm] & 0xFF); return 0; } /* SXTB */
-        if ((insn & 0xFF00) == 0xB280) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = c->r[rm] & 0xFFFF; return 0; } /* UXTH */
-        if ((insn & 0xFF00) == 0xB2C0) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = c->r[rm] & 0xFF; return 0; } /* UXTB */
+        if ((insn & 0xFFC0) == 0xB200) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = (int16_t)(c->r[rm] & 0xFFFF); goto done_16; } /* SXTH */
+        if ((insn & 0xFFC0) == 0xB240) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = (int8_t)(c->r[rm] & 0xFF); goto done_16; } /* SXTB */
+        if ((insn & 0xFFC0) == 0xB280) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = c->r[rm] & 0xFFFF; goto done_16; } /* UXTH */
+        if ((insn & 0xFFC0) == 0xB2C0) { int rm = (insn>>3)&7; int rd = insn&7; c->r[rd] = c->r[rm] & 0xFF; goto done_16; } /* UXTB */
 
-        /* REV, REV16 */
+        /* REV */
         if ((insn & 0xFFC0) == 0xBA00) {
             int rm = (insn>>3)&7; int rd = insn&7;
             uint32_t v = c->r[rm];
             c->r[rd] = ((v>>24)&0xFF) | ((v>>8)&0xFF00) | ((v<<8)&0xFF0000) | ((v<<24)&0xFF000000);
-            return 0;
+            goto done_16;
+        }
+        /* REV16 */
+        if ((insn & 0xFFC0) == 0xBA40) {
+            int rm = (insn>>3)&7; int rd = insn&7;
+            uint32_t v = c->r[rm];
+            c->r[rd] = ((v & 0xFF00FF00) >> 8) | ((v & 0x00FF00FF) << 8);
+            goto done_16;
+        }
+
+        /* BKPT */
+        if ((insn & 0xFF00) == 0xBE00) {
+            if (insn == 0xBEAB) {
+                /* ARM semihosting call */
+                uint32_t func = c->r[0];
+                uint32_t arg = c->r[1];
+                switch (func) {
+                case 0x03: /* SYS_WRITEC */
+                    fputc(membus_read8(bus, arg), stderr);
+                    break;
+                case 0x04: { /* SYS_WRITE0 */
+                    char ch;
+                    while ((ch = membus_read8(bus, arg++)) != '\0')
+                        fputc(ch, stderr);
+                    break;
+                }
+                case 0x18: { /* SYS_EXIT */
+                    uint32_t code = arg;
+                    if (arg >= RAM_BASE && arg < RAM_BASE + RAM_SIZE)
+                        code = membus_read32(bus, arg + 4);
+                    else if (arg == 0x20026) /* ADP_Stopped_ApplicationExit */
+                        code = 0;
+                    return CPU_SEMIHOST_EXIT | (code & 0xFF);
+                }
+                case 0x10: { /* SYS_CLOCK — return host wall-clock microseconds */
+                    struct timespec ts;
+                    clock_gettime(CLOCK_MONOTONIC, &ts);
+                    c->r[0] = (uint32_t)(ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000);
+                    break;
+                }
+                default:
+                    c->r[0] = (uint32_t)-1;
+                    break;
+                }
+                goto done_16;
+            }
+            /* Other BKPT — treat as no-op */
+            goto done_16;
         }
     }
 
@@ -460,21 +517,21 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
             }
         }
         c->r[rn] = addr;  /* writeback */
-        return 0;
+        goto done_16;
     }
 
     /* Conditional branch */
     if ((insn >> 12) == 0xD) {
         int cond = (insn >> 8) & 0xF;
-        if (cond == 0xE) return 0; /* UDF */
+        if (cond == 0xE) goto done_16; /* UDF */
         if (cond == 0xF) { /* SVC */
-            return 0;
+            goto done_16;
         }
         if (cond_check(c, cond)) {
             int32_t offset = (int8_t)(insn & 0xFF);
             c->r[REG_PC] = pc + 4 + (offset << 1);
         }
-        return 0;
+        goto done_16;
     }
 
     /* Unconditional branch */
@@ -482,8 +539,15 @@ int armv7m_cpu_step(struct armv7m_cpu *c, struct membus *bus)
         int32_t offset = insn & 0x7FF;
         if (offset & 0x400) offset |= 0xFFFFF800; /* sign extend */
         c->r[REG_PC] = pc + 4 + (offset << 1);
-        return 0;
+        goto done_16;
     }
+
+done_16:
+    /* Restore flags if inside IT block (16-bit insns don't update flags in IT) */
+    if (in_it) {
+        c->xpsr = (c->xpsr & ~(FLAG_N | FLAG_Z | FLAG_C | FLAG_V)) | saved_flags;
+    }
+    return 0;
 
     uint32_t _off;
     const char *_fn = sym_lookup(pc, &_off);
@@ -535,7 +599,9 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
         int rn = hi & 0xF;
         int rt = (lo >> 12) & 0xF;
         uint32_t imm12 = lo & 0xFFF;
-        c->r[rt] = membus_read32(bus, c->r[rn] + imm12);
+        uint32_t base = c->r[rn];
+        if (rn == REG_PC) base &= ~3u;  /* PC must be word-aligned */
+        c->r[rt] = membus_read32(bus, base + imm12);
         if (rt == REG_PC) c->r[REG_PC] &= ~1u;
         return 0;
     }
@@ -557,6 +623,7 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
             int w = (lo >> 8) & 1;
             uint32_t imm8 = lo & 0xFF;
             uint32_t addr = c->r[rn];
+            if (rn == REG_PC) addr &= ~3u;
             uint32_t offset = u ? imm8 : -imm8;
             if (p) addr += offset;
             c->r[rt] = membus_read32(bus, addr);
@@ -699,6 +766,14 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
         return 0;
     }
 
+    /* STRH.W — 12-bit immediate offset */
+    if ((hi & 0xFFF0) == 0xF8A0) {
+        int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
+        uint32_t imm12 = lo & 0xFFF;
+        membus_write16(bus, c->r[rn] + imm12, c->r[rt]);
+        return 0;
+    }
+
     /* STRH.W with pre/post index or register offset */
     if ((hi & 0xFFF0) == 0xF820) {
         int rn = hi & 0xF; int rt = (lo >> 12) & 0xF;
@@ -738,7 +813,8 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
 
     /* ADD.W / SUB.W / AND.W / ORR.W / etc. with immediate */
     /* But NOT MSR (0xF38x) or MRS (0xF3Ex) or ISB/DSB (0xF3Bx) */
-    if ((hi & 0xFA00) == 0xF000 && (hi & 0xFFF0) != 0xF380
+    if ((hi & 0xFA00) == 0xF000 && !(lo & 0x8000)
+        && (hi & 0xFFF0) != 0xF380
         && (hi & 0xFFF0) != 0xF3E0 && (hi & 0xFFF0) != 0xF3B0) {
         int op = (hi >> 5) & 0xF;
         int rn = hi & 0xF;
@@ -859,6 +935,7 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
         int rd = (lo >> 8) & 0xF;
         int sysm = lo & 0xFF;
         switch (sysm) {
+        case 0: c->r[rd] = c->xpsr & 0xF8000000; break; /* APSR (flags) */
         case 8: c->r[rd] = c->msp; break;
         case 9: c->r[rd] = c->psp; break;
         case 16: c->r[rd] = c->primask; break;

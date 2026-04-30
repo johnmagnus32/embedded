@@ -52,4 +52,7 @@ int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen);
 void chardev_flush(struct chardev *cd);
 void chardev_flush_all(struct chardev_table *t);
 
+/* Gracefully shutdown all client sockets (sends FIN, not RST) */
+void chardev_shutdown_all(struct chardev_table *t);
+
 #endif

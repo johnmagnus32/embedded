@@ -119,22 +119,23 @@ static void gameboy_poll_io(struct gameboy *b)
             }
 }
 
-void gameboy_tick(struct gameboy *b)
+int gameboy_tick(struct gameboy *b)
 {
-    stm32f411_tick(&b->soc);
+    int r = stm32f411_tick(&b->soc);
     if (b->soc.cpu.cycle_count % 10000 == 0) {
         if (b->io_chardev) gameboy_poll_io(b);
         max98357a_tick(&b->audio);
         chardev_flush_all(b->chardevs);
     }
+    return r;
 }
 
 /* Machine registry wrappers */
 static void gameboy_init_wrap(void *board, struct chardev_table *cd)
 { gameboy_init((struct gameboy *)board, cd); }
 
-static void gameboy_tick_wrap(void *board)
-{ gameboy_tick((struct gameboy *)board); }
+static int gameboy_tick_wrap(void *board)
+{ return gameboy_tick((struct gameboy *)board); }
 
 static struct armv7m_cpu *gameboy_get_cpu(void *board)
 { return &((struct gameboy *)board)->soc.cpu; }

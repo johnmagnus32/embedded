@@ -17,7 +17,7 @@ struct gameboy {
 };
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs);
-void gameboy_tick(struct gameboy *b);
+int  gameboy_tick(struct gameboy *b);
 
 struct machine_desc;
 extern const struct machine_desc gameboy_machine;

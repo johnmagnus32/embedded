@@ -36,6 +36,6 @@ struct stm32f411 {
 };
 
 void stm32f411_init(struct stm32f411 *soc);
-void stm32f411_tick(struct stm32f411 *soc);
+int  stm32f411_tick(struct stm32f411 *soc);
 
 #endif

@@ -24,6 +24,7 @@ int main(int argc, char **argv)
     int debug_port = 9001;
     uint64_t bench_cycles = 0;
     int no_chardev = 0;
+    int headless = 0;
 
     struct chardev_table chardevs;
     chardev_table_init(&chardevs);
@@ -40,6 +41,9 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--bench") == 0 && i + 1 < argc) {
             bench_cycles = strtoull(argv[++i], NULL, 0);
         } else if (strcmp(argv[i], "--no-chardev") == 0) {
+            no_chardev = 1;
+        } else if (strcmp(argv[i], "--headless") == 0) {
+            headless = 1;
             no_chardev = 1;
         }
     }
@@ -81,11 +85,26 @@ int main(int argc, char **argv)
 
     armv7m_cpu_reset(cpu, bus);
 
+    if (headless) {
+        while (1) {
+            int r = mach->tick(board);
+            if (r & CPU_SEMIHOST_EXIT) {
+                free(*flash); free(*ram); free(board);
+                return r & 0xFF;
+            }
+        }
+    }
+
     if (bench_cycles > 0) {
         struct timespec t0, t1;
         clock_gettime(CLOCK_MONOTONIC, &t0);
-        for (uint64_t i = 0; i < bench_cycles; i++)
-            mach->tick(board);
+        for (uint64_t i = 0; i < bench_cycles; i++) {
+            int r = mach->tick(board);
+            if (r & CPU_SEMIHOST_EXIT) {
+                free(*flash); free(*ram); free(board);
+                return r & 0xFF;
+            }
+        }
         clock_gettime(CLOCK_MONOTONIC, &t1);
         double secs = (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9;
         LOG("Bench: %llu ticks in %.3fs = %.1f MIPS",

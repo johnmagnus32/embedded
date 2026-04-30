@@ -33,6 +33,10 @@ struct armv7m_cpu {
 
 struct membus;
 
+/* cpu_step return codes */
+#define CPU_OK              0
+#define CPU_SEMIHOST_EXIT   0x100  /* OR'd with exit code in low byte */
+
 void armv7m_cpu_init(struct armv7m_cpu *cpu);
 void armv7m_cpu_reset(struct armv7m_cpu *cpu, struct membus *bus);
 int  armv7m_cpu_step(struct armv7m_cpu *cpu, struct membus *bus);

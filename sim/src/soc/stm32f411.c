@@ -13,6 +13,22 @@
 static uint32_t rcc_read(void *opaque, uint32_t offset)  { (void)opaque; (void)offset; return 0; }
 static void     rcc_write(void *opaque, uint32_t offset, uint32_t val) { (void)opaque; (void)offset; (void)val; }
 
+/* DWT stub — exposes cpu->cycle_count as CYCCNT */
+static uint32_t dwt_read(void *opaque, uint32_t offset)
+{
+    struct armv7m_cpu *cpu = (struct armv7m_cpu *)opaque;
+    if (offset == 0x04) return (uint32_t)cpu->cycle_count;
+    if (offset == 0x00) return 1; /* CTRL: CYCCNTENA */
+    return 0;
+}
+static void dwt_write(void *opaque, uint32_t offset, uint32_t val)
+{ (void)opaque; (void)offset; (void)val; }
+
+/* DEMCR stub */
+static uint32_t demcr_val;
+static uint32_t demcr_read(void *opaque, uint32_t offset)  { (void)opaque; (void)offset; return demcr_val; }
+static void     demcr_write(void *opaque, uint32_t offset, uint32_t val) { (void)opaque; (void)offset; demcr_val = val; }
+
 void stm32f411_init(struct stm32f411 *soc)
 {
     soc->flash = calloc(1, FLASH_SIZE);
@@ -76,6 +92,12 @@ void stm32f411_init(struct stm32f411 *soc)
     membus_register(&soc->bus, 0xE000E100, 0x10, armv7m_nvic_iser_read, armv7m_nvic_iser_write, &soc->nvic);
     membus_register(&soc->bus, 0xE000ED00, 0xA4, armv7m_nvic_scb_read, armv7m_nvic_scb_write, &soc->nvic);
 
+    /* DWT (Data Watchpoint and Trace) — cycle counter */
+    membus_register(&soc->bus, 0xE0001000, 0x100, dwt_read, dwt_write, &soc->cpu);
+
+    /* DEMCR (Debug Exception and Monitor Control Register) */
+    membus_register(&soc->bus, 0xE000EDF0, 0x10, demcr_read, demcr_write, NULL);
+
     /* UARTs */
     membus_register(&soc->bus, 0x40011000, 0x20, stm32_uart_read, stm32_uart_write, &soc->usarts[0]);
     membus_register(&soc->bus, 0x40004400, 0x20, stm32_uart_read, stm32_uart_write, &soc->usarts[1]);
@@ -104,11 +126,12 @@ void stm32f411_init(struct stm32f411 *soc)
     membus_register(&soc->bus, 0x40026400, 0x400, stm32_dma_read, stm32_dma_write, &soc->dma2);
 }
 
-void stm32f411_tick(struct stm32f411 *soc)
+int stm32f411_tick(struct stm32f411 *soc)
 {
-    armv7m_cpu_step(&soc->cpu, &soc->bus);
+    int r = armv7m_cpu_step(&soc->cpu, &soc->bus);
     armv7m_systick_tick(&soc->systick, &soc->nvic);
     if (soc->dma1.any_active) stm32_dma_tick(&soc->dma1);
     if (soc->dma2.any_active) stm32_dma_tick(&soc->dma2);
     armv7m_nvic_update(&soc->nvic, &soc->cpu, &soc->bus);
+    return r;
 }

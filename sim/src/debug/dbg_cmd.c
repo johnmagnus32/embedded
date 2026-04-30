@@ -38,7 +38,18 @@ static void run_until_bp(int fd, struct sim_ctx *ctx)
     static uint64_t last_cycles = 0;
     static struct timespec last_ts = {0, 0};
     do {
-        ctx->mach->tick(ctx->board);
+        int r = ctx->mach->tick(ctx->board);
+        if (r & CPU_SEMIHOST_EXIT) {
+            int code = r & 0xFF;
+            if (ctx->chardevs) {
+                /* Accept any pending clients, flush, then graceful shutdown */
+                for (int ci = 0; ci < ctx->chardevs->count; ci++)
+                    chardev_try_accept(&ctx->chardevs->devs[ci]);
+                chardev_flush_all(ctx->chardevs);
+                chardev_shutdown_all(ctx->chardevs);
+            }
+            exit(code);
+        }
         if (ctx->cpu->cycle_count - last_cycles >= 1000000) {
             struct timespec now;
             clock_gettime(CLOCK_MONOTONIC, &now);

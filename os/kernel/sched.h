@@ -15,8 +15,12 @@
 
 #include <stdint.h>
 
+#ifndef MAX_TASKS
 #define MAX_TASKS 8
+#endif
+#ifndef TASK_STACK_SIZE
 #define TASK_STACK_SIZE 4096
+#endif
 
 typedef void (*task_fn)(void);
 
@@ -33,7 +37,7 @@ enum task_state {
  * Like Zephyr's _wait_q_t / Linux's wait_queue_head_t.
  */
 struct wait_queue {
-    uint8_t waiters;  /* bitmask of task IDs waiting */
+    uint16_t waiters;  /* bitmask of task IDs waiting */
 };
 
 #define WAIT_QUEUE_INIT { .waiters = 0 }

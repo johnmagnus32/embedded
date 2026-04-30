@@ -41,6 +41,6 @@ void armv7m_systick_write(void *opaque, uint32_t offset, uint32_t val)
     switch (offset) {
     case 0x00: st->csr = val; break;
     case 0x04: st->rvr = val; break;
-    case 0x08: st->cvr = val; break;
+    case 0x08: st->cvr = val; st->counter = 0; break;
     }
 }

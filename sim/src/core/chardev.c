@@ -112,8 +112,9 @@ void chardev_flush(struct chardev *cd)
             cd->client_fd = -1;
             break;
         }
+        cd->wbuf_len = 0; /* data sent (or client disconnected) */
     }
-    cd->wbuf_len = 0; /* drop unsent data */
+    /* If no client, keep data in buffer for next flush */
 }
 
 void chardev_flush_all(struct chardev_table *t)
@@ -134,4 +135,23 @@ int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen)
     int n = read(cd->client_fd, buf, maxlen);
     if (n <= 0) { cd->client_fd = -1; return -1; }
     return n;
+}
+
+void chardev_shutdown_all(struct chardev_table *t)
+{
+    if (!t) return;
+    for (int i = 0; i < t->count; i++) {
+        struct chardev *cd = &t->devs[i];
+        if (cd->client_fd >= 0) {
+            /* Set blocking so final write completes */
+            int flags = fcntl(cd->client_fd, F_GETFL, 0);
+            fcntl(cd->client_fd, F_SETFL, flags & ~O_NONBLOCK);
+            /* Flush remaining data */
+            if (cd->wbuf_len > 0) {
+                write(cd->client_fd, cd->wbuf, cd->wbuf_len);
+                cd->wbuf_len = 0;
+            }
+            shutdown(cd->client_fd, SHUT_WR);
+        }
+    }
 }
