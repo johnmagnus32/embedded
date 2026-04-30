@@ -273,19 +273,23 @@ void sched_start(void)
     );
 #else
     __asm volatile(
-        "cpsid i                   \n"  /* disable interrupts during switch */
-        "ldmia %0!, {r4-r11}       \n"
-        "msr   psp, %0             \n"
-#ifdef CONFIG_USERSPACE
-        "movs  r0, #3              \n"  /* SPSEL=1 (PSP) + nPRIV=1 (unprivileged) */
-#else
-        "movs  r0, #2              \n"  /* SPSEL=1 (PSP) only */
-#endif
+        "cpsid i                   \n"
+        "ldmia %0!, {r4-r11}       \n"  /* pop saved R4-R11 */
+        "msr   psp, %0             \n"  /* set PSP to exception frame */
+        "movs  r0, #2              \n"  /* SPSEL=1 (PSP) */
         "msr   control, r0         \n"
         "isb                       \n"
-        "ldr   r0, =0xFFFFFFFD     \n"
-        "cpsie i                   \n"  /* re-enable: exc_return is next */
-        "bx    r0                  \n"
+        /* Pop the exception frame manually (we're in thread mode,
+         * can't use EXC_RETURN). PSP points to {R0-R3, R12, LR, PC, xPSR} */
+        "mrs   r0, psp             \n"
+        "ldmia r0!, {r1-r4}        \n"  /* pop R0-R3 into r1-r4 (scratch) */
+        "ldmia r0!, {r1}           \n"  /* pop R12 (discard) */
+        "ldmia r0!, {r1}           \n"  /* pop LR (discard) */
+        "ldmia r0!, {r1}           \n"  /* pop PC → r1 */
+        "ldmia r0!, {r2}           \n"  /* pop xPSR (discard) */
+        "msr   psp, r0             \n"  /* update PSP past the frame */
+        "cpsie i                   \n"
+        "bx    r1                  \n"  /* jump to task entry */
         :
         : "r" (sp)
     );
