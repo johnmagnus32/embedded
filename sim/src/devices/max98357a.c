@@ -6,9 +6,6 @@
  * the correct rate so the firmware audio task wakes up realistically.
  */
 #include <string.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include "max98357a.h"
 #include "stm32_dma.h"
 #include "membus.h"
@@ -71,13 +68,9 @@ void max98357a_tick(struct max98357a *d)
             }
         }
 
-        /* Send to chardev (non-blocking — drop audio rather than stall) */
-        if (d->cd && d->cd->client_fd >= 0) {
-            int flags = fcntl(d->cd->client_fd, F_GETFL, 0);
-            fcntl(d->cd->client_fd, F_SETFL, flags | O_NONBLOCK);
-            write(d->cd->client_fd, buf, chunk * 2);
-            fcntl(d->cd->client_fd, F_SETFL, flags);
-        }
+        /* Send to chardev */
+        if (d->cd)
+            chardev_write_buf(d->cd, (const uint8_t *)buf, chunk * 2);
 
         total += chunk;
     }

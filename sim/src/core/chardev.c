@@ -89,14 +89,22 @@ void chardev_write_buf(struct chardev *cd, const uint8_t *data, int len)
 {
     if (!cd) return;
     if (cd->client_fd < 0) chardev_try_accept(cd);
-    if (cd->client_fd >= 0) {
-        int sent = 0;
-        while (sent < len) {
-            int n = write(cd->client_fd, data + sent, len - sent);
-            if (n <= 0) { cd->client_fd = -1; return; }
-            sent += n;
-        }
+    if (cd->client_fd < 0) return;
+
+    /* Non-blocking: send what fits, drop the rest.
+     * TCP stream consumers (sim-web.py) buffer and reassemble. */
+    int flags = fcntl(cd->client_fd, F_GETFL, 0);
+    fcntl(cd->client_fd, F_SETFL, flags | O_NONBLOCK);
+    int sent = 0;
+    while (sent < len) {
+        int n = write(cd->client_fd, data + sent, len - sent);
+        if (n > 0) { sent += n; continue; }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+            break; /* buffer full — drop remaining */
+        cd->client_fd = -1; /* real error — disconnect */
+        break;
     }
+    fcntl(cd->client_fd, F_SETFL, flags);
 }
 
 int chardev_read_nonblock(struct chardev *cd, uint8_t *buf, int maxlen)
