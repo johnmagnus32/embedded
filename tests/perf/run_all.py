@@ -49,7 +49,7 @@ kill_all()
 core = subprocess.Popen([SIM, '--machine', 'gameboy', '--firmware', FW,
     '--debug', '9001', '--chardev', 'display=9004', '--chardev', 'usart2=9002',
     '--chardev', 'audio=9005', '--chardev', 'io=9006'],
-    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 time.sleep(2)
 
 fps = subprocess.Popen([sys.executable, os.path.join(DIR, 'display_fps.py'),
@@ -59,16 +59,26 @@ send_tcp(9001, '{"cmd":"continue"}\n')
 btn = threading.Thread(target=press_a, args=(9006, 4, 3), daemon=True)
 btn.start()
 fps_out, _ = fps.communicate(timeout=25)
-core.terminate(); core.wait()
+core.terminate()
+try: core.wait(timeout=3)
+except: core.kill(); core.wait()
+core_err = core.stderr.read().decode(errors='replace')
+
+log("  Point 1 (ili9341_flush, core only):")
+p1_lines = [l for l in core_err.split('\n') if '[display]' in l]
+for line in p1_lines: log(f"  {line}")
+if not p1_lines: log("  (no display stats)")
+
+log("  Point 2 (chardev direct):")
 for line in fps_out.decode().strip().split('\n'):
-    log(line)
+    log(f"  {line}")
 
 # --- Test 3: Display FPS WebSocket (15s) ---
 log("\n=== Test 3: Display FPS (WebSocket, 15s) ===")
 kill_all()
 SIM_WEB = os.path.join(DIR, '..', '..', 'sim', 'src', 'sim-web', 'sim-web.py')
 web = subprocess.Popen([sys.executable, SIM_WEB, '--machine', 'gameboy', '--firmware', FW],
-    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 time.sleep(3)
 
 fps = subprocess.Popen([sys.executable, os.path.join(DIR, 'display_fps_ws.py'),
@@ -97,10 +107,20 @@ btn = threading.Thread(target=press_a_http, args=(4, 3), daemon=True)
 btn.start()
 
 fps_out, _ = fps.communicate(timeout=25)
-web.terminate(); web.wait()
+web.terminate()
+try: web.wait(timeout=3)
+except: web.kill(); web.wait()
+web_err = web.stderr.read().decode(errors='replace')
 kill_all()
+
+log("  Point 1 (ili9341_flush, during WebSocket test):")
+p1_lines = [l for l in web_err.split('\n') if '[display]' in l]
+for line in p1_lines: log(f"  {line}")
+if not p1_lines: log("  (no display stats)")
+
+log("  Point 3 (WebSocket):")
 for line in fps_out.decode().strip().split('\n'):
-    log(line)
+    log(f"  {line}")
 
 # Write results
 result_file = os.path.join(RESULTS, 'baseline.txt')

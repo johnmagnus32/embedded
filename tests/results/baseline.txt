@@ -1,44 +1,70 @@
 === Test 1: MIPS Benchmark (10M ticks) ===
-[sim-core] Bench: 600000000 ticks in 14.656s = 40.9 MIPS
+[sim-core] Bench: 600000000 ticks in 15.745s = 38.1 MIPS
 
 === Test 2: Display FPS (chardev direct, 15s) ===
-[1.2s] 2 frames | 98.4 FPS | min=10.2ms avg=10.2ms max=10.2ms
-[2.2s] 57 frames | 54.8 FPS | min=17.9ms avg=18.2ms max=19.0ms
-[3.2s] 92 frames | 35.2 FPS | min=25.6ms avg=28.4ms max=33.7ms
-[4.3s] 93 frames | 32.3 FPS | min=25.6ms avg=31.0ms max=102.5ms
-[5.3s] 150 frames | 55.6 FPS | min=17.6ms avg=18.0ms max=18.4ms
-[7.4s] 185 frames | 36.4 FPS | min=17.9ms avg=27.5ms max=103.0ms
-[8.4s] 242 frames | 46.7 FPS | min=17.5ms avg=21.4ms max=27.0ms
-[9.4s] 279 frames | 37.0 FPS | min=25.7ms avg=27.0ms max=33.9ms
-[10.5s] 291 frames | 30.7 FPS | min=25.7ms avg=32.5ms max=103.4ms
-[11.5s] 348 frames | 53.7 FPS | min=18.0ms avg=18.6ms max=26.2ms
-[12.5s] 386 frames | 38.0 FPS | min=26.0ms avg=26.3ms max=28.3ms
-[13.6s] 389 frames | 34.6 FPS | min=26.0ms avg=28.9ms max=103.6ms
-[14.6s] 450 frames | 55.4 FPS | min=17.6ms avg=18.1ms max=18.4ms
-
-=== Point 2: Chardev Direct (15.0s) ===
-Total frames: 465
-Average FPS: 33.6
-Interval: min=9.9ms avg=29.7ms max=1192.7ms stddev=90.8ms
-Glitches (>2x avg): 8/464 (1.7%)
+  Point 1 (ili9341_flush, core only):
+  [perf] 36.0 MIPS [perf] 35.9 MIPS [perf] 35.8 MIPS [perf] 35.7 MIPS [perf] 36.0 MIPS [perf] 35.8 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.2 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.3 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [display] 54.2 FPS | min=10.7ms avg=18.5ms max=19.7ms | glitches: 0/30
+  [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.3 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [display] 52.1 FPS | min=18.9ms avg=19.2ms max=19.4ms | glitches: 0/30
+  [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.8 MIPS [perf] 35.6 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.9 MIPS [perf] 35.5 MIPS [display] 33.9 FPS | min=20.3ms avg=29.5ms max=35.5ms | glitches: 0/30
+  [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.8 MIPS [perf] 35.9 MIPS [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.9 MIPS [perf] 35.9 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 35.9 MIPS [perf] 36.1 MIPS [perf] 35.7 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 35.8 MIPS [perf] 35.7 MIPS [perf] 36.0 MIPS [perf] 35.9 MIPS [perf] 36.1 MIPS [perf] 36.0 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 36.2 MIPS [perf] 35.7 MIPS [perf] 36.6 MIPS [perf] 36.2 MIPS [perf] 36.2 MIPS [perf] 36.1 MIPS [perf] 35.9 MIPS [perf] 35.7 MIPS [perf] 36.0 MIPS [perf] 35.8 MIPS [perf] 35.7 MIPS [perf] 36.0 MIPS [perf] 35.7 MIPS [perf] 35.7 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [display] 19.0 FPS | min=10.8ms avg=52.7ms max=941.0ms | glitches: 0/30
+  [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.3 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [display] 52.7 FPS | min=18.8ms avg=19.0ms max=19.3ms | glitches: 0/30
+  [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.2 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.2 MIPS [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [display] 39.7 FPS | min=18.8ms avg=25.2ms max=27.4ms | glitches: 0/30
+  [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 36.0 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 35.1 MIPS [perf] 35.7 MIPS [perf] 17.4 MIPS [perf] 36.1 MIPS [perf] 36.0 MIPS [perf] 31.9 MIPS [perf] 35.8 MIPS [perf] 36.2 MIPS [perf] 35.9 MIPS [perf] 36.2 MIPS [perf] 36.2 MIPS [perf] 35.9 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 36.2 MIPS [perf] 35.4 MIPS [perf] 36.2 MIPS [perf] 36.0 MIPS [perf] 17.2 MIPS [perf] 10.6 MIPS [perf] 11.1 MIPS [perf] 10.4 MIPS [perf] 23.8 MIPS [perf] 34.4 MIPS [perf] 34.1 MIPS [perf] 36.1 MIPS [perf] 35.8 MIPS [perf] 35.8 MIPS [perf] 35.8 MIPS [perf] 36.0 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.0 MIPS [perf] 35.3 MIPS [perf] 35.3 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.2 MIPS [perf] 35.7 MIPS [display] 18.2 FPS | min=10.5ms avg=55.0ms max=1117.9ms | glitches: 0/30
+  [perf] 35.3 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [display] 44.7 FPS | min=18.7ms avg=22.4ms max=27.6ms | glitches: 0/30
+  [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.9 MIPS [perf] 35.5 MIPS [perf] 35.1 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.8 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.6 MIPS [display] 36.6 FPS | min=27.1ms avg=27.4ms max=27.6ms | glitches: 0/30
+  [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.1 MIPS [perf] 35.7 MIPS [perf] 35.6 MIPS [perf] 35.8 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.9 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.2 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.9 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 36.0 MIPS [perf] 36.2 MIPS [perf] 35.8 MIPS [perf] 36.2 MIPS [perf] 35.7 MIPS [perf] 36.4 MIPS [perf] 36.5 MIPS [perf] 36.7 MIPS [perf] 36.2 MIPS [perf] 35.9 MIPS [perf] 35.8 MIPS [perf] 35.9 MIPS [perf] 35.8 MIPS [perf] 35.8 MIPS [perf] 35.9 MIPS [perf] 35.7 MIPS [perf] 36.0 MIPS [perf] 35.2 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [display] 22.3 FPS | min=10.5ms avg=44.8ms max=481.3ms | glitches: 2/30
+  [perf] 34.9 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.1 MIPS [perf] 35.3 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.1 MIPS [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [display] 51.8 FPS | min=19.1ms avg=19.3ms max=19.6ms | glitches: 0/30
+  [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [display] 43.0 FPS | min=19.1ms avg=23.3ms max=28.1ms | glitches: 0/30
+  [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.4 MIPS [perf] 35.8 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.6 MIPS [perf] 35.7 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.4 MIPS [perf] 35.9 MIPS [perf] 36.0 MIPS [perf] 35.2 MIPS [perf] 36.1 MIPS [perf] 36.0 MIPS [perf] 36.0 MIPS [perf] 35.8 MIPS [perf] 36.1 MIPS [perf] 35.7 MIPS [perf] 36.0 MIPS [perf] 35.7 MIPS [perf] 35.7 MIPS [perf] 36.1 MIPS [perf] 35.7 MIPS [perf] 35.8 MIPS [perf] 36.0 MIPS [perf] 35.8 MIPS [perf] 36.1 MIPS [perf] 35.9 MIPS [perf] 36.0 MIPS [perf] 35.8 MIPS [perf] 36.4 MIPS [perf] 36.4 MIPS [perf] 36.4 MIPS [perf] 36.7 MIPS [perf] 35.7 MIPS [perf] 35.9 MIPS [perf] 35.9 MIPS [perf] 35.7 MIPS [perf] 35.6 MIPS [perf] 36.0 MIPS [perf] 35.8 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [display] 17.4 FPS | min=10.8ms avg=57.6ms max=857.7ms | glitches: 2/30
+  [perf] 35.1 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.7 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.8 MIPS [perf] 35.3 MIPS [perf] 35.8 MIPS [perf] 35.3 MIPS [perf] 35.7 MIPS [display] 62.4 FPS | min=10.6ms avg=16.0ms max=19.4ms | glitches: 0/30
+  [perf] 35.3 MIPS [perf] 35.7 MIPS [perf] 35.2 MIPS [perf] 35.7 MIPS [perf] 35.3 MIPS [perf] 35.4 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.1 MIPS [perf] 35.8 MIPS [perf] 35.5 MIPS [perf] 35.6 MIPS [perf] 35.6 MIPS [perf] 35.5 MIPS [perf] 35.3 MIPS [perf] 35.5 MIPS [perf] 35.8 MIPS [perf] 35.4 MIPS [perf] 35.6 MIPS [perf] 35.6 MIPS [display] 52.6 FPS | min=18.8ms avg=19.0ms max=19.5ms | glitches: 0/30
+  Point 2 (chardev direct):
+  [1.2s] 2 frames | 92.2 FPS | min=10.8ms avg=10.8ms max=10.8ms
+  [2.2s] 54 frames | 52.1 FPS | min=19.0ms avg=19.2ms max=19.6ms
+  [3.2s] 90 frames | 34.6 FPS | min=19.0ms avg=28.9ms max=35.4ms
+  [4.3s] 93 frames | 30.6 FPS | min=27.0ms avg=32.7ms max=108.4ms
+  [5.3s] 147 frames | 52.7 FPS | min=18.7ms avg=19.0ms max=19.4ms
+  [6.3s] 184 frames | 38.5 FPS | min=19.0ms avg=26.0ms max=27.3ms
+  [7.4s] 185 frames | 34.5 FPS | min=19.0ms avg=29.0ms max=108.3ms
+  [8.4s] 240 frames | 45.3 FPS | min=18.7ms avg=22.1ms max=27.7ms
+  [9.4s] 276 frames | 36.1 FPS | min=27.0ms avg=27.7ms max=35.7ms
+  [10.5s] 291 frames | 29.2 FPS | min=27.0ms avg=34.3ms max=108.7ms
+  [11.5s] 347 frames | 51.8 FPS | min=19.0ms avg=19.3ms max=20.7ms
+  [12.5s] 383 frames | 36.0 FPS | min=27.4ms avg=27.8ms max=28.1ms
+  [13.6s] 389 frames | 32.8 FPS | min=27.4ms avg=30.5ms max=108.4ms
+  [14.6s] 447 frames | 52.6 FPS | min=18.7ms avg=19.0ms max=19.5ms
+  
+  === Point 2: Chardev Direct (15.0s) ===
+  Total frames: 464
+  Average FPS: 33.6
+  Interval: min=10.4ms avg=29.8ms max=1118.0ms stddev=80.1ms
+  Glitches (>2x avg): 8/463 (1.7%)
 
 === Test 3: Display FPS (WebSocket, 15s) ===
-[1.3s] 2 frames | 0.8 FPS | min=1314.9ms avg=1314.9ms max=1314.9ms
-[2.3s] 45 frames | 41.7 FPS | min=22.9ms avg=24.0ms max=24.8ms
-[3.4s] 80 frames | 33.2 FPS | min=23.7ms avg=30.1ms max=35.5ms
-[4.4s] 95 frames | 18.7 FPS | min=33.6ms avg=53.4ms max=380.1ms
-[5.4s] 138 frames | 41.8 FPS | min=20.6ms avg=23.9ms max=27.6ms
-[6.5s] 174 frames | 34.0 FPS | min=21.9ms avg=29.4ms max=36.3ms
-[7.5s] 187 frames | 18.3 FPS | min=23.4ms avg=54.8ms max=545.2ms
-[8.6s] 235 frames | 38.9 FPS | min=0.0ms avg=25.7ms max=53.4ms
-[9.6s] 264 frames | 28.4 FPS | min=32.4ms avg=35.2ms max=39.0ms
-[10.6s] 289 frames | 25.0 FPS | min=32.8ms avg=40.0ms max=48.4ms
-[11.6s] 311 frames | 21.8 FPS | min=31.8ms avg=45.9ms max=60.0ms
-[13.7s] 320 frames | 9.7 FPS | min=16.9ms avg=102.9ms max=1732.8ms
-[14.8s] 368 frames | 40.9 FPS | min=8.1ms avg=24.5ms max=40.8ms
-
-=== Point 3: WebSocket (15.0s) ===
-Total frames: 379
-Average FPS: 25.2
-Interval: min=0.0ms avg=39.7ms max=1732.8ms stddev=114.8ms
-Glitches (>2x avg): 7/378 (1.9%)
+  Point 1 (ili9341_flush, during WebSocket test):
+  [perf] 26.6 MIPS [perf] 26.6 MIPS [perf] 26.6 MIPS [perf] 26.6 MIPS [perf] 26.7 MIPS [perf] 26.7 MIPS [perf] 26.6 MIPS [perf] 26.5 MIPS [perf] 28.3 MIPS [perf] 27.4 MIPS [perf] 27.8 MIPS [perf] 27.2 MIPS [perf] 27.6 MIPS [perf] 26.4 MIPS [perf] 27.8 MIPS [perf] 26.9 MIPS [perf] 27.4 MIPS [perf] 27.1 MIPS [perf] 27.5 MIPS [perf] 27.3 MIPS [perf] 27.2 MIPS [perf] 27.5 MIPS [perf] 27.3 MIPS [perf] 27.8 MIPS [perf] 27.0 MIPS [perf] 27.6 MIPS [perf] 27.4 MIPS [display] 41.2 FPS | min=13.3ms avg=24.3ms max=26.0ms | glitches: 0/30
+  [perf] 27.5 MIPS [perf] 27.5 MIPS [perf] 27.2 MIPS [perf] 28.2 MIPS [perf] 26.8 MIPS [perf] 27.9 MIPS [perf] 27.1 MIPS [perf] 27.7 MIPS [perf] 27.2 MIPS [perf] 27.7 MIPS [perf] 27.8 MIPS [perf] 27.2 MIPS [perf] 27.6 MIPS [perf] 27.4 MIPS [perf] 27.8 MIPS [perf] 27.2 MIPS [perf] 27.5 MIPS [perf] 27.3 MIPS [perf] 27.7 MIPS [perf] 27.6 MIPS [perf] 26.6 MIPS [display] 39.5 FPS | min=24.6ms avg=25.3ms max=26.1ms | glitches: 0/30
+  [perf] 27.8 MIPS [perf] 26.8 MIPS [perf] 27.1 MIPS [perf] 27.3 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.0 MIPS [perf] 27.4 MIPS [perf] 27.1 MIPS [perf] 27.1 MIPS [perf] 27.1 MIPS [perf] 26.8 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.2 MIPS [perf] 27.1 MIPS [perf] 27.2 MIPS [perf] 26.9 MIPS [perf] 26.2 MIPS [perf] 27.3 MIPS [perf] 27.0 MIPS [perf] 27.0 MIPS [perf] 26.7 MIPS [perf] 26.5 MIPS [perf] 27.0 MIPS [perf] 26.6 MIPS [display] 25.3 FPS | min=26.7ms avg=39.5ms max=48.1ms | glitches: 0/30
+  [perf] 26.9 MIPS [perf] 26.3 MIPS [perf] 27.0 MIPS [perf] 26.1 MIPS [perf] 26.3 MIPS [perf] 13.7 MIPS [perf] 4.1 MIPS [perf] 4.2 MIPS [perf] 4.1 MIPS [perf] 4.1 MIPS [perf] 4.2 MIPS [perf] 4.1 MIPS [perf] 4.1 MIPS [perf] 4.2 MIPS [perf] 4.1 MIPS [perf] 4.1 MIPS [perf] 4.1 MIPS [perf] 4.1 MIPS [perf] 13.2 MIPS [perf] 25.7 MIPS [perf] 26.0 MIPS [perf] 25.9 MIPS [perf] 26.0 MIPS [perf] 25.9 MIPS [perf] 25.9 MIPS [perf] 25.6 MIPS [perf] 25.5 MIPS [perf] 27.7 MIPS [perf] 26.7 MIPS [perf] 27.0 MIPS [perf] 27.8 MIPS [perf] 26.0 MIPS [perf] 27.2 MIPS [perf] 27.1 MIPS [perf] 27.4 MIPS [perf] 26.6 MIPS [perf] 27.5 MIPS [perf] 27.0 MIPS [perf] 27.0 MIPS [perf] 26.9 MIPS [perf] 26.9 MIPS [perf] 27.5 MIPS [perf] 26.8 MIPS [perf] 27.5 MIPS [display] 7.1 FPS | min=14.1ms avg=140.1ms max=3344.5ms | glitches: 0/30
+  [perf] 27.4 MIPS [perf] 28.1 MIPS [perf] 26.4 MIPS [perf] 27.3 MIPS [perf] 27.2 MIPS [perf] 27.3 MIPS [perf] 27.2 MIPS [perf] 27.2 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.0 MIPS [perf] 26.9 MIPS [perf] 27.9 MIPS [perf] 27.5 MIPS [perf] 27.3 MIPS [perf] 26.6 MIPS [perf] 27.5 MIPS [perf] 26.9 MIPS [perf] 27.1 MIPS [perf] 26.7 MIPS [perf] 26.9 MIPS [display] 39.7 FPS | min=24.5ms avg=25.2ms max=25.9ms | glitches: 0/30
+  [perf] 27.8 MIPS [perf] 27.4 MIPS [perf] 27.9 MIPS [perf] 27.2 MIPS [perf] 27.6 MIPS [perf] 27.1 MIPS [perf] 26.8 MIPS [perf] 26.7 MIPS [perf] 26.8 MIPS [perf] 26.6 MIPS [perf] 26.6 MIPS [perf] 27.0 MIPS [perf] 26.7 MIPS [perf] 27.1 MIPS [perf] 26.8 MIPS [perf] 26.6 MIPS [perf] 27.1 MIPS [perf] 26.5 MIPS [perf] 26.7 MIPS [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 27.2 MIPS [perf] 27.1 MIPS [perf] 26.9 MIPS [display] 29.7 FPS | min=24.6ms avg=33.7ms max=37.0ms | glitches: 0/30
+  [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 26.9 MIPS [perf] 26.2 MIPS [perf] 26.2 MIPS [perf] 25.8 MIPS [perf] 25.7 MIPS [perf] 9.9 MIPS [perf] 25.9 MIPS [perf] 25.9 MIPS [perf] 25.8 MIPS [perf] 25.9 MIPS [perf] 25.7 MIPS [perf] 25.9 MIPS [perf] 25.9 MIPS [perf] 26.0 MIPS [perf] 26.3 MIPS [perf] 28.0 MIPS [perf] 28.2 MIPS [perf] 27.8 MIPS [perf] 28.0 MIPS [perf] 28.1 MIPS [perf] 27.9 MIPS [perf] 27.6 MIPS [perf] 26.7 MIPS [perf] 27.8 MIPS [perf] 27.2 MIPS [perf] 27.2 MIPS [perf] 27.0 MIPS [display] 26.7 FPS | min=13.6ms avg=37.5ms max=415.0ms | glitches: 0/30
+  [perf] 27.5 MIPS [perf] 27.9 MIPS [perf] 27.1 MIPS [perf] 27.9 MIPS [perf] 26.2 MIPS [perf] 27.1 MIPS [perf] 26.7 MIPS [perf] 27.9 MIPS [perf] 27.4 MIPS [perf] 27.5 MIPS [perf] 26.8 MIPS [perf] 27.3 MIPS [perf] 27.4 MIPS [perf] 26.6 MIPS [perf] 26.8 MIPS [perf] 26.6 MIPS [perf] 26.6 MIPS [perf] 27.1 MIPS [perf] 26.7 MIPS [perf] 26.7 MIPS [perf] 27.1 MIPS [perf] 27.0 MIPS [perf] 26.9 MIPS [perf] 26.9 MIPS [display] 33.6 FPS | min=24.4ms avg=29.8ms max=37.1ms | glitches: 0/30
+  [perf] 26.8 MIPS [perf] 26.4 MIPS [perf] 26.7 MIPS [perf] 26.4 MIPS [perf] 26.8 MIPS [perf] 27.1 MIPS [perf] 27.1 MIPS [perf] 26.7 MIPS [perf] 26.8 MIPS [perf] 27.0 MIPS [perf] 26.8 MIPS [perf] 26.7 MIPS [perf] 26.8 MIPS [perf] 26.6 MIPS [perf] 26.5 MIPS [perf] 27.0 MIPS [perf] 27.1 MIPS [perf] 26.6 MIPS [perf] 26.8 MIPS [perf] 26.6 MIPS [perf] 26.7 MIPS [perf] 26.8 MIPS [perf] 26.6 MIPS [perf] 26.7 MIPS [perf] 27.0 MIPS [perf] 26.4 MIPS [perf] 26.9 MIPS [perf] 27.0 MIPS [perf] 27.0 MIPS [perf] 27.2 MIPS [display] 27.1 FPS | min=36.3ms avg=36.9ms max=37.8ms | glitches: 0/30
+  Point 3 (WebSocket):
+  [1.3s] 2 frames | 0.8 FPS | min=1330.0ms avg=1330.0ms max=1330.0ms
+  [2.3s] 43 frames | 39.5 FPS | min=24.5ms avg=25.3ms max=26.2ms
+  [3.4s] 77 frames | 32.7 FPS | min=24.5ms avg=30.5ms max=38.1ms
+  [7.6s] 95 frames | 6.5 FPS | min=35.1ms avg=154.3ms max=3343.9ms
+  [8.6s] 136 frames | 39.6 FPS | min=24.5ms avg=25.2ms max=26.1ms
+  [9.6s] 171 frames | 33.6 FPS | min=24.3ms avg=29.7ms max=37.2ms
+  [10.7s] 187 frames | 19.2 FPS | min=25.4ms avg=52.2ms max=415.2ms
+  [11.7s] 233 frames | 38.0 FPS | min=1.3ms avg=26.3ms max=49.4ms
+  [12.7s] 261 frames | 27.1 FPS | min=35.6ms avg=36.9ms max=38.5ms
+  [13.7s] 286 frames | 24.5 FPS | min=36.1ms avg=40.8ms max=50.2ms
+  
+  === Point 3: WebSocket (15.5s) ===
+  Total frames: 300
+  Average FPS: 20.6
+  Interval: min=1.3ms avg=48.6ms max=3343.9ms stddev=206.8ms
+  Glitches (>2x avg): 6/299 (2.0%)
