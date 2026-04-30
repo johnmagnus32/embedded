@@ -39,7 +39,7 @@ kill_all()
 # --- Test 1: MIPS ---
 log("=== Test 1: MIPS Benchmark (10M ticks) ===")
 r = subprocess.run([SIM, '--machine', 'gameboy', '--firmware', FW,
-    '--bench', '10000000', '--no-chardev'], capture_output=True, text=True)
+    '--bench', '600000000', '--no-chardev'], capture_output=True, text=True)
 for line in r.stderr.strip().split('\n'):
     if 'Bench' in line: log(line)
 

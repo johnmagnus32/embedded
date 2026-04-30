@@ -1,6 +1,6 @@
 #!/bin/bash
 # MIPS benchmark — runs sim-core in headless bench mode
-CYCLES=${1:-10000000}
+CYCLES=${1:-600000000}
 DIR="$(cd "$(dirname "$0")" && pwd)"
 SIM="$DIR/../../sim/build/sim-core"
 FW="$DIR/../../projects/gameboy/build/gameboy.elf"

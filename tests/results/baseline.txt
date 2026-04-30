@@ -1,5 +1,5 @@
 === Test 1: MIPS Benchmark (10M ticks) ===
-[sim-core] Bench: 10000000 ticks in 0.248s = 40.3 MIPS
+[sim-core] Bench: 600000000 ticks in 14.656s = 40.9 MIPS
 
 === Test 2: Display FPS (chardev direct, 15s) ===
 [1.2s] 2 frames | 98.4 FPS | min=10.2ms avg=10.2ms max=10.2ms
