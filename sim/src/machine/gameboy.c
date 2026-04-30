@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include "gameboy.h"
 #include "machine.h"
 #include "stm32_exti.h"
@@ -97,56 +96,12 @@ static void gameboy_poll_io(struct gameboy *b)
     }
 }
 
-static struct {
-    struct timespec t0;
-    double cpu_ns, audio_ns, io_ns, total_ns;
-    uint64_t ticks;
-} gperf;
-
-static inline double ts_diff_ns(struct timespec *a, struct timespec *b)
-{
-    return (b->tv_sec - a->tv_sec) * 1e9 + (b->tv_nsec - a->tv_nsec);
-}
-
 void gameboy_tick(struct gameboy *b)
 {
-    struct timespec t1, t2;
-
-    clock_gettime(CLOCK_MONOTONIC, &t1);
     stm32f411_tick(&b->soc);
-    clock_gettime(CLOCK_MONOTONIC, &t2);
-    gperf.cpu_ns += ts_diff_ns(&t1, &t2);
-
     if (b->soc.cpu.cycle_count % 10000 == 0) {
-        if (b->io_chardev) {
-            clock_gettime(CLOCK_MONOTONIC, &t1);
-            gameboy_poll_io(b);
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            gperf.io_ns += ts_diff_ns(&t1, &t2);
-        }
-        clock_gettime(CLOCK_MONOTONIC, &t1);
+        if (b->io_chardev) gameboy_poll_io(b);
         max98357a_tick(&b->audio);
-        clock_gettime(CLOCK_MONOTONIC, &t2);
-        gperf.audio_ns += ts_diff_ns(&t1, &t2);
-    }
-
-    gperf.ticks++;
-    if (gperf.ticks % 1000000 == 0) {
-        gperf.total_ns = gperf.cpu_ns + gperf.audio_ns + gperf.io_ns;
-        double other = gperf.total_ns > 0 ? 0 : 0;
-        /* Measure actual wall time for MIPS */
-        static struct timespec wall_start;
-        struct timespec wall_now;
-        clock_gettime(CLOCK_MONOTONIC, &wall_now);
-        if (gperf.ticks == 1000000) { wall_start = wall_now; }
-        else {
-            double wall_s = ts_diff_ns(&wall_start, &wall_now) / 1e9;
-            double mips = gperf.ticks / wall_s / 1e6;
-            double t = gperf.total_ns > 0 ? gperf.total_ns : 1;
-            fprintf(stderr, "[perf] %.1f MIPS | cpu=%.0f%% audio=%.0f%% io=%.0f%%\n",
-                    mips, gperf.cpu_ns / t * 100, gperf.audio_ns / t * 100, gperf.io_ns / t * 100);
-        }
-        gperf.cpu_ns = gperf.audio_ns = gperf.io_ns = 0;
     }
 }
 
