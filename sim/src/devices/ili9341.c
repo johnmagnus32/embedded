@@ -10,8 +10,18 @@
  */
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include "ili9341.h"
 #include "chardev.h"
+
+static struct {
+    uint64_t frame_count;
+    struct timespec last_frame;
+    double intervals[256];
+    int idx, count;
+    double min_ms, max_ms, sum_ms;
+    int glitch_count, window_frames;
+} dperf;
 
 void ili9341_init(struct ili9341 *d)
 {
@@ -135,4 +145,29 @@ void ili9341_flush(struct ili9341 *d)
         chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
     }
     d->dirty = 0;
+
+    /* Frame timing */
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    if (dperf.frame_count > 0) {
+        double ms = (now.tv_sec - dperf.last_frame.tv_sec) * 1000.0
+                  + (now.tv_nsec - dperf.last_frame.tv_nsec) / 1e6;
+        dperf.intervals[dperf.idx] = ms;
+        dperf.idx = (dperf.idx + 1) % 256;
+        if (dperf.count < 256) dperf.count++;
+        dperf.sum_ms += ms;
+        dperf.window_frames++;
+        if (ms < dperf.min_ms || dperf.window_frames == 1) dperf.min_ms = ms;
+        if (ms > dperf.max_ms) dperf.max_ms = ms;
+        double avg = dperf.sum_ms / dperf.window_frames;
+        if (ms > avg * 2 && dperf.window_frames > 5) dperf.glitch_count++;
+        if (dperf.window_frames >= 100) {
+            fprintf(stderr, "[display] %.1f FPS | min=%.1fms avg=%.1fms max=%.1fms | glitches: %d/100\n",
+                    1000.0 / avg, dperf.min_ms, avg, dperf.max_ms, dperf.glitch_count);
+            dperf.min_ms = dperf.max_ms = dperf.sum_ms = 0;
+            dperf.glitch_count = dperf.window_frames = 0;
+        }
+    }
+    dperf.last_frame = now;
+    dperf.frame_count++;
 }
