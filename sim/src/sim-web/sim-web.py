@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Web debugger for the ARM Cortex-M4 emulator.
+"""Simulation UI for the ARM Cortex-M4 emulator.
 
-Spawns sim-core, connects via TCP, serves HTML UI.
-Browser sends commands via HTTP, sim-web forwards to sim-core over TCP.
+Spawns sim-core (no debug port), connects to chardevs, serves HTML UI.
+Shows: display, audio, buttons, UART, trace timeline.
 
 GET /       → HTML UI
-POST /cmd   → forward command to sim-core, return response
+POST /io    → forward to IO chardev
+POST /gpio  → forward to IO chardev
 POST /log   → browser logs printed to terminal
 """
 
@@ -19,23 +20,19 @@ _dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_dir, "index.html")) as _f:
     HTML = _f.read()
 
-SIM_PORT = 9001
 UART_PORT = 9002
 TRACE_PORT = 9003
 DISPLAY_PORT = 9004
 AUDIO_PORT = 9005
 IO_PORT = 9006
 
-class WebDebugger:
+class SimWeb:
     def __init__(self, machine, elf, port, extra_args):
         self.port = port
         self.machine = machine
         self.elf = elf
         self.extra_args = extra_args
         self.sim = None
-        self.sim_sock = None
-        self.last_state = '{}'
-        self._ws_status_client = None
         self._ws_trace_clients = []
         self._ws_audio_clients = []
 
@@ -45,27 +42,16 @@ class WebDebugger:
         cmd = [sim_core,
                '--machine', self.machine,
                '--firmware', self.elf,
-               '--debug', str(SIM_PORT),
                '--chardev', f'usart2={UART_PORT}',
                '--chardev', f'trace={TRACE_PORT}',
                '--chardev', f'display={DISPLAY_PORT}',
                '--chardev', f'audio={AUDIO_PORT}',
                '--chardev', f'io={IO_PORT}'] + self.extra_args
         self.sim = subprocess.Popen(cmd, stderr=sys.stderr)
-        self._buf = b''
         self.uart_buf = ''
 
         # Wait for sim-core to start listening
-        for _ in range(50):
-            try:
-                self.sim_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.sim_sock.connect(('127.0.0.1', SIM_PORT))
-                self.sim_sock.settimeout(None)  # blocking — async reader waits indefinitely
-                log_web(f'Connected to sim-core on port {SIM_PORT}')
-                self.last_state = self._recv_line()
-                break
-            except ConnectionRefusedError:
-                time.sleep(0.1)
+        time.sleep(0.5)
 
         # Connect to UART stream
         try:
@@ -79,8 +65,7 @@ class WebDebugger:
                         data = self.uart_sock.recv(4096)
                         if not data: break
                         self.uart_buf += data.decode(errors='replace')
-                        # Push to WebSocket UART clients
-                        frame = self._ws_encode(data)  # send raw bytes as binary
+                        frame = self._ws_encode(data)
                         dead = []
                         for c in self._ws_uart_clients:
                             try: c.sendall(frame)
@@ -89,11 +74,11 @@ class WebDebugger:
                     except: break
             threading.Thread(target=uart_reader, daemon=True).start()
         except:
-            log_web('UART connection failed (will retry later)')
+            log_web('UART connection failed')
 
         # Connect to trace stream
         self.trace_events = []
-        self.heap_blocks = {}  # addr -> {name, size, cy}
+        self.heap_blocks = {}
         try:
             self.trace_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.trace_sock.connect(('127.0.0.1', TRACE_PORT))
@@ -139,7 +124,6 @@ class WebDebugger:
                             if evt:
                                 if evt['type'] in ('B', 'E', 'I'):
                                     self.trace_events.append(evt)
-                                # Push to WS clients
                                 dead = []
                                 for c in self._ws_trace_clients:
                                     try: c.sendall(self._ws_encode(_json.dumps(evt).encode()))
@@ -195,7 +179,6 @@ class WebDebugger:
                     prev = self._prev_frame
                     if prev is raw: continue
                     self._prev_frame = raw
-                    # Build delta (or full frame if first push or size changed)
                     if prev is not None and len(prev) == len(raw):
                         delta = bytearray()
                         i = 0; n = len(raw)
@@ -206,9 +189,9 @@ class WebDebugger:
                                 delta += struct.pack('<IH', start, i - start)
                                 delta += raw[start:i]
                             else: i += 1
-                        payload = bytes([1]) + bytes(delta)  # 1 = delta
+                        payload = bytes([1]) + bytes(delta)
                     else:
-                        payload = bytes([0]) + raw  # 0 = full frame
+                        payload = bytes([0]) + raw
                     frame = self._ws_encode(payload)
                     with self._ws_lock:
                         dead = []
@@ -240,10 +223,8 @@ class WebDebugger:
                         if not data: break
                         with self._audio_lock:
                             self.audio_buf += data
-                            # Cap buffer at ~200ms (17640 bytes) to keep latency low
                             if len(self.audio_buf) > 17640:
                                 self.audio_buf = self.audio_buf[-17640:]
-                        # Push to WebSocket audio clients
                         if self._ws_audio_clients:
                             frame = self._ws_encode(data)
                             dead = []
@@ -267,24 +248,13 @@ class WebDebugger:
 
     def _ws_encode(self, data):
         """Encode a WebSocket binary frame."""
-        b = bytearray([0x82])  # FIN + binary opcode
+        b = bytearray([0x82])
         n = len(data)
         if n < 126: b.append(n)
         elif n < 65536: b.append(126); b += struct.pack('>H', n)
         else: b.append(127); b += struct.pack('>Q', n)
         return bytes(b) + data
 
-    # ── WebSocket RFC 6455 handshake ──────────────────────────────────
-    # Implements the opening handshake per RFC 6455 §4.2.2.
-    # The magic GUID must be exactly 258EAFA5-E914-47DA-95CA-C5AB0DC85B11
-    # — Chrome validates the Sec-WebSocket-Accept hash and rejects the
-    # connection if the GUID is wrong.
-    #
-    # After upgrade the server sends binary frames (opcode 0x82) with
-    # delta-compressed display data:
-    #   Frame format: type byte (0=full frame, 1=delta) + payload
-    #   Delta format: repeated (uint32_le offset, uint16_le length, data) runs
-    # ──────────────────────────────────────────────────────────────────
     def _ws_upgrade(self, conn, headers):
         """Perform WebSocket handshake."""
         key = None
@@ -298,38 +268,6 @@ class WebDebugger:
                 f'Sec-WebSocket-Accept: {accept}\r\n\r\n')
         conn.sendall(resp.encode())
         return True
-
-    def _recv_line(self):
-        """Read one newline-terminated JSON line from sim-core."""
-        while b'\n' not in self._buf:
-            chunk = self.sim_sock.recv(262144)
-            if not chunk:
-                return '{}'
-            self._buf += chunk
-        line, self._buf = self._buf.split(b'\n', 1)
-        return line.decode()
-
-    def send_command(self, cmd_json):
-        """Send a command to sim-core and return the response."""
-        self.sim_sock.sendall((cmd_json + '\n').encode())
-        resp = self._recv_line()
-        self.last_state = resp
-        return resp
-
-    def send_command_async(self, cmd_json):
-        """Send a command that may block (continue/run). Read response on background thread."""
-        self.sim_sock.sendall((cmd_json + '\n').encode())
-        def reader():
-            resp = self._recv_line()
-            self.last_state = resp
-            c = self._ws_status_client
-            if c:
-                try:
-                    c.sendall(self._ws_encode(resp.encode()))
-                except:
-                    self._ws_status_client = None
-        self._ws_status_client = getattr(self, '_ws_status_client', None)
-        threading.Thread(target=reader, daemon=True).start()
 
     def http_response(self, conn, status, content_type, body):
         if isinstance(body, str): body = body.encode()
@@ -349,7 +287,7 @@ class WebDebugger:
         srv.bind(('', self.port))
         srv.listen(5)
         srv.setblocking(False)
-        log_web(f'Debugger: http://localhost:{self.port}')
+        log_web(f'Simulation UI: http://localhost:{self.port}')
 
         while True:
             try:
@@ -367,12 +305,8 @@ class WebDebugger:
                 lines = data.split('\r\n')
                 req = lines[0] if lines else ''
 
-                if req.startswith('GET /init'):
-                    self.http_response(conn, '200 OK', 'application/json', self.last_state)
-
-                elif req.startswith('GET /ws-uart'):
+                if req.startswith('GET /ws-uart'):
                     if self._ws_upgrade(conn, data):
-                        # Send existing buffer as initial data
                         if self.uart_buf:
                             conn.sendall(self._ws_encode(self.uart_buf.encode()))
                         self._ws_uart_clients.append(conn)
@@ -380,13 +314,32 @@ class WebDebugger:
 
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):
-                        # Send init message with display dimensions
                         ew = self.display_w; eh = self.display_h
                         init = bytes([2]) + struct.pack('<HH', ew, eh)
                         conn.sendall(self._ws_encode(init))
                         with self._ws_lock:
                             self._ws_clients.append(conn)
-                        continue  # don't close conn
+                        continue
+
+                elif req.startswith('GET /ws-audio'):
+                    if self._ws_upgrade(conn, data):
+                        self._ws_audio_clients.append(conn)
+                        continue
+
+                elif req.startswith('GET /audio'):
+                    with self._audio_lock:
+                        audio_data = self.audio_buf
+                        self.audio_buf = b''
+                    self.http_response(conn, '200 OK', 'application/octet-stream', audio_data)
+
+                elif req.startswith('GET /ws-trace'):
+                    if self._ws_upgrade(conn, data):
+                        import json as _json
+                        for evt in self.trace_events[-512:]:
+                            try: conn.sendall(self._ws_encode(_json.dumps(evt).encode()))
+                            except: break
+                        self._ws_trace_clients.append(conn)
+                        continue
 
                 elif req.startswith('POST /io'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
@@ -407,49 +360,6 @@ class WebDebugger:
                     except: pass
                     self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
 
-                elif req.startswith('GET /ws-audio'):
-                    if self._ws_upgrade(conn, data):
-                        self._ws_audio_clients.append(conn)
-                        continue
-
-                elif req.startswith('GET /audio'):
-                    with self._audio_lock:
-                        data = self.audio_buf
-                        self.audio_buf = b''
-                    self.http_response(conn, '200 OK', 'application/octet-stream', data)
-
-                elif req.startswith('GET /ws-trace'):
-                    if self._ws_upgrade(conn, data):
-                        import json as _json
-                        # Send existing events as initial batch
-                        for evt in self.trace_events[-512:]:
-                            try: conn.sendall(self._ws_encode(_json.dumps(evt).encode()))
-                            except: break
-                        self._ws_trace_clients.append(conn)
-                        continue
-
-                elif req.startswith('GET /ws-status'):
-                    if self._ws_upgrade(conn, data):
-                        self._ws_status_client = conn
-                        continue
-
-                elif req.startswith('POST /cmd'):
-                    body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
-                    cmd = body.strip()
-                    log_web(f'CMD: {cmd}')
-                    try:
-                        import json as _json
-                        parsed = _json.loads(cmd)
-                        if parsed.get('cmd') == 'continue':
-                            self.send_command_async(cmd)
-                            self.http_response(conn, '200 OK', 'application/json', '{"running":true}')
-                        else:
-                            resp = self.send_command(cmd)
-                            self.http_response(conn, '200 OK', 'application/json', resp)
-                    except Exception as e:
-                        log_web(f'Error: {e}')
-                        self.http_response(conn, '500 Error', 'application/json', '{"error":"sim-core disconnected"}')
-
                 elif req.startswith('POST /log'):
                     body = data.split('\r\n\r\n', 1)[1] if '\r\n\r\n' in data else ''
                     sys.stderr.write(f'[sim-ui] {body}\n')
@@ -466,17 +376,17 @@ class WebDebugger:
                     conn.close()
 
 def main():
-    p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator + Web Debugger')
+    p = argparse.ArgumentParser(description='ARM Cortex-M4 Emulator — Simulation UI')
     p.add_argument('--machine', default='gameboy', help='Machine name')
     p.add_argument('--firmware', required=True, help='Firmware ELF file')
     args, extra = p.parse_known_args()
 
-    dbg = WebDebugger(args.machine, args.firmware, 3000, extra)
+    ui = SimWeb(args.machine, args.firmware, 3000, extra)
     try:
-        dbg.run()
+        ui.run()
     except KeyboardInterrupt:
         log_web('Stopped.')
-        if dbg.sim: dbg.sim.kill()
+        if ui.sim: ui.sim.kill()
 
 if __name__ == '__main__':
     main()

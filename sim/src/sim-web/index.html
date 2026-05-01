@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>ARM Debugger</title>
+<title>ARM Simulator</title>
 <meta charset="utf-8">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -10,755 +10,69 @@ body { font-family:'SF Mono','Menlo','Consolas',monospace; font-size:12px;
 .panel { border:1px solid #30363d; margin:4px; border-radius:6px; overflow:hidden; display:flex; flex-direction:column; }
 .panel h2 { background:#161b22; padding:6px 10px; font-size:11px; color:#58a6ff; border-bottom:1px solid #30363d; flex-shrink:0; }
 .panel-body { flex:1; overflow-y:auto; padding:8px; }
-.src-line { white-space:pre; padding:1px 4px; }
-.src-line.current { background:#1f3a1f; color:#7ee787; font-weight:bold; }
-.src-line .num { color:#484f58; display:inline-block; width:52px; text-align:right; margin-right:4px; cursor:pointer; user-select:none; }
-.src-line .bp { display:inline-block; width:10px; text-align:center; }
-.src-line.current .num { color:#7ee787; }
-.mode { padding:1px 6px; border-radius:3px; font-size:10px; }
-.mode.thread { background:#1f3a1f; color:#7ee787; }
-.mode.handler { background:#3d1f1f; color:#f85149; }
 #uart { white-space:pre-wrap; word-break:break-all; color:#7ee787; font-size:11px; }
-#cmd-input { width:100%; background:#0d1117; border:1px solid #30363d; color:#c9d1d9;
-             font-family:inherit; font-size:12px; padding:6px 8px; border-radius:4px; flex-shrink:0; }
-#cmd-input:focus { outline:none; border-color:#58a6ff; }
-#cmd-log { flex:1; overflow-y:auto; font-size:11px; color:#484f58; padding-bottom:8px; }
-.fn { color:#d2a8ff; }
-.addr { color:#58a6ff; }
-.file { color:#484f58; font-size:10px; }
 .header-bar { background:#161b22; padding:4px 10px; border-bottom:1px solid #30363d;
               display:flex; align-items:center; gap:15px; font-size:11px; flex-shrink:0; }
-.cyc { color:#484f58; }
 .gbtn { width:32px; height:32px; border:1px solid #30363d; background:#21262d; color:#c9d1d9; border-radius:4px; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; }
 .gbtn:active, .gbtn.pressed { background:#1f6feb; border-color:#1f6feb; }
 .gbtn-ab { width:36px; height:36px; border-radius:50%; font-weight:bold; }
-.resize-h { width:4px; cursor:col-resize; background:transparent; flex-shrink:0; }
-.resize-h:hover, .resize-h.active { background:#30363d; }
 .resize-v { height:4px; cursor:row-resize; background:transparent; flex-shrink:0; }
 .resize-v:hover, .resize-v.active { background:#30363d; }
 </style>
 </head>
 <body>
 <div class="header-bar">
-  <span class="fn" id="hdr-func">—</span>
-  <span class="cyc" id="hdr-cycles">cy 0</span>
-  <span id="hdr-mode"></span>
-  <span>PC <span class="addr" id="hdr-pc">—</span></span>
-  <span>PSP <span class="addr" id="hdr-psp">—</span></span>
-  <span>MSP <span class="addr" id="hdr-msp">—</span></span>
+  <span style="color:#58a6ff;font-weight:bold;">ARM Simulator</span>
+  <span id="hdr-fps" style="color:#484f58;">0 fps</span>
 </div>
-<div style="display:flex;flex:1;overflow:hidden;">
-  <!-- Left: Source + Debugger -->
-  <div id="col-left" style="flex:3;display:flex;flex-direction:column;overflow:hidden;">
-    <div class="panel" id="source-panel" style="flex:1;">
-      <h2>Source</h2>
-      <div class="panel-body" id="source"></div>
-    </div>
-    <div class="resize-v" data-above="source-panel" data-below="cmd-panel"></div>
-    <div class="panel" id="cmd-panel" style="height:200px;min-height:120px;">
-      <h2>Debugger</h2>
-      <div class="panel-body" style="display:flex;flex-direction:column;padding:4px 8px;">
-        <div id="cmd-log" style="flex:1;overflow-y:auto;"></div>
-        <input id="cmd-input" style="flex-shrink:0;" placeholder="(dbg) type command..." autofocus>
+<div style="display:flex;flex:1;overflow:hidden;flex-direction:column;">
+  <!-- Display + Controls -->
+  <div class="panel" id="display-panel" style="flex:2;min-height:200px;">
+    <h2>Display</h2>
+    <div class="panel-body" style="display:flex;align-items:center;justify-content:center;padding:8px;gap:12px;">
+      <div style="display:grid;grid-template-columns:28px 28px 28px;grid-template-rows:28px 28px 28px;gap:2px;flex-shrink:0;">
+        <div></div>
+        <button class="gbtn" data-pin="4">▲</button>
+        <div></div>
+        <button class="gbtn" data-pin="2">◀</button>
+        <div></div>
+        <button class="gbtn" data-pin="3">▶</button>
+        <div></div>
+        <button class="gbtn" data-pin="1">▼</button>
+        <div></div>
       </div>
+      <canvas id="lcd" width="320" height="240" style="image-rendering:pixelated;border:1px solid #30363d;max-width:100%;max-height:100%;object-fit:contain;flex:1;min-width:0;"></canvas>
+      <div style="display:flex;gap:8px;flex-shrink:0;align-items:end;">
+        <button class="gbtn gbtn-ab" data-pin="1" style="margin-bottom:0">B</button>
+        <button class="gbtn gbtn-ab" data-pin="0" style="margin-bottom:20px">A</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;padding:0 8px 4px;gap:6px;">
+      <label style="font-size:9px;color:#484f58;">VOL</label>
+      <input type="range" id="vol-slider" min="0" max="4095" value="2048"
+             style="width:100px;accent-color:#58a6ff;">
     </div>
   </div>
-  <div class="resize-h" id="col-resize"></div>
-  <!-- Right: Memory + Timeline + UART -->
-  <div id="col-right" style="flex:2;display:flex;flex-direction:column;overflow:hidden;min-width:250px;">
-    <div class="panel" id="mem-panel" style="flex:1;">
-      <h2>Memory</h2>
-      <div class="panel-body" id="memmap" style="padding:4px 8px;"></div>
-    </div>
-    <div class="resize-v" data-above="mem-panel" data-below="timeline-panel"></div>
-    <div class="panel" id="timeline-panel" style="height:140px;min-height:100px;">
-      <h2>Trace Timeline</h2>
-      <div id="timeline-bars" class="panel-body" style="padding:2px;overflow-x:auto;overflow-y:hidden;flex:1;"></div>
-      <div id="timeline-stats" style="padding:2px 6px;border-top:1px solid #30363d;font-size:10px;flex-shrink:0;"></div>
-    </div>
-    <div class="resize-v" data-above="timeline-panel" data-below="display-panel"></div>
-    <div class="panel" id="display-panel" style="height:320px;min-height:200px;">
-      <h2>Display</h2>
-      <div class="panel-body" style="display:flex;align-items:center;justify-content:center;padding:8px;gap:12px;">
-        <div style="display:grid;grid-template-columns:28px 28px 28px;grid-template-rows:28px 28px 28px;gap:2px;flex-shrink:0;">
-          <div></div>
-          <button class="gbtn" data-pin="4">▲</button>
-          <div></div>
-          <button class="gbtn" data-pin="2">◀</button>
-          <div></div>
-          <button class="gbtn" data-pin="3">▶</button>
-          <div></div>
-          <button class="gbtn" data-pin="1">▼</button>
-          <div></div>
-        </div>
-        <canvas id="lcd" width="320" height="240" style="image-rendering:pixelated;border:1px solid #30363d;max-width:100%;max-height:100%;object-fit:contain;flex:1;min-width:0;"></canvas>
-        <div style="display:flex;gap:8px;flex-shrink:0;align-items:end;">
-          <button class="gbtn gbtn-ab" data-pin="1" style="margin-bottom:0">B</button>
-          <button class="gbtn gbtn-ab" data-pin="0" style="margin-bottom:20px">A</button>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;justify-content:flex-end;padding:0 8px 4px;gap:6px;">
-        <label style="font-size:9px;color:#484f58;">VOL</label>
-        <input type="range" id="vol-slider" min="0" max="4095" value="2048"
-               style="width:100px;accent-color:#58a6ff;">
-      </div>
-    </div>
-    <div class="resize-v" data-above="display-panel" data-below="uart-panel"></div>
-    <div class="panel" id="uart-panel" style="height:200px;min-height:100px;">
-      <h2>UART Console</h2>
-      <div class="panel-body" id="uart" style="overflow-y:auto"></div>
-    </div>
+  <div class="resize-v" data-above="display-panel" data-below="uart-panel"></div>
+  <!-- UART Console -->
+  <div class="panel" id="uart-panel" style="flex:1;min-height:100px;">
+    <h2>UART Console</h2>
+    <div class="panel-body" id="uart" style="overflow-y:auto"></div>
   </div>
 </div>
 
 <script>
-window.onerror = (msg, src, line) => {
-  document.getElementById('cmd-log').innerHTML += `<div style="color:red">JS ERROR: ${msg} at line ${line}</div>`;
-};
-const log = (msg) => {
-  const el = document.getElementById('cmd-log');
-  el.innerHTML += `<div style="color:#888">${msg}</div>`;
-  el.scrollTop = el.scrollHeight;
-  fetch('/log', {method:'POST', body:msg}).catch(()=>{});
-};
-
-async function simCmd(cmdObj) {
-  const r = await fetch('/cmd', {method:'POST', body: JSON.stringify(cmdObj)});
-  if (!r.ok) throw new Error('sim-core error');
-  return await r.json();
-}
-
-async function refreshUI(stopInfo) {
-  const regs = await simCmd({cmd:'regs'});
-  const memmap = await simCmd({cmd:'memmap'});
-  const bpInfo = await simCmd({cmd:'info'});
-  let source = null;
-  currentFile = stopInfo.file || '';
-  bpLines = new Set();
-  for (const bp of (bpInfo.breakpoints || [])) {
-    if (bp.file && bp.file === currentFile) bpLines.add(bp.line);
-  }
-  if (stopInfo.file) {
-    source = await simCmd({cmd:'source', file: stopInfo.file});
-  }
-  render(stopInfo, regs, source, null);
-  renderMemMap(memmap);
-  lastMemmap = memmap;
-  // Timeline re-renders from live WS data
-  if (traceEvents.length) {
-    lastTimelineData = {...stopInfo, timeline: traceEvents.slice(-512)};
-    renderTimeline(lastTimelineData);
-  }
-}
-
-// Trace via WebSocket — live streaming (DISABLED)
-const traceEvents = [];
-const heapBlocks = {};
-let traceRenderPending = false;
-/*(function() {
-  const ws = new WebSocket('ws://' + location.host + '/ws-trace');
-  ws.binaryType = 'arraybuffer';
-  ws.onmessage = (e) => {
-    try {
-      const text = (e.data instanceof ArrayBuffer) ? new TextDecoder().decode(e.data) : e.data;
-      const evt = JSON.parse(text);
-      if (evt.type === 'B' || evt.type === 'E' || evt.type === 'I') {
-        traceEvents.push(evt);
-        if (traceEvents.length > 2048) traceEvents.splice(0, traceEvents.length - 1024);
-      } else if (evt.type === 'H') {
-        heapBlocks[evt.addr] = {name: evt.name, size: evt.size, cy: evt.cy};
-      } else if (evt.type === 'F') {
-        delete heapBlocks[evt.addr];
-      }
-      // Throttle live rendering to ~10fps
-      if (!traceRenderPending) {
-        traceRenderPending = true;
-        requestAnimationFrame(() => {
-          traceRenderPending = false;
-          lastTimelineData = {timeline: traceEvents.slice(-512), cycles: traceEvents.length ? traceEvents[traceEvents.length-1].cy : 0};
-          renderTimeline(lastTimelineData);
-        });
-      }
-    } catch(e) {}
-  };
-})();*/
-
-// UART via WebSocket — instant character delivery
-(function() {
-  const uartEl = document.getElementById('uart');
-  const ws = new WebSocket('ws://' + location.host + '/ws-uart');
-  ws.binaryType = 'arraybuffer';
-  ws.onmessage = (e) => {
-    const text = new TextDecoder().decode(e.data);
-    uartEl.textContent += text;
-    uartEl.scrollTop = uartEl.scrollHeight;
-  };
-  ws.onclose = () => setTimeout(() => {
-    // Reconnect WebSocket
-    const ws2 = new WebSocket('ws://' + location.host + '/ws-uart');
-    ws2.binaryType = 'arraybuffer';
-    ws2.onmessage = ws.onmessage;
-    ws2.onclose = ws.onclose;
-  }, 1000);
-})();
-
-async function sendCmd(cmd) {
-  log(`<span style="color:#c9d1d9">(dbg) ${esc(cmd)}</span>`);
-  try {
-    let cmdObj;
-    if (cmd === 'c' || cmd === 'continue') cmdObj = {cmd:'continue'};
-    else if (cmd === 'r' || cmd === 'run') cmdObj = {cmd:'run'};
-    else if (cmd === 's' || cmd === 'step') cmdObj = {cmd:'step'};
-    else if (cmd === 'n' || cmd === 'next') cmdObj = {cmd:'next'};
-    else if (cmd.startsWith('p ') || cmd.startsWith('print ')) {
-      const expr = cmd.replace(/^(p|print)\s+/, '');
-      const resp = await simCmd({cmd:'print', expr});
-      if (resp.error) log(`<span style="color:#f85149">${resp.expr}: ${resp.error}</span>`);
-      else {
-        const loc = resp.loc ? ` <span style="color:#484f58">(${resp.loc})</span>` : '';
-        let val = resp.hex ? `${resp.hex} (${resp.val})` : resp.val;
-        // Format structs/arrays with newlines
-        val = val.replace(/\{/g, '{\n  ').replace(/\}/g, '\n}').replace(/, /g, ',\n  ')
-                 .replace(/\[/g, '[\n  ').replace(/\]/g, '\n]');
-        log(`<pre style="color:#7ee787;margin:0;white-space:pre-wrap">${resp.expr} = ${val}${loc}</pre>`);
-      }
-      return;
-    } else if (cmd.startsWith('b ') || cmd.startsWith('break ')) {
-      const spec = cmd.replace(/^(b|break)\s+/, '');
-      cmdObj = {cmd:'break', spec};
-    } else if (cmd.startsWith('d ') || cmd.startsWith('delete ')) {
-      const n = parseInt(cmd.replace(/^(d|delete)\s+/, ''));
-      cmdObj = {cmd:'delete', n};
-    } else if (cmd === 'info' || cmd === 'i') {
-      const resp = await simCmd({cmd:'info'});
-      const bps = resp.breakpoints || [];
-      if (!bps.length) { log('No breakpoints.'); return; }
-      for (const bp of bps) {
-        const loc = bp.file ? `${bp.file}:${bp.line}` : hex(bp.addr);
-        log(`  #${bp.n}  ${bp.func||''} at ${loc} (${hex(bp.addr)})`);
-      }
-      return;
-    } else {
-      log(`Unknown command: ${cmd}`);
-      return;
-    }
-    const resp = await simCmd(cmdObj);
-    // Break command — show address
-    if (resp.addr !== undefined) {
-      log(`Breakpoint at ${hex(resp.addr)}`);
-      return;
-    }
-    // Delete command
-    if (resp.ok !== undefined) return;
-    // Async commands (continue/run) return {running:true} — poll for stop
-    if (resp.running) {
-      log('<span style="color:#484f58">Running...</span>');
-      document.querySelectorAll('.src-line.current').forEach(el => el.classList.remove('current'));
-      const cur = document.getElementById('cur-line');
-      if (cur) cur.removeAttribute('id');
-      document.getElementById('hdr-func').textContent = '▶ Running...';
-      const stop = await new Promise(resolve => { _wsStatus.onmessage = (e) => resolve(JSON.parse(new TextDecoder().decode(e.data))); });
-      if (stop) await refreshUI(stop);
-      return;
-    }
-    // Commands that return stop info: step, next, run
-    if (resp.pc !== undefined) {
-      await refreshUI(resp);
-    }
-  } catch(e) { log(`Error: ${e.message}`); }
-}
-let _lastStop = null, _refreshSeq = 0;
-
-let _wsStatus;
-function connectStatusWS() {
-  _wsStatus = new WebSocket('ws://' + location.host + '/ws-status');
-  _wsStatus.binaryType = 'arraybuffer';
-  _wsStatus.onclose = () => setTimeout(connectStatusWS, 1000);
-}
-connectStatusWS();
-
-// Initial load — show connected, wait for user commands
-(async () => {
-  log('Connected — type "b main" then "r" to start');
-})();
-
-const cmdLog = document.getElementById('cmd-log');
-const cmdInput = document.getElementById('cmd-input');
-
-function hex(n) { return '0x' + (n >>> 0).toString(16).padStart(8,'0'); }
-function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-
-let lastState = null;
-let lastMemmap = null;
-let lastHeapData = [];
-let bpLines = new Set(); // line numbers with breakpoints in current file
-let currentFile = '';
-let lastSource = null;
-function render(stop, regs, source, uart) {
-  lastState = stop;
-
-  // Header
-  document.getElementById('hdr-func').textContent = stop.func || '???';
-  document.getElementById('hdr-cycles').textContent = `cy ${(stop.cycles||0).toLocaleString()}`;
-  document.getElementById('hdr-pc').textContent = hex(stop.pc || 0);
-  if (regs) {
-    document.getElementById('hdr-psp').textContent = hex(regs.psp || 0);
-    document.getElementById('hdr-msp').textContent = hex(regs.msp || 0);
-  }
-
-  // Source
-  const src = document.getElementById('source');
-  if (source) lastSource = source;
-  const srcData = source || lastSource;
-  if (srcData && srcData.lines && srcData.lines.length) {
-    const curLine = stop.line || -1;
-    src.innerHTML = `<div class="file">${esc(srcData.file)}</div>` +
-      srcData.lines.map((text, i) => {
-        const num = i + 1;
-        const hasBp = bpLines.has(num);
-        const bp = hasBp ? '<span class="bp" style="color:#f85149">●</span>' : '<span class="bp"> </span>';
-        return `<div class="src-line ${num===curLine?'current':''}" ${num===curLine?'id="cur-line"':''}>` +
-          `<span class="num" onclick="toggleBp(${num})">${bp}${num===curLine?'→':' '}${num}</span>${esc(text)}</div>`;
-      }).join('');
-    const cur = document.getElementById('cur-line');
-    if (cur) cur.scrollIntoView({block:'center', behavior:'smooth'});
-  } else {
-    src.innerHTML = '<div style="color:#484f58;padding:20px">No source</div>';
-  }
-
-  // UART
-  if (uart && uart.uart) document.getElementById('uart').textContent = uart.uart;
-}
-
-async function toggleBp(line) {
-  if (!currentFile) return;
-  const spec = currentFile + ':' + line;
-  if (bpLines.has(line)) {
-    // Find and delete this breakpoint
-    const info = await simCmd({cmd:'info'});
-    for (const bp of (info.breakpoints || [])) {
-      if (bp.file === currentFile && bp.line === line) {
-        await simCmd({cmd:'delete', n: bp.n});
-        log(`Deleted breakpoint #${bp.n} at ${spec}`);
-        break;
-      }
-    }
-    bpLines.delete(line);
-  } else {
-    const resp = await simCmd({cmd:'break', spec});
-    if (resp.addr) { bpLines.add(line); log(`Breakpoint at ${spec} (${hex(resp.addr)})`); }
-    else log(`<span style="color:#f85149">No code at ${spec}</span>`);
-  }
-  // Update dot in-place
-  const dots = document.querySelectorAll('.src-line .bp');
-  if (dots[line - 1]) dots[line - 1].innerHTML = bpLines.has(line) ? '<span style="color:#f85149">●</span>' : ' ';
-}
+/* ── Display via WebSocket ── */
 const _lcdCanvas = document.getElementById('lcd');
 const _lcdCtx = _lcdCanvas.getContext('2d');
-let _lcdImg = null;
-let _lcdW = 0, _lcdH = 0;
-let _lcdRaw = null; // raw RGB565 buffer for delta patching
-
-const regions = [
-  { name:'SRAM',         base:0x20000000, size:128*1024,  color:'#8b949e' },
-];
-
-const ctxColors = {
-  'SysTick':'#f0883e', 'PendSV':'#f0883e', 'SVC':'#f0883e', 'IRQ':'#f0883e',
-  'idle':'#21262d', 'idle_task':'#21262d',
-  'scheduler':'#f0883e',
-  'task_a':'#1f6feb', 'task_b':'#238636', 'task_c':'#8957e5',
-};
-const _taskPalette = ['#bf4b8a','#58a6ff','#7ee787','#d2a8ff','#ffa657','#f778ba','#79c0ff','#56d364'];
-let _nextColor = 0;
-function ctxColor(name) {
-  if (!ctxColors[name]) ctxColors[name] = _taskPalette[_nextColor++ % _taskPalette.length];
-  return ctxColors[name];
-}
-
-let tlZoom = 1;
-let tlOffset = 0;
-
-function renderTimeline(s) {
-  const barsEl = document.getElementById('timeline-bars');
-  const statsEl = document.getElementById('timeline-stats');
-  const tl = s.timeline || [];
-  if (tl.length < 1) { barsEl.innerHTML = '<span style="color:#484f58;padding:8px">No trace events yet</span>'; statsEl.innerHTML = ''; return; }
-
-  const spans = [];
-  for (let i = 0; i < tl.length; i++) {
-    if (tl[i].type !== 'B' || !tl[i].cy) continue;
-    const nextCy = (i+1 < tl.length && tl[i+1].cy) ? tl[i+1].cy : (s.cycles || tl[i].cy + 1000);
-    spans.push({ ctx: tl[i].ctx, start: tl[i].cy, duration: nextCy - tl[i].cy });
-  }
-  if (!spans.length) { barsEl.innerHTML = '<span style="color:#484f58;padding:8px">No trace events yet</span>'; statsEl.innerHTML = ''; return; }
-
-  const totalCycles = spans.reduce((a, s) => a + s.duration, 0);
-  const pxPerCycle = Math.max(0.001, (barsEl.clientWidth * tlZoom) / totalCycles);
-  const totalW = Math.ceil(totalCycles * pxPerCycle);
-
-  const tipId = 'tl-tooltip';
-  let html = `<div id="${tipId}" style="display:none;position:fixed;background:#161b22;border:1px solid #30363d;padding:4px 8px;font-size:11px;color:#c9d1d9;border-radius:4px;pointer-events:none;z-index:100;white-space:nowrap"></div>`;
-  html += `<div style="display:flex;height:100%;width:${totalW}px;">`;
-  for (const sp of spans) {
-    const w = Math.max(1, Math.round(sp.duration * pxPerCycle));
-    const col = ctxColor(sp.ctx);
-    const label = w > 50 ? sp.ctx : '';
-    const pct = (sp.duration / totalCycles * 100).toFixed(1);
-    html += `<div data-tip="${sp.ctx} — ${sp.duration.toLocaleString()} cy (${pct}%)" style="width:${w}px;height:100%;background:${col};opacity:0.85;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-right:1px solid #0d1117;cursor:default"`;
-    html += ` onmouseenter="document.getElementById('${tipId}').style.display='block';document.getElementById('${tipId}').textContent=this.dataset.tip"`;
-    html += ` onmousemove="const t=document.getElementById('${tipId}');t.style.left=event.clientX+12+'px';t.style.top=event.clientY-30+'px'"`;
-    html += ` onmouseleave="document.getElementById('${tipId}').style.display='none'"`;
-    html += `>`;
-    if (label) html += `<span style="color:#fff;font-size:10px;font-weight:bold;overflow:hidden">${label}</span>`;
-    html += '</div>';
-  }
-  html += '</div>';
-  barsEl.innerHTML = html;
-
-  // Stats (fixed, not scrollable)
-  const stats = {};
-  for (const sp of spans) stats[sp.ctx] = (stats[sp.ctx] || 0) + sp.duration;
-  let sh = '<div style="display:flex;gap:12px;flex-wrap:wrap">';
-  for (const [ctx, cy] of Object.entries(stats).sort((a,b) => b[1]-a[1])) {
-    const pct = (cy / totalCycles * 100).toFixed(1);
-    sh += `<span><span style="display:inline-block;width:8px;height:8px;background:${ctxColor(ctx)};border-radius:1px;margin-right:3px;vertical-align:middle"></span>${ctx} <span style="color:#484f58">${pct}%</span></span>`;
-  }
-  sh += '</div>';
-  statsEl.innerHTML = sh;
-}
-
-// Timeline zoom
-let lastTimelineData = null;
-const tlEl = document.getElementById('timeline-bars');
-tlEl.addEventListener('wheel', (e) => {
-  if (!e.ctrlKey) return;
-  e.preventDefault();
-  const rect = tlEl.getBoundingClientRect();
-  const scrollBefore = tlEl.scrollLeft;
-  const mouseX = e.clientX - rect.left + scrollBefore;
-  const oldZoom = tlZoom;
-  tlZoom = Math.max(1, Math.min(200, tlZoom * (e.deltaY < 0 ? 1.15 : 1/1.15)));
-  if (lastTimelineData) renderTimeline(lastTimelineData);
-  // Adjust scroll to keep mouse position stable
-  const newMouseX = mouseX * (tlZoom / oldZoom);
-  tlEl.scrollLeft = newMouseX - (e.clientX - rect.left);
-}, {passive: false});
-
-function renderMemMap(s) {
-  const el = document.getElementById('memmap');
-  const zoom = memZoom;
-  const W = el.clientWidth - 8;
-  if (W < 100) return;
-
-  const addrW = 78;  // space for address labels on left
-  const barX = addrW + 4;
-  const labelW = 110; // space for labels on right
-  const barW = Math.max(40, W - barX - labelW);
-  const labelX = barX + barW + 6;
-
-  // Build segments: regions + gaps between them
-  const segs = [];
-  let prev = 0;
-  for (const r of regions) {
-    if (r.base > prev) segs.push({type:'gap', base:prev, size:r.base-prev});
-    segs.push({type:'region', ...r});
-    prev = r.base + r.size;
-  }
-  if (prev < 0xFFFFFFFF) segs.push({type:'gap', base:prev, size:0xFFFFFFFF-prev});
-
-  // Assign pixel heights: gaps get 6px, regions get proportional height
-  // Total region bytes for proportional sizing
-  const totalRegionBytes = regions.reduce((a,r) => a + r.size, 0);
-  const baseH = Math.max(300, el.clientHeight - 20);
-  const gapPx = 6;
-  const totalGapPx = segs.filter(s=>s.type==='gap').length * gapPx;
-  const regionPx = (baseH * zoom) - totalGapPx;
-
-  // Reverse so highest addresses at top, lowest at bottom
-  segs.reverse();
-
-  // Compute y positions
-  let y = 10;
-  for (const seg of segs) {
-    seg.y = y;
-    if (seg.type === 'gap') {
-      seg.h = gapPx;
-    } else {
-      seg.h = Math.max(8, Math.round(seg.size / totalRegionBytes * regionPx));
-    }
-    y += seg.h;
-  }
-  const totalH = y + 10;
-
-  let svg = `<svg width="${W}" height="${totalH}" style="font-family:inherit;font-size:9px;">`;
-
-  for (const seg of segs) {
-    if (seg.type === 'gap') {
-      // Dotted gap indicator
-      svg += `<line x1="${barX+barW/2-5}" y1="${seg.y+3}" x2="${barX+barW/2+5}" y2="${seg.y+3}" stroke="#21262d" stroke-dasharray="2,2"/>`;
-    } else {
-      // Region bar
-      svg += `<rect x="${barX}" y="${seg.y}" width="${barW}" height="${seg.h}" fill="${seg.color}" opacity="0.2" stroke="${seg.color}" stroke-opacity="0.5" rx="2" onclick="zoomToRegion(${seg.base},${seg.size})"/>`;
-      // Top address
-      // Top address (high end)
-      svg += `<text x="${barX-4}" y="${seg.y+8}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base+seg.size)}</text>`;
-      // Bottom address (low end)
-      if (seg.h > 14) {
-        svg += `<text x="${barX-4}" y="${seg.y+seg.h-2}" fill="#484f58" text-anchor="end" font-size="8">${hex(seg.base)}</text>`;
-      }
-      // Region label on right
-      const ly = seg.y + seg.h/2 + 3;
-      svg += `<text x="${labelX}" y="${ly}" fill="${seg.color}" font-size="10">${seg.name}</text>`;
-      const sizeStr = seg.size >= 1024*1024 ? `${(seg.size/1024/1024).toFixed(0)}MB` : seg.size >= 1024 ? `${(seg.size/1024).toFixed(0)}KB` : `${seg.size}B`;
-      svg += `<text x="${labelX}" y="${ly+11}" fill="#484f58" font-size="8">${sizeStr}</text>`;
-
-      // Draw ELF sections that fall within this region
-      const secColor = '#8b949e';
-      for (const sec of (s.sections || [])) {
-        if (sec.addr < seg.base || sec.addr >= seg.base + seg.size) continue;
-        const sy = seg.y + seg.h - (sec.addr + sec.size - seg.base) / seg.size * seg.h;
-        const sh = Math.max(1, sec.size / seg.size * seg.h);
-        const secSize = sec.size >= 1024 ? `${(sec.size/1024).toFixed(1)}KB` : `${sec.size}B`;
-        svg += `<rect x="${barX+1}" y="${sy}" width="${barW-2}" height="${sh}" fill="${secColor}" opacity="0.35" stroke="${secColor}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
-        if (sh > 8) svg += `<text x="${barX+barW/2}" y="${sy+sh/2+3}" fill="${secColor}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${sec.name} ${secSize}</text>`;
-        svg += `<text x="${barX-4}" y="${sy+sh/2+3}" fill="${secColor}" text-anchor="end" font-size="7">${hex(sec.addr)}</text>`;
-      }
-
-      // Draw task stacks inside SRAM
-      if (seg.name === 'SRAM') {
-        const tasks = s.tasks || [];
-        const RAM_BASE = seg.base, RAM_SIZE = seg.size;
-
-        // Collect addresses already labeled (from ELF sections) to avoid duplicates
-        const labeledAddrs = new Set();
-        for (const sec of (s.sections || [])) {
-          if (sec.addr >= seg.base && sec.addr < seg.base + seg.size)
-            labeledAddrs.add(sec.addr);
-        }
-
-        const addrToY = (a) => seg.y + seg.h - (a - RAM_BASE) / RAM_SIZE * seg.h;
-
-        // Global variables from ELF symbol table
-        const globCol = '#8b949e';
-        for (const g of (s.globals || [])) {
-          if (g.addr < RAM_BASE || g.addr + g.size > RAM_BASE + RAM_SIZE) continue;
-          const gy0 = addrToY(g.addr + g.size);
-          const gy1 = addrToY(g.addr);
-          const gh = Math.max(1, gy1 - gy0);
-          const gSize = g.size >= 1024 ? `${(g.size/1024).toFixed(1)}KB` : `${g.size}B`;
-          svg += `<rect x="${barX+1}" y="${gy0}" width="${barW-2}" height="${gh}" fill="${globCol}" opacity="0.25" stroke="${globCol}" stroke-opacity="0.4" stroke-width="0.5" rx="1"/>`;
-          if (gh > 8) svg += `<text x="${barX+barW/2}" y="${gy0+gh/2+3}" fill="${globCol}" text-anchor="middle" font-size="${gh > 14 ? 9 : 7}">${g.name} ${gSize}</text>`;
-        }
-
-        const stkCol = '#58a6ff';
-        for (let i = 0; i < tasks.length; i++) {
-          const t = tasks[i];
-          if (!t.stack_bot || !t.stack_top) continue;
-          if (t.stack_bot < RAM_BASE || t.stack_top > RAM_BASE + RAM_SIZE) continue;
-
-          const sy0 = addrToY(t.stack_top) + 1;
-          const sy1 = addrToY(t.stack_bot) - 1;
-          const sh = Math.max(1, sy1 - sy0);
-          const stkSize = t.stack_size >= 1024 ? `${(t.stack_size/1024).toFixed(1)}KB` : `${t.stack_size}B`;
-
-          svg += `<rect x="${barX+1}" y="${sy0}" width="${barW-2}" height="${sh}" fill="${stkCol}" opacity="0.35" stroke="${stkCol}" stroke-opacity="0.6" stroke-width="0.5" rx="3"/>`;
-          if (sh > 8) svg += `<text x="${barX+barW/2}" y="${sy0+sh/2+3}" fill="${stkCol}" text-anchor="middle" font-size="${sh > 14 ? 9 : 7}" font-weight="bold">${t.name||'t'+i} ${stkSize}</text>`;
-          svg += `<text x="${barX-4}" y="${sy1+3}" fill="${stkCol}" text-anchor="end" font-size="7">${hex(t.stack_bot)}</text>`;
-
-          // SP line + label
-          if (t.sp >= t.stack_bot && t.sp <= t.stack_top) {
-            const spY = addrToY(t.sp);
-            svg += `<line x1="${barX}" y1="${spY}" x2="${barX+barW}" y2="${spY}" stroke="${stkCol}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
-            svg += `<text x="${labelX}" y="${spY+3}" fill="${stkCol}" font-size="7">◂ ${t.name||'t'+i} SP</text>`;
-          }
-        }
-
-        // MSP marker
-        if (s.msp >= RAM_BASE && s.msp <= RAM_BASE + RAM_SIZE) {
-          const mspY = seg.y + seg.h - (s.msp - RAM_BASE) / RAM_SIZE * seg.h;
-          svg += `<line x1="${barX}" y1="${mspY}" x2="${barX+barW}" y2="${mspY}" stroke="#ffa657" stroke-width="1" stroke-dasharray="3,2"/>`;
-          svg += `<text x="${labelX}" y="${mspY+3}" fill="#ffa657" font-size="8">◂ MSP</text>`;
-          svg += `<text x="${barX-4}" y="${mspY+3}" fill="#ffa657" text-anchor="end" font-size="7">${hex(s.msp)}</text>`;
-        }
-
-        // Heap blocks
-        const heapCol = '#da8ee7';
-        for (const hb of lastHeapData) {
-          if (hb.addr < RAM_BASE || hb.addr + hb.size > RAM_BASE + RAM_SIZE) continue;
-          const hy0 = addrToY(hb.addr + hb.size);
-          const hy1 = addrToY(hb.addr);
-          const hh = Math.max(1, hy1 - hy0);
-          const sizeStr = hb.size >= 1024 ? `${(hb.size/1024).toFixed(1)}KB` : `${hb.size}B`;
-          svg += `<rect x="${barX+1}" y="${hy0}" width="${barW-2}" height="${hh}" fill="${heapCol}" opacity="0.35" stroke="${heapCol}" stroke-opacity="0.6" stroke-width="0.5" rx="1"/>`;
-          if (hh > 8) svg += `<text x="${barX+barW/2}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="middle" font-size="${hh > 14 ? 9 : 7}" font-weight="bold">${hb.name} ${sizeStr}</text>`;
-          svg += `<text x="${barX-4}" y="${hy0+hh/2+3}" fill="${heapCol}" text-anchor="end" font-size="7">${hex(hb.addr)}</text>`;
-        }
-      }
-    }
-  }
-
-  svg += '</svg>';
-  el.innerHTML = svg;
-}
-
-// Click a section/region to zoom to it
-function zoomToRegion(addr, size) {
-  // Find which region contains this address to calculate needed zoom
-  const totalRegionBytes = regions.reduce((a,r) => a + r.size, 0);
-  const panelH = memEl.clientHeight;
-  // We want this section to fill ~80% of the visible panel
-  const targetFraction = size / totalRegionBytes;
-  const neededZoom = 0.8 / targetFraction;
-  memZoom = Math.max(1, Math.min(50000, neededZoom));
-
-  if (lastMemmap) renderMemMap(lastMemmap);
-
-  // Now scroll to center the section
-  // Find the y position of this address in the new SVG
-  const svgH = memEl.scrollHeight;
-  // Address fraction within all regions (approximate)
-  let bytesBefore = 0;
-  for (const r of regions) {
-    if (addr >= r.base && addr < r.base + r.size) {
-      bytesBefore += (addr + size/2) - r.base;
-      break;
-    } else if (r.base + r.size <= addr) {
-      bytesBefore += r.size;
-    }
-  }
-  const frac = bytesBefore / totalRegionBytes;
-  // In reversed layout, low address = bottom, so scroll target is (1-frac)*svgH
-  const targetY = (1 - frac) * svgH;
-  memEl.scrollTop = targetY - panelH / 2;
-}
-
-// Pinch/scroll zoom on memory map, anchored at mouse position
-let memZoom = 1;
-const memEl = document.getElementById('memmap');
-memEl.addEventListener('wheel', (e) => {
-  // Pinch-to-zoom sends ctrlKey; regular scroll does not
-  if (!e.ctrlKey) return; // let normal scroll work
-  e.preventDefault();
-  const rect = memEl.getBoundingClientRect();
-  const mouseY = e.clientY - rect.top + memEl.scrollTop;
-  const oldH = memEl.scrollHeight;
-  const frac = oldH > 0 ? mouseY / oldH : 0;
-
-  const delta = e.deltaY < 0 ? 1.08 : 1/1.08;
-  memZoom = Math.max(1, Math.min(50000, memZoom * delta));
-
-  if (lastMemmap) renderMemMap(lastMemmap);
-
-  const newH = memEl.scrollHeight;
-  const newMouseY = frac * newH;
-  memEl.scrollTop = newMouseY - (e.clientY - rect.top);
-}, {passive: false});
-
-cmdInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    const cmd = cmdInput.value.trim();
-    if (!cmd) return;
-    log(`<span style="color:#c9d1d9">sending: ${cmd}</span>`);
-    sendCmd(cmd);
-    cmdInput.value = '';
-    setTimeout(() => cmdInput.focus(), 100);
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  if (document.activeElement === cmdInput) return;
-  if (e.key === 'F5') { sendCmd('c'); e.preventDefault(); }
-  if (e.key === 'F10') { sendCmd('n'); e.preventDefault(); }
-  if (e.key === 'F11') { sendCmd('s'); e.preventDefault(); }
-  const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
-  const pin = keyMap[e.key];
-  if (pin !== undefined) {
-    e.preventDefault();
-    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:1})});
-  }
-});
-document.addEventListener('keyup', (e) => {
-  const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
-  const pin = keyMap[e.key];
-  if (pin !== undefined)
-    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:0})});
-});
-
-/* Button panel click/touch handlers */
-document.querySelectorAll('.gbtn').forEach(btn => {
-  const pin = parseInt(btn.dataset.pin);
-  const press = () => { btn.classList.add('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:1})}); };
-  const release = () => { btn.classList.remove('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:0})}); };
-  btn.addEventListener('mousedown', press);
-  btn.addEventListener('mouseup', release);
-  btn.addEventListener('mouseleave', release);
-  btn.addEventListener('touchstart', (e) => { e.preventDefault(); press(); });
-  btn.addEventListener('touchend', (e) => { e.preventDefault(); release(); });
-});
-
-// Panel resize handles
-document.querySelectorAll('.resize-v').forEach(handle => {
-  handle.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const above = document.getElementById(handle.dataset.above);
-    const below = document.getElementById(handle.dataset.below);
-    if (!above || !below) return;
-    handle.classList.add('active');
-    const startY = e.clientY;
-    const aboveH = above.offsetHeight;
-    const belowH = below.offsetHeight;
-    const onMove = (e) => {
-      const dy = e.clientY - startY;
-      const newAbove = Math.max(60, aboveH + dy);
-      const newBelow = Math.max(60, belowH - dy);
-      above.style.flex = 'none'; above.style.height = newAbove + 'px';
-      below.style.flex = 'none'; below.style.height = newBelow + 'px';
-    };
-    const onUp = () => {
-      handle.classList.remove('active');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-});
-
-const colResize = document.getElementById('col-resize');
-if (colResize) {
-  colResize.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    colResize.classList.add('active');
-    const left = document.getElementById('col-left');
-    const right = document.getElementById('col-right');
-    const startX = e.clientX;
-    const leftW = left.offsetWidth;
-    const rightW = right.offsetWidth;
-    const onMove = (e) => {
-      const dx = e.clientX - startX;
-      const newLeft = Math.max(200, leftW + dx);
-      const newRight = Math.max(200, rightW - dx);
-      left.style.flex = 'none'; left.style.width = newLeft + 'px';
-      right.style.flex = 'none'; right.style.width = newRight + 'px';
-    };
-    const onUp = () => {
-      colResize.classList.remove('active');
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-}
+let _lcdImg = null, _lcdW = 0, _lcdH = 0, _lcdRaw = null;
 let _fpsCount = 0, _fpsLast = performance.now();
-let _wsConnected = false;
 
 function _updateFps() {
   _fpsCount++;
   const now = performance.now();
   if (now - _fpsLast >= 1000) {
-    document.getElementById('hdr-cycles').textContent = `${_fpsCount} fps`;
+    document.getElementById('hdr-fps').textContent = `${_fpsCount} fps`;
     _fpsCount = 0; _fpsLast = now;
   }
 }
@@ -791,18 +105,10 @@ function _applyFrame(data, isDelta) {
   _updateFps();
 }
 
-// WebSocket display protocol:
-// Server sends binary frames with a 1-byte type prefix:
-//   0 = full frame (raw RGB565 pixel data, w*h*2 bytes)
-//   1 = delta frame: repeated (uint32_le offset, uint16_le length, data) runs
-// Falls back to HTTP polling (/display) when WebSocket is unavailable.
-const _wsUrl = 'ws://' + location.host + '/ws-display';
-let _ws = null;
 function connectDisplayWS() {
-  _ws = new WebSocket(_wsUrl);
-  _ws.binaryType = 'arraybuffer';
-  _ws.onopen = () => { _wsConnected = true; };
-  _ws.onmessage = (e) => {
+  const ws = new WebSocket('ws://' + location.host + '/ws-display');
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = (e) => {
     const data = new Uint8Array(e.data);
     const type = data[0];
     const payload = data.subarray(1);
@@ -819,20 +125,33 @@ function connectDisplayWS() {
     }
     _applyFrame(payload, type === 1);
   };
-  _ws.onclose = () => { _wsConnected = false; setTimeout(connectDisplayWS, 2000); };
-  _ws.onerror = () => { _wsConnected = false; };
+  ws.onclose = () => setTimeout(connectDisplayWS, 2000);
 }
 connectDisplayWS();
-/* ── Audio playback via Web Audio API ── */
-let _audioCtx = null;
-let _audioStarted = false;
+
+/* ── UART via WebSocket ── */
+(function() {
+  const uartEl = document.getElementById('uart');
+  function connect() {
+    const ws = new WebSocket('ws://' + location.host + '/ws-uart');
+    ws.binaryType = 'arraybuffer';
+    ws.onmessage = (e) => {
+      uartEl.textContent += new TextDecoder().decode(e.data);
+      uartEl.scrollTop = uartEl.scrollHeight;
+    };
+    ws.onclose = () => setTimeout(connect, 1000);
+  }
+  connect();
+})();
+
+/* ── Audio via WebSocket ── */
+let _audioCtx = null, _audioStarted = false, _audioNextTime = 0;
 const AUDIO_SAMPLE_RATE = 22050;
 
 function initAudio() {
   if (_audioStarted) return;
   _audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: AUDIO_SAMPLE_RATE});
   _audioStarted = true;
-  log('Audio started');
   const ws = new WebSocket('ws://' + location.host + '/ws-audio');
   ws.binaryType = 'arraybuffer';
   ws.onmessage = (evt) => {
@@ -850,22 +169,71 @@ function initAudio() {
     src.buffer = ab;
     src.connect(_audioCtx.destination);
     const now = _audioCtx.currentTime;
-    /* If we've fallen behind, reset to avoid queuing stale audio */
     if (_audioNextTime < now - 0.1) _audioNextTime = now;
     if (_audioNextTime > now + 0.3) _audioNextTime = now;
     src.start(_audioNextTime);
     _audioNextTime += ab.duration;
   };
 }
-
-let _audioNextTime = 0;
-
 document.addEventListener('click',   initAudio, {once: true});
 document.addEventListener('keydown', initAudio, {once: true});
 
-/* Volume slider → POST /io with dial:0:VALUE */
+/* ── Button controls ── */
+document.querySelectorAll('.gbtn').forEach(btn => {
+  const pin = parseInt(btn.dataset.pin);
+  const press = () => { btn.classList.add('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:1})}); };
+  const release = () => { btn.classList.remove('pressed'); fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:0})}); };
+  btn.addEventListener('mousedown', press);
+  btn.addEventListener('mouseup', release);
+  btn.addEventListener('mouseleave', release);
+  btn.addEventListener('touchstart', (e) => { e.preventDefault(); press(); });
+  btn.addEventListener('touchend', (e) => { e.preventDefault(); release(); });
+});
+
+document.addEventListener('keydown', (e) => {
+  const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
+  const pin = keyMap[e.key];
+  if (pin !== undefined) {
+    e.preventDefault();
+    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:1})});
+  }
+});
+document.addEventListener('keyup', (e) => {
+  const keyMap = {'z':0, 'x':1, 'ArrowLeft':2, 'ArrowRight':3, 'ArrowUp':4, 'ArrowDown':1, ' ':0};
+  const pin = keyMap[e.key];
+  if (pin !== undefined)
+    fetch('/gpio', {method:'POST', body:JSON.stringify({cmd:'gpio',pin,port:1,val:0})});
+});
+
+/* ── Volume slider ── */
 document.getElementById('vol-slider').addEventListener('input', function() {
   fetch('/io', {method:'POST', body:'dial:0:' + this.value});
+});
+
+/* ── Panel resize ── */
+document.querySelectorAll('.resize-v').forEach(handle => {
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const above = document.getElementById(handle.dataset.above);
+    const below = document.getElementById(handle.dataset.below);
+    if (!above || !below) return;
+    handle.classList.add('active');
+    const startY = e.clientY;
+    const aboveH = above.offsetHeight;
+    const belowH = below.offsetHeight;
+    const onMove = (e) => {
+      const dy = e.clientY - startY;
+      above.style.flex = 'none'; above.style.height = Math.max(60, aboveH + dy) + 'px';
+      below.style.flex = 'none'; below.style.height = Math.max(60, belowH - dy) + 'px';
+    };
+    const onUp = () => {
+      handle.classList.remove('active');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 });
 </script>
 </body>

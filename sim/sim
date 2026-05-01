@@ -1,15 +1,14 @@
 #!/bin/bash
-# sim — ARM Cortex-M4 Emulator with Web Debugger
-# Usage: ./sim <firmware.elf> [--machine <name>]
+# sim — Run the game in the browser (no debugger)
+set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-pkill -f sim-core 2>/dev/null
-pkill -f sim-web 2>/dev/null
-sleep 0.5
+ELF="${1:?Usage: $0 <firmware.elf>}"
 
-# If first arg doesn't start with --, treat it as --firmware
-if [ -n "$1" ] && [ "${1:0:2}" != "--" ]; then
-    FW="$1"; shift
-    exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$FW" "$@"
-else
-    exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy "$@"
-fi
+"$DIR/build/sim-core" --machine gameboy --firmware "$ELF" \
+    --chardev display=9004 --chardev usart2=9002 --chardev audio=9005 \
+    --chardev trace=9003 --chardev io=9006 &
+SIM_PID=$!
+trap "kill $SIM_PID 2>/dev/null" EXIT
+
+sleep 0.5
+python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF"
