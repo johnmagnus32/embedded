@@ -9,11 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <netinet/in.h>
-#include <fcntl.h>
 #include "dbg_stub.h"
 #include "armv7m_cpu.h"
 #include "membus.h"
@@ -29,7 +27,7 @@
 
 struct breakpoint {
     uint32_t addr;
-    uint16_t orig_insn;  /* saved instruction */
+    uint16_t orig_insn;
     int      active;
 };
 
@@ -64,12 +62,6 @@ static void bp_unpatch_all(uint8_t *flash)
 {
     for (int i = 0; i < nbp; i++)
         if (bps[i].active) bp_unpatch(flash, i);
-}
-
-static void bp_repatch_all(uint8_t *flash)
-{
-    for (int i = 0; i < nbp; i++)
-        if (!bps[i].active) bp_patch(flash, i);
 }
 
 /* --- JSON helpers --- */
@@ -111,26 +103,6 @@ static long json_int(const char *json, const char *key, long def)
     p += strlen(pat);
     while (*p == ' ') p++;
     return strtol(p, NULL, 0);
-}
-
-/* --- Perf reporting --- */
-
-static void perf_report(struct stub_ctx *ctx)
-{
-    static uint64_t last_cycles;
-    static struct timespec last_ts;
-    if (ctx->cpu->cycle_count - last_cycles >= 1000000) {
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        if (last_ts.tv_sec) {
-            double elapsed = (now.tv_sec - last_ts.tv_sec)
-                           + (now.tv_nsec - last_ts.tv_nsec) / 1e9;
-            double mips = (ctx->cpu->cycle_count - last_cycles) / elapsed / 1e6;
-            fprintf(stderr, "\r[perf] %.1f MIPS ", mips);
-        }
-        last_cycles = ctx->cpu->cycle_count;
-        last_ts = now;
-    }
 }
 
 /* --- Command handlers --- */
@@ -219,7 +191,6 @@ static void single_step(struct stub_ctx *ctx)
  * Returns: 0 = breakpoint hit, 1 = halt requested, 2 = semihost exit */
 static int run_continue(int fd, struct stub_ctx *ctx)
 {
-    /* Step past current breakpoint if sitting on one */
     int bp_at_pc = bp_find(ctx->cpu->r[REG_PC]);
     if (bp_at_pc >= 0) single_step(ctx);
 
@@ -229,17 +200,14 @@ static int run_continue(int fd, struct stub_ctx *ctx)
         if (r & CPU_SEMIHOST_EXIT) return 2;
         if (r & CPU_BREAKPOINT) return 0;
 
-        perf_report(ctx);
-
         if (++tick_count >= 10000) {
             tick_count = 0;
-            /* Check for incoming halt command */
             fd_set fds;
             FD_ZERO(&fds);
             FD_SET(fd, &fds);
             struct timeval tv = {0, 0};
             if (select(fd + 1, &fds, NULL, NULL, &tv) > 0)
-                return 1;  /* data available = halt request */
+                return 1;
         }
     }
 }
@@ -277,7 +245,6 @@ static void dispatch(int fd, struct stub_ctx *ctx, const char *line)
     } else if (strcmp(cmd, "continue") == 0) {
         int reason = run_continue(fd, ctx);
         if (reason == 2) {
-            /* semihost exit */
             if (ctx->chardevs) {
                 chardev_flush_all(ctx->chardevs);
                 chardev_shutdown_all(ctx->chardevs);
@@ -286,7 +253,6 @@ static void dispatch(int fd, struct stub_ctx *ctx, const char *line)
             exit(0);
         }
         if (reason == 1) {
-            /* halt requested — consume the halt command */
             char tmp[256];
             read(fd, tmp, sizeof(tmp));
         }
@@ -358,7 +324,6 @@ void dbg_stub_run(struct stub_ctx *ctx, int port)
         }
     }
 
-    /* Client disconnected — unpatch all breakpoints and clean up */
     bp_unpatch_all(*ctx->flash);
     nbp = 0;
     close(client);
