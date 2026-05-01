@@ -68,21 +68,28 @@ static uint32_t read_mem32(struct dbg_client *c, uint32_t addr)
 }
 
 /* Get registers from stub */
-static uint32_t get_pc(struct dbg_client *c)
+static int get_regs(struct dbg_client *c, uint32_t regs[16])
 {
     dbg_send(c, "{\"cmd\":\"regs\"}");
     char *resp = dbg_recv(c);
-    if (!resp) return 0;
-    /* PC is regs[15] */
+    if (!resp) return -1;
     const char *p = strstr(resp, "\"regs\":[");
-    if (!p) return 0;
+    if (!p) return -1;
     p += 8;
-    uint32_t val = 0;
-    for (int i = 0; i <= 15; i++) {
-        val = strtoul(p, NULL, 0);
-        if (i < 15) { p = strchr(p, ','); if (!p) return 0; p++; }
+    for (int i = 0; i < 16; i++) {
+        regs[i] = strtoul(p, NULL, 0);
+        p = strchr(p, ',');
+        if (!p && i < 15) return -1;
+        if (p) p++;
     }
-    return val;
+    return 0;
+}
+
+static uint32_t get_pc(struct dbg_client *c)
+{
+    uint32_t regs[16];
+    if (get_regs(c, regs) < 0) return 0;
+    return regs[15];
 }
 
 /* --- Stop info display --- */
@@ -400,6 +407,137 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
                    running ? "Running" : "Stopped", pc, (unsigned long)cycles);
         }
     }
+    else if (strncmp(line, "print ", 6) == 0 || strncmp(line, "p ", 2) == 0) {
+        const char *expr = line + (line[1] == ' ' ? 2 : 6);
+        uint32_t regs[16];
+        if (get_regs(client, regs) < 0) { printf("Cannot read registers.\n"); return 0; }
+        uint32_t pc = regs[15];
+
+        const char *p = expr;
+        uint32_t addr = 0;
+        uint32_t cur_type = 0;
+        int valid = 0;
+
+        /* Leading * dereference */
+        int leading_deref = 0;
+        if (*p == '*') { leading_deref = 1; p++; }
+
+        /* Parse base variable name */
+        char base[64]; int bi = 0;
+        while (*p && *p != '.' && *p != '-' && *p != '[' && bi < 63)
+            base[bi++] = *p++;
+        base[bi] = '\0';
+
+        /* Resolve base variable */
+        int reg; uint32_t val;
+        int loc = var_lookup(base, pc, &reg, &val);
+        cur_type = var_type_die(base, pc);
+
+        if (loc == 1) { /* register */
+            addr = regs[reg];
+            valid = 1;
+            /* For register vars, addr IS the value — need special handling */
+            if (cur_type && !*p && !leading_deref) {
+                /* Simple register variable — just print the value */
+                printf("%s = %u (0x%08x)\n", expr, addr, addr);
+                return 0;
+            }
+        } else if (loc == 2) { /* constant */
+            addr = val;
+            valid = 1;
+        } else if (loc == 3) { /* stack (fbreg) */
+            uint32_t cfa = cfa_offset_at_pc(pc);
+            addr = regs[13] + cfa + val;  /* r13 = SP */
+            valid = 1;
+        } else {
+            /* Try global symbol */
+            uint32_t sym = sym_find_by_name(base);
+            if (sym) { addr = sym; valid = 1; }
+            /* Try register name */
+            static const char *rn[] = {"r0","r1","r2","r3","r4","r5","r6","r7",
+                                       "r8","r9","r10","r11","r12","sp","lr","pc"};
+            for (int r = 0; r < 16; r++)
+                if (strcmp(base, rn[r]) == 0) {
+                    printf("%s = %u (0x%08x)\n", base, regs[r], regs[r]);
+                    return 0;
+                }
+        }
+
+        /* Apply leading dereference */
+        if (leading_deref && valid && cur_type) {
+            uint32_t pointee = type_deref(cur_type);
+            if (pointee) {
+                addr = read_mem32(client, addr);
+                cur_type = pointee;
+            }
+        }
+
+        /* Apply chained operators: .member, ->member, [index] */
+        while (*p && valid) {
+            if (*p == '.' && *(p+1)) {
+                p++;
+                char mem[32]; int mi = 0;
+                while (*p && *p != '.' && *p != '-' && *p != '[' && mi < 31)
+                    mem[mi++] = *p++;
+                mem[mi] = '\0';
+                uint32_t off, mtype;
+                if (type_member(cur_type, mem, &off, &mtype)) {
+                    addr += off;
+                    cur_type = mtype;
+                } else { valid = 0; printf("No member '%s'\n", mem); }
+            } else if (*p == '-' && *(p+1) == '>') {
+                p += 2;
+                uint32_t pointee = type_deref(cur_type);
+                if (pointee) {
+                    addr = read_mem32(client, addr);
+                    cur_type = pointee;
+                }
+                char mem[32]; int mi = 0;
+                while (*p && *p != '.' && *p != '-' && *p != '[' && mi < 31)
+                    mem[mi++] = *p++;
+                mem[mi] = '\0';
+                uint32_t off, mtype;
+                if (type_member(cur_type, mem, &off, &mtype)) {
+                    addr += off;
+                    cur_type = mtype;
+                } else { valid = 0; printf("No member '%s'\n", mem); }
+            } else if (*p == '[') {
+                p++;
+                char idx_str[32]; int ii = 0;
+                while (*p && *p != ']' && ii < 31) idx_str[ii++] = *p++;
+                idx_str[ii] = '\0';
+                if (*p == ']') p++;
+                int idx = atoi(idx_str);
+                uint32_t elem_size;
+                uint32_t elem_type = type_array_elem(cur_type, &elem_size);
+                if (elem_type) {
+                    addr += idx * elem_size;
+                    cur_type = elem_type;
+                } else { valid = 0; printf("Not an array.\n"); }
+            } else break;
+        }
+
+        if (valid) {
+            uint32_t bsz = type_byte_size(cur_type);
+            if (bsz <= 4) {
+                uint32_t v = read_mem32(client, addr);
+                if (bsz == 1) v &= 0xFF;
+                else if (bsz == 2) v &= 0xFFFF;
+                printf("%s = %u (0x%x)\n", expr, v, v);
+            } else {
+                /* Larger type — read and show as hex dump */
+                if (bsz > 64) bsz = 64;
+                uint8_t data[64];
+                read_mem(client, addr, data, bsz);
+                printf("%s @ 0x%08x = {", expr, addr);
+                for (uint32_t i = 0; i < bsz; i++)
+                    printf("%s%02x", i ? " " : "", data[i]);
+                printf("}\n");
+            }
+        } else if (!valid) {
+            printf("Cannot resolve: %s\n", expr);
+        }
+    }
     else if (strcmp(line, "help") == 0) {
         printf("Commands:\n"
                "  continue (c)     — run until breakpoint or Ctrl+C\n"
@@ -408,6 +546,7 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
                "  halt (h)         — stop execution\n"
                "  break <spec> (b) — set breakpoint (function, file:line, 0xaddr)\n"
                "  delete <addr> (d)— delete breakpoint\n"
+               "  print <expr> (p) — evaluate expression (var, var.member, var->field, var[i])\n"
                "  info break       — list breakpoints\n"
                "  info regs        — show registers\n"
                "  info tasks       — show RTOS tasks\n"
