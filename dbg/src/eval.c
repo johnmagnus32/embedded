@@ -95,7 +95,15 @@ void eval_expr_with_regs(struct dbg_client *c, const char *expr,
             out->is_register = 1;
             return;
         }
-    } else if (loc == 2) { /* constant */
+    } else if (loc == 2) { /* constant / stack_value */
+        if (!*p && !leading_deref) {
+            /* Simple constant — value is the variable's value, not an address */
+            out->valid = 1;
+            out->val = val;
+            out->type_die = cur_type;
+            out->is_register = 1;  /* treat like register — val is the value itself */
+            return;
+        }
         addr = val;
         valid = 1;
     } else if (loc == 3) { /* stack (fbreg) */

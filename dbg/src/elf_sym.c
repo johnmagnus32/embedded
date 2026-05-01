@@ -1263,15 +1263,6 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
 {
     struct var_info *v = find_var_in_scope(name, pc);
     if (!v) {
-        /* Debug: check if variable exists at all */
-        for (int i = 0; i < nvars; i++) {
-            if (strcmp(vars[i].name, name) == 0) {
-                int si = vars[i].scope_idx;
-                fprintf(stderr, "[dbg] var '%s' in scope %d [0x%08x-0x%08x], pc=0x%08x %s\n",
-                    name, si, scopes[si].low_pc, scopes[si].high_pc, pc,
-                    pc_in_scope(si, pc) ? "IN" : "OUT");
-            }
-        }
         return 0;
     }
 
@@ -1298,8 +1289,6 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
             const uint8_t *p = loclists_data + v->loc_offset;
             const uint8_t *end = loclists_data + loclists_size;
             uint32_t base_addr = v->cu_base;
-            fprintf(stderr, "[dbg] loclist for '%s' at offset 0x%x, first byte=0x%02x\n",
-                    name, v->loc_offset, *p);  /* CU's low_pc for offset_pair */
 
             while (p < end) {
                 uint8_t entry_kind = *p++;
@@ -1316,8 +1305,6 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
                     uint32_t start = *(uint32_t*)p; p += 4;
                     uint32_t length = read_uleb(&p);
                     uint16_t expr_len = read_uleb(&p);
-                    fprintf(stderr, "[dbg] start_length: 0x%08x len=%u expr_len=%d op=0x%02x pc=0x%08x\n",
-                            start, length, expr_len, expr_len > 0 ? *p : 0, pc);
                     if (pc >= start && pc < start + length && expr_len > 0) {
                         uint8_t op = *p;
                         if (op >= 0x50 && op <= 0x6f) { *reg_out = op - 0x50; return 1; }
@@ -1348,6 +1335,8 @@ int var_lookup(const char *name, uint32_t pc, int *reg_out, uint32_t *val_out)
                         uint8_t op = *p;
                         if (op >= 0x50 && op <= 0x6f) { *reg_out = op - 0x50; return 1; }
                         if (op == 0x91) { const uint8_t *ep = p+1; *val_out = (uint32_t)read_sleb(&ep); return 3; }
+                        /* DW_OP_const1u + DW_OP_stack_value */
+                        if (op == 0x08) { *val_out = p[1]; return 2; }
                     }
                     p += expr_len;
                     continue;
