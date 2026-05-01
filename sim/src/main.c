@@ -76,10 +76,8 @@ int main(int argc, char **argv)
         while (1) {
             int r = mach->tick(board);
             if (r & CPU_SEMIHOST_EXIT) {
-                if (chardevs.count > 0) {
-                    chardev_flush_all(&chardevs);
-                    chardev_shutdown_all(&chardevs);
-                }
+                chardev_flush_all(&chardevs);
+                chardev_shutdown_all(&chardevs);
                 free(*flash); free(*ram); free(board);
                 return r & 0xFF;
             }

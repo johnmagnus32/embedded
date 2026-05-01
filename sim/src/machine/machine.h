@@ -7,6 +7,7 @@
 struct chardev_table;
 struct armv7m_cpu;
 struct membus;
+struct event_queue;
 
 struct machine_desc {
     const char *name;
@@ -18,6 +19,7 @@ struct machine_desc {
     struct membus        *(*get_bus)(void *board);
     uint8_t             **(*get_flash)(void *board);
     uint8_t             **(*get_ram)(void *board);
+    struct event_queue   *(*get_eq)(void *board);
 };
 
 const struct machine_desc *machine_find(const char *name);
