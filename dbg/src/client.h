@@ -1,5 +1,5 @@
 /*
- * dbg_client.h — GDB RSP client for sim-dbg
+ * client.h — GDB RSP client for sim-dbg
  */
 #ifndef DBG_CLIENT_H
 #define DBG_CLIENT_H

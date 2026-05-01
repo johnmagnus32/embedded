@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug on Simulator",
+            "type": "cortex-debug",
+            "request": "attach",
+            "servertype": "external",
+            "gdbPath": "gdb-multiarch",
+            "gdbTarget": "localhost:1234",
+            "executable": "${workspaceFolder}/projects/gameboy/build/gameboy.elf",
+            "device": "STM32F411RE"
+        }
+    ]
+}

@@ -8,7 +8,7 @@
 #include <sys/select.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include "dbg_client.h"
+#include "client.h"
 
 int dbg_connect(struct dbg_client *c, const char *host, int port)
 {

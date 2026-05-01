@@ -1,5 +1,5 @@
 /*
- * dbg_cmd.h — sim-dbg command handlers
+ * cmd.h — sim-dbg command handlers
  */
 #ifndef DEBUGGER_DBG_CMD_H
 #define DEBUGGER_DBG_CMD_H

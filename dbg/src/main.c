@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "dbg_client.h"
-#include "dbg_cmd.h"
+#include "client.h"
+#include "cmd.h"
 #include "elf_sym.h"
 
 #include <readline/readline.h>
