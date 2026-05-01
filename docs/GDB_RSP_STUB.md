@@ -264,39 +264,31 @@ if (pkt[0] == 'q') {
 }
 ```
 
-## Part 3: Handle Ctrl+C (async interrupt)
+## Part 3: Handle Ctrl+C and async packets during continue
 
-When GDB wants to halt a running target, it sends a raw `0x03` byte (not a packet). Detect this in `run_continue`:
+When GDB wants to halt a running target, it sends a raw `0x03` byte (not a packet). But GDB can also send real packets while the target is running — most commonly `Z0`/`z0` to set/remove breakpoints without stopping. GDB expects `OK` back and the target keeps running.
+
+Detect and handle both in `run_continue`:
 
 ```c
-static int run_continue(int fd, struct stub_ctx *ctx)
-{
-    int bp_at_pc = bp_find(ctx->cpu->r[REG_PC]);
-    if (bp_at_pc >= 0) single_step(ctx);
-
-    int tick_count = 0;
-    while (1) {
-        int r = ctx->mach->tick(ctx->board);
-        if (r & CPU_SEMIHOST_EXIT) return 2;
-        if (r & CPU_BREAKPOINT) return 0;
-
-        if (++tick_count >= 10000) {
-            tick_count = 0;
-            perf_report(ctx);
-            /* Check for Ctrl+C (0x03 byte) */
-            fd_set fds;
-            FD_ZERO(&fds);
-            FD_SET(fd, &fds);
-            struct timeval tv = {0, 0};
-            if (select(fd + 1, &fds, NULL, NULL, &tv) > 0) {
-                char c;
-                read(fd, &c, 1);
-                if (c == 0x03) return 1;  /* Ctrl+C halt */
-            }
+if (select(fd + 1, &fds, NULL, NULL, &tv) > 0) {
+    char c;
+    if (recv(fd, &c, 1, MSG_PEEK) > 0 && c == 0x03) {
+        read(fd, &c, 1);  /* consume the 0x03 */
+        return 1;  /* Ctrl+C halt */
+    }
+    /* Real packet — parse and handle without stopping */
+    char pkt[256];
+    if (gdb_recv(fd, pkt, sizeof(pkt)) > 0) {
+        if (pkt[0] == 'Z' || pkt[0] == 'z') {
+            dispatch(fd, ctx, pkt);  /* set/remove breakpoint, sends OK */
+            /* Don't return — keep running */
         }
     }
 }
 ```
+
+This is required because GDB sets breakpoints while the target is running. When you type `break main` in GDB during execution, GDB sends `Z0,addr,2` and expects `OK` without the target stopping. The stub patches the BKPT instruction immediately and the target only stops when it actually reaches that address.
 
 ## Part 4: Update main.c
 

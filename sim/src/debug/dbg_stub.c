@@ -107,6 +107,9 @@ static void single_step(struct stub_ctx *ctx)
         bp_patch(*ctx->flash, bp_idx);
 }
 
+/* Forward declaration — needed for async packet handling during continue */
+static void dispatch(int fd, struct stub_ctx *ctx, const char *pkt);
+
 /* Continue execution. Returns: 0=breakpoint, 1=halt(Ctrl+C), 2=semihost exit */
 static int run_continue(int fd, struct stub_ctx *ctx)
 {
@@ -127,8 +130,14 @@ static int run_continue(int fd, struct stub_ctx *ctx)
             struct timeval tv = {0, 0};
             if (select(fd + 1, &fds, NULL, NULL, &tv) > 0) {
                 char c;
-                read(fd, &c, 1);
-                if (c == 0x03) return 1;  /* Ctrl+C */
+                if (recv(fd, &c, 1, MSG_PEEK) > 0 && c == 0x03) {
+                    read(fd, &c, 1);
+                    return 1;  /* Ctrl+C halt */
+                }
+                /* Real packet — handle without stopping */
+                char pkt[256];
+                if (gdb_recv(fd, pkt, sizeof(pkt)) > 0)
+                    dispatch(fd, ctx, pkt);
             }
         }
     }
