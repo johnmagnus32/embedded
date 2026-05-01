@@ -1,8 +1,18 @@
-Decouple the debugger from the emulator and the debugger UI from the simulation UI. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read all source files in `src/` before making changes. Build with `make` from `sim/`.
+Decouple the debugger from the emulator and the debugger UI from the simulation UI. The debugger lives in its own top-level directory `dbg/`, separate from `sim/`. Read all source files in `sim/src/` before making changes.
 
 ## Goal
 
 Split into three components that mirror real embedded development:
+
+```
+simple-stm32/
+├── sim/          ← emulator (sim-core + sim-web)
+├── dbg/          ← debugger CLI (sim-dbg) — separate project
+├── os/           ← the RTOS
+├── projects/     ← firmware (gameboy)
+├── tests/        ← integration/perf tests
+└── docs/         ← design documents
+```
 
 ```
 Real hardware:
@@ -10,9 +20,9 @@ Real hardware:
   GDB via J-Link    → separate terminal with source, registers, breakpoints
 
 Your emulator:
-  sim-core          → emulator, runs firmware, serves chardevs + debug stub
-  sim-web           → simulation UI: display, audio, buttons, UART, trace timeline (keep as Python)
-  sim-dbg           → debugger CLI: source, registers, breakpoints, stepping, expressions
+  sim-core (sim/)   → emulator, runs firmware, serves chardevs + debug stub
+  sim-web  (sim/)   → simulation UI: display, audio, buttons, UART, trace timeline (keep as Python)
+  sim-dbg  (dbg/)   → debugger CLI: source, registers, breakpoints, stepping, expressions
 ```
 
 Each is a separate process. Any combination works:
@@ -116,14 +126,19 @@ sim-dbg loads its own copy of the ELF for symbols/DWARF. If the ELF doesn't matc
 ### Architecture
 
 ```
-src/debugger/
-  dbg_main.c          ← entry point: parse args, connect, load ELF, REPL loop
-  dbg_client.c/h      ← TCP client for the debug stub protocol
-  dbg_cmd.c/h         ← command handlers (break, step, next, print, etc.)
-  dbg_eval.c/h        ← expression evaluator (moved from current debug/)
-  dbg_tasks.c/h       ← RTOS task introspection (moved from current debug/)
-  elf_sym.c/h         ← ELF/DWARF parser (moved from current debug/)
+dbg/
+  src/
+    dbg_main.c          ← entry point: parse args, connect, load ELF, REPL loop
+    dbg_client.c/h      ← TCP client for the debug stub protocol
+    dbg_cmd.c/h         ← command handlers (break, step, next, print, etc.)
+    dbg_eval.c/h        ← expression evaluator (copied from sim/src/debug/)
+    dbg_tasks.c/h       ← RTOS task introspection (copied from sim/src/debug/)
+    elf_sym.c/h         ← ELF/DWARF parser (copied from sim/src/core/)
+  Makefile
+  build/
 ```
+
+The debugger has no build-time dependency on `sim/`. It connects to sim-core at runtime via TCP. The shared code (`elf_sym.c`, `dbg_eval.c`, `dbg_tasks.c`) is copied into `dbg/src/` — not imported or symlinked. This keeps the two projects fully independent.
 
 ### Commands
 
@@ -260,24 +275,47 @@ signal(SIGINT, SIG_DFL);
 
 ## Part 4: Build system
 
-```makefile
-all: $(BUILD)/sim-core $(BUILD)/sim-dbg
+### sim/Makefile (updated — remove debug command files, add stub)
 
+```makefile
 # sim-core: emulator + debug stub (no DWARF, no expression eval)
 CORE_SRCS = src/main.c src/debug/dbg_stub.c src/debug/elf_load.c \
             src/core/*.c src/arch/armv7m/*.c src/hw/stm32/*.c \
             src/devices/*.c src/soc/*.c src/machine/*.c
-
-# sim-dbg: debugger CLI (DWARF, expressions, RTOS tasks)
-DBG_SRCS = src/debugger/dbg_main.c src/debugger/dbg_client.c \
-           src/debugger/dbg_cmd.c src/debugger/dbg_eval.c \
-           src/debugger/dbg_tasks.c src/debugger/elf_sym.c
-DBG_LDFLAGS = -lreadline
 ```
 
-`elf_load.c` is a stripped-down ELF loader (program segments only, no `.symtab`/`.debug_*`). sim-dbg uses the full `elf_sym.c`.
+Remove `dbg_cmd.c`, `dbg_eval.c`, `dbg_tasks.c`, `dbg_server.c`, `elf_sym.c` from sim's build. These move to `dbg/`.
 
-sim-web stays as Python — no build step needed.
+`elf_load.c` is a new stripped-down ELF loader (program segments only, no `.symtab`/`.debug_*`).
+
+### dbg/Makefile (new)
+
+```makefile
+CC = gcc
+CFLAGS = -Wall -O2 -g
+BUILD = build
+SRC = src
+
+SRCS = $(SRC)/dbg_main.c $(SRC)/dbg_client.c $(SRC)/dbg_cmd.c \
+       $(SRC)/dbg_eval.c $(SRC)/dbg_tasks.c $(SRC)/elf_sym.c
+OBJS = $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(SRCS))
+
+all: $(BUILD)/sim-dbg
+
+$(BUILD)/sim-dbg: $(OBJS)
+	$(CC) -o $@ $^ -lreadline
+
+$(BUILD)/%.o: $(SRC)/%.c
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC) -c -o $@ $<
+
+clean:
+	rm -rf $(BUILD)
+
+.PHONY: all clean
+```
+
+sim-web stays as Python in `sim/src/sim-web/` — no build step needed.
 
 ## Part 5: Launch scripts
 
@@ -298,6 +336,7 @@ kill $SIM_PID
 # sim/sim-debug — run the game + debugger
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
 "$DIR/build/sim-core" --machine gameboy --firmware "$1" --debug 9001 \
     --chardev display=9004 --chardev usart2=9002 --chardev audio=9005 \
     --chardev trace=9003 --chardev io=9006 &
@@ -308,7 +347,7 @@ python3 "$DIR/src/sim-web/sim-web.py" \
     --chardev audio=9005 --chardev trace=9003 --chardev io=9006 --port 3000 &
 WEB_PID=$!
 sleep 1
-"$DIR/build/sim-dbg" --connect localhost:9001 --elf "$1"
+"$ROOT/dbg/build/sim-dbg" --connect localhost:9001 --elf "$1"
 # When debugger exits, clean up
 kill $WEB_PID $SIM_PID 2>/dev/null
 ```

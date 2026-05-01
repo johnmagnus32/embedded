@@ -14,7 +14,7 @@ python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF" &
 WEB_PID=$!
 
 sleep 0.5
-"$DIR/build/sim-dbg" --connect localhost:9001 --elf "$ELF"
+"$DIR/../dbg/build/sim-dbg" --connect localhost:9001 --elf "$ELF"
 
 # When debugger exits, clean up
 kill $WEB_PID $SIM_PID 2>/dev/null
