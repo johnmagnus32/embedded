@@ -81,7 +81,21 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
         event_schedule(&b->soc.eq, EVT_CHARDEV_FLUSH, 10000, chardev_flush_cb, b);
 }
 
-static uint64_t gpio_hold_until[3][16]; /* per port/pin: cycle count to hold until */
+/*
+ * GPIO hold timer — simulate realistic button press duration.
+ *
+ * The browser sends press (gpio:1:0:1) and release (gpio:1:0:0) as
+ * separate messages, but both can arrive in the same chardev read
+ * because TCP batches them. Without a hold timer, the pin would go
+ * high and immediately low — too fast for firmware that polls the
+ * pin state (e.g. debouncing, or a game loop sampling at 30fps).
+ *
+ * The hold timer keeps the pin high for at least 100K cycles (~6ms
+ * at 16MHz), ignoring early releases. This makes the emulated button
+ * behave like a real mechanical switch: press → held → release, with
+ * a duration that any firmware input strategy can observe.
+ */
+static uint64_t gpio_hold_until[3][16];
 
 static void gameboy_poll_io(struct gameboy *b)
 {
