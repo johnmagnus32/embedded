@@ -19,6 +19,7 @@ enum event_id {
     EVT_SPI1_TXE,
     EVT_ILI9341_REFRESH,
     EVT_IO_POLL,
+    EVT_CHARDEV_FLUSH,
 };
 
 struct event {

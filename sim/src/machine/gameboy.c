@@ -15,6 +15,7 @@
 
 static void ili9341_refresh_cb(void *opaque);
 static void io_poll_cb(void *opaque);
+static void chardev_flush_cb(void *opaque);
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 {
@@ -76,6 +77,8 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     event_schedule(&b->soc.eq, EVT_ILI9341_REFRESH, display.refresh_interval,
                    ili9341_refresh_cb, b);
     event_schedule(&b->soc.eq, EVT_IO_POLL, 10000, io_poll_cb, b);
+    if (chardevs)
+        event_schedule(&b->soc.eq, EVT_CHARDEV_FLUSH, 10000, chardev_flush_cb, b);
 }
 
 static uint64_t gpio_hold_until[3][16]; /* per port/pin: cycle count to hold until */
@@ -138,10 +141,18 @@ static void io_poll_cb(void *opaque)
 {
     struct gameboy *b = (struct gameboy *)opaque;
     if (b->io_chardev) gameboy_poll_io(b);
-    chardev_flush_all(b->chardevs);
     event_schedule(&b->soc.eq, EVT_IO_POLL,
                    b->soc.cpu.cycle_count + 10000,
                    io_poll_cb, b);
+}
+
+static void chardev_flush_cb(void *opaque)
+{
+    struct gameboy *b = (struct gameboy *)opaque;
+    chardev_flush_all(b->chardevs);
+    event_schedule(&b->soc.eq, EVT_CHARDEV_FLUSH,
+                   b->soc.cpu.cycle_count + 10000,
+                   chardev_flush_cb, b);
 }
 
 int gameboy_tick(struct gameboy *b)
