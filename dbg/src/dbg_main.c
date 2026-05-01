@@ -13,10 +13,8 @@
 #include "dbg_cmd.h"
 #include "elf_sym.h"
 
-#ifdef HAVE_READLINE
 #include <readline/readline.h>
 #include <readline/history.h>
-#endif
 
 static void usage(const char *prog)
 {
@@ -104,7 +102,6 @@ int main(int argc, char **argv)
     }
 
     /* REPL */
-#ifdef HAVE_READLINE
     while (1) {
         char *line = readline("(dbg) ");
         if (!line) break;
@@ -112,18 +109,6 @@ int main(int argc, char **argv)
         if (dbg_handle_command(&client, line) < 0) { free(line); break; }
         free(line);
     }
-#else
-    char line[1024];
-    while (1) {
-        printf("(dbg) ");
-        fflush(stdout);
-        if (!fgets(line, sizeof(line), stdin)) break;
-        /* Strip newline */
-        int len = strlen(line);
-        if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
-        if (dbg_handle_command(&client, line) < 0) break;
-    }
-#endif
 
     printf("Disconnected.\n");
     dbg_close(&client);
