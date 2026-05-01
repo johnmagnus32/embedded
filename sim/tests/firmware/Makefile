@@ -8,7 +8,7 @@ BUILD = build
 # Functional tests
 FUNC_ARMV7M = test_alu test_alu2 test_arith test_call test_it test_ldm_stm \
               test_ldst_w test_mem test_misc test_shift test_wide
-FUNC_STM32  = test_dma test_dma_spi test_dma_i2s_kick test_gpio_exti test_irq test_it_irq \
+FUNC_STM32  = test_dma test_dma_spi test_dma_i2s_kick test_gpio_exti test_syscfg test_irq test_it_irq \
               test_uart_chardev
 FUNC_CORE   = test_elf
 
