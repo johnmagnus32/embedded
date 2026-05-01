@@ -1,9 +1,8 @@
 /*
- * dbg_stub.c — Thin debug stub for sim-core
+ * dbg_stub.c — GDB Remote Serial Protocol stub for sim-core
  *
- * JSON/TCP protocol. Breakpoints via BKPT instruction patching.
- * Checks for incoming commands during continue via non-blocking select().
- * No symbols, no DWARF — just raw CPU state.
+ * Implements the GDB RSP so standard GDB and VS Code can connect directly.
+ * Breakpoints via BKPT instruction patching (0xBE00).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +18,38 @@
 #include "machine.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
+
+/* --- RSP packet layer --- */
+
+static void gdb_send(int fd, const char *data)
+{
+    uint8_t sum = 0;
+    for (const char *p = data; *p; p++) sum += (uint8_t)*p;
+    char buf[16384];
+    int n = snprintf(buf, sizeof(buf), "$%s#%02x", data, sum);
+    write(fd, buf, n);
+}
+
+static int gdb_recv(int fd, char *buf, int bufsize)
+{
+    char c;
+    /* Skip until $ */
+    do { if (read(fd, &c, 1) <= 0) return -1; } while (c != '$');
+    /* Read until # */
+    int len = 0;
+    while (len < bufsize - 1) {
+        if (read(fd, &c, 1) <= 0) return -1;
+        if (c == '#') break;
+        buf[len++] = c;
+    }
+    buf[len] = '\0';
+    /* Consume 2-byte checksum */
+    char ck[2];
+    read(fd, ck, 2);
+    /* ACK */
+    write(fd, "+", 1);
+    return len;
+}
 
 /* --- Breakpoint table (BKPT patching) --- */
 
@@ -64,117 +95,6 @@ static void bp_unpatch_all(uint8_t *flash)
         if (bps[i].active) bp_unpatch(flash, i);
 }
 
-/* --- JSON helpers --- */
-
-static void send_resp(int fd, const char *json)
-{
-    write(fd, json, strlen(json));
-    write(fd, "\n", 1);
-}
-
-static void send_stop(int fd, struct stub_ctx *ctx)
-{
-    if (ctx->chardevs)
-        chardev_flush_all(ctx->chardevs);
-    char buf[128];
-    snprintf(buf, sizeof(buf),
-        "{\"stopped\":true,\"pc\":%u,\"cycles\":%lu}",
-        ctx->cpu->r[REG_PC], (unsigned long)ctx->cpu->cycle_count);
-    send_resp(fd, buf);
-}
-
-static const char *json_str(const char *json, const char *key, char *out, int outlen)
-{
-    char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":\"", key);
-    const char *p = strstr(json, pat);
-    if (!p) return NULL;
-    p += strlen(pat);
-    int i = 0;
-    while (*p && *p != '"' && i < outlen - 1) out[i++] = *p++;
-    out[i] = 0;
-    return out;
-}
-
-static long json_int(const char *json, const char *key, long def)
-{
-    char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":", key);
-    const char *p = strstr(json, pat);
-    if (!p) return def;
-    p += strlen(pat);
-    while (*p == ' ') p++;
-    return strtol(p, NULL, 0);
-}
-
-/* --- Command handlers --- */
-
-static void cmd_regs(int fd, struct stub_ctx *ctx)
-{
-    struct armv7m_cpu *c = ctx->cpu;
-    char buf[512];
-    int n = snprintf(buf, sizeof(buf), "{\"regs\":[");
-    for (int i = 0; i < 16; i++)
-        n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", c->r[i]);
-    n += snprintf(buf + n, sizeof(buf) - n,
-        "],\"xpsr\":%u,\"msp\":%u,\"psp\":%u}",
-        c->xpsr, c->msp, c->psp);
-    send_resp(fd, buf);
-}
-
-static void cmd_mem(int fd, struct stub_ctx *ctx, uint32_t addr, int len)
-{
-    if (len > 4096) len = 4096;
-    char buf[8200];
-    int n = snprintf(buf, sizeof(buf), "{\"mem\":\"");
-    for (int i = 0; i < len; i++) {
-        uint8_t b = membus_read8(ctx->bus, addr + i);
-        n += snprintf(buf + n, sizeof(buf) - n, "%02x", b);
-    }
-    n += snprintf(buf + n, sizeof(buf) - n, "\"}");
-    send_resp(fd, buf);
-}
-
-static void cmd_writemem(int fd, struct stub_ctx *ctx, uint32_t addr, const char *hex)
-{
-    int len = strlen(hex) / 2;
-    for (int i = 0; i < len; i++) {
-        unsigned int b;
-        sscanf(hex + i * 2, "%2x", &b);
-        membus_write8(ctx->bus, addr + i, b);
-    }
-    send_resp(fd, "{\"ok\":true}");
-}
-
-static void cmd_break(int fd, struct stub_ctx *ctx, uint32_t addr)
-{
-    if (bp_find(addr) >= 0) { send_resp(fd, "{\"ok\":true}"); return; }
-    if (nbp >= MAX_BP) { send_resp(fd, "{\"error\":\"too many breakpoints\"}"); return; }
-    bps[nbp].addr = addr;
-    bp_patch(*ctx->flash, nbp);
-    nbp++;
-    send_resp(fd, "{\"ok\":true}");
-}
-
-static void cmd_delbreak(int fd, struct stub_ctx *ctx, uint32_t addr)
-{
-    int idx = bp_find(addr);
-    if (idx < 0) { send_resp(fd, "{\"error\":\"breakpoint not found\"}"); return; }
-    if (bps[idx].active) bp_unpatch(*ctx->flash, idx);
-    bps[idx] = bps[--nbp];
-    send_resp(fd, "{\"ok\":true}");
-}
-
-static void cmd_listbreak(int fd)
-{
-    char buf[1024];
-    int n = snprintf(buf, sizeof(buf), "{\"breakpoints\":[");
-    for (int i = 0; i < nbp; i++)
-        n += snprintf(buf + n, sizeof(buf) - n, "%s%u", i ? "," : "", bps[i].addr);
-    n += snprintf(buf + n, sizeof(buf) - n, "]}");
-    send_resp(fd, buf);
-}
-
 /* Step one instruction, temporarily unpatching breakpoint at PC if needed */
 static void single_step(struct stub_ctx *ctx)
 {
@@ -182,15 +102,12 @@ static void single_step(struct stub_ctx *ctx)
     int bp_idx = bp_find(pc);
     if (bp_idx >= 0 && bps[bp_idx].active)
         bp_unpatch(*ctx->flash, bp_idx);
-
     ctx->mach->tick(ctx->board);
-
     if (bp_idx >= 0 && !bps[bp_idx].active)
         bp_patch(*ctx->flash, bp_idx);
 }
 
-/* Continue execution. Check for halt commands via select() every 10K ticks.
- * Returns: 0 = breakpoint hit, 1 = halt requested, 2 = semihost exit */
+/* Continue execution. Returns: 0=breakpoint, 1=halt(Ctrl+C), 2=semihost exit */
 static int run_continue(int fd, struct stub_ctx *ctx)
 {
     int bp_at_pc = bp_find(ctx->cpu->r[REG_PC]);
@@ -208,80 +125,191 @@ static int run_continue(int fd, struct stub_ctx *ctx)
             FD_ZERO(&fds);
             FD_SET(fd, &fds);
             struct timeval tv = {0, 0};
-            if (select(fd + 1, &fds, NULL, NULL, &tv) > 0)
-                return 1;
+            if (select(fd + 1, &fds, NULL, NULL, &tv) > 0) {
+                char c;
+                read(fd, &c, 1);
+                if (c == 0x03) return 1;  /* Ctrl+C */
+            }
         }
     }
 }
 
-/* --- Main dispatch --- */
-
-static void dispatch(int fd, struct stub_ctx *ctx, const char *line)
+/* Flush chardevs so output is visible after stop */
+static void flush_on_stop(struct stub_ctx *ctx)
 {
-    char cmd[32];
-    if (!json_str(line, "cmd", cmd, sizeof(cmd))) {
-        send_resp(fd, "{\"error\":\"no cmd\"}");
-        return;
+    if (ctx->chardevs)
+        chardev_flush_all(ctx->chardevs);
+}
+
+/* Format a 32-bit value as little-endian hex (8 chars) */
+static int hex32(char *buf, uint32_t v)
+{
+    return sprintf(buf, "%02x%02x%02x%02x",
+                   v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF);
+}
+
+/* Parse a little-endian hex 32-bit value */
+static uint32_t parse_hex32(const char *p)
+{
+    uint32_t v = 0;
+    for (int b = 0; b < 4; b++) {
+        unsigned int byte;
+        sscanf(p + b * 2, "%2x", &byte);
+        v |= byte << (b * 8);
+    }
+    return v;
+}
+
+/* --- Packet dispatch --- */
+
+static void dispatch(int fd, struct stub_ctx *ctx, const char *pkt)
+{
+    char resp[16384];
+
+    switch (pkt[0]) {
+
+    case '?':
+        /* Stop reason */
+        flush_on_stop(ctx);
+        gdb_send(fd, "S05");
+        break;
+
+    case 'g': {
+        /* Read registers: r0-r15, 8×FPA(zeros), xPSR */
+        int n = 0;
+        for (int i = 0; i < 16; i++)
+            n += hex32(resp + n, ctx->cpu->r[i]);
+        /* FPA registers: 8 × 12 bytes = 96 bytes = 192 hex chars of zeros */
+        for (int i = 0; i < 192; i++)
+            resp[n++] = '0';
+        /* xPSR */
+        n += hex32(resp + n, ctx->cpu->xpsr);
+        resp[n] = '\0';
+        gdb_send(fd, resp);
+        break;
     }
 
-    if (strcmp(cmd, "regs") == 0) {
-        cmd_regs(fd, ctx);
-    } else if (strcmp(cmd, "mem") == 0) {
-        uint32_t addr = (uint32_t)json_int(line, "addr", 0);
-        int len = (int)json_int(line, "len", 64);
-        cmd_mem(fd, ctx, addr, len);
-    } else if (strcmp(cmd, "writemem") == 0) {
-        uint32_t addr = (uint32_t)json_int(line, "addr", 0);
-        char hex[8200];
-        if (json_str(line, "data", hex, sizeof(hex)))
-            cmd_writemem(fd, ctx, addr, hex);
-        else
-            send_resp(fd, "{\"error\":\"missing data\"}");
-    } else if (strcmp(cmd, "step") == 0) {
+    case 'G': {
+        /* Write registers */
+        const char *p = pkt + 1;
+        for (int i = 0; i < 16; i++) {
+            ctx->cpu->r[i] = parse_hex32(p);
+            p += 8;
+        }
+        p += 192;  /* skip FPA */
+        ctx->cpu->xpsr = parse_hex32(p);
+        gdb_send(fd, "OK");
+        break;
+    }
+
+    case 'm': {
+        /* Read memory */
+        uint32_t addr; int len;
+        sscanf(pkt + 1, "%x,%x", &addr, &len);
+        if (len > 4096) len = 4096;
+        int n = 0;
+        for (int i = 0; i < len; i++)
+            n += sprintf(resp + n, "%02x", membus_read8(ctx->bus, addr + i));
+        gdb_send(fd, resp);
+        break;
+    }
+
+    case 'M': {
+        /* Write memory */
+        uint32_t addr; int len;
+        sscanf(pkt + 1, "%x,%x", &addr, &len);
+        const char *hex = strchr(pkt, ':');
+        if (!hex) { gdb_send(fd, "E01"); break; }
+        hex++;
+        for (int i = 0; i < len; i++) {
+            unsigned int b;
+            sscanf(hex + i * 2, "%2x", &b);
+            membus_write8(ctx->bus, addr + i, (uint8_t)b);
+        }
+        gdb_send(fd, "OK");
+        break;
+    }
+
+    case 's':
+        /* Single step */
         single_step(ctx);
-        send_stop(fd, ctx);
-    } else if (strcmp(cmd, "stepi") == 0) {
-        int n = (int)json_int(line, "n", 1);
-        for (int i = 0; i < n; i++) single_step(ctx);
-        send_stop(fd, ctx);
-    } else if (strcmp(cmd, "continue") == 0) {
+        flush_on_stop(ctx);
+        gdb_send(fd, "S05");
+        break;
+
+    case 'c': {
+        /* Continue */
         int reason = run_continue(fd, ctx);
+        flush_on_stop(ctx);
         if (reason == 2) {
             if (ctx->chardevs) {
                 chardev_flush_all(ctx->chardevs);
                 chardev_shutdown_all(ctx->chardevs);
             }
-            send_resp(fd, "{\"exited\":true}");
+            gdb_send(fd, "W00");
             exit(0);
         }
-        if (reason == 1) {
-            char tmp[256];
-            read(fd, tmp, sizeof(tmp));
+        gdb_send(fd, "S05");
+        break;
+    }
+
+    case 'Z':
+        /* Set breakpoint */
+        if (pkt[1] == '0') {
+            uint32_t addr;
+            sscanf(pkt + 3, "%x", &addr);
+            if (bp_find(addr) < 0 && nbp < MAX_BP) {
+                bps[nbp].addr = addr;
+                bp_patch(*ctx->flash, nbp);
+                nbp++;
+            }
+            gdb_send(fd, "OK");
+        } else {
+            gdb_send(fd, "");
         }
-        send_stop(fd, ctx);
-    } else if (strcmp(cmd, "halt") == 0) {
-        send_stop(fd, ctx);
-    } else if (strcmp(cmd, "reset") == 0) {
-        armv7m_cpu_reset(ctx->cpu, ctx->bus);
-        send_resp(fd, "{\"ok\":true}");
-    } else if (strcmp(cmd, "break") == 0) {
-        uint32_t addr = (uint32_t)json_int(line, "addr", 0);
-        cmd_break(fd, ctx, addr);
-    } else if (strcmp(cmd, "delbreak") == 0) {
-        uint32_t addr = (uint32_t)json_int(line, "addr", 0);
-        cmd_delbreak(fd, ctx, addr);
-    } else if (strcmp(cmd, "listbreak") == 0) {
-        cmd_listbreak(fd);
-    } else if (strcmp(cmd, "status") == 0) {
-        char buf[128];
-        snprintf(buf, sizeof(buf),
-            "{\"running\":false,\"pc\":%u,\"cycles\":%lu}",
-            ctx->cpu->r[REG_PC], (unsigned long)ctx->cpu->cycle_count);
-        send_resp(fd, buf);
-    } else {
-        char buf[128];
-        snprintf(buf, sizeof(buf), "{\"error\":\"unknown cmd: %s\"}", cmd);
-        send_resp(fd, buf);
+        break;
+
+    case 'z':
+        /* Remove breakpoint */
+        if (pkt[1] == '0') {
+            uint32_t addr;
+            sscanf(pkt + 3, "%x", &addr);
+            int idx = bp_find(addr);
+            if (idx >= 0) {
+                if (bps[idx].active) bp_unpatch(*ctx->flash, idx);
+                bps[idx] = bps[--nbp];
+            }
+            gdb_send(fd, "OK");
+        } else {
+            gdb_send(fd, "");
+        }
+        break;
+
+    case 'q':
+        /* Query packets */
+        if (strncmp(pkt, "qSupported", 10) == 0) {
+            gdb_send(fd, "PacketSize=4096;swbreak+");
+        } else if (strncmp(pkt, "qAttached", 9) == 0) {
+            gdb_send(fd, "1");
+        } else {
+            gdb_send(fd, "");
+        }
+        break;
+
+    case 'H':
+        /* Set thread — we're single-threaded, always OK */
+        gdb_send(fd, "OK");
+        break;
+
+    case 'D':
+        /* Detach */
+        gdb_send(fd, "OK");
+        break;
+
+    default:
+        /* Unsupported packet — empty response */
+        gdb_send(fd, "");
+        break;
     }
 }
 
@@ -295,40 +323,26 @@ void dbg_stub_run(struct stub_ctx *ctx, int port)
     struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(port),
                                 .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
     if (bind(srv, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
-        LOG("Failed to bind debug port %d", port);
+        LOG("Failed to bind GDB port %d", port);
         exit(1);
     }
     listen(srv, 1);
-    LOG("Debug stub on port %d", port);
+    LOG("GDB stub on port %d", port);
 
     int client = accept(srv, NULL, NULL);
-    LOG("Debug client connected");
+    LOG("GDB client connected");
 
-    send_stop(client, ctx);
-
-    char buf[4096];
-    int buf_len = 0;
+    /* GDB sends + first, then qSupported. We just start reading packets. */
+    char pkt[8192];
     while (1) {
-        int n = read(client, buf + buf_len, sizeof(buf) - buf_len - 1);
-        if (n <= 0) break;
-        buf_len += n;
-        buf[buf_len] = '\0';
-
-        char *nl;
-        while ((nl = strchr(buf, '\n')) != NULL) {
-            *nl = '\0';
-            LOG("CMD: %s", buf);
-            dispatch(client, ctx, buf);
-            int remaining = buf_len - (nl - buf + 1);
-            memmove(buf, nl + 1, remaining);
-            buf_len = remaining;
-            buf[buf_len] = '\0';
-        }
+        int len = gdb_recv(client, pkt, sizeof(pkt));
+        if (len < 0) break;
+        dispatch(client, ctx, pkt);
     }
 
     bp_unpatch_all(*ctx->flash);
     nbp = 0;
     close(client);
     close(srv);
-    LOG("Debug client disconnected");
+    LOG("GDB client disconnected");
 }

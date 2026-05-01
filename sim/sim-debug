@@ -4,7 +4,7 @@ set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ELF="${1:?Usage: $0 <firmware.elf>}"
 
-"$DIR/build/sim-core" --machine gameboy --firmware "$ELF" --debug 9001 \
+"$DIR/build/sim-core" --machine gameboy --firmware "$ELF" --gdb 9001 \
     --chardev display=9004 --chardev usart2=9002 --chardev audio=9005 \
     --chardev trace=9003 --chardev io=9006 &
 SIM_PID=$!

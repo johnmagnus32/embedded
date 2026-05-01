@@ -22,7 +22,7 @@ int main(int argc, char **argv)
 {
     const char *machine_name = NULL;
     const char *elf_path = NULL;
-    int debug_port = 0;
+    int gdb_port = 0;
 
     struct chardev_table chardevs;
     chardev_table_init(&chardevs);
@@ -32,14 +32,14 @@ int main(int argc, char **argv)
             machine_name = argv[++i];
         else if (strcmp(argv[i], "--firmware") == 0 && i + 1 < argc)
             elf_path = argv[++i];
-        else if (strcmp(argv[i], "--debug") == 0 && i + 1 < argc)
-            debug_port = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--gdb") == 0 && i + 1 < argc)
+            gdb_port = atoi(argv[++i]);
         else if (strcmp(argv[i], "--chardev") == 0 && i + 1 < argc)
             chardev_add(&chardevs, argv[++i]);
     }
 
     if (!machine_name || !elf_path) {
-        LOG("Usage: %s --machine <name> --firmware <elf> [--debug <port>] [--chardev name=port ...]", argv[0]);
+        LOG("Usage: %s --machine <name> --firmware <elf> [--gdb <port>] [--chardev name=port ...]", argv[0]);
         return 1;
     }
 
@@ -65,13 +65,13 @@ int main(int argc, char **argv)
 
     armv7m_cpu_reset(cpu, bus);
 
-    if (debug_port > 0) {
+    if (gdb_port > 0) {
         struct stub_ctx ctx = {
             .mach = mach, .board = board,
             .cpu = cpu, .bus = bus, .flash = flash, .ram = ram,
             .chardevs = chardevs.count > 0 ? &chardevs : NULL,
         };
-        dbg_stub_run(&ctx, debug_port);
+        dbg_stub_run(&ctx, gdb_port);
     } else {
         while (1) {
             int r = mach->tick(board);

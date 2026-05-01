@@ -13,48 +13,30 @@
 #include "dbg_cmd.h"
 #include "elf_sym.h"
 
-/* --- JSON helpers --- */
+/* --- RSP helpers --- */
 
-static long json_int(const char *json, const char *key, long def)
+static uint32_t parse_le32(const char *hex)
 {
-    char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":", key);
-    const char *p = strstr(json, pat);
-    if (!p) return def;
-    p += strlen(pat);
-    while (*p == ' ') p++;
-    return strtol(p, NULL, 0);
+    uint32_t v = 0;
+    for (int b = 0; b < 4; b++) {
+        unsigned int byte;
+        sscanf(hex + b * 2, "%2x", &byte);
+        v |= byte << (b * 8);
+    }
+    return v;
 }
 
-static int json_bool(const char *json, const char *key)
-{
-    char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":true", key);
-    return strstr(json, pat) != NULL;
-}
-
-static const char *json_str_start(const char *json, const char *key)
-{
-    char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":\"", key);
-    const char *p = strstr(json, pat);
-    if (!p) return NULL;
-    return p + strlen(pat);
-}
-
-/* Read memory from stub into local buffer */
+/* Read memory from stub */
 static int read_mem(struct dbg_client *c, uint32_t addr, uint8_t *out, int len)
 {
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "{\"cmd\":\"mem\",\"addr\":%u,\"len\":%d}", addr, len);
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "m%x,%x", addr, len);
     dbg_send(c, cmd);
     char *resp = dbg_recv(c);
     if (!resp) return -1;
-    const char *hex = json_str_start(resp, "mem");
-    if (!hex) return -1;
-    for (int i = 0; i < len && hex[i*2] && hex[i*2+1]; i++) {
+    for (int i = 0; i < len && resp[i*2] && resp[i*2+1]; i++) {
         unsigned int b;
-        sscanf(hex + i * 2, "%2x", &b);
+        sscanf(resp + i * 2, "%2x", &b);
         out[i] = b;
     }
     return 0;
@@ -67,21 +49,14 @@ static uint32_t read_mem32(struct dbg_client *c, uint32_t addr)
     return buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
 }
 
-/* Get registers from stub */
+/* Get registers: parse 'g' response (r0-r15 as LE hex, skip FPA, then xPSR) */
 static int get_regs(struct dbg_client *c, uint32_t regs[16])
 {
-    dbg_send(c, "{\"cmd\":\"regs\"}");
+    dbg_send(c, "g");
     char *resp = dbg_recv(c);
-    if (!resp) return -1;
-    const char *p = strstr(resp, "\"regs\":[");
-    if (!p) return -1;
-    p += 8;
-    for (int i = 0; i < 16; i++) {
-        regs[i] = strtoul(p, NULL, 0);
-        p = strchr(p, ',');
-        if (!p && i < 15) return -1;
-        if (p) p++;
-    }
+    if (!resp || strlen(resp) < 16 * 8) return -1;
+    for (int i = 0; i < 16; i++)
+        regs[i] = parse_le32(resp + i * 8);
     return 0;
 }
 
@@ -94,9 +69,15 @@ static uint32_t get_pc(struct dbg_client *c)
 
 /* --- Stop info display --- */
 
-void dbg_show_stop(const char *json)
+void dbg_show_stop(const char *resp)
 {
-    uint32_t pc = (uint32_t)json_int(json, "pc", 0);
+    (void)resp;  /* RSP stop reply is just "S05" — no PC in it */
+    /* We need to read PC separately — caller should call show_current_location */
+}
+
+static void show_location(struct dbg_client *c)
+{
+    uint32_t pc = get_pc(c);
     uint32_t off;
     const char *fn = sym_lookup(pc, &off);
     int line;
@@ -118,7 +99,7 @@ static void sigint_handler(int sig) { (void)sig; got_sigint = 1; }
 
 static void do_continue(struct dbg_client *c)
 {
-    dbg_send(c, "{\"cmd\":\"continue\"}");
+    dbg_send(c, "c");
     printf("[running...]\n");
 
     got_sigint = 0;
@@ -134,16 +115,16 @@ static void do_continue(struct dbg_client *c)
         int ready = select(c->fd + 1, &fds, NULL, NULL, &tv);
 
         if (ready > 0 && FD_ISSET(c->fd, &fds)) {
-            char *resp = dbg_recv(c);
-            if (resp) dbg_show_stop(resp);
+            dbg_recv(c);  /* consume S05 */
+            show_location(c);
             break;
         }
         if (got_sigint) {
             got_sigint = 0;
             printf("[halting...]\n");
-            dbg_send(c, "{\"cmd\":\"halt\"}");
-            char *resp = dbg_recv(c);
-            if (resp) dbg_show_stop(resp);
+            dbg_send_halt(c);
+            dbg_recv(c);
+            show_location(c);
             break;
         }
     }
@@ -165,70 +146,62 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
         do_continue(client);
     }
     else if (strcmp(line, "step") == 0 || strcmp(line, "s") == 0) {
-        /* Source-level step: step instructions until DWARF line changes */
         uint32_t pc = get_pc(client);
         int orig_line;
         const char *orig_file = line_lookup(pc, &orig_line);
 
         for (int i = 0; i < 1000; i++) {
-            dbg_send(client, "{\"cmd\":\"step\"}");
-            char *resp = dbg_recv(client);
-            if (!resp) break;
-            uint32_t new_pc = (uint32_t)json_int(resp, "pc", 0);
+            dbg_send(client, "s");
+            dbg_recv(client);  /* S05 */
+            uint32_t new_pc = get_pc(client);
             int new_line;
             const char *new_file = line_lookup(new_pc, &new_line);
             if (!orig_file || !new_file ||
                 new_line != orig_line || strcmp(new_file, orig_file) != 0) {
-                dbg_show_stop(resp);
+                show_location(client);
                 break;
             }
         }
     }
     else if (strcmp(line, "next") == 0 || strcmp(line, "n") == 0) {
-        /* Step over: if at a BL/BLX, set temp breakpoint at return addr */
         uint32_t pc = get_pc(client);
         uint8_t insn_bytes[4];
         read_mem(client, pc, insn_bytes, 4);
         uint16_t insn16 = insn_bytes[0] | (insn_bytes[1] << 8);
         uint16_t insn16b = insn_bytes[2] | (insn_bytes[3] << 8);
 
-        int is_bl = ((insn16 >> 11) == 0x1E && (insn16b >> 12) == 0xD);  /* BL */
-        int is_blx = (insn16 & 0xFF80) == 0x4780;  /* BLX reg */
+        int is_bl = ((insn16 >> 11) == 0x1E && (insn16b >> 12) == 0xD);
+        int is_blx = (insn16 & 0xFF80) == 0x4780;
 
         if (is_bl || is_blx) {
             uint32_t ret_addr = is_bl ? pc + 4 : pc + 2;
-            char cmd[128];
-            snprintf(cmd, sizeof(cmd), "{\"cmd\":\"break\",\"addr\":%u}", ret_addr);
+            char cmd[64];
+            snprintf(cmd, sizeof(cmd), "Z0,%x,2", ret_addr);
             dbg_send(client, cmd);
-            dbg_recv(client); /* consume ok */
+            dbg_recv(client);
             do_continue(client);
-            snprintf(cmd, sizeof(cmd), "{\"cmd\":\"delbreak\",\"addr\":%u}", ret_addr);
+            snprintf(cmd, sizeof(cmd), "z0,%x,2", ret_addr);
             dbg_send(client, cmd);
             dbg_recv(client);
         } else {
-            /* Not a call — same as step */
-            dbg_send(client, "{\"cmd\":\"step\"}");
-            char *resp = dbg_recv(client);
-            if (resp) dbg_show_stop(resp);
+            dbg_send(client, "s");
+            dbg_recv(client);
+            show_location(client);
         }
     }
     else if (strcmp(line, "halt") == 0 || strcmp(line, "h") == 0) {
-        dbg_send(client, "{\"cmd\":\"halt\"}");
-        char *resp = dbg_recv(client);
-        if (resp) dbg_show_stop(resp);
+        /* Already stopped if we're at the prompt */
+        show_location(client);
     }
     else if (strncmp(line, "break ", 6) == 0 || strncmp(line, "b ", 2) == 0) {
         const char *spec = line + (line[1] == ' ' ? 2 : 6);
         uint32_t addr = resolve_breakpoint(spec);
-        if (!addr) {
-            printf("Cannot resolve: %s\n", spec);
-            return 0;
-        }
-        char cmd[128];
-        snprintf(cmd, sizeof(cmd), "{\"cmd\":\"break\",\"addr\":%u}", addr);
+        if (!addr) { printf("Cannot resolve: %s\n", spec); return 0; }
+        char cmd[64];
+        snprintf(cmd, sizeof(cmd), "Z0,%x,2", addr);
         dbg_send(client, cmd);
         char *resp = dbg_recv(client);
-        if (resp && json_bool(resp, "ok")) {
+        if (resp && strcmp(resp, "OK") == 0) {
             uint32_t off;
             const char *fn = sym_lookup(addr, &off);
             int ln;
@@ -242,66 +215,33 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
     else if (strncmp(line, "delete ", 7) == 0 || strncmp(line, "d ", 2) == 0) {
         const char *spec = line + (line[1] == ' ' ? 2 : 7);
         uint32_t addr = strtoul(spec, NULL, 0);
-        char cmd[128];
-        snprintf(cmd, sizeof(cmd), "{\"cmd\":\"delbreak\",\"addr\":%u}", addr);
+        char cmd[64];
+        snprintf(cmd, sizeof(cmd), "z0,%x,2", addr);
         dbg_send(client, cmd);
         dbg_recv(client);
         printf("Deleted breakpoint at 0x%08x\n", addr);
     }
-    else if (strcmp(line, "info break") == 0 || strcmp(line, "info b") == 0) {
-        dbg_send(client, "{\"cmd\":\"listbreak\"}");
-        char *resp = dbg_recv(client);
-        if (!resp) return 0;
-        /* Parse breakpoints array */
-        const char *p = strstr(resp, "[");
-        if (!p) { printf("No breakpoints.\n"); return 0; }
-        p++;
-        int n = 0;
-        while (*p && *p != ']') {
-            uint32_t addr = strtoul(p, NULL, 0);
-            if (addr) {
-                uint32_t off;
-                const char *fn = sym_lookup(addr, &off);
-                int ln;
-                const char *file = line_lookup(addr, &ln);
-                if (fn && file)
-                    printf("  #%d  0x%08x  %s at %s:%d\n", ++n, addr, fn, file, ln);
-                else
-                    printf("  #%d  0x%08x\n", ++n, addr);
-            }
-            p = strchr(p, ',');
-            if (!p) break;
-            p++;
-        }
-        if (n == 0) printf("No breakpoints.\n");
-    }
     else if (strcmp(line, "info regs") == 0 || strcmp(line, "info r") == 0 ||
              strcmp(line, "regs") == 0) {
-        dbg_send(client, "{\"cmd\":\"regs\"}");
-        char *resp = dbg_recv(client);
-        if (!resp) return 0;
-        const char *p = strstr(resp, "\"regs\":[");
-        if (!p) return 0;
-        p += 8;
+        uint32_t regs[16];
+        if (get_regs(client, regs) < 0) return 0;
         static const char *names[] = {
             "r0","r1","r2","r3","r4","r5","r6","r7",
             "r8","r9","r10","r11","r12","sp","lr","pc"
         };
         for (int i = 0; i < 16; i++) {
-            uint32_t val = strtoul(p, NULL, 0);
-            printf("%-4s= 0x%08x", names[i], val);
+            printf("%-4s= 0x%08x", names[i], regs[i]);
             printf((i % 4 == 3) ? "\n" : "  ");
-            p = strchr(p, ',');
-            if (!p) break;
-            p++;
         }
-        uint32_t xpsr = (uint32_t)json_int(resp, "xpsr", 0);
-        uint32_t msp = (uint32_t)json_int(resp, "msp", 0);
-        uint32_t psp = (uint32_t)json_int(resp, "psp", 0);
-        printf("xpsr= 0x%08x  msp = 0x%08x  psp = 0x%08x\n", xpsr, msp, psp);
+        /* xPSR is after FPA registers in the 'g' response */
+        dbg_send(client, "g");
+        char *resp = dbg_recv(client);
+        if (resp && strlen(resp) >= 16 * 8 + 192 + 8) {
+            uint32_t xpsr = parse_le32(resp + 16 * 8 + 192);
+            printf("xpsr= 0x%08x\n", xpsr);
+        }
     }
     else if (strcmp(line, "info tasks") == 0) {
-        /* Read task info via memory reads using DWARF TCB layout */
         uint32_t tcb_size;
         int sp_off, name_off;
         dwarf_get_tcb_layout(&tcb_size, &sp_off, &name_off);
@@ -330,7 +270,6 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
         const char *file = line_lookup(pc, &cur_line);
         if (!file) { printf("No source info at 0x%08x\n", pc); return 0; }
 
-        /* Read source file */
         extern char elf_comp_dir[512];
         char path[1024];
         snprintf(path, sizeof(path), "%s/%s", elf_comp_dir, file);
@@ -346,7 +285,6 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
             ln++;
             if (ln < start) continue;
             if (ln > end) break;
-            /* Remove trailing newline */
             int len = strlen(buf);
             if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
             printf("%s %3d  %s\n", ln == cur_line ? "→" : " ", ln, buf);
@@ -354,25 +292,10 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
         fclose(f);
     }
     else if (strcmp(line, "backtrace") == 0 || strcmp(line, "bt") == 0) {
-        uint32_t pc = get_pc(client);
-        /* Simple backtrace: show current frame, then follow LR */
-        dbg_send(client, "{\"cmd\":\"regs\"}");
-        char *resp = dbg_recv(client);
-        if (!resp) return 0;
-
-        /* Parse LR (regs[14]) */
-        const char *p = strstr(resp, "\"regs\":[");
-        if (!p) return 0;
-        p += 8;
         uint32_t regs[16];
-        for (int i = 0; i < 16; i++) {
-            regs[i] = strtoul(p, NULL, 0);
-            p = strchr(p, ',');
-            if (!p) break;
-            p++;
-        }
+        if (get_regs(client, regs) < 0) return 0;
+        uint32_t pc = regs[15];
 
-        /* Frame 0: current PC */
         uint32_t off;
         const char *fn = sym_lookup(pc, &off);
         int ln;
@@ -381,7 +304,6 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
         if (file) printf(" at %s:%d", file, ln);
         printf("\n");
 
-        /* Frame 1: LR */
         uint32_t lr = regs[14] & ~1u;
         if (lr > 0x08000000 && lr < 0x08100000) {
             fn = sym_lookup(lr, &off);
@@ -392,20 +314,11 @@ int dbg_handle_command(struct dbg_client *client, const char *line)
         }
     }
     else if (strcmp(line, "reset") == 0) {
-        dbg_send(client, "{\"cmd\":\"reset\"}");
-        dbg_recv(client);
-        printf("CPU reset.\n");
+        printf("Reset not supported over GDB RSP.\n");
     }
     else if (strcmp(line, "status") == 0) {
-        dbg_send(client, "{\"cmd\":\"status\"}");
-        char *resp = dbg_recv(client);
-        if (resp) {
-            int running = json_bool(resp, "running");
-            uint32_t pc = (uint32_t)json_int(resp, "pc", 0);
-            uint64_t cycles = (uint64_t)json_int(resp, "cycles", 0);
-            printf("%s at 0x%08x, %lu cycles\n",
-                   running ? "Running" : "Stopped", pc, (unsigned long)cycles);
-        }
+        uint32_t pc = get_pc(client);
+        printf("Stopped at 0x%08x\n", pc);
     }
     else if (strncmp(line, "print ", 6) == 0 || strncmp(line, "p ", 2) == 0) {
         const char *expr = line + (line[1] == ' ' ? 2 : 6);

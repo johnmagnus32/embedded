@@ -72,11 +72,35 @@ int main(int argc, char **argv)
     }
     fprintf(stderr, "Connected to %s:%d\n", host, port);
 
-    /* Read initial stop info */
+    /* Initial handshake: query stop reason */
+    dbg_send(&client, "?");
     char *init = dbg_recv(&client);
     if (init) {
         printf("Stopped: ");
-        dbg_show_stop(init);
+        /* Read PC to show location */
+        uint32_t regs[16];
+        dbg_send(&client, "g");
+        char *gresp = dbg_recv(&client);
+        if (gresp && strlen(gresp) >= 16 * 8) {
+            for (int i = 0; i < 16; i++) {
+                uint32_t v = 0;
+                for (int b = 0; b < 4; b++) {
+                    unsigned int byte;
+                    sscanf(gresp + i * 8 + b * 2, "%2x", &byte);
+                    v |= byte << (b * 8);
+                }
+                regs[i] = v;
+            }
+            uint32_t pc = regs[15];
+            uint32_t off;
+            const char *fn = sym_lookup(pc, &off);
+            int line_num;
+            const char *file = line_lookup(pc, &line_num);
+            if (fn && file)
+                printf("%s+0x%x at %s:%d (0x%08x)\n", fn, off, file, line_num, pc);
+            else
+                printf("0x%08x\n", pc);
+        }
     }
 
     /* REPL */

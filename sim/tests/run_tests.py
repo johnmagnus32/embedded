@@ -23,6 +23,53 @@ SIM_CORE = os.path.join(SIM_DIR, "build", "sim-core")
 FW_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "firmware")
 
 
+def gdb_send(sock, data):
+    """Send a GDB RSP packet."""
+    checksum = sum(data.encode()) & 0xFF
+    sock.sendall(f"${data}#{checksum:02x}".encode())
+
+def gdb_recv(sock):
+    """Receive a GDB RSP packet. Returns data string."""
+    # Skip until $
+    while True:
+        c = sock.recv(1)
+        if not c: return None
+        if c == b'$': break
+        # Skip + ACK bytes
+    # Read until #
+    buf = b''
+    while True:
+        c = sock.recv(1)
+        if not c: return None
+        if c == b'#': break
+        buf += c
+    sock.recv(2)  # consume checksum
+    sock.sendall(b'+')  # ACK
+    return buf.decode()
+
+def gdb_connect_and_continue(port, timeout=5):
+    """Connect to GDB stub, wait for initial stop, send continue."""
+    deadline = time.time() + timeout
+    dbg = None
+    while time.time() < deadline:
+        try:
+            dbg = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            dbg.connect(("127.0.0.1", port))
+            break
+        except ConnectionRefusedError:
+            dbg.close()
+            time.sleep(0.05)
+    if not dbg:
+        return None
+    dbg.settimeout(2)
+    # GDB sends qSupported first, but our test just needs to continue.
+    # Send ? to get stop reason, then c to continue.
+    gdb_send(dbg, "?")
+    gdb_recv(dbg)  # S05
+    gdb_send(dbg, "c")
+    return dbg
+
+
 def build_firmware():
     print("Building test firmware...")
     subprocess.run(["make", "-C", FW_DIR, "clean"], capture_output=True)
@@ -66,7 +113,7 @@ def run_chardev_test(name, elf_path, chardev_name, chardev_port, duration=2,
     debug_port = chardev_port - 1
     proc = subprocess.Popen(
         [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path,
-         "--debug", str(debug_port), "--chardev", f"{chardev_name}={chardev_port}"],
+         "--gdb", str(debug_port), "--chardev", f"{chardev_name}={chardev_port}"],
         stderr=subprocess.PIPE,
     )
     try:
@@ -85,11 +132,12 @@ def run_chardev_test(name, elf_path, chardev_name, chardev_port, duration=2,
             return False
 
         dbg.settimeout(2)
-        dbg.recv(4096)
+        gdb_send(dbg, "?")
+        gdb_recv(dbg)
         cd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         cd.connect(("127.0.0.1", chardev_port))
         cd.settimeout(1)
-        dbg.sendall(b'{"cmd":"continue"}\n')
+        gdb_send(dbg, "c")
 
         total_bytes = 0
         t_start = time.monotonic()
@@ -136,7 +184,7 @@ def run_uart_test(name, elf_path, expected, timeout=5):
     debug_port, uart_port = 19800, 19801
     proc = subprocess.Popen(
         [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path,
-         "--debug", str(debug_port), "--chardev", f"usart2={uart_port}"],
+         "--gdb", str(debug_port), "--chardev", f"usart2={uart_port}"],
         stderr=subprocess.PIPE,
     )
     try:
@@ -154,11 +202,12 @@ def run_uart_test(name, elf_path, expected, timeout=5):
             print("FAIL (could not connect)")
             return False
         dbg.settimeout(2)
-        dbg.recv(4096)
+        gdb_send(dbg, "?")
+        gdb_recv(dbg)
         uart = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         uart.connect(("127.0.0.1", uart_port))
         uart.settimeout(timeout)
-        dbg.sendall(b'{"cmd":"continue"}\n')
+        gdb_send(dbg, "c")
         data = b""
         try:
             while expected.encode() not in data and time.time() < deadline:
@@ -189,7 +238,7 @@ def run_gpio_chardev_test(name, elf_path, timeout=5):
     debug_port, io_port, uart_port = 19800, 19801, 19802
     proc = subprocess.Popen(
         [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path,
-         "--debug", str(debug_port),
+         "--gdb", str(debug_port),
          "--chardev", f"io={io_port}",
          "--chardev", f"usart2={uart_port}"],
         stderr=subprocess.PIPE,
@@ -209,13 +258,14 @@ def run_gpio_chardev_test(name, elf_path, timeout=5):
             print("FAIL (could not connect)")
             return False
         dbg.settimeout(2)
-        dbg.recv(4096)  # initial stop
+        gdb_send(dbg, "?")
+        gdb_recv(dbg)
         io = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         io.connect(("127.0.0.1", io_port))
         uart = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         uart.connect(("127.0.0.1", uart_port))
         uart.settimeout(timeout)
-        dbg.sendall(b'{"cmd":"continue"}\n')
+        gdb_send(dbg, "c")
         time.sleep(0.2)  # let firmware init
         io.sendall(b"gpio:1:0:1\n")  # GPIOB pin 0 high
         # Wait for semihosting exit

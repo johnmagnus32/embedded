@@ -1,5 +1,5 @@
 /*
- * dbg_client.c — TCP client for the sim-core debug stub
+ * dbg_client.c — GDB RSP client for sim-dbg
  */
 #include <stdio.h>
 #include <string.h>
@@ -28,45 +28,58 @@ int dbg_connect(struct dbg_client *c, const char *host, int port)
     return 0;
 }
 
-void dbg_send(struct dbg_client *c, const char *json)
+void dbg_send(struct dbg_client *c, const char *data)
 {
-    write(c->fd, json, strlen(json));
-    write(c->fd, "\n", 1);
+    uint8_t sum = 0;
+    for (const char *p = data; *p; p++) sum += (uint8_t)*p;
+    char buf[16384];
+    int n = snprintf(buf, sizeof(buf), "$%s#%02x", data, sum);
+    write(c->fd, buf, n);
 }
 
 char *dbg_recv(struct dbg_client *c)
 {
     static char line[8192];
-    while (1) {
-        /* Check if we already have a complete line */
-        for (int i = 0; i < c->buf_len; i++) {
-            if (c->buf[i] == '\n') {
-                memcpy(line, c->buf, i);
-                line[i] = '\0';
-                int remaining = c->buf_len - i - 1;
-                memmove(c->buf, c->buf + i + 1, remaining);
-                c->buf_len = remaining;
-                return line;
-            }
-        }
-        /* Read more data */
-        int n = read(c->fd, c->buf + c->buf_len, sizeof(c->buf) - c->buf_len - 1);
-        if (n <= 0) return NULL;
-        c->buf_len += n;
+    char ch;
+
+    /* Skip until $ (consume + ACK bytes) */
+    do {
+        if (read(c->fd, &ch, 1) <= 0) return NULL;
+    } while (ch != '$');
+
+    /* Read until # */
+    int len = 0;
+    while (len < (int)sizeof(line) - 1) {
+        if (read(c->fd, &ch, 1) <= 0) return NULL;
+        if (ch == '#') break;
+        line[len++] = ch;
     }
+    line[len] = '\0';
+
+    /* Consume 2-byte checksum */
+    char ck[2];
+    read(c->fd, ck, 2);
+
+    /* Send ACK */
+    write(c->fd, "+", 1);
+
+    return line;
 }
 
 int dbg_data_ready(struct dbg_client *c)
 {
-    /* Check buffered data first */
-    for (int i = 0; i < c->buf_len; i++)
-        if (c->buf[i] == '\n') return 1;
-    /* Check socket */
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(c->fd, &fds);
     struct timeval tv = {0, 0};
     return select(c->fd + 1, &fds, NULL, NULL, &tv) > 0;
+}
+
+void dbg_send_halt(struct dbg_client *c)
+{
+    /* Ctrl+C: raw 0x03 byte, not a packet */
+    char ctrl_c = 0x03;
+    write(c->fd, &ctrl_c, 1);
 }
 
 void dbg_close(struct dbg_client *c)
