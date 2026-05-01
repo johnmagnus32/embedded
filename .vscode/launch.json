@@ -3,15 +3,11 @@
     "configurations": [
         {
             "name": "Debug on Simulator",
-            "type": "cortex-debug",
+            "type": "sim-dbg",
             "request": "attach",
-            "servertype": "external",
-            "gdbPath": "/usr/bin/gdb",
-            "gdbTarget": "localhost:1234",
             "executable": "${workspaceFolder}/projects/gameboy/build/gameboy.elf",
-            "device": "STM32F411RE",
-            "toolchainPrefix": "arm-zephyr-eabi",
-            "toolchainPath": "/home/johmagnu/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin"
+            "gdbTarget": "localhost:1234",
+            "debugServer": 0
         }
     ]
 }

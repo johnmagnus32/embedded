@@ -1,10 +1,8 @@
 /*
- * dbg_main.c — sim-dbg entry point
+ * sim-dbg — ARM Cortex-M debugger
  *
- * GDB-like CLI debugger. Connects to sim-core's debug stub,
- * loads ELF for symbols/DWARF, provides interactive REPL.
- *
- * Usage: sim-dbg --connect host:port --elf firmware.elf
+ * REPL mode: sim-dbg --connect host:port --elf firmware.elf
+ * DAP mode:  sim-dbg --dap --connect host:port --elf firmware.elf
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,9 +14,12 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+/* DAP server (defined in dap_server.c) */
+extern void dap_server_run(const char *connect_str, const char *elf_path);
+
 static void usage(const char *prog)
 {
-    fprintf(stderr, "Usage: %s --connect host:port --elf firmware.elf\n", prog);
+    fprintf(stderr, "Usage: %s [--dap] --connect host:port --elf firmware.elf\n", prog);
     exit(1);
 }
 
@@ -26,17 +27,25 @@ int main(int argc, char **argv)
 {
     const char *connect_str = NULL;
     const char *elf_path = NULL;
+    int dap_mode = 0;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--connect") == 0 && i + 1 < argc)
             connect_str = argv[++i];
         else if (strcmp(argv[i], "--elf") == 0 && i + 1 < argc)
             elf_path = argv[++i];
+        else if (strcmp(argv[i], "--dap") == 0)
+            dap_mode = 1;
         else
             usage(argv[0]);
     }
 
     if (!connect_str || !elf_path) usage(argv[0]);
+
+    if (dap_mode) {
+        dap_server_run(connect_str, elf_path);
+        return 0;
+    }
 
     /* Parse host:port */
     char host[256] = "127.0.0.1";

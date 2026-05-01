@@ -1,0 +1,30 @@
+{
+    "name": "sim-dbg",
+    "displayName": "ARM Simulator Debugger",
+    "description": "Debug ARM Cortex-M firmware on the sim-core emulator",
+    "version": "0.1.0",
+    "engines": {"vscode": "^1.80.0"},
+    "categories": ["Debuggers"],
+    "contributes": {
+        "debuggers": [{
+            "type": "sim-dbg",
+            "label": "ARM Simulator",
+            "configurationAttributes": {
+                "attach": {
+                    "required": ["executable", "gdbTarget"],
+                    "properties": {
+                        "executable": {
+                            "type": "string",
+                            "description": "Path to ELF firmware file"
+                        },
+                        "gdbTarget": {
+                            "type": "string",
+                            "description": "GDB RSP target (host:port)",
+                            "default": "localhost:1234"
+                        }
+                    }
+                }
+            }
+        }]
+    }
+}

@@ -5,7 +5,7 @@ CFLAGS = -Wall -O2 -g
 LDFLAGS = -lreadline
 BUILD = build
 
-SRCS = src/main.c src/client.c src/cmd.c src/elf_sym.c
+SRCS = src/main.c src/client.c src/cmd.c src/elf_sym.c src/dap.c src/dap_server.c
 OBJS = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 HDRS = $(wildcard src/*.h)
 
