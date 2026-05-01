@@ -77,13 +77,16 @@ void stm32f411_init(struct stm32f411 *soc)
         soc->exti.irq_out[i].opaque = &soc->exti_nvic[i];
     }
 
-    /* Wire GPIOA idr_change 0-15 → EXTI inputs (default mux) */
+    /* Wire GPIOA idr_change 0-15 → EXTI inputs (default after reset: port A) */
     for (int i = 0; i < 16; i++) {
         soc->exti_inputs[i].exti = &soc->exti;
         soc->exti_inputs[i].line = i;
         soc->gpio[0].idr_change[i].handler = stm32_exti_input_handler;
         soc->gpio[0].idr_change[i].opaque = &soc->exti_inputs[i];
     }
+
+    /* SYSCFG — handles EXTICR writes to remap GPIO→EXTI */
+    stm32_syscfg_init(&soc->syscfg, soc->gpio, STM32F411_NUM_GPIO, soc->exti_inputs);
 
     /* Memory bus */
     membus_init(&soc->bus);
@@ -120,6 +123,9 @@ void stm32f411_init(struct stm32f411 *soc)
 
     /* EXTI */
     membus_register(&soc->bus, 0x40013C00, 0x18, stm32_exti_read, stm32_exti_write, &soc->exti);
+
+    /* SYSCFG */
+    membus_register(&soc->bus, 0x40013800, 0x18, stm32_syscfg_read, stm32_syscfg_write, &soc->syscfg);
 
     /* ADC1 */
     membus_register(&soc->bus, 0x40012000, 0x400, stm32_adc_read, stm32_adc_write, &soc->adc);

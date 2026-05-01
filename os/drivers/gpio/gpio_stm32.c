@@ -18,6 +18,8 @@
 
 /* EXTI registers */
 #define EXTI_BASE    0x40013C00
+#define SYSCFG_BASE  0x40013800
+#define SYSCFG_EXTICR1 0x08  /* EXTICR1-4 at offsets 0x08, 0x0C, 0x10, 0x14 */
 #define EXTI_IMR     0x00
 #define EXTI_RTSR    0x08
 #define EXTI_FTSR    0x0C
@@ -79,6 +81,7 @@ static void gpio_stm32_pin_set(const struct device *dev, uint8_t pin, int value)
 static int gpio_stm32_pin_interrupt_configure(const struct device *dev, uint8_t pin, uint8_t flags)
 {
     if (pin > 15) return -1;
+    const struct gpio_stm32_config *cfg = dev->config;
 
     uint32_t mask = (1U << pin);
 
@@ -86,6 +89,16 @@ static int gpio_stm32_pin_interrupt_configure(const struct device *dev, uint8_t 
         REG(EXTI_BASE, EXTI_IMR) &= ~mask;
         return 0;
     }
+
+    /* Select this GPIO port for the EXTI line via SYSCFG_EXTICR.
+     * Port number derived from base address: GPIOA=0, GPIOB=1, etc. */
+    uint8_t port = (cfg->base - 0x40020000) / 0x400;
+    int reg_idx = pin / 4;
+    int shift = (pin % 4) * 4;
+    uint32_t exticr = REG(SYSCFG_BASE, SYSCFG_EXTICR1 + reg_idx * 4);
+    exticr &= ~(0xF << shift);
+    exticr |= (port << shift);
+    REG(SYSCFG_BASE, SYSCFG_EXTICR1 + reg_idx * 4) = exticr;
 
     if (flags & GPIO_INT_EDGE_RISING)
         REG(EXTI_BASE, EXTI_RTSR) |= mask;

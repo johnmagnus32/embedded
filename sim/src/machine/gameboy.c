@@ -9,7 +9,6 @@
 #include <string.h>
 #include "gameboy.h"
 #include "machine.h"
-#include "stm32_exti.h"
 #include "stm32_gpio.h"
 #include "event_queue.h"
 
@@ -50,14 +49,6 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     /* DC pin: GPIOA pin 3 */
     b->soc.gpio[0].out[3].handler = ili9341_set_dc;
     b->soc.gpio[0].out[3].opaque = &display;
-
-    /* Re-wire GPIOB pins 0-4 → EXTI inputs (buttons on GPIOB) */
-    for (int i = 0; i < 5; i++) {
-        b->soc.gpio[0].idr_change[i].handler = NULL;
-        b->soc.gpio[0].idr_change[i].opaque = NULL;
-        b->soc.gpio[1].idr_change[i].handler = stm32_exti_input_handler;
-        b->soc.gpio[1].idr_change[i].opaque = &b->soc.exti_inputs[i];
-    }
 
     fprintf(stderr, "[board] ILI9341 on SPI1, DC=PA3, CS=PA4\n");
 

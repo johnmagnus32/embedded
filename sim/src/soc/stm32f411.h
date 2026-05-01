@@ -11,6 +11,7 @@
 #include "stm32_exti.h"
 #include "stm32_adc.h"
 #include "stm32_dma.h"
+#include "stm32_syscfg.h"
 #include "event_queue.h"
 
 #define STM32F411_NUM_USARTS 3
@@ -29,6 +30,7 @@ struct stm32f411 {
     struct stm32_adc      adc;
     struct stm32_dma      dma1;
     struct stm32_dma      dma2;
+    struct stm32_syscfg   syscfg;
     struct exti_input     exti_inputs[16];
     struct nvic_irq_line  exti_nvic[5];
     uint8_t              *flash;
