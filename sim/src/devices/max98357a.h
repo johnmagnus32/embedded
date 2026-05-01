@@ -2,26 +2,19 @@
 #define MAX98357A_H
 
 #include <stdint.h>
-#include <time.h>
 #include "chardev.h"
-
-struct stm32_dma;
-struct stm32_dma_stream;
-struct membus;
-struct armv7m_nvic;
+#include "i2s_sink.h"
 
 struct max98357a {
-    struct chardev          *cd;
-    int                      sample_rate;
-    struct stm32_dma        *dma;
-    int                      dma_stream_idx;
-    struct stm32_dma_stream *dma_stream;
-    struct membus           *bus;
-    struct timespec          last_pull;
-    int                      started;
+    struct chardev  *cd;
+    struct i2s_sink  sink;
+    int16_t          buf[1024];
+    int              buf_len;
 };
 
 void max98357a_init(struct max98357a *d);
-void max98357a_tick(struct max98357a *d);
+
+/* Called by I2S sink when a stereo sample is ready */
+void max98357a_write(void *opaque, int16_t left, int16_t right);
 
 #endif

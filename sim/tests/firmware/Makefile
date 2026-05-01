@@ -5,31 +5,61 @@ LDFLAGS = -T linker.ld -nostdlib
 
 BUILD = build
 
-CPU_TESTS = test_alu test_alu2 test_it test_call test_ldm_stm test_mem \
-            test_shift test_wide test_arith test_misc test_ldst_w
-HW_TESTS  = test_irq test_it_irq test_uart_chardev test_gpio_exti test_dma \
-            test_perf_mips test_perf_systick test_perf_irq_latency \
-            test_perf_spi test_perf_membus
-ELF_TESTS = test_elf
+# Functional tests
+FUNC_ARMV7M = test_alu test_alu2 test_arith test_call test_it test_ldm_stm \
+              test_ldst_w test_mem test_misc test_shift test_wide
+FUNC_STM32  = test_dma test_dma_spi test_dma_i2s_kick test_gpio_exti test_irq test_it_irq \
+              test_uart_chardev
+FUNC_CORE   = test_elf
 
-CPU_ELFS = $(addprefix $(BUILD)/cpu/,$(addsuffix .elf,$(CPU_TESTS)))
-HW_ELFS  = $(addprefix $(BUILD)/hw/,$(addsuffix .elf,$(HW_TESTS)))
-ELF_ELFS = $(addprefix $(BUILD)/cpu/,$(addsuffix .elf,$(ELF_TESTS)))
+# Performance tests
+PERF_ARMV7M = test_mips test_irq_latency test_systick_period
+PERF_STM32  = test_spi_throughput test_membus \
+              test_spi_fps_full test_spi_fps_partial test_spi_fps_sustained \
+              test_dma_fps test_dma_fps_full test_dma_fps_sustained \
+              test_i2s_cpu test_i2s_dma
+PERF_ILI    = test_display_refresh test_display_cpu test_display_dma
+PERF_MAX    = test_audio
 
-all: $(CPU_ELFS) $(HW_ELFS) $(ELF_ELFS)
+# Build paths
+ELFS  = $(addprefix $(BUILD)/func/arch/armv7m/,$(addsuffix .elf,$(FUNC_ARMV7M)))
+ELFS += $(addprefix $(BUILD)/func/hw/stm32/,$(addsuffix .elf,$(FUNC_STM32)))
+ELFS += $(addprefix $(BUILD)/func/core/,$(addsuffix .elf,$(FUNC_CORE)))
+ELFS += $(addprefix $(BUILD)/perf/arch/armv7m/,$(addsuffix .elf,$(PERF_ARMV7M)))
+ELFS += $(addprefix $(BUILD)/perf/hw/stm32/,$(addsuffix .elf,$(PERF_STM32)))
+ELFS += $(addprefix $(BUILD)/perf/devices/ili9341/,$(addsuffix .elf,$(PERF_ILI)))
+ELFS += $(addprefix $(BUILD)/perf/devices/max98357a/,$(addsuffix .elf,$(PERF_MAX)))
 
-$(BUILD)/cpu/%.elf: cpu/%.c test.h linker.ld
+all: $(ELFS)
+
+# Pattern rules for each source directory
+$(BUILD)/func/arch/armv7m/%.elf: func/arch/armv7m/%.c test.h linker.ld
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
-$(BUILD)/hw/%.elf: hw/%.c test.h linker.ld
+$(BUILD)/func/hw/stm32/%.elf: func/hw/stm32/%.c test.h linker.ld
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
-# test_elf needs .data/.bss init in its linker script
-$(BUILD)/cpu/test_elf.elf: cpu/test_elf.c test.h linker_elf.ld
+$(BUILD)/func/core/test_elf.elf: func/core/test_elf.c test.h linker_elf.ld
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -T linker_elf.ld -nostdlib -o $@ $<
+
+$(BUILD)/perf/arch/armv7m/%.elf: perf/arch/armv7m/%.c test.h linker.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+
+$(BUILD)/perf/hw/stm32/%.elf: perf/hw/stm32/%.c test.h linker.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+
+$(BUILD)/perf/devices/ili9341/%.elf: perf/devices/ili9341/%.c test.h linker.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+
+$(BUILD)/perf/devices/max98357a/%.elf: perf/devices/max98357a/%.c test.h linker.ld
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
 clean:
 	rm -rf $(BUILD)

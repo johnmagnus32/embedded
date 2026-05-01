@@ -11,6 +11,7 @@
 #include "stm32_exti.h"
 #include "stm32_adc.h"
 #include "stm32_dma.h"
+#include "event_queue.h"
 
 #define STM32F411_NUM_USARTS 3
 #define STM32F411_NUM_SPIS   2
@@ -33,6 +34,7 @@ struct stm32f411 {
     uint8_t              *flash;
     uint8_t              *ram;
     uint32_t              sysclk_hz;
+    struct event_queue    eq;
 };
 
 void stm32f411_init(struct stm32f411 *soc);

@@ -36,9 +36,10 @@ static const struct { uint16_t freq; uint16_t dur_ms; } melody[] = {
 static volatile int sfx_active;
 static volatile uint16_t sfx_freq;
 static volatile uint16_t sfx_dur_ms;
+static volatile uint32_t sfx_phase;
 
-void sfx_jump(void) { sfx_freq = 880; sfx_dur_ms = 80; sfx_active = 1; }
-void sfx_beep(void) { sfx_freq = 1200; sfx_dur_ms = 50; sfx_active = 1; }
+void sfx_jump(void) { sfx_freq = 880; sfx_dur_ms = 80; sfx_phase = 0; sfx_active = 1; }
+void sfx_beep(void) { sfx_freq = 1200; sfx_dur_ms = 50; sfx_phase = 0; sfx_active = 1; }
 
 /* Synthesis state */
 static uint32_t phase;
@@ -90,8 +91,9 @@ static void fill_audio(int16_t *buf, int count, void *user_data)
             note_idx = (note_idx + 1) % MELODY_LEN;
         }
     } else {
+        sfx_phase += count;
         uint32_t sfx_samples = (uint32_t)sfx_dur_ms * SAMPLE_RATE / 1000;
-        if ((uint32_t)count >= sfx_samples)
+        if (sfx_phase >= sfx_samples)
             sfx_active = 0;
     }
     trace_end();

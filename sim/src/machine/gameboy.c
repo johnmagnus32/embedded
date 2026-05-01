@@ -11,6 +11,10 @@
 #include "machine.h"
 #include "stm32_exti.h"
 #include "stm32_gpio.h"
+#include "event_queue.h"
+
+static void ili9341_refresh_cb(void *opaque);
+static void io_poll_cb(void *opaque);
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 {
@@ -35,6 +39,7 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     ili9341_init(&display);
     display.chardev = chardevs ? chardev_find(chardevs, "display") : NULL;
     b->display = &display;
+    display.cycle_count_ptr = &b->soc.cpu.cycle_count;
 
     int si_idx = spi_bus_attach(&b->soc.spis[0].bus, &display, ili9341_transfer);
     if (si_idx >= 0) {
@@ -55,21 +60,22 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 
     fprintf(stderr, "[board] ILI9341 on SPI1, DC=PA3, CS=PA4\n");
 
-    /* MAX98357A audio DAC — pulls from DMA1 Stream 4 on wall-clock timer */
+    /* MAX98357A audio DAC — receives samples via I2S sink from SPI2 */
     struct chardev *audio_cd = chardevs ? chardev_find(chardevs, "audio") : NULL;
     max98357a_init(&b->audio);
-    b->audio.cd             = audio_cd;
-    b->audio.sample_rate    = 22050;
-    b->audio.bus            = &b->soc.bus;
-    b->audio.dma            = &b->soc.dma1;
-    b->audio.dma_stream_idx = 4;
-    b->audio.dma_stream     = &b->soc.dma1.streams[4];
-    b->soc.dma1.streams[4].externally_driven = 1;
-    fprintf(stderr, "[board] MAX98357A on DMA1_S4, chardev=%s\n", audio_cd ? "audio" : "none");
+    b->audio.cd = audio_cd;
+    /* Wire SPI2 (I2S) → MAX98357A via I2S sink */
+    b->soc.spis[1].i2s_sink = &b->audio.sink;
+    fprintf(stderr, "[board] MAX98357A on I2S2 sink, chardev=%s\n", audio_cd ? "audio" : "none");
 
     /* Board I/O chardev for external input */
     b->io_chardev = chardevs ? chardev_find(chardevs, "io") : NULL;
     b->chardevs = chardevs;
+
+    /* Schedule periodic events on the SoC event queue */
+    event_schedule(&b->soc.eq, EVT_ILI9341_REFRESH, display.refresh_interval,
+                   ili9341_refresh_cb, b);
+    event_schedule(&b->soc.eq, EVT_IO_POLL, 10000, io_poll_cb, b);
 }
 
 static uint64_t gpio_hold_until[3][16]; /* per port/pin: cycle count to hold until */
@@ -119,15 +125,28 @@ static void gameboy_poll_io(struct gameboy *b)
             }
 }
 
+static void ili9341_refresh_cb(void *opaque)
+{
+    struct gameboy *b = (struct gameboy *)opaque;
+    ili9341_flush(b->display);
+    event_schedule(&b->soc.eq, EVT_ILI9341_REFRESH,
+                   b->soc.cpu.cycle_count + b->display->refresh_interval,
+                   ili9341_refresh_cb, b);
+}
+
+static void io_poll_cb(void *opaque)
+{
+    struct gameboy *b = (struct gameboy *)opaque;
+    if (b->io_chardev) gameboy_poll_io(b);
+    chardev_flush_all(b->chardevs);
+    event_schedule(&b->soc.eq, EVT_IO_POLL,
+                   b->soc.cpu.cycle_count + 10000,
+                   io_poll_cb, b);
+}
+
 int gameboy_tick(struct gameboy *b)
 {
-    int r = stm32f411_tick(&b->soc);
-    if (b->soc.cpu.cycle_count % 10000 == 0) {
-        if (b->io_chardev) gameboy_poll_io(b);
-        max98357a_tick(&b->audio);
-        chardev_flush_all(b->chardevs);
-    }
-    return r;
+    return stm32f411_tick(&b->soc);
 }
 
 /* Machine registry wrappers */

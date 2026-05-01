@@ -14,6 +14,7 @@ struct gameboy {
     struct max98357a  audio;
     struct chardev   *io_chardev;
     struct chardev_table *chardevs;
+    uint64_t          next_io_poll;
 };
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs);

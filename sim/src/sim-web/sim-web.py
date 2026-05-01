@@ -37,6 +37,7 @@ class WebDebugger:
         self.last_state = '{}'
         self._ws_status_client = None
         self._ws_trace_clients = []
+        self._ws_audio_clients = []
 
     def start_sim(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -239,9 +240,17 @@ class WebDebugger:
                         if not data: break
                         with self._audio_lock:
                             self.audio_buf += data
-                            # Cap buffer at 64KB to avoid unbounded growth
-                            if len(self.audio_buf) > 65536:
-                                self.audio_buf = self.audio_buf[-65536:]
+                            # Cap buffer at ~200ms (17640 bytes) to keep latency low
+                            if len(self.audio_buf) > 17640:
+                                self.audio_buf = self.audio_buf[-17640:]
+                        # Push to WebSocket audio clients
+                        if self._ws_audio_clients:
+                            frame = self._ws_encode(data)
+                            dead = []
+                            for c in self._ws_audio_clients:
+                                try: c.sendall(frame)
+                                except: dead.append(c)
+                            for c in dead: self._ws_audio_clients.remove(c)
                     except: break
             threading.Thread(target=audio_reader, daemon=True).start()
         except:
@@ -397,6 +406,11 @@ class WebDebugger:
                             self.io_sock.sendall(f'gpio:{port}:{pin}:{val}\n'.encode())
                     except: pass
                     self.http_response(conn, '200 OK', 'application/json', '{"ok":true}')
+
+                elif req.startswith('GET /ws-audio'):
+                    if self._ws_upgrade(conn, data):
+                        self._ws_audio_clients.append(conn)
+                        continue
 
                 elif req.startswith('GET /audio'):
                     with self._audio_lock:

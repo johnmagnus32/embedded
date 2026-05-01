@@ -7,6 +7,10 @@
 void stm32_adc_init(struct stm32_adc *adc)
 {
     memset(adc, 0, sizeof(*adc));
+    /* Default channels to mid-range (12-bit ADC) so analog inputs
+     * like volume knobs don't read as zero. */
+    for (int i = 0; i < 16; i++)
+        adc->channels[i] = 2048;
 }
 
 uint32_t stm32_adc_read(void *opaque, uint32_t offset)

@@ -8,6 +8,12 @@ typedef void (*mem_write_fn)(void *opaque, uint32_t offset, uint32_t val);
 
 #define MAX_REGIONS 32
 
+/* Memory map constants for fast paths */
+#define MEMBUS_FLASH_BASE  0x08000000
+#define MEMBUS_FLASH_SIZE  (512 * 1024)
+#define MEMBUS_RAM_BASE    0x20000000
+#define MEMBUS_RAM_SIZE    (128 * 1024)
+
 struct mem_region {
     uint32_t base;
     uint32_t size;
@@ -21,10 +27,24 @@ struct mem_region {
 #define MEMBUS_HASH_BITS 12
 #define MEMBUS_HASH_SIZE (1 << MEMBUS_HASH_BITS)
 
+/* Direct-mapped TLB for fast region lookup */
+#define TLB_BITS 12
+#define TLB_SIZE (1 << TLB_BITS)
+#define TLB_MASK (TLB_SIZE - 1)
+/* XOR-fold address to avoid flash/RAM collision */
+#define TLB_INDEX(addr) (((addr) >> 12 ^ (addr) >> 20) & TLB_MASK)
+
+struct tlb_entry {
+    struct mem_region *region;  /* last region accessed at this index */
+};
+
 struct membus {
     struct mem_region regions[MAX_REGIONS];
     int nregions;
-    struct mem_region *hash[MEMBUS_HASH_SIZE]; /* addr>>20 lookup */
+    struct mem_region *hash[MEMBUS_HASH_SIZE];
+    struct tlb_entry tlb[TLB_SIZE];
+    uint8_t *flash_ptr;  /* direct pointer to flash backing memory */
+    uint8_t *ram_ptr;    /* direct pointer to RAM backing memory */
 };
 
 void     membus_init(struct membus *bus);

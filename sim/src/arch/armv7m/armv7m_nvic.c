@@ -18,15 +18,19 @@ void armv7m_nvic_init(struct armv7m_nvic *n)
 void armv7m_nvic_set_pending(struct armv7m_nvic *n, int vector)
 {
     n->pending |= (1u << vector);
+    n->needs_update = 1;
 }
 
 void armv7m_nvic_update(struct armv7m_nvic *n, struct armv7m_cpu *cpu, struct membus *bus)
 {
+    n->needs_update = 0;
     if (n->scb_icsr & (1 << 28))
         n->pending |= (1u << IRQ_VEC_PENDSV);
 
-    if (!n->pending || cpu->primask || cpu->in_handler || cpu->irq_shadow)
+    if (!n->pending || cpu->primask || cpu->in_handler || cpu->irq_shadow) {
+        if (n->pending) n->needs_update = 1;
         return;
+    }
 
     int vec = 0;
     if (n->pending & (1u << IRQ_VEC_SVC)) {
@@ -69,7 +73,7 @@ void armv7m_nvic_scb_write(void *opaque, uint32_t offset, uint32_t val)
 {
     struct armv7m_nvic *n = (struct armv7m_nvic *)opaque;
     switch (offset) {
-    case 0x04: n->scb_icsr = val; break;
+    case 0x04: n->scb_icsr = val; n->needs_update = 1; break;
     case 0x08: n->scb_vtor = val; break;
     case 0x20: n->scb_shpr3 = val; break;
     case 0x24: n->scb_shcsr = val; break;

@@ -2,12 +2,11 @@
  * game.c — Jump game using display driver API
  *
  * No register addresses. All display via display_fill_rect/display_vsync.
- * Button input via gpio_pin_get.
+ * Button input via interrupt-latched flags (button_pressed).
  */
 
 #include "app.h"
 #include "drivers/display.h"
-#include "drivers/gpio.h"
 #include "sched.h"
 
 #define SCR_W 320
@@ -123,7 +122,7 @@ void task_game(void)
         display_fill_rect(display, 0, GROUND_Y, SCR_W, SCR_H - GROUND_Y, RGB565(50,120,50));
 
         while (!game_over) {
-            if (gpio_pin_get(dev_gpiob, 0) && on_ground) {
+            if (button_pressed(0) && on_ground) {
                 vel_y = JUMP_VEL; on_ground = 0;
             }
             vel_y += GRAVITY;
@@ -163,7 +162,7 @@ void task_game(void)
         draw_number(190, 95, score, YELLOW);
         draw_string(46, 120, "PRESS A TO PLAY AGAIN", GREEN);
         display_vsync(display);
-        while (!gpio_pin_get(dev_gpiob, 0)) sched_sleep_ms(33);
-        while (gpio_pin_get(dev_gpiob, 0)) sched_sleep_ms(33);
+        button_pressed(0);  /* drain any stale press */
+        while (!button_pressed(0)) sched_sleep_ms(100);
     }
 }

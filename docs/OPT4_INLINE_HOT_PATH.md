@@ -67,3 +67,21 @@ perf: 40.4 MIPS (baseline)
 perf: 52.1 MIPS (inline)
 perf: 63.8 MIPS (inline + LTO)
 ```
+
+## Results (measured 2026-05-01)
+
+| Metric | Baseline | LTO only | LTO + OPT3 |
+|--------|----------|----------|------------|
+| MIPS | 30 | 45 (+50%) | 47 (+57%) |
+| DMA partial FPS | 30 | 38 (+27%) | 57 (+90%) |
+| Chardev idle FPS | 128 | 173 (+35%) | 189 (+48%) |
+
+LTO alone is the single biggest win — 50% MIPS improvement. Compiler inlines across translation units (stm32f411_tick → armv7m_cpu_step, peripheral ticks). Compounds with OPT3.
+
+### Direct call experiment (2026-05-01)
+
+Replaced `ctx->mach->tick(ctx->board)` with `gameboy_tick((struct gameboy *)ctx->board)` in all three hot loops (headless, bench, debug continue). Result: 48 MIPS — slightly worse than 52 with indirect call.
+
+Why: LTO already inlines `stm32f411_tick` → `armv7m_cpu_step` → all instruction handlers INTO `gameboy_tick`, producing a 13,599-byte monolith. The direct call doesn't help because the function is already too large to inline further — the indirect call overhead (~5ns) is negligible compared to the ~20ns per tick of actual work inside the function. The slight regression is likely from code layout changes affecting instruction cache behavior.
+
+Conclusion: LTO already captures the full inlining benefit. The `mach->tick` function pointer indirection is not a bottleneck. No further work needed on OPT4.

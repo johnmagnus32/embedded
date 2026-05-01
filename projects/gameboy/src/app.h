@@ -21,6 +21,7 @@ void print_int(int n);
 
 /* Button init — configures GPIO interrupts */
 void buttons_init(void);
+int button_pressed(uint8_t pin);
 
 /* Task entry points */
 void task_a(void);

@@ -1,14 +1,14 @@
 # sim/Makefile
 
 CC = gcc
-CFLAGS = -Wall -O2 -g
+CFLAGS = -Wall -O3 -g -flto -march=native -fomit-frame-pointer -DNDEBUG
 BUILD = build
 
 SRC_DIRS = src src/core src/arch/armv7m src/hw/stm32 src/devices src/soc src/machine src/debug
 INCLUDES = $(addprefix -I,$(SRC_DIRS))
 
 SRCS = src/main.c \
-       src/core/membus.c src/core/spi_bus.c src/core/chardev.c \
+       src/core/membus.c src/core/spi_bus.c src/core/chardev.c src/core/event_queue.c \
        src/arch/armv7m/armv7m_cpu.c src/arch/armv7m/armv7m_nvic.c src/arch/armv7m/armv7m_systick.c \
        src/hw/stm32/stm32_uart.c src/hw/stm32/stm32_spi.c src/hw/stm32/stm32_gpio.c \
        src/hw/stm32/stm32_exti.c src/hw/stm32/stm32_adc.c src/hw/stm32/stm32_dma.c \
@@ -23,7 +23,7 @@ HDRS = $(foreach d,$(SRC_DIRS),$(wildcard $(d)/*.h))
 all: $(BUILD)/sim-core test
 
 $(BUILD)/sim-core: $(OBJS)
-	$(CC) -o $@ $^
+	$(CC) -flto -o $@ $^
 
 $(BUILD)/%.o: src/%.c $(HDRS)
 	@mkdir -p $(dir $@)

@@ -52,3 +52,13 @@ Also set `needs_update` when: firmware writes SCB_ICSR (PENDSVSET), CPSIE clears
 ## Testing
 
 Run `make perf-bench` before and after. Verify SysTick still fires correctly (check UART timing). Record MIPS in commit message.
+
+## Results (measured 2026-05-01)
+
+| Metric | Baseline | OPT3 only | OPT3 + LTO |
+|--------|----------|-----------|------------|
+| MIPS | 30 | 33 (+10%) | 47 (+57%) |
+| DMA partial FPS | 30 | 49 (+63%) | 57 (+90%) |
+| Chardev idle FPS | 128 | 142 (+11%) | 189 (+48%) |
+
+OPT3 alone: modest MIPS gain but large DMA FPS improvement (NVIC dirty flag eliminates update call during DMA transfers). Compounds well with LTO.

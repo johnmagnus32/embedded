@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 /* Transfer direction */
-#define DMA_MEM_TO_PERIPH  0
+#define DMA_MEM_TO_PERIPH  1
 #define DMA_PERIPH_TO_MEM  1
 #define DMA_MEM_TO_MEM     2
 

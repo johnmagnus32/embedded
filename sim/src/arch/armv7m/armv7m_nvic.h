@@ -17,6 +17,7 @@ struct armv7m_nvic {
     uint32_t scb_vtor;
     uint32_t scb_shcsr;
     uint32_t iser[3];
+    int      needs_update;
 };
 
 void armv7m_nvic_init(struct armv7m_nvic *n);

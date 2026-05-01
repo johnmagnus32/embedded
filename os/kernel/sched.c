@@ -145,7 +145,7 @@ static int pick_next(int cpu)
             continue;
 
         /* Pick highest priority (lowest number) ready task */
-        if (t->state == TASK_READY && t->priority < best_prio) {
+        if (t->state == TASK_READY && t->priority <= best_prio) {
             best = c;
             best_prio = t->priority;
         }
@@ -203,7 +203,8 @@ void sched_sleep_ms(uint32_t ms)
     uint32_t key = spin_lock(&sched_lock);
     int cpu = get_cpu_id();
     int id = current_task_per_cpu[cpu];
-    tasks[id].wake_tick = systick_get_ticks() + ms;
+    uint32_t now = systick_get_ticks();
+    tasks[id].wake_tick = now + ms;
     tasks[id].state = TASK_SLEEPING;
     tasks[id].running_on_cpu = -1;
     spin_unlock(&sched_lock, key);

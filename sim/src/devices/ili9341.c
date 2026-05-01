@@ -1,44 +1,28 @@
 /*
  * ili9341.c — ILI9341 SPI display controller emulation
  *
- * Implements the subset of commands needed for basic drawing:
- *   0x2A Column Address Set, 0x2B Row Address Set, 0x2C Memory Write
- *   0x36 Memory Access Control, 0x11 Sleep Out, 0x29 Display On
- *
- * Firmware sends commands (DC=0) and data (DC=1) via SPI.
- * Pixel data is RGB565 (2 bytes per pixel), written into a framebuffer.
+ * Firmware writes pixels via SPI. The internal refresh timer pushes
+ * the framebuffer to the chardev at 60Hz, like real hardware.
  */
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 #include "ili9341.h"
 #include "chardev.h"
-
-static struct {
-    uint64_t frame_count;
-    struct timespec last_frame;
-    double min_ms, max_ms, sum_ms;
-    int glitch_count, window_frames;
-} dperf;
 
 void ili9341_init(struct ili9341 *d)
 {
     memset(d, 0, sizeof(*d));
     d->col_end = ILI9341_W - 1;
     d->row_end = ILI9341_H - 1;
-    d->dirty = 1;
+    d->refresh_interval = 16000000 / ILI9341_REFRESH_HZ;
+    d->next_refresh = 0;
 }
 
-/* Called when DC pin changes (via GPIO line) */
 void ili9341_set_dc(void *opaque, int level)
 {
     struct ili9341 *d = (struct ili9341 *)opaque;
     d->dc = level;
-    if (!level) {
-        /* Entering command mode — reset param state */
-        d->param_idx = 0;
-        d->pixel_hi = 1;
-    }
+    if (!level) { d->param_idx = 0; d->pixel_hi = 1; }
 }
 
 static void advance_cursor(struct ili9341 *d)
@@ -57,13 +41,9 @@ static void write_pixel(struct ili9341 *d, uint16_t pixel)
     int r = d->cur_row, c = d->cur_col;
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     if (r < eh && c < ew) {
-        /* Map logical (col, row) to physical framebuffer position */
         int px, py;
-        if (d->madctl & 0x20) { /* MV: swap x/y */
-            px = r; py = c;
-        } else {
-            px = c; py = r;
-        }
+        if (d->madctl & 0x20) { px = r; py = c; }
+        else { px = c; py = r; }
         if (py < ILI9341_H && px < ILI9341_W)
             d->fb[py * ILI9341_W + px] = pixel;
     }
@@ -74,7 +54,7 @@ static void handle_param(struct ili9341 *d, uint8_t byte)
 {
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     switch (d->cmd) {
-    case 0x2A: /* Column Address Set */
+    case 0x2A:
         d->params[d->param_idx++] = byte;
         if (d->param_idx == 4) {
             d->col_start = (d->params[0] << 8) | d->params[1];
@@ -83,7 +63,7 @@ static void handle_param(struct ili9341 *d, uint8_t byte)
             d->cur_col = d->col_start;
         }
         break;
-    case 0x2B: /* Row Address Set */
+    case 0x2B:
         d->params[d->param_idx++] = byte;
         if (d->param_idx == 4) {
             d->row_start = (d->params[0] << 8) | d->params[1];
@@ -92,17 +72,11 @@ static void handle_param(struct ili9341 *d, uint8_t byte)
             d->cur_row = d->row_start;
         }
         break;
-    case 0x2C: /* Memory Write */
-        if (d->pixel_hi) {
-            d->hi_byte = byte;
-            d->pixel_hi = 0;
-        } else {
-            write_pixel(d, (d->hi_byte << 8) | byte);
-            d->pixel_hi = 1;
-            d->dirty = 1;
-        }
+    case 0x2C:
+        if (d->pixel_hi) { d->hi_byte = byte; d->pixel_hi = 0; }
+        else { write_pixel(d, (d->hi_byte << 8) | byte); d->pixel_hi = 1; }
         break;
-    case 0x36: /* Memory Access Control */
+    case 0x36:
         d->madctl = byte;
         break;
     }
@@ -111,29 +85,18 @@ static void handle_param(struct ili9341 *d, uint8_t byte)
 uint8_t ili9341_transfer(void *dev, uint8_t byte)
 {
     struct ili9341 *d = (struct ili9341 *)dev;
-    if (!d->dc) {
-        /* Command byte */
-        d->cmd = byte;
-        d->param_idx = 0;
-        d->pixel_hi = 1;
-        if (byte == 0x00) ili9341_flush(d); /* NOP = vsync */
-    } else {
-        /* Data byte — parameter or pixel */
-        handle_param(d, byte);
-    }
+    if (!d->dc) { d->cmd = byte; d->param_idx = 0; d->pixel_hi = 1; }
+    else handle_param(d, byte);
     return 0;
 }
 
 void ili9341_flush(struct ili9341 *d)
 {
-    if (!d->dirty || !d->chardev) return;
-
+    if (!d->chardev) return;
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
     chardev_write_buf(d->chardev, hdr, 4);
-
     if (d->madctl & 0x20) {
-        /* Landscape: transpose physical (240×320) to logical (320×240) */
         static uint16_t tbuf[ILI9341_W * ILI9341_H];
         for (int y = 0; y < eh; y++)
             for (int x = 0; x < ew; x++)
@@ -142,35 +105,13 @@ void ili9341_flush(struct ili9341 *d)
     } else {
         chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
     }
-    d->dirty = 0;
+}
 
-    /*
-     * TODO: Remove this instrumentation when productionized.
-     * Overhead is small (~30 clock_gettime calls/sec + fprintf every 30 frames)
-     * but unnecessary in a release build.
-     */
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    if (dperf.frame_count > 0) {
-        double ms = (now.tv_sec - dperf.last_frame.tv_sec) * 1000.0
-                  + (now.tv_nsec - dperf.last_frame.tv_nsec) / 1e6;
-        dperf.sum_ms += ms;
-        dperf.window_frames++;
-        if (ms < dperf.min_ms || dperf.window_frames == 1) dperf.min_ms = ms;
-        if (ms > dperf.max_ms) dperf.max_ms = ms;
-        if (dperf.window_frames >= 30) {
-            double avg = dperf.sum_ms / dperf.window_frames;
-            int glitches = dperf.glitch_count;
-            fprintf(stderr, "[display] %.1f FPS | min=%.1fms avg=%.1fms max=%.1fms | glitches: %d/%d\n",
-                    1000.0 / avg, dperf.min_ms, avg, dperf.max_ms, glitches, dperf.window_frames);
-            fflush(stderr);
-            dperf.min_ms = dperf.max_ms = dperf.sum_ms = 0;
-            dperf.glitch_count = dperf.window_frames = 0;
-        } else if (dperf.window_frames > 5) {
-            double avg = dperf.sum_ms / dperf.window_frames;
-            if (ms > avg * 2) dperf.glitch_count++;
-        }
+void ili9341_tick(struct ili9341 *d)
+{
+    if (__builtin_expect(d->cycle_count_ptr &&
+                         *d->cycle_count_ptr >= d->next_refresh, 0)) {
+        ili9341_flush(d);
+        d->next_refresh = *d->cycle_count_ptr + d->refresh_interval;
     }
-    dperf.last_frame = now;
-    dperf.frame_count++;
 }

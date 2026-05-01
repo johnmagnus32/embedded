@@ -66,6 +66,9 @@ void stm32f411_init(struct stm32f411 *soc)
     /* Wire SPI2 (spis[1]) DMA TX → DMA1 Stream 4 */
     soc->spis[1].dma_tx = &soc->dma1.streams[4];
 
+    /* Wire SPI1 (spis[0]) DMA TX → DMA2 Stream 3 */
+    soc->spis[0].dma_tx = &soc->dma2.streams[3];
+
     /* Wire EXTI outputs 0-4 → NVIC IRQ 6-10 */
     for (int i = 0; i < 5; i++) {
         soc->exti_nvic[i].nvic = &soc->nvic;
@@ -88,7 +91,7 @@ void stm32f411_init(struct stm32f411 *soc)
     membus_register_ram(&soc->bus, RAM_BASE, RAM_SIZE, soc->ram, 0);
 
     /* Cortex-M system peripherals */
-    membus_register(&soc->bus, 0xE000E010, 0x10, armv7m_systick_read, armv7m_systick_write, &soc->systick);
+    membus_register(&soc->bus, 0xE000E010, 0x10, armv7m_systick_read, armv7m_systick_write, soc);
     membus_register(&soc->bus, 0xE000E100, 0x10, armv7m_nvic_iser_read, armv7m_nvic_iser_write, &soc->nvic);
     membus_register(&soc->bus, 0xE000ED00, 0xA4, armv7m_nvic_scb_read, armv7m_nvic_scb_write, &soc->nvic);
 
@@ -124,14 +127,47 @@ void stm32f411_init(struct stm32f411 *soc)
     /* DMA1 0x40026000, DMA2 0x40026400 */
     membus_register(&soc->bus, 0x40026000, 0x400, stm32_dma_read, stm32_dma_write, &soc->dma1);
     membus_register(&soc->bus, 0x40026400, 0x400, stm32_dma_read, stm32_dma_write, &soc->dma2);
+
+    /* Event queue */
+    event_queue_init(&soc->eq);
+
+    /* Wire event queue and cycle count pointers to SPIs */
+    soc->spis[0].eq = &soc->eq;
+    soc->spis[0].cycle_ptr = &soc->cpu.cycle_count;
+    soc->spis[0].spi_evt_id = EVT_SPI0_TXE;
+    soc->spis[1].eq = &soc->eq;
+    soc->spis[1].cycle_ptr = &soc->cpu.cycle_count;
+    soc->spis[1].spi_evt_id = EVT_SPI1_TXE;
+}
+
+/* ---- Event callbacks ---- */
+
+void systick_event_cb(void *opaque)
+{
+    struct stm32f411 *soc = (struct stm32f411 *)opaque;
+    if (soc->systick.csr & 2)
+        armv7m_nvic_set_pending(&soc->nvic, 15 /* IRQ_VEC_SYSTICK */);
+    /* Reschedule */
+    if ((soc->systick.csr & 1) && soc->systick.rvr > 0)
+        event_schedule(&soc->eq, EVT_SYSTICK,
+                       soc->cpu.cycle_count + soc->systick.rvr,
+                       systick_event_cb, soc);
 }
 
 int stm32f411_tick(struct stm32f411 *soc)
 {
+    /* CPU_OK (0) normally, or CPU_SEMIHOST_EXIT | code on BKPT #0xAB */
     int r = armv7m_cpu_step(&soc->cpu, &soc->bus);
-    armv7m_systick_tick(&soc->systick, &soc->nvic);
-    if (soc->dma1.any_active) stm32_dma_tick(&soc->dma1);
-    if (soc->dma2.any_active) stm32_dma_tick(&soc->dma2);
-    armv7m_nvic_update(&soc->nvic, &soc->cpu, &soc->bus);
+
+    /* One comparison replaces all per-device checks */
+    if (__builtin_expect(soc->cpu.cycle_count >= soc->eq.next_event, 0))
+        event_process(&soc->eq, soc->cpu.cycle_count);
+
+    /* DMA still uses per-tick (request_pending driven by SPI events) */
+    stm32_dma_tick(&soc->dma1);
+    stm32_dma_tick(&soc->dma2);
+
+    if (__builtin_expect(soc->nvic.needs_update, 0))
+        armv7m_nvic_update(&soc->nvic, &soc->cpu, &soc->bus);
     return r;
 }

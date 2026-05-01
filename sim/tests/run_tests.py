@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-run_tests.py — Emulator integration test runner.
+run_tests.py — Emulator test runner.
 
-CPU/HW tests: headless semihosting exit codes.
-UART chardev test: TCP socket verification.
-Perf tests: wall-clock assertions via SYS_CLOCK semihosting.
+Mirrors src/ hierarchy: func/ for correctness, perf/ for timing.
+  func/arch/armv7m/  — CPU instruction tests
+  func/hw/stm32/     — peripheral correctness
+  func/core/         — ELF loader
+  perf/arch/armv7m/  — CPU/IRQ timing
+  perf/hw/stm32/     — SPI/DMA/I2S throughput
+  perf/devices/      — ILI9341/MAX98357A chardev output
 """
 
 import subprocess
@@ -29,8 +33,11 @@ def build_firmware():
     print("  OK")
 
 
+def elf(path, name):
+    return os.path.join(FW_DIR, "build", path, f"{name}.elf")
+
+
 def run_headless(name, elf_path, timeout=10):
-    """Run firmware headless, pass/fail by exit code."""
     print(f"  {name}...", end=" ", flush=True)
     try:
         result = subprocess.run(
@@ -52,8 +59,79 @@ def run_headless(name, elf_path, timeout=10):
         return False
 
 
-def run_uart_chardev(name, elf_path, expected, timeout=5):
-    """Run firmware with UART chardev, verify expected bytes on TCP socket."""
+def run_chardev_test(name, elf_path, chardev_name, chardev_port, duration=2,
+                     measure="bytes", min_value=0, frame_size=None):
+    """Generic chardev test: run firmware, connect to a chardev, measure output."""
+    print(f"  {name}...", end=" ", flush=True)
+    debug_port = chardev_port - 1
+    proc = subprocess.Popen(
+        [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path,
+         "--debug", str(debug_port), "--chardev", f"{chardev_name}={chardev_port}"],
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.time() + duration + 5
+        dbg = None
+        while time.time() < deadline:
+            try:
+                dbg = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                dbg.connect(("127.0.0.1", debug_port))
+                break
+            except ConnectionRefusedError:
+                dbg.close()
+                time.sleep(0.05)
+        if not dbg:
+            print("FAIL (could not connect)")
+            return False
+
+        dbg.settimeout(2)
+        dbg.recv(4096)
+        cd = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        cd.connect(("127.0.0.1", chardev_port))
+        cd.settimeout(1)
+        dbg.sendall(b'{"cmd":"continue"}\n')
+
+        total_bytes = 0
+        t_start = time.monotonic()
+        while time.monotonic() - t_start < duration:
+            try:
+                chunk = cd.recv(65536)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+            except (socket.timeout, ConnectionResetError):
+                continue
+
+        elapsed = time.monotonic() - t_start
+        cd.close()
+        dbg.close()
+
+        if measure == "frames":
+            count = total_bytes // frame_size if frame_size else 0
+            rate = count / elapsed if elapsed > 0 else 0
+            label = f"{count} frames in {elapsed:.1f}s = {rate:.0f} FPS"
+        elif measure == "samples":
+            count = total_bytes // 4
+            rate = count / elapsed if elapsed > 0 else 0
+            label = f"{count} samples in {elapsed:.1f}s = {rate:.0f} samples/sec"
+        else:
+            rate = total_bytes
+            label = f"{total_bytes} bytes in {elapsed:.1f}s"
+
+        if rate >= min_value:
+            print(f"PASS ({label})")
+            return True
+        print(f"FAIL ({label}, need {min_value})")
+        return False
+    finally:
+        proc.send_signal(signal.SIGTERM)
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
+def run_uart_test(name, elf_path, expected, timeout=5):
     print(f"  {name}...", end=" ", flush=True)
     debug_port, uart_port = 19800, 19801
     proc = subprocess.Popen(
@@ -75,14 +153,12 @@ def run_uart_chardev(name, elf_path, expected, timeout=5):
         if not dbg:
             print("FAIL (could not connect)")
             return False
-
         dbg.settimeout(2)
         dbg.recv(4096)
         uart = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         uart.connect(("127.0.0.1", uart_port))
         uart.settimeout(timeout)
         dbg.sendall(b'{"cmd":"continue"}\n')
-
         data = b""
         try:
             while expected.encode() not in data and time.time() < deadline:
@@ -94,7 +170,6 @@ def run_uart_chardev(name, elf_path, expected, timeout=5):
             pass
         uart.close()
         dbg.close()
-
         if expected.encode() in data:
             print("PASS")
             return True
@@ -112,36 +187,59 @@ def main():
     build_firmware()
     passed = 0
     failed = 0
+    FRAME_SIZE = 4 + 240 * 320 * 2
 
-    cpu_tests = [
-        "test_alu", "test_alu2", "test_it", "test_call", "test_ldm_stm",
-        "test_mem", "test_shift", "test_wide", "test_arith", "test_misc",
-        "test_ldst_w", "test_elf",
-    ]
-    print("\nCPU tests:")
-    for name in cpu_tests:
-        ok = run_headless(name, os.path.join(FW_DIR, "build", "cpu", f"{name}.elf"))
+    # ── Functional tests ──────────────────────────────────────────
+
+    print("\nfunc/arch/armv7m:")
+    for name in ["test_alu", "test_alu2", "test_it", "test_call", "test_ldm_stm",
+                  "test_mem", "test_shift", "test_wide", "test_arith", "test_misc",
+                  "test_ldst_w"]:
+        ok = run_headless(name, elf("func/arch/armv7m", name))
         passed += ok; failed += not ok
 
-    hw_tests = ["test_irq", "test_it_irq", "test_gpio_exti", "test_dma"]
-    print("\nHW tests:")
-    for name in hw_tests:
-        ok = run_headless(name, os.path.join(FW_DIR, "build", "hw", f"{name}.elf"))
-        passed += ok; failed += not ok
-
-    print("\nHW chardev tests:")
-    ok = run_uart_chardev("test_uart_chardev",
-                          os.path.join(FW_DIR, "build", "hw", "test_uart_chardev.elf"), "UART_OK\n")
+    print("\nfunc/core:")
+    ok = run_headless("test_elf", elf("func/core", "test_elf"))
     passed += ok; failed += not ok
 
-    perf_tests = [
-        "test_perf_mips", "test_perf_systick", "test_perf_irq_latency",
-        "test_perf_spi", "test_perf_membus",
-    ]
-    print("\nPerformance tests:")
-    for name in perf_tests:
-        ok = run_headless(name, os.path.join(FW_DIR, "build", "hw", f"{name}.elf"))
+    print("\nfunc/hw/stm32:")
+    for name in ["test_irq", "test_it_irq", "test_gpio_exti", "test_dma", "test_dma_spi", "test_dma_i2s_kick"]:
+        ok = run_headless(name, elf("func/hw/stm32", name))
         passed += ok; failed += not ok
+
+    print("\nfunc/hw/stm32 (chardev):")
+    ok = run_uart_test("test_uart_chardev",
+                       elf("func/hw/stm32", "test_uart_chardev"), "UART_OK\n")
+    passed += ok; failed += not ok
+
+    # ── Performance tests ─────────────────────────────────────────
+
+    print("\nperf/arch/armv7m:")
+    for name in ["test_mips", "test_irq_latency", "test_systick_period"]:
+        ok = run_headless(name, elf("perf/arch/armv7m", name))
+        passed += ok; failed += not ok
+
+    print("\nperf/hw/stm32:")
+    for name in ["test_spi_throughput", "test_membus",
+                  "test_spi_fps_full", "test_spi_fps_partial", "test_spi_fps_sustained",
+                  "test_dma_fps", "test_dma_fps_full", "test_dma_fps_sustained",
+                  "test_i2s_cpu", "test_i2s_dma"]:
+        ok = run_headless(name, elf("perf/hw/stm32", name))
+        passed += ok; failed += not ok
+
+    print("\nperf/devices/ili9341:")
+    for name, min_fps in [("test_display_refresh", 50),
+                           ("test_display_cpu", 50),
+                           ("test_display_dma", 50)]:
+        ok = run_chardev_test(name, elf("perf/devices/ili9341", name),
+                              "display", 19811, measure="frames",
+                              frame_size=FRAME_SIZE, min_value=min_fps)
+        passed += ok; failed += not ok
+
+    print("\nperf/devices/max98357a:")
+    ok = run_chardev_test("test_audio", elf("perf/devices/max98357a", "test_audio"),
+                          "audio", 19821, measure="samples", min_value=15000)
+    passed += ok; failed += not ok
 
     print(f"\n{passed} passed, {failed} failed")
     sys.exit(0 if failed == 0 else 1)

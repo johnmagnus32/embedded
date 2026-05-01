@@ -151,11 +151,11 @@ async function refreshUI(stopInfo) {
   }
 }
 
-// Trace via WebSocket — live streaming
+// Trace via WebSocket — live streaming (DISABLED)
 const traceEvents = [];
 const heapBlocks = {};
 let traceRenderPending = false;
-(function() {
+/*(function() {
   const ws = new WebSocket('ws://' + location.host + '/ws-trace');
   ws.binaryType = 'arraybuffer';
   ws.onmessage = (e) => {
@@ -181,7 +181,7 @@ let traceRenderPending = false;
       }
     } catch(e) {}
   };
-})();
+})();*/
 
 // UART via WebSocket — instant character delivery
 (function() {
@@ -833,35 +833,32 @@ function initAudio() {
   _audioCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: AUDIO_SAMPLE_RATE});
   _audioStarted = true;
   log('Audio started');
-  pollAudio();
+  const ws = new WebSocket('ws://' + location.host + '/ws-audio');
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = (evt) => {
+    const samples = new Int16Array(evt.data);
+    const nFrames = samples.length / 2;
+    if (nFrames < 1) return;
+    const ab = _audioCtx.createBuffer(2, nFrames, AUDIO_SAMPLE_RATE);
+    const chL = ab.getChannelData(0);
+    const chR = ab.getChannelData(1);
+    for (let i = 0; i < nFrames; i++) {
+      chL[i] = samples[i * 2]     / 32768;
+      chR[i] = samples[i * 2 + 1] / 32768;
+    }
+    const src = _audioCtx.createBufferSource();
+    src.buffer = ab;
+    src.connect(_audioCtx.destination);
+    const now = _audioCtx.currentTime;
+    /* If we've fallen behind, reset to avoid queuing stale audio */
+    if (_audioNextTime < now - 0.1) _audioNextTime = now;
+    if (_audioNextTime > now + 0.3) _audioNextTime = now;
+    src.start(_audioNextTime);
+    _audioNextTime += ab.duration;
+  };
 }
 
 let _audioNextTime = 0;
-
-function pollAudio() {
-  if (!_audioStarted) return;
-  fetch('/audio').then(r => r.arrayBuffer()).then(buf => {
-    if (buf.byteLength >= 4) {
-      const samples = new Int16Array(buf);
-      const nFrames = samples.length / 2;
-      const ab = _audioCtx.createBuffer(2, nFrames, AUDIO_SAMPLE_RATE);
-      const chL = ab.getChannelData(0);
-      const chR = ab.getChannelData(1);
-      for (let i = 0; i < nFrames; i++) {
-        chL[i] = samples[i * 2]     / 32768;
-        chR[i] = samples[i * 2 + 1] / 32768;
-      }
-      const src = _audioCtx.createBufferSource();
-      src.buffer = ab;
-      src.connect(_audioCtx.destination);
-      const now = _audioCtx.currentTime;
-      const startTime = Math.max(now, _audioNextTime);
-      src.start(startTime);
-      _audioNextTime = startTime + ab.duration;
-    }
-    setTimeout(pollAudio, 50);
-  }).catch(() => setTimeout(pollAudio, 500));
-}
 
 document.addEventListener('click',   initAudio, {once: true});
 document.addEventListener('keydown', initAudio, {once: true});
