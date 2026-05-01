@@ -1182,6 +1182,23 @@ int vars_on_stack(uint32_t pc, struct stack_var *out, int max)
     return n;
 }
 
+int vars_in_scope(uint32_t pc, char names[][32], int max)
+{
+    int n = 0;
+    for (int v = 0; v < nvars && n < max; v++) {
+        if (!pc_in_scope(vars[v].scope_idx, pc)) continue;
+        if (!vars[v].name[0]) continue;
+        int dup = 0;
+        for (int j = 0; j < n; j++)
+            if (strcmp(names[j], vars[v].name) == 0) { dup = 1; break; }
+        if (dup) continue;
+        strncpy(names[n], vars[v].name, 31);
+        names[n][31] = '\0';
+        n++;
+    }
+    return n;
+}
+
 /* Look up a local variable by name at the given PC.
  * Returns: 0 = not found, 1 = register (reg_out), 2 = constant (val_out),
  *          3 = memory address (val_out) */

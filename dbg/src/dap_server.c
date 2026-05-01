@@ -12,6 +12,7 @@
 #include "dap.h"
 #include "client.h"
 #include "elf_sym.h"
+#include "eval.h"
 
 /* --- Minimal JSON helpers --- */
 
@@ -197,30 +198,45 @@ static void do_dap_step(struct dbg_client *c)
 
 static void do_dap_next(struct dbg_client *c)
 {
+    /* Step over: step instructions while staying on the same source line.
+     * If we enter a function (PC jumps far), set temp breakpoint at
+     * return address and continue. */
     uint32_t regs[16];
     rsp_get_regs(c, regs);
     uint32_t pc = regs[15];
-    uint8_t insn_bytes[4];
-    rsp_read_mem(c, pc, insn_bytes, 4);
-    uint16_t insn16 = insn_bytes[0] | (insn_bytes[1] << 8);
-    uint16_t insn16b = insn_bytes[2] | (insn_bytes[3] << 8);
+    int orig_line;
+    const char *orig_file = line_lookup(pc, &orig_line);
+    uint32_t orig_lr = regs[14];
 
-    int is_bl = ((insn16 >> 11) == 0x1E && (insn16b >> 12) == 0xD);
-    int is_blx = (insn16 & 0xFF80) == 0x4780;
+    for (int i = 0; i < 1000; i++) {
+        dbg_send(c, "s");
+        dbg_recv(c);
+        rsp_get_regs(c, regs);
+        uint32_t new_pc = regs[15];
+        int new_line;
+        const char *new_file = line_lookup(new_pc, &new_line);
 
-    if (is_bl || is_blx) {
-        uint32_t ret_addr = is_bl ? pc + 4 : pc + 2;
-        char cmd[64];
-        snprintf(cmd, sizeof(cmd), "Z0,%x,2", ret_addr);
-        dbg_send(c, cmd);
-        dbg_recv(c);
-        dbg_send(c, "c");
-        dbg_recv(c);  /* wait for stop */
-        snprintf(cmd, sizeof(cmd), "z0,%x,2", ret_addr);
-        dbg_send(c, cmd);
-        dbg_recv(c);
-    } else {
-        do_dap_step(c);
+        /* If we stepped into a different function (LR changed = call happened),
+         * set temp breakpoint at return address and continue */
+        if (regs[14] != orig_lr && new_file && orig_file &&
+            strcmp(new_file, orig_file) != 0) {
+            uint32_t ret = orig_lr & ~1u;
+            char cmd[64];
+            snprintf(cmd, sizeof(cmd), "Z0,%x,2", ret);
+            dbg_send(c, cmd);
+            dbg_recv(c);
+            dbg_send(c, "c");
+            dbg_recv(c);
+            snprintf(cmd, sizeof(cmd), "z0,%x,2", ret);
+            dbg_send(c, cmd);
+            dbg_recv(c);
+            return;
+        }
+
+        /* Reached a different source line in the same file — done */
+        if (!orig_file || !new_file ||
+            new_line != orig_line || strcmp(new_file, orig_file) != 0)
+            return;
     }
 }
 
@@ -494,20 +510,25 @@ void dap_server_run(const char *connect_str, const char *elf_path)
                         names[i], regs[i]);
                 }
             } else {
-                /* Locals — use DWARF */
+                /* Locals — enumerate all variables in scope */
                 uint32_t regs[16];
                 rsp_get_regs(&client, regs);
                 uint32_t pc = regs[15];
-                struct stack_var vars[32];
-                int nv = vars_on_stack(pc, vars, 32);
-                uint32_t cfa = cfa_offset_at_pc(pc);
+                char names[64][32];
+                int nv = vars_in_scope(pc, names, 64);
+                if (nv > 20) nv = 20;
+                int first = 1;
                 for (int i = 0; i < nv; i++) {
-                    uint32_t addr = regs[13] + cfa + vars[i].sp_offset;
-                    uint32_t val = rsp_read_mem32(&client, addr);
-                    if (i > 0) n += snprintf(body + n, sizeof(body) - n, ",");
+                    struct eval_result er;
+                    eval_expr_with_regs(&client, names[i], regs, &er);
+                    if (!er.valid) continue;
+                    char val_str[128];
+                    eval_format(&client, &er, names[i], val_str, sizeof(val_str));
+                    if (!first) n += snprintf(body + n, sizeof(body) - n, ",");
                     n += snprintf(body + n, sizeof(body) - n,
-                        "{\"name\":\"%s\",\"value\":\"%u (0x%x)\",\"variablesReference\":0}",
-                        vars[i].name, val, val);
+                        "{\"name\":\"%s\",\"value\":\"%s\",\"variablesReference\":0}",
+                        names[i], val_str);
+                    first = 0;
                 }
             }
 
@@ -517,47 +538,17 @@ void dap_server_run(const char *connect_str, const char *elf_path)
         else if (strcmp(command, "evaluate") == 0) {
             char expr[256];
             json_get_str(msg, "expression", expr, sizeof(expr));
-            /* Strip leading "p " if user typed it */
             const char *e = expr;
             if (e[0] == 'p' && e[1] == ' ') e += 2;
-            fprintf(stderr, "  evaluate: '%s'\n", e); fflush(stderr);
 
-            /* Try global symbol */
-            uint32_t addr = sym_find_by_name(e);
-            fprintf(stderr, "  sym_find: 0x%08x\n", addr); fflush(stderr);
-            if (addr) {
-                uint32_t val = rsp_read_mem32(&client, addr);
-                char body[256];
-                snprintf(body, sizeof(body),
-                    "\"result\":\"%u (0x%x)\",\"variablesReference\":0", val, val);
-                dap_response(seq, "evaluate", body);
-            } else {
-                /* Try as local variable via DWARF */
-                uint32_t regs[16];
-                rsp_get_regs(&client, regs);
-                uint32_t pc = regs[15];
-                int reg; uint32_t val;
-                int loc = var_lookup(e, pc, &reg, &val);
-                fprintf(stderr, "  var_lookup: loc=%d\n", loc); fflush(stderr);
-                if (loc == 1) {
-                    char body[256];
-                    snprintf(body, sizeof(body),
-                        "\"result\":\"%u (0x%x)\",\"variablesReference\":0",
-                        regs[reg], regs[reg]);
-                    dap_response(seq, "evaluate", body);
-                } else if (loc == 3) {
-                    uint32_t cfa = cfa_offset_at_pc(pc);
-                    uint32_t a = regs[13] + cfa + val;
-                    uint32_t v = rsp_read_mem32(&client, a);
-                    char body[256];
-                    snprintf(body, sizeof(body),
-                        "\"result\":\"%u (0x%x)\",\"variablesReference\":0", v, v);
-                    dap_response(seq, "evaluate", body);
-                } else {
-                    dap_response(seq, "evaluate",
-                        "\"result\":\"<unknown>\",\"variablesReference\":0");
-                }
-            }
+            struct eval_result er;
+            eval_expr(&client, e, &er);
+            char val_str[256];
+            eval_format(&client, &er, e, val_str, sizeof(val_str));
+            char body[512];
+            snprintf(body, sizeof(body),
+                "\"result\":\"%s\",\"variablesReference\":0", val_str);
+            dap_response(seq, "evaluate", body);
         }
         else if (strcmp(command, "disconnect") == 0) {
             dap_event("terminated", "");
