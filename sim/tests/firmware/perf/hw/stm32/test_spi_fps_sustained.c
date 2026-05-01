@@ -25,7 +25,7 @@
 
 #define DURATION_US   3000000  /* run for 3 seconds */
 #define WINDOW_US     1000000  /* check every 1 second */
-#define MIN_FPS_PER_WINDOW 30
+#define MIN_FPS_PER_WINDOW 50
 #define MAX_WINDOWS   4        /* 3 seconds + 1 spare */
 
 static inline void dc_command(void) { GPIOA_BSRR = (1 << (DC_PIN + 16)); }

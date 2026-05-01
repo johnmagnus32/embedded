@@ -72,12 +72,14 @@ static void send_resp(int fd, const char *json)
     write(fd, "\n", 1);
 }
 
-static void send_stop(int fd, struct armv7m_cpu *cpu)
+static void send_stop(int fd, struct stub_ctx *ctx)
 {
+    if (ctx->chardevs)
+        chardev_flush_all(ctx->chardevs);
     char buf[128];
     snprintf(buf, sizeof(buf),
         "{\"stopped\":true,\"pc\":%u,\"cycles\":%lu}",
-        cpu->r[REG_PC], (unsigned long)cpu->cycle_count);
+        ctx->cpu->r[REG_PC], (unsigned long)ctx->cpu->cycle_count);
     send_resp(fd, buf);
 }
 
@@ -237,11 +239,11 @@ static void dispatch(int fd, struct stub_ctx *ctx, const char *line)
             send_resp(fd, "{\"error\":\"missing data\"}");
     } else if (strcmp(cmd, "step") == 0) {
         single_step(ctx);
-        send_stop(fd, ctx->cpu);
+        send_stop(fd, ctx);
     } else if (strcmp(cmd, "stepi") == 0) {
         int n = (int)json_int(line, "n", 1);
         for (int i = 0; i < n; i++) single_step(ctx);
-        send_stop(fd, ctx->cpu);
+        send_stop(fd, ctx);
     } else if (strcmp(cmd, "continue") == 0) {
         int reason = run_continue(fd, ctx);
         if (reason == 2) {
@@ -256,9 +258,9 @@ static void dispatch(int fd, struct stub_ctx *ctx, const char *line)
             char tmp[256];
             read(fd, tmp, sizeof(tmp));
         }
-        send_stop(fd, ctx->cpu);
+        send_stop(fd, ctx);
     } else if (strcmp(cmd, "halt") == 0) {
-        send_stop(fd, ctx->cpu);
+        send_stop(fd, ctx);
     } else if (strcmp(cmd, "reset") == 0) {
         armv7m_cpu_reset(ctx->cpu, ctx->bus);
         send_resp(fd, "{\"ok\":true}");
@@ -302,7 +304,7 @@ void dbg_stub_run(struct stub_ctx *ctx, int port)
     int client = accept(srv, NULL, NULL);
     LOG("Debug client connected");
 
-    send_stop(client, ctx->cpu);
+    send_stop(client, ctx);
 
     char buf[4096];
     int buf_len = 0;

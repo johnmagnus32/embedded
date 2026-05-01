@@ -9,7 +9,7 @@
  */
 #include "test.h"
 
-#define MIN_MIPS 10  /* fail if emulator is slower than this */
+#define MIN_MIPS 50  /* fail if emulator is slower than this */
 
 __attribute__((noinline))
 static int compute(int *buf, int n)

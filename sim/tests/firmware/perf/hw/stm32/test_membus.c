@@ -53,8 +53,8 @@ void test_main(void)
     /* Wall-clock: total read+write must be fast enough */
     CHECK(elapsed_ms < MAX_WALL_MS);
     /* Cycle sanity: 1-20 cycles per word */
-    CHECK_RANGE(w_per_word, 1, 20);
-    CHECK_RANGE(r_per_word, 1, 20);
+    CHECK_RANGE(w_per_word, 1, 10);
+    CHECK_RANGE(r_per_word, 1, 15);
 
     TEST_DONE("perf_membus");
 }

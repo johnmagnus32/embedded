@@ -183,6 +183,78 @@ def run_uart_test(name, elf_path, expected, timeout=5):
             proc.kill()
 
 
+def run_gpio_chardev_test(name, elf_path, timeout=5):
+    """Test GPIO input via IO chardev triggers EXTI, verified via UART output."""
+    print(f"  {name}...", end=" ", flush=True)
+    debug_port, io_port, uart_port = 19800, 19801, 19802
+    proc = subprocess.Popen(
+        [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path,
+         "--debug", str(debug_port),
+         "--chardev", f"io={io_port}",
+         "--chardev", f"usart2={uart_port}"],
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.time() + timeout
+        dbg = None
+        while time.time() < deadline:
+            try:
+                dbg = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                dbg.connect(("127.0.0.1", debug_port))
+                break
+            except ConnectionRefusedError:
+                dbg.close()
+                time.sleep(0.05)
+        if not dbg:
+            print("FAIL (could not connect)")
+            return False
+        dbg.settimeout(2)
+        dbg.recv(4096)  # initial stop
+        io = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        io.connect(("127.0.0.1", io_port))
+        uart = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        uart.connect(("127.0.0.1", uart_port))
+        uart.settimeout(timeout)
+        dbg.sendall(b'{"cmd":"continue"}\n')
+        time.sleep(0.2)  # let firmware init
+        io.sendall(b"gpio:1:0:1\n")  # GPIOB pin 0 high
+        # Wait for semihosting exit
+        proc.wait(timeout=timeout)
+        rc = proc.returncode
+        stderr = proc.stderr.read().decode(errors="replace")
+        # Check UART for EXTI0_OK
+        uart_data = b""
+        try:
+            while True:
+                chunk = uart.recv(4096)
+                if not chunk: break
+                uart_data += chunk
+        except: pass
+        uart_text = uart_data.decode(errors="replace")
+        has_uart = "EXTI0_OK" in uart_text
+        if rc == 0 and "PASS" in stderr and has_uart:
+            print(f"PASS  (semihosting + UART verified)")
+            return True
+        else:
+            if rc != 0 or "PASS" not in stderr:
+                print(f"FAIL (exit code {rc})")
+            elif not has_uart:
+                print(f"FAIL (EXTI0_OK not found on UART)")
+            for line in stderr.strip().split("\n"):
+                if "FAIL" in line:
+                    print(f"    {line}")
+            return False
+    except subprocess.TimeoutExpired:
+        print("FAIL (timeout)")
+        proc.kill()
+        return False
+    finally:
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGTERM)
+            try: proc.wait(timeout=2)
+            except: proc.kill()
+
+
 def main():
     build_firmware()
     passed = 0
@@ -210,6 +282,9 @@ def main():
     print("\nfunc/hw/stm32 (chardev):")
     ok = run_uart_test("test_uart_chardev",
                        elf("func/hw/stm32", "test_uart_chardev"), "UART_OK\n")
+    passed += ok; failed += not ok
+    ok = run_gpio_chardev_test("test_gpio_irq_chardev",
+                               elf("func/hw/stm32", "test_gpio_irq_chardev"))
     passed += ok; failed += not ok
 
     # ── Performance tests ─────────────────────────────────────────

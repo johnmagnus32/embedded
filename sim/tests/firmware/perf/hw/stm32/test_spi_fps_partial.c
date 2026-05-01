@@ -30,7 +30,7 @@
 #define PIXELS_PER_FRAME 16666  /* ~21.7% of 320*240 */
 #define BYTES_PER_FRAME  (PIXELS_PER_FRAME * 2)  /* RGB565 */
 #define NUM_FRAMES 30
-#define MIN_FPS    30
+#define MIN_FPS    50
 #define MAX_WALL_MS 1000  /* 30 frames in < 1s = at least 30 FPS */
 
 static inline void dc_command(void) { GPIOA_BSRR = (1 << (DC_PIN + 16)); }

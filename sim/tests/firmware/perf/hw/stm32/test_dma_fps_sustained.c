@@ -35,7 +35,7 @@
 
 #define DURATION_US        3000000
 #define WINDOW_US          1000000
-#define MIN_FPS_PER_WINDOW 25
+#define MIN_FPS_PER_WINDOW 55
 #define MAX_WINDOWS        4
 #define RECT_PIXELS        16400
 
