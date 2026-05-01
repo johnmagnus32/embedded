@@ -41,7 +41,7 @@ def run_headless(name, elf_path, timeout=10):
     print(f"  {name}...", end=" ", flush=True)
     try:
         result = subprocess.run(
-            [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path, "--headless"],
+            [SIM_CORE, "--machine", "gameboy", "--firmware", elf_path],
             timeout=timeout, capture_output=True,
         )
         stderr = result.stderr.decode()
