@@ -81,7 +81,7 @@ For each breakpoint in `arguments.breakpoints`:
 3. Return verified breakpoints with resolved line numbers
 
 ### `continue`
-Send `c` to stub. When stop reply arrives, send `stopped` event with reason `"breakpoint"` or `"pause"`.
+Send `c` to stub. Wait for stop reply asynchronously: `select()` on both the RSP socket (for stop reply) and stdin (for incoming DAP requests like `pause` or `disconnect`). When the RSP socket has data, parse the stop reply and send a `stopped` event. When stdin has data, read the DAP request — if it's `pause`, send 0x03 to the stub; if it's `disconnect`, clean up and exit. This is the same pattern as the REPL's Ctrl+C handling but with stdin instead of a signal.
 
 ### `next` (step over)
 Same logic as the REPL `next` command. Send `stopped` event when done.
