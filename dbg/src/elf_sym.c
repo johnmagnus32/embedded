@@ -108,6 +108,8 @@ static struct type_info *find_type(uint32_t die_offset) {
 /* Location list data */
 static uint8_t *loclists_data = NULL;
 static uint32_t loclists_size = 0;
+static uint8_t *rnglists_data = NULL;
+static uint32_t rnglists_size = 0;
 
 int elf_get_sections(const struct elf_section **out) { *out = elf_sections; return n_elf_sections; }
 
@@ -283,6 +285,10 @@ int elf_load(const char *path, uint8_t *flash, uint8_t *ram)
                 loclists_data = malloc(shdrs[i].sh_size);
                 loclists_size = shdrs[i].sh_size;
                 fseek(f, shdrs[i].sh_offset, SEEK_SET); fread(loclists_data, loclists_size, 1, f);
+            } else if (strcmp(sn, ".debug_rnglists") == 0) {
+                rnglists_data = malloc(shdrs[i].sh_size);
+                rnglists_size = shdrs[i].sh_size;
+                fseek(f, shdrs[i].sh_offset, SEEK_SET); fread(rnglists_data, rnglists_size, 1, f);
             } else if (strcmp(sn, ".debug_frame") == 0) {
                 uint8_t *df = malloc(shdrs[i].sh_size);
                 uint32_t df_sz = shdrs[i].sh_size;
@@ -552,6 +558,8 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
             int has_loc;
             int has_const;
             int has_high_pc;
+            int has_ranges;
+            uint32_t ranges_offset;
             const char *name;
         } dies[MAX_DIES];
         int ndies = 0;
@@ -570,7 +578,7 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
             d->type_ref = 0;
             d->byte_size = 0;
             d->member_loc = 0xFFFFFFFF;
-            d->low_pc = 0; d->high_pc = 0; d->has_high_pc = 0;
+            d->low_pc = 0; d->high_pc = 0; d->has_high_pc = 0; d->has_ranges = 0; d->ranges_offset = 0;
             d->loc_offset = 0; d->has_loc = 0;
             d->const_val = 0; d->has_const = 0;
             d->name = NULL;
@@ -611,6 +619,9 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 } else if (attr == 0x12) { /* DW_AT_high_pc */
                     d->high_pc = read_form_u32(&scan, form, a->attrs[i].implicit_val);
                     d->has_high_pc = 1;
+                } else if (attr == 0x55) { /* DW_AT_ranges */
+                    d->ranges_offset = read_form_u32(&scan, form, a->attrs[i].implicit_val);
+                    d->has_ranges = 1;
                 } else if (attr == DW_AT_location) {
                     if (form == DW_FORM_sec_offset || form == DW_FORM_loclistx) {
                         d->loc_offset = read_form_u32(&scan, form, a->attrs[i].implicit_val);
@@ -717,6 +728,52 @@ static void parse_debug_info(const uint8_t *info, uint32_t info_size,
                 uint32_t lo = dies[i].low_pc;
                 uint32_t hi = dies[i].has_high_pc ?
                     (dies[i].high_pc < 0x1000 ? lo + dies[i].high_pc : dies[i].high_pc) : 0;
+                /* Resolve DW_AT_ranges via .debug_rnglists */
+                if (!lo && !hi && dies[i].has_ranges && rnglists_data) {
+                    /* Skip rnglists header (12 bytes for DWARF5 32-bit) */
+                    uint32_t off = dies[i].ranges_offset + 12;
+                    lo = 0xFFFFFFFF; hi = 0;
+                    uint32_t base = cu_low_pc;
+                    while (off < rnglists_size) {
+                        uint8_t entry = rnglists_data[off++];
+                        if (entry == 0) break; /* DW_RLE_end_of_list */
+                        if (entry == 6) { /* DW_RLE_start_end */
+                            uint32_t s = rnglists_data[off] | (rnglists_data[off+1]<<8) |
+                                         (rnglists_data[off+2]<<16) | (rnglists_data[off+3]<<24);
+                            off += 4;
+                            uint32_t e = rnglists_data[off] | (rnglists_data[off+1]<<8) |
+                                         (rnglists_data[off+2]<<16) | (rnglists_data[off+3]<<24);
+                            off += 4;
+                            if (s < lo) lo = s;
+                            if (e > hi) hi = e;
+                        } else if (entry == 7) { /* DW_RLE_start_length */
+                            uint32_t s = rnglists_data[off] | (rnglists_data[off+1]<<8) |
+                                         (rnglists_data[off+2]<<16) | (rnglists_data[off+3]<<24);
+                            off += 4;
+                            uint32_t len = read_uleb((const uint8_t **)&(const uint8_t *){rnglists_data + off});
+                            /* re-read with proper pointer advance */
+                            const uint8_t *tmp = rnglists_data + off;
+                            len = read_uleb(&tmp);
+                            off = (uint32_t)(tmp - rnglists_data);
+                            if (s < lo) lo = s;
+                            if (s + len > hi) hi = s + len;
+                        } else if (entry == 5) { /* DW_RLE_base_address */
+                            base = rnglists_data[off] | (rnglists_data[off+1]<<8) |
+                                   (rnglists_data[off+2]<<16) | (rnglists_data[off+3]<<24);
+                            off += 4;
+                        } else if (entry == 4) { /* DW_RLE_offset_pair */
+                            const uint8_t *tmp = rnglists_data + off;
+                            uint32_t s = read_uleb(&tmp);
+                            uint32_t e = read_uleb(&tmp);
+                            off = (uint32_t)(tmp - rnglists_data);
+                            if (base + s < lo) lo = base + s;
+                            if (base + e > hi) hi = base + e;
+                        } else {
+                            break; /* unknown entry type */
+                        }
+                    }
+                    if (lo == 0xFFFFFFFF) lo = 0;
+                }
                 if (lo && hi && nscopes < MAX_SCOPES) {
                     int parent = scope_depth > 0 ? scope_stack[scope_depth] : global_scope;
                     int idx = nscopes;
