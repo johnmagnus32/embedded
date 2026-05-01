@@ -1,7 +1,10 @@
 /*
- * sim-core — ARM Cortex-M4 emulator + debug server
+ * sim-core — ARM Cortex-M4 emulator
  *
- * Usage: sim-core --machine <name> --firmware <elf> --debug <port> [--chardev name=port ...]
+ * Loads firmware ELF segments, runs the CPU, serves chardevs.
+ * Optionally serves a debug stub on --debug <port>.
+ *
+ * Usage: sim-core --machine <name> --firmware <elf> [--debug <port>] [--chardev name=port ...]
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,9 +14,8 @@
 #include "armv7m_cpu.h"
 #include "membus.h"
 #include "chardev.h"
-#include "elf_sym.h"
-#include "dbg_server.h"
-#include "dbg_cmd.h"
+#include "elf_load.h"
+#include "dbg_stub.h"
 
 #define LOG(fmt, ...) fprintf(stderr, "[sim-core] " fmt "\n", ##__VA_ARGS__)
 
@@ -21,7 +23,7 @@ int main(int argc, char **argv)
 {
     const char *machine_name = NULL;
     const char *elf_path = NULL;
-    int debug_port = 9001;
+    int debug_port = 0;  /* 0 = no debug stub */
     uint64_t bench_cycles = 0;
     int no_chardev = 0;
     int headless = 0;
@@ -49,7 +51,7 @@ int main(int argc, char **argv)
     }
 
     if (!machine_name || !elf_path) {
-        LOG("Usage: %s --machine <name> --firmware <elf> --debug <port> [--chardev name=port ...]", argv[0]);
+        LOG("Usage: %s --machine <name> --firmware <elf> [--debug <port>] [--chardev name=port ...]", argv[0]);
         return 1;
     }
 
@@ -70,18 +72,11 @@ int main(int argc, char **argv)
     uint8_t **flash = mach->get_flash(board);
     uint8_t **ram = mach->get_ram(board);
 
-    if (elf_load(elf_path, *flash, *ram) != 0) {
+    if (elf_load_segments(elf_path, *flash, *ram) != 0) {
         LOG("Failed to load ELF: %s", elf_path);
         return 1;
     }
     LOG("Loaded %s", elf_path);
-
-    extern char elf_comp_dir[512];
-    if (elf_comp_dir[0]) {
-        char dir[512];
-        snprintf(dir, sizeof(dir), "%s/", elf_comp_dir);
-        dbg_cmd_set_src_dir(dir);
-    }
 
     armv7m_cpu_reset(cpu, bus);
 
@@ -113,13 +108,27 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    struct sim_ctx ctx = {
-        .mach = mach, .board = board,
-        .cpu = cpu, .bus = bus, .flash = flash, .ram = ram,
-        .chardevs = no_chardev ? NULL : &chardevs,
-    };
-
-    dbg_server_run(&ctx, debug_port);
+    if (debug_port > 0) {
+        struct stub_ctx ctx = {
+            .mach = mach, .board = board,
+            .cpu = cpu, .bus = bus, .flash = flash, .ram = ram,
+            .chardevs = no_chardev ? NULL : &chardevs,
+        };
+        dbg_stub_run(&ctx, debug_port);
+    } else {
+        /* No debug port — just run forever (chardevs serve the UI) */
+        while (1) {
+            int r = mach->tick(board);
+            if (r & CPU_SEMIHOST_EXIT) {
+                if (!no_chardev) {
+                    chardev_flush_all(&chardevs);
+                    chardev_shutdown_all(&chardevs);
+                }
+                free(*flash); free(*ram); free(board);
+                return r & 0xFF;
+            }
+        }
+    }
 
     free(*flash);
     free(*ram);

@@ -11,7 +11,6 @@
 #include <time.h>
 #include "armv7m_cpu.h"
 #include "membus.h"
-#include "elf_sym.h"
 
 /* Flags in xPSR */
 #define FLAG_N (1u << 31)
@@ -290,6 +289,7 @@ misc: {
     if ((insn&0xFFC0)==0xBA00) { uint32_t v=c->r[(insn>>3)&7]; c->r[insn&7]=((v>>24)&0xFF)|((v>>8)&0xFF00)|((v<<8)&0xFF0000)|((v<<24)&0xFF000000); goto done_16; }
     if ((insn&0xFFC0)==0xBA40) { uint32_t v=c->r[(insn>>3)&7]; c->r[insn&7]=((v&0xFF00FF00)>>8)|((v&0x00FF00FF)<<8); goto done_16; }
     if ((insn&0xFF00)==0xBE00) {
+        if (insn==0xBE00) { c->r[REG_PC]-=2; return CPU_BREAKPOINT; }
         if (insn==0xBEAB) { uint32_t func=c->r[0],arg=c->r[1]; switch(func) {
             case 0x03: fputc(membus_read8(bus,arg),stderr); break;
             case 0x04: { char ch; while((ch=membus_read8(bus,arg++))!='\0') fputc(ch,stderr); break; }
@@ -305,7 +305,7 @@ stm: { int rn=(insn>>8)&7,regs=insn&0xFF; uint32_t addr=c->r[rn]; for(int i=0;i<
 ldm: { int rn=(insn>>8)&7,regs=insn&0xFF; uint32_t addr=c->r[rn]; for(int i=0;i<8;i++) if(regs&(1<<i)){c->r[i]=membus_read32(bus,addr);addr+=4;} c->r[rn]=addr; goto done_16; }
 cond_branch: { int cond=(insn>>8)&0xF; if(cond>=0xE) goto done_16; if(cond_check(c,cond)){int32_t off=(int8_t)(insn&0xFF); c->r[REG_PC]=pc+4+(off<<1);} goto done_16; }
 branch: { int32_t off=insn&0x7FF; if(off&0x400) off|=0xFFFFF800; c->r[REG_PC]=pc+4+(off<<1); goto done_16; }
-unknown16: { uint32_t _off; const char *_fn=sym_lookup(pc,&_off); fprintf(stderr,"Unknown 16-bit insn: 0x%04X at 0x%08X (%s+0x%x) LR=0x%08X\n",insn,pc,_fn?_fn:"???",_off,c->r[14]); exit(1); }
+unknown16: { fprintf(stderr,"Unknown 16-bit insn: 0x%04X at 0x%08X LR=0x%08X\n",insn,pc,c->r[14]); exit(1); }
 
 done_16:
     if (in_it) {
@@ -871,10 +871,8 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
     }
     not_cond_branch: ;
 
-    uint32_t _off;
-    const char *_fn = sym_lookup(pc, &_off);
-    fprintf(stderr, "Unknown 32-bit insn: 0x%08X at 0x%08X (%s+0x%x) LR=0x%08X\n",
-            insn, pc, _fn ? _fn : "???", _off, c->r[14]);
+    fprintf(stderr, "Unknown 32-bit insn: 0x%08X at 0x%08X LR=0x%08X\n",
+            insn, pc, c->r[14]);
     exit(1);
     return -1;
 }

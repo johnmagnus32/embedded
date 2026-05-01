@@ -36,6 +36,7 @@ struct membus;
 /* cpu_step return codes */
 #define CPU_OK              0
 #define CPU_SEMIHOST_EXIT   0x100  /* OR'd with exit code in low byte */
+#define CPU_BREAKPOINT      0x200  /* hit BKPT #0 (0xBE00) */
 
 void armv7m_cpu_init(struct armv7m_cpu *cpu);
 void armv7m_cpu_reset(struct armv7m_cpu *cpu, struct membus *bus);
