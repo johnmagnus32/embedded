@@ -81,22 +81,6 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
         event_schedule(&b->soc.eq, EVT_CHARDEV_FLUSH, 10000, chardev_flush_cb, b);
 }
 
-/*
- * GPIO hold timer — simulate realistic button press duration.
- *
- * The browser sends press (gpio:1:0:1) and release (gpio:1:0:0) as
- * separate messages, but both can arrive in the same chardev read
- * because TCP batches them. Without a hold timer, the pin would go
- * high and immediately low — too fast for firmware that polls the
- * pin state (e.g. debouncing, or a game loop sampling at 30fps).
- *
- * The hold timer keeps the pin high for at least 100K cycles (~6ms
- * at 16MHz), ignoring early releases. This makes the emulated button
- * behave like a real mechanical switch: press → held → release, with
- * a duration that any firmware input strategy can observe.
- */
-static uint64_t gpio_hold_until[3][16];
-
 static void gameboy_poll_io(struct gameboy *b)
 {
     static char buf[256];
@@ -112,16 +96,8 @@ static void gameboy_poll_io(struct gameboy *b)
         *nl = 0;
         int port, pin, level;
         if (sscanf(buf, "gpio:%d:%d:%d", &port, &pin, &level) == 3
-            && port >= 0 && port < 3 && pin >= 0 && pin < 16) {
-            if (level) {
-                /* Hold press for at least 100K cycles (~6ms at 16MHz) */
-                gpio_hold_until[port][pin] = b->soc.cpu.cycle_count + 100000;
-                stm32_gpio_set_input(&b->soc.gpio[port], pin, 1);
-            } else if (b->soc.cpu.cycle_count >= gpio_hold_until[port][pin]) {
-                stm32_gpio_set_input(&b->soc.gpio[port], pin, 0);
-            }
-            /* else: release ignored, hold timer still active */
-        }
+            && port >= 0 && port < 3 && pin >= 0 && pin < 16)
+            stm32_gpio_set_input(&b->soc.gpio[port], pin, level);
         int ch, val;
         if (sscanf(buf, "dial:%d:%d", &ch, &val) == 2 && ch >= 0 && ch < 16)
             b->soc.adc.channels[ch] = (uint32_t)val;
@@ -129,17 +105,6 @@ static void gameboy_poll_io(struct gameboy *b)
         memmove(buf, nl + 1, rem);
         len = rem;
     }
-
-    /* Release held buttons whose timer expired */
-    for (int port = 0; port < 3; port++)
-        for (int pin = 0; pin < 16; pin++)
-            if (gpio_hold_until[port][pin] &&
-                b->soc.cpu.cycle_count >= gpio_hold_until[port][pin]) {
-                /* Only release if IDR is still high (wasn't re-pressed) */
-                if ((b->soc.gpio[port].idr >> pin) & 1)
-                    stm32_gpio_set_input(&b->soc.gpio[port], pin, 0);
-                gpio_hold_until[port][pin] = 0;
-            }
 }
 
 static void ili9341_refresh_cb(void *opaque)

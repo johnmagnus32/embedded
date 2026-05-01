@@ -327,9 +327,132 @@ Replace with the RSP packet handlers above. The breakpoint table, BKPT patching,
 
 ## Part 6: Update dbg/ to use GDB RSP
 
-The external debugger (`dbg/`) should also switch from the JSON protocol to GDB RSP. Update `dbg/src/dbg_client.c` to send/receive RSP packets instead of JSON. The command logic in `dbg_cmd.c` stays the same — it just calls different client functions.
+Update `dbg/src/dbg_client.c` to speak GDB RSP instead of the JSON protocol. The client sends RSP packets and parses RSP responses.
 
-Alternatively, `sim-dbg` could use GDB's MI (Machine Interface) protocol to drive `arm-none-eabi-gdb` as a subprocess, which then connects to the RSP stub. This avoids reimplementing RSP parsing in the debugger and gives you all of GDB's features for free. But that adds a GDB dependency.
+```c
+/* dbg_client.c — GDB RSP client */
+
+void dbg_send_packet(struct dbg_client *c, const char *data)
+{
+    uint8_t sum = 0;
+    for (const char *p = data; *p; p++) sum += (uint8_t)*p;
+    char buf[16384];
+    int n = snprintf(buf, sizeof(buf), "$%s#%02x", data, sum);
+    write(c->fd, buf, n);
+    /* Wait for + ACK */
+    char ack;
+    read(c->fd, &ack, 1);
+}
+
+int dbg_recv_packet(struct dbg_client *c, char *buf, int bufsize)
+{
+    char ch;
+    do { if (read(c->fd, &ch, 1) <= 0) return -1; } while (ch != '$');
+    int len = 0;
+    while (len < bufsize - 1) {
+        if (read(c->fd, &ch, 1) <= 0) return -1;
+        if (ch == '#') break;
+        buf[len++] = ch;
+    }
+    buf[len] = '\0';
+    char ck[2]; read(c->fd, ck, 2);  /* consume checksum */
+    write(c->fd, "+", 1);  /* send ACK */
+    return len;
+}
+```
+
+Update the convenience wrappers to format RSP instead of JSON:
+
+```c
+void dbg_read_regs(struct dbg_client *c, uint32_t regs[16], uint32_t *xpsr)
+{
+    dbg_send_packet(c, "g");
+    char buf[512];
+    dbg_recv_packet(c, buf, sizeof(buf));
+    /* Parse little-endian hex: each register is 8 hex chars */
+    for (int i = 0; i < 16; i++) {
+        uint32_t v = 0;
+        for (int b = 0; b < 4; b++) {
+            unsigned int byte;
+            sscanf(buf + i * 8 + b * 2, "%2x", &byte);
+            v |= byte << (b * 8);
+        }
+        regs[i] = v;
+    }
+    /* Skip FPA registers (8 × 12 bytes = 192 hex chars) */
+    int xpsr_off = 16 * 8 + 192;
+    uint32_t v = 0;
+    for (int b = 0; b < 4; b++) {
+        unsigned int byte;
+        sscanf(buf + xpsr_off + b * 2, "%2x", &byte);
+        v |= byte << (b * 8);
+    }
+    *xpsr = v;
+}
+
+void dbg_read_mem(struct dbg_client *c, uint32_t addr, uint8_t *out, int len)
+{
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "m%x,%x", addr, len);
+    dbg_send_packet(c, cmd);
+    char buf[8200];
+    dbg_recv_packet(c, buf, sizeof(buf));
+    for (int i = 0; i < len; i++) {
+        unsigned int b;
+        sscanf(buf + i * 2, "%2x", &b);
+        out[i] = (uint8_t)b;
+    }
+}
+
+void dbg_set_breakpoint(struct dbg_client *c, uint32_t addr)
+{
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "Z0,%x,2", addr);
+    dbg_send_packet(c, cmd);
+    char buf[64];
+    dbg_recv_packet(c, buf, sizeof(buf));  /* expect "OK" */
+}
+
+void dbg_del_breakpoint(struct dbg_client *c, uint32_t addr)
+{
+    char cmd[64];
+    snprintf(cmd, sizeof(cmd), "z0,%x,2", addr);
+    dbg_send_packet(c, cmd);
+    char buf[64];
+    dbg_recv_packet(c, buf, sizeof(buf));
+}
+
+void dbg_continue(struct dbg_client *c)
+{
+    dbg_send_packet(c, "c");
+    /* Response comes when target stops — handled by the async wait loop */
+}
+
+void dbg_step_instruction(struct dbg_client *c)
+{
+    dbg_send_packet(c, "s");
+    char buf[64];
+    dbg_recv_packet(c, buf, sizeof(buf));  /* "S05" */
+}
+
+void dbg_halt(struct dbg_client *c)
+{
+    /* Send raw 0x03 byte (Ctrl+C) — not a packet */
+    char ctrl_c = 0x03;
+    write(c->fd, &ctrl_c, 1);
+}
+
+uint32_t dbg_read_pc(struct dbg_client *c)
+{
+    uint32_t regs[16]; uint32_t xpsr;
+    dbg_read_regs(c, regs, &xpsr);
+    return regs[REG_PC];
+}
+```
+
+The command handlers in `dbg_cmd.c` don't change — they call `dbg_read_regs`, `dbg_read_mem`, `dbg_set_breakpoint`, etc. which now speak RSP internally. The `(dbg)` CLI experience is identical.
+
+This means sim-dbg can connect to any GDB RSP server — not just sim-core. It could connect to OpenOCD talking to real hardware, or to QEMU's GDB stub. And conversely, GDB can connect to sim-core's stub. Everything is interchangeable.
 
 ## Part 7: VS Code integration
 
