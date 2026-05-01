@@ -6,8 +6,7 @@
             "type": "sim-dbg",
             "request": "attach",
             "executable": "${workspaceFolder}/projects/gameboy/build/gameboy.elf",
-            "gdbTarget": "localhost:1234",
-            "debugServer": 0
+            "gdbTarget": "localhost:1234"
         }
     ]
 }

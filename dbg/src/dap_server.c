@@ -239,6 +239,7 @@ void dap_server_run(const char *connect_str, const char *elf_path)
 
     /* Redirect stderr to a log file so it doesn't corrupt DAP stdout */
     freopen("/tmp/sim-dbg-dap.log", "w", stderr);
+    fprintf(stderr, "DAP server started\n"); fflush(stderr);
 
     while (1) {
         char *msg = dap_read();
@@ -247,6 +248,7 @@ void dap_server_run(const char *connect_str, const char *elf_path)
         char command[64];
         json_get_str(msg, "command", command, sizeof(command));
         int seq = json_get_int(msg, "seq", 0);
+        fprintf(stderr, "DAP request: seq=%d cmd=%s\n", seq, command); fflush(stderr);
 
         if (strcmp(command, "initialize") == 0) {
             dap_response(seq, "initialize",
@@ -293,16 +295,17 @@ void dap_server_run(const char *connect_str, const char *elf_path)
         }
         else if (strcmp(command, "configurationDone") == 0) {
             dap_response(seq, "configurationDone", "");
-            send_stopped_event(&client, "entry");
+            /* Auto-continue to first breakpoint instead of stopping at entry */
+            do_dap_continue(&client);
         }
         else if (strcmp(command, "threads") == 0) {
             dap_response(seq, "threads",
                 "\"threads\":[{\"id\":1,\"name\":\"main\"}]");
         }
         else if (strcmp(command, "setBreakpoints") == 0) {
-            /* Clear old breakpoints for this file */
             char src_path[512];
             json_get_str(msg, "path", src_path, sizeof(src_path));
+            fprintf(stderr, "setBreakpoints: file=%s\n", src_path); fflush(stderr);
 
             /* Remove existing breakpoints for this file */
             for (int i = 0; i < ndap_bps; i++) {
@@ -336,6 +339,7 @@ void dap_server_run(const char *connect_str, const char *elf_path)
                     char spec[256];
                     snprintf(spec, sizeof(spec), "%s:%d", fname, line);
                     uint32_t addr = resolve_breakpoint(spec);
+                    fprintf(stderr, "  bp: %s -> 0x%08x\n", spec, addr); fflush(stderr);
 
                     if (addr && ndap_bps < MAX_DAP_BP) {
                         char cmd[64];
@@ -361,7 +365,11 @@ void dap_server_run(const char *connect_str, const char *elf_path)
                 }
             }
             bn += snprintf(bp_body + bn, sizeof(bp_body) - bn, "]");
+            fprintf(stderr, "  response: %s\n", bp_body); fflush(stderr);
             dap_response(seq, "setBreakpoints", bp_body);
+        }
+        else if (strcmp(command, "setFunctionBreakpoints") == 0) {
+            dap_response(seq, "setFunctionBreakpoints", "\"breakpoints\":[]");
         }
         else if (strcmp(command, "continue") == 0) {
             dap_response(seq, "continue", "\"allThreadsContinued\":true");
@@ -375,6 +383,25 @@ void dap_server_run(const char *connect_str, const char *elf_path)
         else if (strcmp(command, "stepIn") == 0) {
             do_dap_step(&client);
             dap_response(seq, "stepIn", "");
+            send_stopped_event(&client, "step");
+        }
+        else if (strcmp(command, "stepOut") == 0) {
+            /* Step out: continue until LR is reached */
+            uint32_t regs[16];
+            rsp_get_regs(&client, regs);
+            uint32_t lr = regs[14] & ~1u;
+            if (lr > 0x08000000 && lr < 0x08100000) {
+                char cmd[64];
+                snprintf(cmd, sizeof(cmd), "Z0,%x,2", lr);
+                dbg_send(&client, cmd);
+                dbg_recv(&client);
+                dbg_send(&client, "c");
+                dbg_recv(&client);
+                snprintf(cmd, sizeof(cmd), "z0,%x,2", lr);
+                dbg_send(&client, cmd);
+                dbg_recv(&client);
+            }
+            dap_response(seq, "stepOut", "");
             send_stopped_event(&client, "step");
         }
         else if (strcmp(command, "pause") == 0) {
@@ -391,43 +418,52 @@ void dap_server_run(const char *connect_str, const char *elf_path)
 
             char body[2048];
             int n = 0;
+            int nframes = 0;
             n += snprintf(body + n, sizeof(body) - n, "\"stackFrames\":[");
 
             /* Frame 0 */
             uint32_t off;
             const char *fn = sym_lookup(pc, &off);
-            int line;
+            int line = 0;
             const char *file = line_lookup(pc, &line);
-            n += snprintf(body + n, sizeof(body) - n,
-                "{\"id\":0,\"name\":\"%s\",\"line\":%d",
-                fn ? fn : "???", file ? line : 0);
-            if (file) {
-                extern char elf_comp_dir[512];
+            if (line < 1) line = 1;
+            extern char elf_comp_dir[512];
+            {
                 char full[1024];
-                snprintf(full, sizeof(full), "%s/%s", elf_comp_dir, file);
+                if (file)
+                    snprintf(full, sizeof(full), "%s/%s", elf_comp_dir, file);
+                if (nframes > 0) n += snprintf(body + n, sizeof(body) - n, ",");
                 n += snprintf(body + n, sizeof(body) - n,
-                    ",\"source\":{\"path\":\"%s\"}", full);
+                    "{\"id\":%d,\"name\":\"%s\",\"line\":%d,\"column\":1",
+                    nframes, fn ? fn : "???", line);
+                if (file)
+                    n += snprintf(body + n, sizeof(body) - n,
+                        ",\"source\":{\"name\":\"%s\",\"path\":\"%s\"}",
+                        file, full);
+                n += snprintf(body + n, sizeof(body) - n, "}");
+                nframes++;
             }
-            n += snprintf(body + n, sizeof(body) - n, "}");
 
             /* Frame 1 from LR */
             if (lr > 0x08000000 && lr < 0x08100000) {
                 fn = sym_lookup(lr, &off);
                 file = line_lookup(lr, &line);
-                n += snprintf(body + n, sizeof(body) - n,
-                    ",{\"id\":1,\"name\":\"%s\",\"line\":%d",
-                    fn ? fn : "???", file ? line : 0);
-                if (file) {
-                    extern char elf_comp_dir[512];
-                    char full[1024];
+                if (line < 1) line = 1;
+                char full[1024];
+                if (file)
                     snprintf(full, sizeof(full), "%s/%s", elf_comp_dir, file);
+                n += snprintf(body + n, sizeof(body) - n,
+                    ",{\"id\":%d,\"name\":\"%s\",\"line\":%d,\"column\":1",
+                    nframes, fn ? fn : "???", line);
+                if (file)
                     n += snprintf(body + n, sizeof(body) - n,
-                        ",\"source\":{\"path\":\"%s\"}", full);
-                }
+                        ",\"source\":{\"name\":\"%s\",\"path\":\"%s\"}",
+                        file, full);
                 n += snprintf(body + n, sizeof(body) - n, "}");
+                nframes++;
             }
 
-            n += snprintf(body + n, sizeof(body) - n, "],\"totalFrames\":2");
+            n += snprintf(body + n, sizeof(body) - n, "],\"totalFrames\":%d", nframes);
             dap_response(seq, "stackTrace", body);
         }
         else if (strcmp(command, "scopes") == 0) {
@@ -481,9 +517,14 @@ void dap_server_run(const char *connect_str, const char *elf_path)
         else if (strcmp(command, "evaluate") == 0) {
             char expr[256];
             json_get_str(msg, "expression", expr, sizeof(expr));
+            /* Strip leading "p " if user typed it */
+            const char *e = expr;
+            if (e[0] == 'p' && e[1] == ' ') e += 2;
+            fprintf(stderr, "  evaluate: '%s'\n", e); fflush(stderr);
 
-            /* Simple evaluation: try as symbol address, read memory */
-            uint32_t addr = sym_find_by_name(expr);
+            /* Try global symbol */
+            uint32_t addr = sym_find_by_name(e);
+            fprintf(stderr, "  sym_find: 0x%08x\n", addr); fflush(stderr);
             if (addr) {
                 uint32_t val = rsp_read_mem32(&client, addr);
                 char body[256];
@@ -491,11 +532,35 @@ void dap_server_run(const char *connect_str, const char *elf_path)
                     "\"result\":\"%u (0x%x)\",\"variablesReference\":0", val, val);
                 dap_response(seq, "evaluate", body);
             } else {
-                dap_response(seq, "evaluate",
-                    "\"result\":\"<unknown>\",\"variablesReference\":0");
+                /* Try as local variable via DWARF */
+                uint32_t regs[16];
+                rsp_get_regs(&client, regs);
+                uint32_t pc = regs[15];
+                int reg; uint32_t val;
+                int loc = var_lookup(e, pc, &reg, &val);
+                fprintf(stderr, "  var_lookup: loc=%d\n", loc); fflush(stderr);
+                if (loc == 1) {
+                    char body[256];
+                    snprintf(body, sizeof(body),
+                        "\"result\":\"%u (0x%x)\",\"variablesReference\":0",
+                        regs[reg], regs[reg]);
+                    dap_response(seq, "evaluate", body);
+                } else if (loc == 3) {
+                    uint32_t cfa = cfa_offset_at_pc(pc);
+                    uint32_t a = regs[13] + cfa + val;
+                    uint32_t v = rsp_read_mem32(&client, a);
+                    char body[256];
+                    snprintf(body, sizeof(body),
+                        "\"result\":\"%u (0x%x)\",\"variablesReference\":0", v, v);
+                    dap_response(seq, "evaluate", body);
+                } else {
+                    dap_response(seq, "evaluate",
+                        "\"result\":\"<unknown>\",\"variablesReference\":0");
+                }
             }
         }
         else if (strcmp(command, "disconnect") == 0) {
+            dap_event("terminated", "");
             dap_response(seq, "disconnect", "");
             dbg_close(&client);
             free(msg);

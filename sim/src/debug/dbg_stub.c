@@ -330,7 +330,7 @@ void dbg_stub_run(struct stub_ctx *ctx, int port)
     int opt = 1;
     setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in addr = { .sin_family = AF_INET, .sin_port = htons(port),
-                                .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
+                                .sin_addr.s_addr = htonl(INADDR_ANY) };
     if (bind(srv, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         LOG("Failed to bind GDB port %d", port);
         exit(1);

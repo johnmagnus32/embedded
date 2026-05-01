@@ -40,12 +40,12 @@ int main(int argc, char **argv)
             usage(argv[0]);
     }
 
-    if (!connect_str || !elf_path) usage(argv[0]);
-
     if (dap_mode) {
         dap_server_run(connect_str, elf_path);
         return 0;
     }
+
+    if (!connect_str || !elf_path) usage(argv[0]);
 
     /* Parse host:port */
     char host[256] = "127.0.0.1";

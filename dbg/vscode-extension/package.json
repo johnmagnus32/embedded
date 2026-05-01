@@ -9,6 +9,7 @@
         "debuggers": [{
             "type": "sim-dbg",
             "label": "ARM Simulator",
+            "program": "./sim-dbg-adapter.sh",
             "configurationAttributes": {
                 "attach": {
                     "required": ["executable", "gdbTarget"],
