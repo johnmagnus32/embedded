@@ -1,14 +1,8 @@
 #!/bin/bash
 # sim — Run the game in the browser (no debugger)
+# sim-web.py spawns sim-core internally, so we just launch sim-web.
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ELF="${1:?Usage: $0 <firmware.elf>}"
 
-"$DIR/build/sim-core" --machine gameboy --firmware "$ELF" \
-    --chardev display=9004 --chardev usart2=9002 --chardev audio=9005 \
-    --chardev trace=9003 --chardev io=9006 &
-SIM_PID=$!
-trap "kill $SIM_PID 2>/dev/null" EXIT
-
-sleep 0.5
-python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF"
+exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF"

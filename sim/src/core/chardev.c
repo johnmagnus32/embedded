@@ -108,13 +108,16 @@ void chardev_flush(struct chardev *cd)
             int n = write(cd->client_fd, cd->wbuf + sent, cd->wbuf_len - sent);
             if (n > 0) { sent += n; continue; }
             if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-                break;
+                break;  /* socket full — keep remaining data for next flush */
             cd->client_fd = -1;
             break;
         }
-        cd->wbuf_len = 0; /* data sent (or client disconnected) */
+        /* Shift unsent data to front of buffer */
+        if (sent > 0 && sent < cd->wbuf_len) {
+            memmove(cd->wbuf, cd->wbuf + sent, cd->wbuf_len - sent);
+        }
+        cd->wbuf_len -= sent;
     }
-    /* If no client, keep data in buffer for next flush */
 }
 
 void chardev_flush_all(struct chardev_table *t)

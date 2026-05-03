@@ -147,10 +147,13 @@ class SimWeb:
             HEADER_SIZE = 4
             def display_reader():
                 buf = b''
+                frame_count = 0
                 while True:
                     try:
                         data = self.display_sock.recv(262144)
-                        if not data: break
+                        if not data:
+                            log_web('display_reader: connection closed')
+                            break
                         buf += data
                         while len(buf) >= HEADER_SIZE:
                             ew = buf[0] | (buf[1] << 8)
@@ -161,8 +164,13 @@ class SimWeb:
                             self.display_h = eh
                             self.display_frame = buf[HEADER_SIZE:HEADER_SIZE + fsz]
                             buf = buf[HEADER_SIZE + fsz:]
+                            frame_count += 1
+                            if frame_count <= 3 or frame_count % 100 == 0:
+                                log_web(f'display_reader: frame {frame_count} ({ew}x{eh})')
                             self._frame_event.set()
-                    except: break
+                    except Exception as e:
+                        log_web(f'display_reader error: {e}')
+                        break
             self._frame_event = threading.Event()
             threading.Thread(target=display_reader, daemon=True).start()
 
@@ -292,7 +300,8 @@ class SimWeb:
         while True:
             try:
                 readable, _, _ = select.select([srv], [], [], 0.1)
-            except:
+            except Exception as e:
+                log_web(f'select error: {e}')
                 break
 
             for r in readable:
@@ -317,6 +326,7 @@ class SimWeb:
                         ew = self.display_w; eh = self.display_h
                         init = bytes([2]) + struct.pack('<HH', ew, eh)
                         conn.sendall(self._ws_encode(init))
+                        log_web(f'ws-display client connected ({ew}x{eh})')
                         with self._ws_lock:
                             self._ws_clients.append(conn)
                         continue
