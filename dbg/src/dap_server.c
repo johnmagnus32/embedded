@@ -19,10 +19,13 @@
 static const char *json_get_str(const char *json, const char *key, char *out, int outlen)
 {
     char pat[64];
-    snprintf(pat, sizeof(pat), "\"%s\":\"", key);
+    snprintf(pat, sizeof(pat), "\"%s\":", key);
     const char *p = strstr(json, pat);
     if (!p) { out[0] = 0; return NULL; }
     p += strlen(pat);
+    while (*p == ' ') p++;
+    if (*p != '"') { out[0] = 0; return NULL; }
+    p++;
     int i = 0;
     while (*p && *p != '"' && i < outlen - 1) out[i++] = *p++;
     out[i] = 0;
@@ -260,6 +263,7 @@ void dap_server_run(const char *connect_str, const char *elf_path)
     while (1) {
         char *msg = dap_read();
         if (!msg) break;
+        fprintf(stderr, "DAP raw: %s\n", msg); fflush(stderr);
 
         char command[64];
         json_get_str(msg, "command", command, sizeof(command));
@@ -311,8 +315,13 @@ void dap_server_run(const char *connect_str, const char *elf_path)
         }
         else if (strcmp(command, "configurationDone") == 0) {
             dap_response(seq, "configurationDone", "");
-            /* Auto-continue to first breakpoint instead of stopping at entry */
-            do_dap_continue(&client);
+            if (ndap_bps > 0) {
+                /* Breakpoints set — auto-continue to first one */
+                do_dap_continue(&client);
+            } else {
+                /* No breakpoints — stop at entry so user can set them */
+                send_stopped_event(&client, "entry");
+            }
         }
         else if (strcmp(command, "threads") == 0) {
             dap_response(seq, "threads",

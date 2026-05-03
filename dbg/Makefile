@@ -24,4 +24,7 @@ $(BUILD)/%.o: src/%.c $(HDRS)
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all clean
+test: $(BUILD)/sim-dbg
+	python3 tests/run_tests.py
+
+.PHONY: all clean test

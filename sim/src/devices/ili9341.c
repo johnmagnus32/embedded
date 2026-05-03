@@ -93,6 +93,8 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
 void ili9341_flush(struct ili9341 *d)
 {
     if (!d->chardev) return;
+    /* Drop any unsent previous frame — stale data is worse than a dropped frame */
+    d->chardev->wbuf_len = 0;
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
     chardev_write_buf(d->chardev, hdr, 4);

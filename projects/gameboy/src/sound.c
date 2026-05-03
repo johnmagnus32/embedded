@@ -1,59 +1,39 @@
 /*
- * sound.c — Audio synthesis via audio driver API
+ * sound.c — PCM audio playback with sound effects
  *
- * No register addresses. Uses audio_start() with a fill callback.
+ * Background music: 10-second loop from flash (loop_audio.h)
+ * Jump SFX: 0.5-second sample from flash (sfx_jump_audio.h)
+ * Both mixed together, volume controlled by ADC potentiometer.
  */
 
 #include "app.h"
 #include "drivers/audio.h"
 #include "drivers/adc.h"
 #include "trace.h"
+#include "loop_audio.h"
+#include "sfx_jump_audio.h"
 
-#define NOTE_C4  262
-#define NOTE_D4  294
-#define NOTE_E4  330
-#define NOTE_F4  349
-#define NOTE_G4  392
-#define NOTE_A4  440
-#define NOTE_B4  494
-#define NOTE_C5  523
-#define NOTE_REST 0
+static uint32_t audio_pos = 0;
 
-#define SAMPLE_RATE 22050
-#define BUF_SAMPLES 256
+/* SFX state — set by sfx_jump/sfx_beep, consumed by fill_audio */
+static volatile uint32_t sfx_pos = 0;
+static volatile uint32_t sfx_len = 0;
+static volatile const unsigned char *sfx_data = NULL;
 
-static const struct { uint16_t freq; uint16_t dur_ms; } melody[] = {
-    {NOTE_C4, 200}, {NOTE_E4, 200}, {NOTE_G4, 200}, {NOTE_C5, 400},
-    {NOTE_G4, 200}, {NOTE_E4, 200}, {NOTE_C4, 400},
-    {NOTE_REST, 200},
-    {NOTE_D4, 200}, {NOTE_F4, 200}, {NOTE_A4, 200}, {NOTE_B4, 400},
-    {NOTE_A4, 200}, {NOTE_F4, 200}, {NOTE_D4, 400},
-    {NOTE_REST, 200},
-};
-#define MELODY_LEN (sizeof(melody)/sizeof(melody[0]))
-
-/* SFX state */
-static volatile int sfx_active;
-static volatile uint16_t sfx_freq;
-static volatile uint16_t sfx_dur_ms;
-static volatile uint32_t sfx_phase;
-
-void sfx_jump(void) { sfx_freq = 880; sfx_dur_ms = 80; sfx_phase = 0; sfx_active = 1; }
-void sfx_beep(void) { sfx_freq = 1200; sfx_dur_ms = 50; sfx_phase = 0; sfx_active = 1; }
-
-/* Synthesis state */
-static uint32_t phase;
-static int note_idx;
-static uint32_t volume = 2048;
-static uint32_t sample_count;
-
-static int16_t square_sample(uint32_t p, uint16_t freq)
+void sfx_jump(void)
 {
-    if (freq == 0) return 0;
-    uint32_t half_period = SAMPLE_RATE / (2 * freq);
-    if (half_period == 0) half_period = 1;
-    return (p % (half_period * 2)) < half_period ? 8000 : -8000;
+    sfx_data = assets_sfx_jump_raw;
+    sfx_len = assets_sfx_jump_raw_len;
+    sfx_pos = 0;
 }
+
+void sfx_beep(void)
+{
+    sfx_jump();  /* reuse jump sound */
+}
+
+static uint32_t volume = 2048;
+static uint32_t sample_count = 0;
 
 /* Called from DMA ISR context via I2S driver */
 static void fill_audio(int16_t *buf, int count, void *user_data)
@@ -67,34 +47,21 @@ static void fill_audio(int16_t *buf, int count, void *user_data)
             sample_count = 0;
         }
 
-        uint16_t freq;
-        uint32_t p;
-        if (sfx_active) {
-            freq = sfx_freq;
-            p = i;
-        } else {
-            freq = melody[note_idx].freq;
-            p = phase + i;
+        /* Background music from PCM loop */
+        int16_t music = ((int16_t)assets_loop_raw[audio_pos] - 128) * 200;
+        audio_pos = (audio_pos + 1) % assets_loop_raw_len;
+
+        /* Sound effect from PCM sample */
+        int16_t sfx = 0;
+        if (sfx_pos < sfx_len && sfx_data) {
+            sfx = ((int16_t)sfx_data[sfx_pos] - 128) * 256;
+            sfx_pos++;
         }
 
-        int16_t s = square_sample(p, freq);
-        s = (int16_t)((int32_t)s * (int32_t)volume / 4095);
-        buf[i] = s;
-    }
-
-    /* Advance melody state */
-    if (!sfx_active) {
-        uint32_t note_samples = (uint32_t)melody[note_idx].dur_ms * SAMPLE_RATE / 1000;
-        phase += count;
-        if (phase >= note_samples) {
-            phase = 0;
-            note_idx = (note_idx + 1) % MELODY_LEN;
-        }
-    } else {
-        sfx_phase += count;
-        uint32_t sfx_samples = (uint32_t)sfx_dur_ms * SAMPLE_RATE / 1000;
-        if (sfx_phase >= sfx_samples)
-            sfx_active = 0;
+        /* Mix and apply volume */
+        int16_t mix = music + sfx;
+        mix = (int16_t)((int32_t)mix * (int32_t)volume / 4095);
+        buf[i] = mix;
     }
     trace_end();
 }

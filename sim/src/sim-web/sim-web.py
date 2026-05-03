@@ -148,12 +148,14 @@ class SimWeb:
             def display_reader():
                 buf = b''
                 frame_count = 0
+                total_bytes = 0
                 while True:
                     try:
                         data = self.display_sock.recv(262144)
                         if not data:
                             log_web('display_reader: connection closed')
                             break
+                        total_bytes += len(data)
                         buf += data
                         while len(buf) >= HEADER_SIZE:
                             ew = buf[0] | (buf[1] << 8)
@@ -165,8 +167,6 @@ class SimWeb:
                             self.display_frame = buf[HEADER_SIZE:HEADER_SIZE + fsz]
                             buf = buf[HEADER_SIZE + fsz:]
                             frame_count += 1
-                            if frame_count <= 3 or frame_count % 100 == 0:
-                                log_web(f'display_reader: frame {frame_count} ({ew}x{eh})')
                             self._frame_event.set()
                     except Exception as e:
                         log_web(f'display_reader error: {e}')
@@ -323,9 +323,13 @@ class SimWeb:
 
                 elif req.startswith('GET /ws-display'):
                     if self._ws_upgrade(conn, data):
-                        ew = self.display_w; eh = self.display_h
+                        ew = 320; eh = 240  # fixed ILI9341 resolution
                         init = bytes([2]) + struct.pack('<HH', ew, eh)
                         conn.sendall(self._ws_encode(init))
+                        # Send current frame as full (type=0) so client has initial content
+                        if self.display_frame:
+                            payload = bytes([0]) + self.display_frame
+                            conn.sendall(self._ws_encode(payload))
                         log_web(f'ws-display client connected ({ew}x{eh})')
                         with self._ws_lock:
                             self._ws_clients.append(conn)
