@@ -10,6 +10,7 @@ struct stm32_dma_stream;
 
 struct stm32_spi {
     uint32_t cr1, cr2, sr;
+    uint8_t  rx_data;             /* last received byte from MISO */
     struct spi_bus bus;
     /* SPI clock pacing */
     uint32_t        spi_cycles_per_byte;  /* CPU cycles per SPI byte transfer */

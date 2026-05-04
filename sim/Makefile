@@ -13,7 +13,7 @@ SRCS = src/main.c \
        src/hw/stm32/stm32_uart.c src/hw/stm32/stm32_spi.c src/hw/stm32/stm32_gpio.c \
        src/hw/stm32/stm32_exti.c src/hw/stm32/stm32_adc.c src/hw/stm32/stm32_dma.c \
        src/hw/stm32/stm32_syscfg.c \
-       src/devices/ili9341.c src/devices/max98357a.c src/devices/trace_dev.c \
+       src/devices/ili9341.c src/devices/max98357a.c src/devices/trace_dev.c src/devices/w25q128.c \
        src/soc/stm32f411.c \
        src/machine/gameboy.c src/machine/machine.c \
        src/debug/dbg_stub.c

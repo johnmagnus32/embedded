@@ -44,9 +44,10 @@ void stm32f411_init(struct stm32f411 *soc, uint32_t sysclk_hz)
     stm32_uart_init(&soc->usarts[1], NULL);
     stm32_uart_init(&soc->usarts[2], NULL);
 
-    /* SPIs: SPI1 0x40013000, SPI2 0x40003800 */
+    /* SPIs: SPI1 0x40013000, SPI2 0x40003800, SPI3 0x40003C00 */
     stm32_spi_init(&soc->spis[0]);
     stm32_spi_init(&soc->spis[1]);
+    stm32_spi_init(&soc->spis[2]);
 
     /* GPIO: GPIOA 0x40020000, GPIOB 0x40020400, GPIOC 0x40020800 */
     stm32_gpio_init(&soc->gpio[0]);
@@ -112,6 +113,7 @@ void stm32f411_init(struct stm32f411 *soc, uint32_t sysclk_hz)
     /* SPIs */
     membus_register(&soc->bus, 0x40013000, 0x24, stm32_spi_read, stm32_spi_write, &soc->spis[0]);
     membus_register(&soc->bus, 0x40003800, 0x24, stm32_spi_read, stm32_spi_write, &soc->spis[1]);
+    membus_register(&soc->bus, 0x40003C00, 0x24, stm32_spi_read, stm32_spi_write, &soc->spis[2]);
 
     /* GPIO */
     membus_register(&soc->bus, 0x40020000, 0x0400, stm32_gpio_read, stm32_gpio_write, &soc->gpio[0]);
@@ -144,6 +146,9 @@ void stm32f411_init(struct stm32f411 *soc, uint32_t sysclk_hz)
     soc->spis[1].eq = &soc->eq;
     soc->spis[1].cycle_ptr = &soc->cpu.cycle_count;
     soc->spis[1].spi_evt_id = EVT_SPI1_TXE;
+    soc->spis[2].eq = &soc->eq;
+    soc->spis[2].cycle_ptr = &soc->cpu.cycle_count;
+    soc->spis[2].spi_evt_id = EVT_SPI2_TXE;
 }
 
 /* ---- Event callbacks ---- */

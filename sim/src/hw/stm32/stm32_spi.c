@@ -60,7 +60,7 @@ uint32_t stm32_spi_read(void *opaque, uint32_t offset)
     case SPI_CR1:     return s->cr1;
     case SPI_CR2:     return s->cr2;
     case SPI_SR:      return s->sr;
-    case SPI_DR:      s->sr &= ~SR_RXNE; return 0;
+    case SPI_DR:      s->sr &= ~SR_RXNE; return s->rx_data;
     case SPI_I2SCFGR: return s->i2scfgr;
     case SPI_I2SPR:   return s->i2spr;
     default:          return 0;
@@ -128,7 +128,7 @@ void stm32_spi_write(void *opaque, uint32_t offset, uint32_t val)
             }
         } else {
             /* Normal SPI: transfer byte, clear TXE, schedule TXE re-assertion */
-            spi_bus_transfer(&s->bus, (uint8_t)val);
+            s->rx_data = spi_bus_transfer(&s->bus, (uint8_t)val);
             s->sr |= SR_RXNE;
             s->sr &= ~(SR_TXE | SR_BSY);
             s->sr |= SR_BSY;

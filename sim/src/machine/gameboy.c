@@ -60,6 +60,16 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     b->soc.spis[1].i2s_sink = &b->audio.sink;
     fprintf(stderr, "[board] MAX98357A on I2S2 sink, chardev=%s\n", audio_cd ? "audio" : "none");
 
+    /* W25Q128 external flash on SPI3, CS on PB0 */
+    w25q128_init(&b->flash);
+    b->flash.cycle_count_ptr = &b->soc.cpu.cycle_count;
+    int flash_idx = spi_bus_attach(&b->soc.spis[2].bus, &b->flash, w25q128_transfer);
+    /* CS pin: GPIOB pin 0 (active low) — toggles bus cs_active + device state */
+    b->flash.spi_slave = &b->soc.spis[2].bus.slaves[flash_idx];
+    b->soc.gpio[1].out[0].handler = w25q128_cs_handler;
+    b->soc.gpio[1].out[0].opaque = &b->flash;
+    fprintf(stderr, "[board] W25Q128 on SPI3, CS=PB0\n");
+
     /* Board I/O chardev for external input */
     b->io_chardev = chardevs ? chardev_find(chardevs, "io") : NULL;
     b->chardevs = chardevs;
@@ -153,6 +163,19 @@ static uint8_t **gameboy_get_ram(void *board)
 static uint32_t gameboy_get_sysclk(void *board)
 { return ((struct gameboy *)board)->soc.sysclk_hz; }
 
+static int gameboy_load_device(void *board, const char *name, const char *path)
+{
+    struct gameboy *b = (struct gameboy *)board;
+    if (strcmp(name, "flash0") == 0) {
+        int n = w25q128_load(&b->flash, path);
+        if (n < 0) { fprintf(stderr, "[board] Failed to load flash: %s\n", path); return -1; }
+        fprintf(stderr, "[board] Loaded %d bytes into W25Q128 from %s\n", n, path);
+        return 0;
+    }
+    fprintf(stderr, "[board] Unknown device: %s\n", name);
+    return -1;
+}
+
 const struct machine_desc gameboy_machine = {
     .name        = "gameboy",
     .description = "STM32F411 + ILI9341 display",
@@ -164,4 +187,5 @@ const struct machine_desc gameboy_machine = {
     .get_flash   = gameboy_get_flash,
     .get_ram     = gameboy_get_ram,
     .get_sysclk  = gameboy_get_sysclk,
+    .load_device = gameboy_load_device,
 };

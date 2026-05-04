@@ -9,7 +9,7 @@ BUILD = build
 FUNC_ARMV7M = test_alu test_alu2 test_arith test_call test_it test_ldm_stm \
               test_ldst_w test_mem test_misc test_shift test_wide
 FUNC_STM32  = test_dma test_dma_spi test_dma_i2s_kick test_gpio_exti test_gpio_irq_chardev test_syscfg test_irq test_it_irq \
-              test_uart_chardev
+              test_uart_chardev test_w25q128
 FUNC_CORE   = test_elf
 
 # Performance tests

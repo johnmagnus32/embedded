@@ -21,6 +21,7 @@ struct machine_desc {
     uint8_t             **(*get_ram)(void *board);
     struct event_queue   *(*get_eq)(void *board);
     uint32_t              (*get_sysclk)(void *board);
+    int  (*load_device)(void *board, const char *name, const char *path);
 };
 
 const struct machine_desc *machine_find(const char *name);

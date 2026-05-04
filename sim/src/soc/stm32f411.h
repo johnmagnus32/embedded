@@ -15,7 +15,7 @@
 #include "event_queue.h"
 
 #define STM32F411_NUM_USARTS 3
-#define STM32F411_NUM_SPIS   2
+#define STM32F411_NUM_SPIS   3
 #define STM32F411_NUM_GPIO   3
 
 struct stm32f411 {

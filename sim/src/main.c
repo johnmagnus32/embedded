@@ -74,6 +74,7 @@ int main(int argc, char **argv)
     const char *elf_path = NULL;
     int gdb_port = 0;
     int realtime = 0;
+    const char *flash_path = NULL;
 
     static struct chardev_table chardevs;
     chardev_table_init(&chardevs);
@@ -87,6 +88,11 @@ int main(int argc, char **argv)
             gdb_port = atoi(argv[++i]);
         else if (strcmp(argv[i], "--chardev") == 0 && i + 1 < argc)
             chardev_add(&chardevs, argv[++i]);
+        else if (strcmp(argv[i], "--device") == 0 && i + 1 < argc) {
+            char *arg = argv[++i];
+            if (strncmp(arg, "flash0=", 7) == 0)
+                flash_path = arg + 7;
+        }
         else if (strcmp(argv[i], "--realtime") == 0)
             realtime = 1;
     }
@@ -104,6 +110,9 @@ int main(int argc, char **argv)
 
     void *board = calloc(1, mach->board_size);
     mach->init(board, chardevs.count > 0 ? &chardevs : NULL);
+
+    if (flash_path && mach->load_device)
+        mach->load_device(board, "flash0", flash_path);
 
     struct armv7m_cpu *cpu = mach->get_cpu(board);
     struct membus *bus = mach->get_bus(board);

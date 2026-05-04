@@ -17,6 +17,7 @@ enum event_id {
     EVT_SYSTICK = 1,
     EVT_SPI0_TXE,
     EVT_SPI1_TXE,
+    EVT_SPI2_TXE,
     EVT_ILI9341_REFRESH,
     EVT_IO_POLL,
     EVT_CHARDEV_FLUSH,

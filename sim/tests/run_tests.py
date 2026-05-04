@@ -325,7 +325,7 @@ def main():
     passed += ok; failed += not ok
 
     print("\nfunc/hw/stm32:")
-    for name in ["test_irq", "test_it_irq", "test_gpio_exti", "test_syscfg", "test_dma", "test_dma_spi", "test_dma_i2s_kick"]:
+    for name in ["test_irq", "test_it_irq", "test_gpio_exti", "test_syscfg", "test_dma", "test_dma_spi", "test_dma_i2s_kick", "test_w25q128"]:
         ok = run_headless(name, elf("func/hw/stm32", name))
         passed += ok; failed += not ok
 

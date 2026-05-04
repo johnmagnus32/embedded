@@ -6,6 +6,7 @@
 #include "trace_dev.h"
 #include "chardev.h"
 #include "max98357a.h"
+#include "w25q128.h"
 
 #define BOARD_SYSCLK_HZ  16000000
 
@@ -14,6 +15,7 @@ struct gameboy {
     struct ili9341   *display;
     struct trace_dev  trace;
     struct max98357a  audio;
+    struct w25q128    flash;
     struct chardev   *io_chardev;
     struct chardev_table *chardevs;
     uint64_t          next_io_poll;
