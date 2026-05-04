@@ -18,7 +18,7 @@ static void chardev_flush_cb(void *opaque);
 
 void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 {
-    stm32f411_init(&b->soc);
+    stm32f411_init(&b->soc, BOARD_SYSCLK_HZ);
     b->display = NULL;
 
     /* Wire chardevs to UARTs */
@@ -119,6 +119,7 @@ static void io_poll_cb(void *opaque)
 static void chardev_flush_cb(void *opaque)
 {
     struct gameboy *b = (struct gameboy *)opaque;
+    ili9341_send(b->display);  /* drain display frame via double-buffer */
     chardev_flush_all(b->chardevs);
     event_schedule(&b->soc.eq, EVT_CHARDEV_FLUSH,
                    b->soc.cpu.cycle_count + 10000,
@@ -149,6 +150,9 @@ static uint8_t **gameboy_get_flash(void *board)
 static uint8_t **gameboy_get_ram(void *board)
 { return &((struct gameboy *)board)->soc.ram; }
 
+static uint32_t gameboy_get_sysclk(void *board)
+{ return ((struct gameboy *)board)->soc.sysclk_hz; }
+
 const struct machine_desc gameboy_machine = {
     .name        = "gameboy",
     .description = "STM32F411 + ILI9341 display",
@@ -159,4 +163,5 @@ const struct machine_desc gameboy_machine = {
     .get_bus     = gameboy_get_bus,
     .get_flash   = gameboy_get_flash,
     .get_ram     = gameboy_get_ram,
+    .get_sysclk  = gameboy_get_sysclk,
 };

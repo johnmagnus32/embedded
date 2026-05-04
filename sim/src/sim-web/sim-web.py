@@ -42,6 +42,7 @@ class SimWeb:
         cmd = [sim_core,
                '--machine', self.machine,
                '--firmware', self.elf,
+               '--realtime',
                '--chardev', f'usart2={UART_PORT}',
                '--chardev', f'trace={TRACE_PORT}',
                '--chardev', f'display={DISPLAY_PORT}',
@@ -205,9 +206,11 @@ class SimWeb:
                         dead = []
                         for c in self._ws_clients:
                             try:
-                                c.settimeout(0.5)
-                                c.sendall(frame)
-                            except:
+                                c.setblocking(False)
+                                c.sendall(frame)  # non-blocking: raises if can't send all
+                            except BlockingIOError:
+                                pass  # frame dropped — client will get next one
+                            except OSError:
                                 dead.append(c)
                         for c in dead:
                             try: c.close()

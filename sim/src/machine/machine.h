@@ -20,6 +20,7 @@ struct machine_desc {
     uint8_t             **(*get_flash)(void *board);
     uint8_t             **(*get_ram)(void *board);
     struct event_queue   *(*get_eq)(void *board);
+    uint32_t              (*get_sysclk)(void *board);
 };
 
 const struct machine_desc *machine_find(const char *name);

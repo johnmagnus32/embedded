@@ -39,7 +39,7 @@ struct stm32f411 {
     struct event_queue    eq;
 };
 
-void stm32f411_init(struct stm32f411 *soc);
+void stm32f411_init(struct stm32f411 *soc, uint32_t sysclk_hz);
 int  stm32f411_tick(struct stm32f411 *soc);
 
 #endif

@@ -35,13 +35,20 @@ void sfx_beep(void)
 static uint32_t volume = 2048;
 static uint32_t sample_count = 0;
 
-/* Called from DMA ISR context via I2S driver */
+/* Called from DMA ISR context via I2S driver.
+ * Buffer is sent to I2S as sequential 16-bit words.
+ * I2S alternates left/right, so we must interleave: L,R,L,R,...
+ * For mono playback, write each sample twice. */
 static void fill_audio(int16_t *buf, int count, void *user_data)
 {
     trace_begin("audio_fill");
     (void)user_data;
 
-    for (int i = 0; i < count; i++) {
+    /* count is the number of 16-bit words in the buffer.
+     * Since I2S is stereo, we get count/2 sample slots. */
+    int nsamples = count / 2;
+
+    for (int i = 0; i < nsamples; i++) {
         if (++sample_count >= 256) {
             volume = adc_read(adc_dev);
             sample_count = 0;
@@ -61,7 +68,10 @@ static void fill_audio(int16_t *buf, int count, void *user_data)
         /* Mix and apply volume */
         int16_t mix = music + sfx;
         mix = (int16_t)((int32_t)mix * (int32_t)volume / 4095);
-        buf[i] = mix;
+
+        /* Stereo interleave: same sample for left and right */
+        buf[i * 2]     = mix;  /* left */
+        buf[i * 2 + 1] = mix;  /* right */
     }
     trace_end();
 }

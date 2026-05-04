@@ -16,7 +16,7 @@ struct chardev {
     int port;         /* TCP port to listen on */
     int srv_fd;       /* listening socket */
     int client_fd;    /* connected client, -1 if none */
-    uint8_t wbuf[160000]; /* write buffer — large enough for one display frame */
+    uint8_t wbuf[160000]; /* write buffer — fits one display frame */
     int wbuf_len;
 };
 

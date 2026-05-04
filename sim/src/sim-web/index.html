@@ -79,6 +79,7 @@ function _updateFps() {
 
 function _applyFrame(data, isDelta) {
   if (!_lcdRaw) return;
+  if (isDelta && data.byteLength === 0) return;  /* empty delta = no changes */
   if (isDelta) {
     const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
     let off = 0;
@@ -124,6 +125,12 @@ function connectDisplayWS() {
       return;
     }
     _applyFrame(payload, type === 1);
+    /* Detect stalls: log if gap between renders exceeds 50ms */
+    const _now = performance.now();
+    if (window._lastRender && _now - window._lastRender > 20) {
+      console.log('DISPLAY STALL: ' + (_now - window._lastRender).toFixed(0) + 'ms gap, delta=' + (type===1) + ' size=' + payload.byteLength);
+    }
+    window._lastRender = _now;
   };
   ws.onclose = () => setTimeout(connectDisplayWS, 2000);
 }
@@ -158,12 +165,10 @@ function initAudio() {
     const samples = new Int16Array(evt.data);
     const nFrames = samples.length / 2;
     if (nFrames < 1) return;
-    const ab = _audioCtx.createBuffer(2, nFrames, AUDIO_SAMPLE_RATE);
-    const chL = ab.getChannelData(0);
-    const chR = ab.getChannelData(1);
+    const ab = _audioCtx.createBuffer(1, nFrames, AUDIO_SAMPLE_RATE);
+    const ch = ab.getChannelData(0);
     for (let i = 0; i < nFrames; i++) {
-      chL[i] = samples[i * 2]     / 32768;
-      chR[i] = samples[i * 2 + 1] / 32768;
+      ch[i] = samples[i * 2] / 32768;  /* just left channel (mono) */
     }
     const src = _audioCtx.createBufferSource();
     src.buffer = ab;

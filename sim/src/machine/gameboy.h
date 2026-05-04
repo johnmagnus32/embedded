@@ -7,6 +7,8 @@
 #include "chardev.h"
 #include "max98357a.h"
 
+#define BOARD_SYSCLK_HZ  16000000
+
 struct gameboy {
     struct stm32f411  soc;
     struct ili9341   *display;

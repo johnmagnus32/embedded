@@ -29,11 +29,11 @@ static uint32_t demcr_val;
 static uint32_t demcr_read(void *opaque, uint32_t offset)  { (void)opaque; (void)offset; return demcr_val; }
 static void     demcr_write(void *opaque, uint32_t offset, uint32_t val) { (void)opaque; (void)offset; demcr_val = val; }
 
-void stm32f411_init(struct stm32f411 *soc)
+void stm32f411_init(struct stm32f411 *soc, uint32_t sysclk_hz)
 {
     soc->flash = calloc(1, FLASH_SIZE);
     soc->ram   = calloc(1, RAM_SIZE);
-    soc->sysclk_hz = 16000000;
+    soc->sysclk_hz = sysclk_hz;
 
     armv7m_cpu_init(&soc->cpu);
     armv7m_nvic_init(&soc->nvic);

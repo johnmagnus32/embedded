@@ -19,6 +19,7 @@ static inline void display_fill_rect(const struct device *dev,
                                      uint16_t x, uint16_t y,
                                      uint16_t w, uint16_t h, uint16_t color)
 {
+    if (w == 0 || h == 0) return;
     const struct display_driver_api *api = dev->api;
     api->fill_rect(dev, x, y, w, h, color);
 }

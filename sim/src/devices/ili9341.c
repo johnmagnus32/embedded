@@ -1,11 +1,17 @@
 /*
  * ili9341.c — ILI9341 SPI display controller emulation
  *
- * Firmware writes pixels via SPI. The internal refresh timer pushes
- * the framebuffer to the chardev at 60Hz, like real hardware.
+ * Double-buffered frame output:
+ *   ili9341_flush() writes a complete frame into the write slot.
+ *   ili9341_send() drains the ready slot to the chardev TCP socket.
+ *   Frames are never partially overwritten — every frame the receiver
+ *   gets is complete.
  */
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include "ili9341.h"
 #include "chardev.h"
 
@@ -16,6 +22,8 @@ void ili9341_init(struct ili9341 *d)
     d->row_end = ILI9341_H - 1;
     d->refresh_interval = 16000000 / ILI9341_REFRESH_HZ;
     d->next_refresh = 0;
+    d->send_ready = 0;
+    d->send_write = 1;
 }
 
 void ili9341_set_dc(void *opaque, int level)
@@ -41,11 +49,8 @@ static void write_pixel(struct ili9341 *d, uint16_t pixel)
     int r = d->cur_row, c = d->cur_col;
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
     if (r < eh && c < ew) {
-        int px, py;
-        if (d->madctl & 0x20) { px = r; py = c; }
-        else { px = c; py = r; }
-        if (py < ILI9341_H && px < ILI9341_W)
-            d->fb[py * ILI9341_W + px] = pixel;
+        /* Always store in row-major output order so flush is a straight memcpy */
+        d->fb[r * ew + c] = pixel;
     }
     advance_cursor(d);
 }
@@ -93,20 +98,60 @@ uint8_t ili9341_transfer(void *dev, uint8_t byte)
 void ili9341_flush(struct ili9341 *d)
 {
     if (!d->chardev) return;
-    /* Drop any unsent previous frame — stale data is worse than a dropped frame */
-    d->chardev->wbuf_len = 0;
+
     int ew = ili9341_eff_w(d), eh = ili9341_eff_h(d);
-    uint8_t hdr[4] = { ew & 0xFF, ew >> 8, eh & 0xFF, eh >> 8 };
-    chardev_write_buf(d->chardev, hdr, 4);
-    if (d->madctl & 0x20) {
-        static uint16_t tbuf[ILI9341_W * ILI9341_H];
-        for (int y = 0; y < eh; y++)
-            for (int x = 0; x < ew; x++)
-                tbuf[y * ew + x] = d->fb[x * ILI9341_W + y];
-        chardev_write_buf(d->chardev, (const uint8_t *)tbuf, ew * eh * 2);
-    } else {
-        chardev_write_buf(d->chardev, (const uint8_t *)d->fb, ILI9341_W * ILI9341_H * 2);
+    uint8_t *out = d->send_frames[d->send_write];
+    int pos = 0;
+
+    /* Header */
+    out[pos++] = ew & 0xFF;
+    out[pos++] = ew >> 8;
+    out[pos++] = eh & 0xFF;
+    out[pos++] = eh >> 8;
+
+    /* Pixel data — already in row-major output order from write_pixel */
+    int frame_bytes = ew * eh * 2;
+    memcpy(out + pos, d->fb, frame_bytes);
+    pos += frame_bytes;
+
+    /* Swap: make this frame the ready frame */
+    int old_write = d->send_write;
+    d->send_write = d->send_ready;
+    d->send_ready = old_write;
+    d->send_size = pos;
+    d->send_offset = 0;
+    d->has_ready_frame = 1;
+}
+
+void ili9341_send(struct ili9341 *d)
+{
+    if (!d->has_ready_frame || !d->chardev) return;
+
+    /* Ensure client is connected */
+    if (d->chardev->client_fd < 0) {
+        chardev_try_accept(d->chardev);
+        if (d->chardev->client_fd < 0) return;
     }
+
+    /* Send as much as TCP will accept */
+    while (d->send_offset < d->send_size) {
+        int remaining = d->send_size - d->send_offset;
+        int n = write(d->chardev->client_fd,
+                      d->send_frames[d->send_ready] + d->send_offset,
+                      remaining);
+        if (n > 0) {
+            d->send_offset += n;
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+            return;  /* socket full, try again next flush */
+        /* Error — client disconnected */
+        d->chardev->client_fd = -1;
+        return;
+    }
+
+    /* Entire frame sent */
+    d->has_ready_frame = 0;
 }
 
 void ili9341_tick(struct ili9341 *d)
