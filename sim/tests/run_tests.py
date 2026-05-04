@@ -348,7 +348,7 @@ def main():
     for name in ["test_spi_throughput", "test_membus",
                   "test_spi_fps_full", "test_spi_fps_partial", "test_spi_fps_sustained",
                   "test_dma_fps", "test_dma_fps_full", "test_dma_fps_sustained",
-                  "test_i2s_cpu", "test_i2s_dma"]:
+                  "test_i2s_cpu", "test_i2s_dma", "test_w25q128_perf"]:
         ok = run_headless(name, elf("perf/hw/stm32", name))
         passed += ok; failed += not ok
 

@@ -17,7 +17,7 @@ PERF_ARMV7M = test_mips test_irq_latency test_systick_period
 PERF_STM32  = test_spi_throughput test_membus \
               test_spi_fps_full test_spi_fps_partial test_spi_fps_sustained \
               test_dma_fps test_dma_fps_full test_dma_fps_sustained \
-              test_i2s_cpu test_i2s_dma
+              test_i2s_cpu test_i2s_dma test_w25q128_perf
 PERF_ILI    = test_display_refresh test_display_cpu test_display_dma
 PERF_MAX    = test_audio
 
