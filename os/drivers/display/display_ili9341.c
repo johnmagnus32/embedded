@@ -26,6 +26,7 @@ struct ili9341_data {
 
 DEVICE_DT_DECLARE(spi1);
 DEVICE_DT_DECLARE(gpioa);
+DEVICE_DT_DECLARE(gpiob);
 
 static void ili9341_send_cmd(struct ili9341_data *data,
                              const struct ili9341_config *cfg, uint8_t cmd)
@@ -114,7 +115,7 @@ static int ili9341_init(const struct device *dev)
     struct ili9341_data *data = dev->data;
 
     data->spi = DEVICE_DT_GET(spi1);
-    data->dc_gpio = DEVICE_DT_GET(gpioa);
+    data->dc_gpio = DEVICE_DT_GET(gpiob);
 
     /* Configure DC pin as output */
     gpio_pin_configure(data->dc_gpio, cfg->dc_pin, GPIO_OUTPUT);

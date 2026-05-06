@@ -45,6 +45,25 @@ extern char _heap_size;
 
 void main(void)
 {
+    /* Raw UART1 init for early debug — same as blink project */
+    *(volatile uint32_t *)0x40023830 |= (1 << 0);   /* RCC AHB1ENR: GPIOA */
+    *(volatile uint32_t *)0x40023844 |= (1 << 4);   /* RCC APB2ENR: USART1 */
+    for (volatile int d = 0; d < 100; d++) {}
+    *(volatile uint32_t *)0x40020000 &= ~(3 << 18); /* PA9 AF mode */
+    *(volatile uint32_t *)0x40020000 |=  (2 << 18);
+    *(volatile uint32_t *)0x40020024 &= ~(0xF << 4); /* PA9 AF7 */
+    *(volatile uint32_t *)0x40020024 |=  (7 << 4);
+    *(volatile uint32_t *)0x40011008 = 0x8B;         /* BRR: 115200 @ 16MHz */
+    *(volatile uint32_t *)0x4001100C = (1 << 13);    /* UE */
+    for (volatile int d = 0; d < 100; d++) {}
+    *(volatile uint32_t *)0x4001100C |= (1 << 3);   /* TE */
+    for (volatile int d = 0; d < 1000; d++) {}
+    const char *msg = "ALIVE\r\n";
+    while (*msg) {
+        while (!(*(volatile uint32_t *)0x40011000 & (1 << 7))) {}
+        *(volatile uint32_t *)0x40011004 = *msg++;
+    }
+
     uart      = DEVICE_DT_GET(usart1);
     display   = DEVICE_DT_GET(ili9341);
     audio_dev = DEVICE_DT_GET(i2s2);
