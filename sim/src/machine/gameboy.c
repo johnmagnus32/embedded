@@ -23,6 +23,11 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
 
     /* Wire chardevs to UARTs */
     struct chardev *cd;
+    cd = chardevs ? chardev_find(chardevs, "usart1") : NULL;
+    if (cd) {
+        stm32_uart_init(&b->soc.usarts[0], cd);
+        fprintf(stderr, "[board] USART1 chardev wired\n");
+    }
     cd = chardevs ? chardev_find(chardevs, "usart2") : NULL;
     if (cd) {
         stm32_uart_init(&b->soc.usarts[1], cd);

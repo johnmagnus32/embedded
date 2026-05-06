@@ -43,7 +43,7 @@ class SimWeb:
                '--machine', self.machine,
                '--firmware', self.elf,
                '--realtime',
-               '--chardev', f'usart2={UART_PORT}',
+               '--chardev', f'usart1={UART_PORT}',
                '--chardev', f'trace={TRACE_PORT}',
                '--chardev', f'display={DISPLAY_PORT}',
                '--chardev', f'audio={AUDIO_PORT}',

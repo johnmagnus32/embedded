@@ -9,7 +9,7 @@
     };
 
     chosen {
-        console = <&usart2>;
+        console = <&usart1>;
     };
 
     soc {
@@ -32,11 +32,11 @@
             status = "okay";
         };
 
-        usart2: serial@40004400 {
+        usart1: serial@40011000 {
             compatible = "st,stm32-usart";
-            reg = <0x40004400>;
-            clocks = <&rcc 1 17>;
-            tx-pin = <2>;
+            reg = <0x40011000>;
+            clocks = <&rcc 2 4>;
+            tx-pin = <9>;
             tx-af = <7>;
             tx-port = <&gpioa>;
             baudrate = <115200>;

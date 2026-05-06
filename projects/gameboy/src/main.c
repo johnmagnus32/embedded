@@ -16,7 +16,7 @@
 #include "heap.h"
 #include "app.h"
 
-DEVICE_DT_DECLARE(usart2);
+DEVICE_DT_DECLARE(usart1);
 DEVICE_DT_DECLARE(ili9341);
 DEVICE_DT_DECLARE(i2s2);
 DEVICE_DT_DECLARE(adc1);
@@ -45,7 +45,7 @@ extern char _heap_size;
 
 void main(void)
 {
-    uart      = DEVICE_DT_GET(usart2);
+    uart      = DEVICE_DT_GET(usart1);
     display   = DEVICE_DT_GET(ili9341);
     audio_dev = DEVICE_DT_GET(i2s2);
     adc_dev   = DEVICE_DT_GET(adc1);

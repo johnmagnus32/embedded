@@ -55,13 +55,21 @@ static int uart_stm32_init(const struct device *dev)
 
     clock_on(DEVICE_DT_GET(rcc), cfg->uart_clk_bus, cfg->uart_clk_bit);
 
+    /* Enable GPIO port clock (AHB1, bit 0=GPIOA, 1=GPIOB, etc.) */
+    uint8_t gpio_port = (cfg->gpio_base - 0x40020000) / 0x400;
+    clock_on(DEVICE_DT_GET(rcc), 0, gpio_port);
+
     volatile uint32_t *moder = (volatile uint32_t *)(cfg->gpio_base + GPIO_MODER);
-    volatile uint32_t *afrl  = (volatile uint32_t *)(cfg->gpio_base + GPIO_AFRL);
+    /* AFRL for pins 0-7, AFRH for pins 8-15 */
+    int af_pin = cfg->tx_pin;
+    volatile uint32_t *afr = (volatile uint32_t *)(cfg->gpio_base +
+        (af_pin < 8 ? GPIO_AFRL : GPIO_AFRL + 4));
+    if (af_pin >= 8) af_pin -= 8;
 
     *moder &= ~(3U << (cfg->tx_pin * 2));
     *moder |=  (2U << (cfg->tx_pin * 2));
-    *afrl  &= ~(0xFU << (cfg->tx_pin * 4));
-    *afrl  |=  (cfg->tx_af << (cfg->tx_pin * 4));
+    *afr   &= ~(0xFU << (af_pin * 4));
+    *afr   |=  (cfg->tx_af << (af_pin * 4));
 
     REG(cfg->base, USART_BRR) = (DT_SYSCLK_HZ + cfg->baudrate / 2) / cfg->baudrate;
     /* UE + TE + RE + RXNEIE (RX interrupt enable) */
