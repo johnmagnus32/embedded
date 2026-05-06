@@ -88,8 +88,8 @@
 
         ili9341: display@1 {
             compatible = "ilitek,ili9341";
-            dc-port = <&gpioa>;
-            dc-pin = <3>;
+            dc-port = <&gpiob>;
+            dc-pin = <1>;
             status = "okay";
         };
     };

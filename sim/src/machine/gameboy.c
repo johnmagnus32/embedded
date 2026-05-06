@@ -34,7 +34,7 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
     trace_dev_init(&b->trace, trace_cd, &b->soc.cpu.cycle_count);
     membus_register(&b->soc.bus, 0xE0000000, 0x04, trace_dev_read, trace_dev_write, &b->trace);
 
-    /* ILI9341 display on SPI1 (index 0), CS on GPIOA pin 4, DC on GPIOA pin 3 */
+    /* ILI9341 display on SPI1 (index 0), CS on GPIOA pin 4, DC on GPIOB pin 1 */
     static struct ili9341 display;
     ili9341_init(&display);
     display.chardev = chardevs ? chardev_find(chardevs, "display") : NULL;
@@ -46,11 +46,11 @@ void gameboy_init(struct gameboy *b, struct chardev_table *chardevs)
         /* Firmware doesn't drive CS — default to always selected */
         b->soc.spis[0].bus.slaves[si_idx].cs_active = 1;
     }
-    /* DC pin: GPIOA pin 3 */
-    b->soc.gpio[0].out[3].handler = ili9341_set_dc;
+    /* DC pin: GPIOB pin 1 */
+    b->soc.gpio[1].out[1].handler = ili9341_set_dc;
     b->soc.gpio[0].out[3].opaque = &display;
 
-    fprintf(stderr, "[board] ILI9341 on SPI1, DC=PA3, CS=PA4\n");
+    fprintf(stderr, "[board] ILI9341 on SPI1, DC=PB1, CS=PA4\n");
 
     /* MAX98357A audio DAC — receives samples via I2S sink from SPI2 */
     struct chardev *audio_cd = chardevs ? chardev_find(chardevs, "audio") : NULL;

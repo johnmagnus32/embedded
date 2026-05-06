@@ -31,14 +31,19 @@ static void ili9341_send_cmd(struct ili9341_data *data,
                              const struct ili9341_config *cfg, uint8_t cmd)
 {
     gpio_pin_set(data->dc_gpio, cfg->dc_pin, 0); /* DC low = command */
-    spi_write(data->spi, &cmd, 1);
+    spi_write_f(data->spi, &cmd, 1, SPI_HOLD_CS);
 }
 
 static void ili9341_send_data(struct ili9341_data *data,
                               const struct ili9341_config *cfg, uint8_t d)
 {
     gpio_pin_set(data->dc_gpio, cfg->dc_pin, 1); /* DC high = data */
-    spi_write(data->spi, &d, 1);
+    spi_write_f(data->spi, &d, 1, SPI_HOLD_CS);
+}
+
+static void ili9341_end(struct ili9341_data *data)
+{
+    spi_cs_release(data->spi);
 }
 
 static void ili9341_set_window(struct ili9341_data *data,
@@ -51,13 +56,13 @@ static void ili9341_set_window(struct ili9341_data *data,
     buf[0] = x0 >> 8; buf[1] = x0 & 0xFF;
     buf[2] = x1 >> 8; buf[3] = x1 & 0xFF;
     gpio_pin_set(data->dc_gpio, cfg->dc_pin, 1);
-    spi_write(data->spi, buf, 4);
+    spi_write_f(data->spi, buf, 4, SPI_HOLD_CS);
 
     ili9341_send_cmd(data, cfg, 0x2B);
     buf[0] = y0 >> 8; buf[1] = y0 & 0xFF;
     buf[2] = y1 >> 8; buf[3] = y1 & 0xFF;
     gpio_pin_set(data->dc_gpio, cfg->dc_pin, 1);
-    spi_write(data->spi, buf, 4);
+    spi_write_f(data->spi, buf, 4, SPI_HOLD_CS);
 
     ili9341_send_cmd(data, cfg, 0x2C);
 }
@@ -74,9 +79,10 @@ static void ili9341_fill_rect(const struct device *dev,
     ili9341_set_window(data, cfg, x, y, x + w - 1, y + h - 1);
     gpio_pin_set(data->dc_gpio, cfg->dc_pin, 1);
     for (uint32_t i = 0; i < (uint32_t)w * h; i++) {
-        spi_write(data->spi, &hi, 1);
-        spi_write(data->spi, &lo, 1);
+        spi_write_f(data->spi, &hi, 1, SPI_HOLD_CS);
+        spi_write_f(data->spi, &lo, 1, SPI_HOLD_CS);
     }
+    ili9341_end(data);
 }
 
 static void ili9341_set_rotation(const struct device *dev, uint8_t rotation)
@@ -85,6 +91,7 @@ static void ili9341_set_rotation(const struct device *dev, uint8_t rotation)
     struct ili9341_data *data = dev->data;
     ili9341_send_cmd(data, cfg, 0x36);
     ili9341_send_data(data, cfg, rotation);
+    ili9341_end(data);
 }
 
 static void ili9341_vsync(const struct device *dev)
@@ -92,6 +99,13 @@ static void ili9341_vsync(const struct device *dev)
     const struct ili9341_config *cfg = dev->config;
     struct ili9341_data *data = dev->data;
     ili9341_send_cmd(data, cfg, 0x00); /* NOP triggers emulator flush */
+    ili9341_end(data);
+}
+
+static void ili9341_delay_ms(uint32_t ms)
+{
+    /* Simple busy-wait; used only during init before scheduler starts */
+    for (volatile uint32_t i = 0; i < ms * 2000; i++);
 }
 
 static int ili9341_init(const struct device *dev)
@@ -105,9 +119,21 @@ static int ili9341_init(const struct device *dev)
     /* Configure DC pin as output */
     gpio_pin_configure(data->dc_gpio, cfg->dc_pin, GPIO_OUTPUT);
 
-    /* ILI9341 init sequence */
-    ili9341_send_cmd(data, cfg, 0x11); /* Sleep out */
-    ili9341_send_cmd(data, cfg, 0x29); /* Display on */
+    /* ILI9341 init sequence (per datasheet section 12) */
+    ili9341_send_cmd(data, cfg, 0x01);  /* Software reset */
+    ili9341_end(data);
+    ili9341_delay_ms(5);                /* Wait for registers to load defaults */
+
+    ili9341_send_cmd(data, cfg, 0x11);  /* Sleep out */
+    ili9341_end(data);
+    ili9341_delay_ms(5);                /* Wait for voltages to stabilize */
+
+    ili9341_send_cmd(data, cfg, 0x3A);  /* Pixel format */
+    ili9341_send_data(data, cfg, 0x55); /* 16-bit RGB565 */
+    ili9341_end(data);
+
+    ili9341_send_cmd(data, cfg, 0x29);  /* Display on */
+    ili9341_end(data);
 
     return 0;
 }

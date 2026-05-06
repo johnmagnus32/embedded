@@ -30,16 +30,21 @@ static uint64_t rt_check_interval;
 
 static void realtime_throttle(uint64_t cycle_count)
 {
+    static double total_sleep = 0;
+    static uint64_t next_check = 0;
+
     if (!rt_init) {
         clock_gettime(CLOCK_MONOTONIC, &rt_start_wall);
         rt_start_cycles = cycle_count;
+        next_check = cycle_count + rt_check_interval;
         rt_init = 1;
         return;
     }
 
-    uint64_t sim_ticks = cycle_count - rt_start_cycles;
-    if (sim_ticks % rt_check_interval != 0) return;
+    if (cycle_count < next_check) return;
+    next_check = cycle_count + rt_check_interval;
 
+    uint64_t sim_ticks = cycle_count - rt_start_cycles;
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     double wall_elapsed = (now.tv_sec - rt_start_wall.tv_sec)
@@ -54,14 +59,16 @@ static void realtime_throttle(uint64_t cycle_count)
                 .tv_nsec = (long)((sleep_sec - (time_t)sleep_sec) * 1e9)
             };
             nanosleep(&ts, NULL);
+            total_sleep += sleep_sec;
         }
     }
 
-    /* Log realtime ratio once per second */
+    /* Log headroom once per second: how fast sim runs excluding sleep */
     static double last_log = 0;
     if (wall_elapsed - last_log >= 1.0) {
-        double ratio = sim_elapsed / wall_elapsed;
-        fprintf(stderr, "[realtime] %.2fx\n", ratio);
+        double active_time = wall_elapsed - total_sleep;
+        double headroom = (active_time > 0) ? sim_elapsed / active_time : 0;
+        fprintf(stderr, "[realtime] %.1fx headroom\n", headroom);
         last_log = wall_elapsed;
     }
 }

@@ -1,0 +1,4 @@
+# iCEBreaker RGB LED pins (active via SB_RGBA_DRV, directly connected)
+set_io LED_R 39
+set_io LED_G 40
+set_io LED_B 41
