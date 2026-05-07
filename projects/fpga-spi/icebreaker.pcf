@@ -1,0 +1,10 @@
+# iCEBreaker pin assignments for SPI LED demo
+# SPI inputs (PMOD 1A)
+set_io SPI_CLK  4
+set_io SPI_MOSI 2
+set_io SPI_CS   47
+
+# LED outputs (PMOD 1B — directly drive external LEDs via resistors)
+set_io LED_R 43
+set_io LED_G 38
+set_io LED_B 34

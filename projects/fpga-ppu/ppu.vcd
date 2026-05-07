@@ -1,0 +1,640 @@
+$date
+	Wed May  6 21:05:19 2026
+$end
+$version
+	Icarus Verilog
+$end
+$timescale
+	1ps
+$end
+$scope module tb_ppu $end
+$var wire 16 ! rd_data [15:0] $end
+$var wire 14 " rd_addr [13:0] $end
+$var wire 1 # pixel_valid $end
+$var wire 16 $ pixel_color [15:0] $end
+$var reg 1 % clk $end
+$var reg 1 & pixel_req $end
+$var reg 9 ' pixel_x [8:0] $end
+$var reg 9 ( pixel_y [8:0] $end
+$var reg 15 ) wr_addr [14:0] $end
+$var reg 8 * wr_data [7:0] $end
+$var reg 1 + wr_en $end
+$var integer 32 , failures [31:0] $end
+$var integer 32 - i [31:0] $end
+$scope module u_mem $end
+$var wire 1 % clk $end
+$var wire 16 . rd_data [15:0] $end
+$var wire 15 / wr_addr [14:0] $end
+$var wire 8 0 wr_data [7:0] $end
+$var wire 1 + wr_en $end
+$var wire 16 1 spram_out [15:0] $end
+$var wire 14 2 rd_addr [13:0] $end
+$var wire 14 3 addr_mux [13:0] $end
+$var reg 8 4 byte_buf [7:0] $end
+$var reg 1 5 byte_phase $end
+$var reg 14 6 word_addr [13:0] $end
+$var reg 16 7 word_data [15:0] $end
+$var reg 1 8 word_we $end
+$scope module spram $end
+$var wire 14 9 ADDRESS [13:0] $end
+$var wire 1 : CHIPSELECT $end
+$var wire 1 % CLOCK $end
+$var wire 16 ; DATAIN [15:0] $end
+$var wire 4 < MASKWREN [3:0] $end
+$var wire 1 = POWEROFF $end
+$var wire 1 > SLEEP $end
+$var wire 1 ? STANDBY $end
+$var wire 1 8 WREN $end
+$var reg 16 @ DATAOUT [15:0] $end
+$upscope $end
+$upscope $end
+$scope module u_pix $end
+$var wire 1 % clk $end
+$var wire 2 A dino_frame [1:0] $end
+$var wire 8 B dino_y [7:0] $end
+$var wire 1 C in_dino $end
+$var wire 1 D in_obs0 $end
+$var wire 1 E in_obs1 $end
+$var wire 2 F obs0_type [1:0] $end
+$var wire 9 G obs0_x [8:0] $end
+$var wire 2 H obs1_type [1:0] $end
+$var wire 9 I obs1_x [8:0] $end
+$var wire 1 & pixel_req $end
+$var wire 9 J pixel_x [8:0] $end
+$var wire 9 K pixel_y [8:0] $end
+$var wire 16 L sprite_data [15:0] $end
+$var wire 9 M dino_top [8:0] $end
+$var parameter 14 N DINO_BASE $end
+$var parameter 32 O DINO_H $end
+$var parameter 14 P DINO_STRIDE $end
+$var parameter 32 Q DINO_W $end
+$var parameter 32 R DINO_X $end
+$var parameter 16 S GND_COLOR $end
+$var parameter 32 T GROUND_Y $end
+$var parameter 14 U OBS_BASE $end
+$var parameter 32 V OBS_H $end
+$var parameter 14 W OBS_STRIDE $end
+$var parameter 32 X OBS_W $end
+$var parameter 16 Y SKY_COLOR $end
+$var parameter 16 Z TRANSPARENT $end
+$var reg 1 [ is_dino_d $end
+$var reg 1 \ is_ground_d $end
+$var reg 1 ] is_obs_d $end
+$var reg 16 ^ pixel_color [15:0] $end
+$var reg 1 # pixel_valid $end
+$var reg 1 _ req_d $end
+$var reg 14 ` sprite_addr [13:0] $end
+$upscope $end
+$scope task get_pixel $end
+$var reg 9 a x [8:0] $end
+$var reg 9 b y [8:0] $end
+$upscope $end
+$scope task write_pixel $end
+$var reg 15 c addr [14:0] $end
+$var reg 16 d color [15:0] $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+$comment Show the parameter values. $end
+$dumpall
+b1111100000011111 Z
+b1000011001111101 Y
+b10000 X
+b1010000000 W
+b101000 V
+b100101100000 U
+b11110000 T
+b111100111100000 S
+b11110 R
+b10100 Q
+b1100100000 P
+b101000 O
+b0 N
+$end
+#0
+$dumpvars
+b1111100000000000 d
+b0 c
+bx b
+bx a
+bx `
+0_
+bx ^
+0]
+0\
+0[
+b10110100 M
+bx L
+b0 K
+b0 J
+b110010000 I
+b0 H
+b1100100 G
+b0 F
+0E
+0D
+0C
+b10100 B
+b0 A
+bx @
+0?
+0>
+1=
+b1111 <
+b0 ;
+1:
+bx 9
+08
+b0 7
+b0 6
+05
+b0 4
+bx 3
+bx 2
+bx 1
+b0 0
+b0 /
+bx .
+bx -
+b0 ,
+0+
+b0 *
+b0 )
+b0 (
+b0 '
+0&
+0%
+bx $
+x#
+bx "
+bx !
+$end
+#41670
+15
+0#
+1+
+1%
+#83340
+0%
+#125010
+b0 3
+b0 9
+05
+18
+b11111000 *
+b11111000 0
+b1 )
+b1 /
+1%
+#166680
+0%
+#208350
+bx 3
+bx 9
+08
+b11111100000 d
+b10 c
+b10 -
+0+
+1%
+#250020
+0%
+#291690
+15
+b11100000 4
+1+
+b11100000 *
+b11100000 0
+b10 )
+b10 /
+1%
+#333360
+0%
+#375030
+b1 3
+b1 9
+05
+18
+b1110000011100000 7
+b1110000011100000 ;
+b1 6
+b111 *
+b111 0
+b11 )
+b11 /
+1%
+#416700
+0%
+#458370
+bx 3
+bx 9
+08
+b100 c
+b100 -
+0+
+1%
+#500040
+0%
+#541710
+15
+1+
+b11100000 *
+b11100000 0
+b100 )
+b100 /
+1%
+#583380
+0%
+#625050
+b10 3
+b10 9
+05
+18
+b10 6
+b111 *
+b111 0
+b101 )
+b101 /
+1%
+#666720
+0%
+#708390
+bx 3
+bx 9
+08
+b110 c
+b110 -
+0+
+1%
+#750060
+0%
+#791730
+15
+1+
+b11100000 *
+b11100000 0
+b110 )
+b110 /
+1%
+#833400
+0%
+#875070
+b11 3
+b11 9
+05
+18
+b11 6
+b111 *
+b111 0
+b111 )
+b111 /
+1%
+#916740
+0%
+#958410
+bx 3
+bx 9
+08
+b1000 c
+b1000 -
+0+
+1%
+#1000080
+0%
+#1041750
+15
+1+
+b11100000 *
+b11100000 0
+b1000 )
+b1000 /
+1%
+#1083420
+0%
+#1125090
+b100 3
+b100 9
+05
+18
+b100 6
+b111 *
+b111 0
+b1001 )
+b1001 /
+1%
+#1166760
+0%
+#1208430
+bx 3
+bx 9
+08
+b1010 c
+b1010 -
+0+
+1%
+#1250100
+0%
+#1291770
+15
+1+
+b11100000 *
+b11100000 0
+b1010 )
+b1010 /
+1%
+#1333440
+0%
+#1375110
+b101 3
+b101 9
+05
+18
+b101 6
+b111 *
+b111 0
+b1011 )
+b1011 /
+1%
+#1416780
+0%
+#1458450
+bx 3
+bx 9
+08
+b1100 c
+b1100 -
+0+
+1%
+#1500120
+0%
+#1541790
+15
+1+
+b11100000 *
+b11100000 0
+b1100 )
+b1100 /
+1%
+#1583460
+0%
+#1625130
+b110 3
+b110 9
+05
+18
+b110 6
+b111 *
+b111 0
+b1101 )
+b1101 /
+1%
+#1666800
+0%
+#1708470
+bx 3
+bx 9
+08
+b1110 c
+b1110 -
+0+
+1%
+#1750140
+0%
+#1791810
+15
+1+
+b11100000 *
+b11100000 0
+b1110 )
+b1110 /
+1%
+#1833480
+0%
+#1875150
+b111 3
+b111 9
+05
+18
+b111 6
+b111 *
+b111 0
+b1111 )
+b1111 /
+1%
+#1916820
+0%
+#1958490
+bx 3
+bx 9
+08
+b10000 c
+b10000 -
+0+
+1%
+#2000160
+0%
+#2041830
+15
+1+
+b11100000 *
+b11100000 0
+b10000 )
+b10000 /
+1%
+#2083500
+0%
+#2125170
+b1000 3
+b1000 9
+05
+18
+b1000 6
+b111 *
+b111 0
+b10001 )
+b10001 /
+1%
+#2166840
+0%
+#2208510
+bx 3
+bx 9
+08
+b10010 c
+b10010 -
+0+
+1%
+#2250180
+0%
+#2291850
+15
+1+
+b11100000 *
+b11100000 0
+b10010 )
+b10010 /
+1%
+#2333520
+0%
+#2375190
+b1001 3
+b1001 9
+05
+18
+b1001 6
+b111 *
+b111 0
+b10011 )
+b10011 /
+1%
+#2416860
+0%
+#2458530
+bx 3
+bx 9
+08
+b10100 -
+0+
+1%
+#2500200
+0%
+#2541870
+1%
+#2583540
+0%
+#2625210
+1%
+#2666880
+0%
+#2708550
+1%
+#2750220
+0%
+#2791890
+1%
+#2833560
+0%
+#2875230
+1%
+#2916900
+0%
+#2958570
+1%
+#3000240
+0%
+#3041910
+1%
+#3083580
+0%
+#3125250
+1%
+#3166920
+0%
+#3208590
+1%
+#3250260
+0%
+#3291930
+1%
+#3333600
+0%
+#3375270
+1%
+#3416940
+0%
+#3458530
+b1010 b
+b1111000 a
+#3458610
+1_
+1&
+b1010 (
+b1010 K
+b1111000 '
+b1111000 J
+1%
+#3500280
+0%
+#3541950
+b1000011001111101 $
+b1000011001111101 ^
+1#
+0&
+1%
+#3583620
+0%
+#3625290
+0_
+1#
+b11111010 b
+1%
+#3666960
+0%
+#3708630
+1\
+1_
+0#
+1&
+b11111010 (
+b11111010 K
+1%
+#3750300
+0%
+#3791970
+b111100111100000 $
+b111100111100000 ^
+1#
+0&
+1%
+#3833640
+0%
+#3875310
+0_
+1#
+b10110100 b
+b11110 a
+1%
+#3916980
+0%
+#3958650
+0\
+1_
+0#
+1C
+1&
+b10110100 (
+b10110100 K
+b11110 '
+b11110 J
+1%
+#4000320
+0%
+#4041990
+b0 3
+b0 9
+b1000011001111101 $
+b1000011001111101 ^
+1#
+1[
+b0 "
+b0 2
+b0 `
+0&
+1%
+#4083660
+0%
+#4125330
+0_
+1#
+b0 !
+b0 .
+b0 L
+b0 1
+b0 @
+1%
+#4167000
+0%
+#4208670
+0#
+1%
+#4225330

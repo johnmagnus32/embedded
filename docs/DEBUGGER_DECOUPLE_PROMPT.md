@@ -1,4 +1,4 @@
-Decouple the debugger from the emulator and the debugger UI from the simulation UI. The debugger lives in its own top-level directory `dbg/`, separate from `sim/`. Read all source files in `sim/src/` before making changes.
+Decouple the debugger from the emulator and the debugger UI from the simulation UI. The debugger lives in its own top-level directory `dbg/`, separate from `sim/mcu/`. Read all source files in `mcu-sim/mcu/src/` before making changes.
 
 ## Goal
 
@@ -8,7 +8,7 @@ Split into three components that mirror real embedded development:
 simple-stm32/
 ├── sim/          ← emulator (sim-core + sim-web)
 ├── dbg/          ← debugger CLI (sim-dbg) — separate project
-├── os/           ← the RTOS
+├── rtos/           ← the RTOS
 ├── projects/     ← firmware (gameboy)
 ├── tests/        ← integration/perf tests
 └── docs/         ← design documents
@@ -131,9 +131,9 @@ dbg/
     dbg_main.c          ← entry point: parse args, connect, load ELF, REPL loop
     dbg_client.c/h      ← TCP client for the debug stub protocol
     dbg_cmd.c/h         ← command handlers (break, step, next, print, etc.)
-    dbg_eval.c/h        ← expression evaluator (copied from sim/src/debug/)
-    dbg_tasks.c/h       ← RTOS task introspection (copied from sim/src/debug/)
-    elf_sym.c/h         ← ELF/DWARF parser (copied from sim/src/core/)
+    dbg_eval.c/h        ← expression evaluator (copied from sim/mcu/src/debug/)
+    dbg_tasks.c/h       ← RTOS task introspection (copied from sim/mcu/src/debug/)
+    elf_sym.c/h         ← ELF/DWARF parser (copied from sim/mcu/src/core/)
   Makefile
   build/
 ```
@@ -275,7 +275,7 @@ signal(SIGINT, SIG_DFL);
 
 ## Part 4: Build system
 
-### sim/Makefile (updated — remove debug command files, add stub)
+### sim/mcu/Makefile (updated — remove debug command files, add stub)
 
 ```makefile
 # sim-core: emulator + debug stub (no DWARF, no expression eval)
@@ -315,12 +315,12 @@ clean:
 .PHONY: all clean
 ```
 
-sim-web stays as Python in `sim/src/sim-web/` — no build step needed.
+sim-web stays as Python in `mcu-sim/mcu/src/sim-web/` — no build step needed.
 
 ## Part 5: Launch scripts
 
 ```bash
-# sim/sim — run the game (no debugger)
+# sim/mcu/sim — run the game (no debugger)
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 "$DIR/build/sim-core" --machine gameboy --firmware "$1" \
@@ -333,7 +333,7 @@ python3 "$DIR/src/sim-web/sim-web.py" \
     --chardev audio=9005 --chardev trace=9003 --chardev io=9006 --port 3000
 kill $SIM_PID
 
-# sim/sim-debug — run the game + debugger
+# sim/mcu/sim-debug — run the game + debugger
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"

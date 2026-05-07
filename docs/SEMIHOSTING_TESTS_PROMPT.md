@@ -1,4 +1,4 @@
-Add semihosting support to the emulator and migrate the test suite from UART-based pass/fail to semihosting exit codes. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/arch/armv7m/armv7m_cpu.c`, `tests/run_tests.py`, `tests/firmware/test.h`, and a few test `.c` files before making changes. Build with `make` from `sim/`.
+Add semihosting support to the emulator and migrate the test suite from UART-based pass/fail to semihosting exit codes. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/arch/armv7m/armv7m_cpu.c`, `tests/run_tests.py`, `tests/firmware/test.h`, and a few test `.c` files before making changes. Build with `make` from `sim/mcu/`.
 
 ## Why
 
@@ -313,7 +313,7 @@ But the CPU instruction tests (test_alu, test_mem, test_irq, etc.) should never 
 ## Testing
 
 After all changes:
-1. `make` in `sim/` — verify sim-core builds with semihosting support
-2. `make` in `sim/tests/firmware/` — verify test firmware builds
-3. `python3 sim/tests/run_tests.py` — all tests should pass via exit codes
+1. `make` in `sim/mcu/` — verify sim-core builds with semihosting support
+2. `make` in `mcu-sim/mcu/tests/firmware/` — verify test firmware builds
+3. `python3 sim/mcu/tests/run_tests.py` — all tests should pass via exit codes
 4. Verify diagnostic output appears on stderr when a CHECK fails (temporarily break a test to confirm)

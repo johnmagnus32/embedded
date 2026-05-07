@@ -1,4 +1,4 @@
-Add nested interrupt support with priority-based preemption to the emulator. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/arch/armv7m/armv7m_nvic.c`, `src/arch/armv7m/armv7m_nvic.h`, `src/arch/armv7m/armv7m_cpu.c`, and `src/arch/armv7m/armv7m_cpu.h` before making changes. Build with `make` from `sim/`.
+Add nested interrupt support with priority-based preemption to the emulator. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/arch/armv7m/armv7m_nvic.c`, `src/arch/armv7m/armv7m_nvic.h`, `src/arch/armv7m/armv7m_cpu.c`, and `src/arch/armv7m/armv7m_cpu.h` before making changes. Build with `make` from `sim/mcu/`.
 
 ## Problem
 

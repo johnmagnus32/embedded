@@ -1,4 +1,4 @@
-Replace the JSON debug stub protocol with GDB Remote Serial Protocol (RSP) so that standard GDB and VS Code can connect directly to sim-core. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/debug/dbg_stub.c` before making changes. Build with `make` from `sim/`.
+Replace the JSON debug stub protocol with GDB Remote Serial Protocol (RSP) so that standard GDB and VS Code can connect directly to sim-core. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/debug/dbg_stub.c` before making changes. Build with `make` from `sim/mcu/`.
 
 ## Goal
 

@@ -10,7 +10,7 @@ OBJS = $(patsubst src/%.c,$(BUILD)/%.o,$(SRCS))
 HDRS = $(wildcard src/*.h)
 
 # elf_sym.c needs armv7m_cpu.h for memory map constants
-SIM_INCLUDES = -I../sim/src/arch/armv7m
+SIM_INCLUDES = -I../sim/mcu/src/arch/armv7m
 
 all: $(BUILD)/sim-dbg
 

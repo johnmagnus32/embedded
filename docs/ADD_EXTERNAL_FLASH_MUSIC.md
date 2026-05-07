@@ -1,8 +1,8 @@
 Add W25Q128 external SPI NOR flash for storing multiple songs. The gameboy currently stores ~10s of audio in internal flash. With 16MB external flash, we can store ~6 minutes of uncompressed 22050Hz 16-bit mono audio, or ~25 minutes with IMA ADPCM compression.
 
 Work spans three areas:
-- `sim/` — W25Q128 device model + simulator tests
-- `os/` — flash driver (already exists for W25Q128, verify JEDEC ID handling) + audio streaming layer + OS tests
+- `sim/mcu/` — W25Q128 device model + simulator tests
+- `rtos/` — flash driver (already exists for W25Q128, verify JEDEC ID handling) + audio streaming layer + OS tests
 - `projects/gameboy/` — integrate streaming playback into the game
 
 ## Hardware wiring (gameboy board example)
@@ -98,8 +98,8 @@ Since flash is on a dedicated bus (SPI3), reads can happen at any time without w
 ### New files
 
 ```
-sim/src/devices/w25q128.c    — SPI slave device model
-sim/src/devices/w25q128.h    — header
+sim/mcu/src/devices/w25q128.c    — SPI slave device model
+sim/mcu/src/devices/w25q128.h    — header
 ```
 
 ### Behavior
@@ -120,12 +120,12 @@ Busy timing: sector erase takes ~45ms on real hardware. In the simulator, model 
 
 ### Wiring into the gameboy machine
 
-In `sim/src/machine/gameboy.c`:
+In `mcu-sim/mcu/src/machine/gameboy.c`:
 - Attach W25Q128 to `soc.spis[2].bus` (SPI3) as a slave device
 - Load song data from a file specified via `--device flash0=songs.bin`
 - If no file specified, the flash is all 0xFF (erased state)
 
-Requires adding SPI3 to the SoC model (`sim/src/soc/stm32f411.c`):
+Requires adding SPI3 to the SoC model (`mcu-sim/mcu/src/soc/stm32f411.c`):
 - Increase `STM32F411_NUM_SPIS` from 2 to 3
 - Init `soc->spis[2]` and register at 0x40003C00 (real STM32F411 SPI3 base)
 
@@ -139,7 +139,7 @@ sim-core --machine gameboy --firmware game.elf --device flash0=songs.bin [...]
 
 ### Simulator tests
 
-Location: `sim/tests/firmware/func/hw/stm32/`
+Location: `mcu-sim/mcu/tests/firmware/func/hw/stm32/`
 
 **test_w25q_jedec.c** — Functional: read JEDEC ID via SPI3
 ```
@@ -176,7 +176,7 @@ Location: `sim/tests/firmware/func/hw/stm32/`
 - CHECK(all bytes == 0xFF)
 ```
 
-Location: `sim/tests/firmware/perf/hw/stm32/`
+Location: `mcu-sim/mcu/tests/firmware/perf/hw/stm32/`
 
 **test_w25q_read_throughput.c** — Performance: measure sequential read speed
 ```
@@ -199,7 +199,7 @@ Location: `sim/tests/firmware/perf/hw/stm32/`
 
 ### OS flash driver update
 
-File: `os/drivers/flash/flash_w25q.c`
+File: `rtos/drivers/flash/flash_w25q.c`
 
 The existing driver already targets W25Q128 (JEDEC ID `0xEF 0x40 0x18`). Changes needed:
 - Verify the existing `flash_nor_init` correctly identifies the W25Q128
@@ -208,7 +208,7 @@ The existing driver already targets W25Q128 (JEDEC ID `0xEF 0x40 0x18`). Changes
 
 ### New: audio streaming layer
 
-File: `os/drivers/audio/audio_stream.c` and `os/include/drivers/audio_stream.h`
+File: `rtos/drivers/audio/audio_stream.c` and `rtos/include/drivers/audio_stream.h`
 
 This layer sits between the flash driver and the audio driver, providing double-buffered streaming:
 
@@ -271,7 +271,7 @@ struct song_entry {
 
 ### OS tests
 
-Location: `os/tests/src/`
+Location: `rtos/tests/src/`
 
 **test_flash_w25q.c** — Functional: verify flash driver API works through the OS abstraction
 ```
@@ -576,7 +576,7 @@ The `tools/flash_songs.py` script:
 
 ## Verification checklist
 
-### Simulator tests (run with `make test` from `sim/`)
+### Simulator tests (run with `make test` from `sim/mcu/`)
 
 | Test | Type | What it verifies |
 |------|------|-----------------|
@@ -587,7 +587,7 @@ The `tools/flash_songs.py` script:
 | test_w25q_read_throughput | Performance | Sequential read meets bandwidth target |
 | test_w25q_dma_read | Performance | DMA read meets bandwidth target |
 
-### OS tests (run with `make test` from `os/tests/`)
+### OS tests (run with `make test` from `rtos/tests/`)
 
 | Test | Type | What it verifies |
 |------|------|-----------------|

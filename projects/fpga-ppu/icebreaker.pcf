@@ -1,0 +1,11 @@
+# iCEBreaker pin assignments for PPU
+# SPI from STM32 (PMOD 1A)
+set_io SPI_CLK  4
+set_io SPI_MOSI 2
+set_io SPI_CS   47
+
+# SPI to ILI9341 (PMOD 1B)
+set_io LCD_SCLK 43
+set_io LCD_MOSI 38
+set_io LCD_CS   34
+set_io LCD_DC   31

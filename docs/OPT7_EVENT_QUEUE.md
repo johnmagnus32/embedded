@@ -1,6 +1,6 @@
 # Optimization 7: Event-Driven Peripheral Scheduler (MAME-style)
 
-Replace per-tick device polling with a sorted event queue. Instead of calling every device's tick function every CPU step, schedule events at specific cycle counts and only process them when due. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/soc/stm32f411.c`, `src/arch/armv7m/armv7m_systick.c`, `src/hw/stm32/stm32_spi.c`, `src/devices/ili9341.c`, and `src/hw/stm32/stm32_dma.c` before making changes. Build with `make` from `sim/`.
+Replace per-tick device polling with a sorted event queue. Instead of calling every device's tick function every CPU step, schedule events at specific cycle counts and only process them when due. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/soc/stm32f411.c`, `src/arch/armv7m/armv7m_systick.c`, `src/hw/stm32/stm32_spi.c`, `src/devices/ili9341.c`, and `src/hw/stm32/stm32_dma.c` before making changes. Build with `make` from `sim/mcu/`.
 
 ## Problem
 

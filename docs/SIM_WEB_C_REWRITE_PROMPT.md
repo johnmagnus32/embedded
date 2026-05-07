@@ -1,4 +1,4 @@
-Rewrite sim-web from Python to C for better performance. Keep the Python version as `sim/sim` and add the C version as `sim/sim-fast` so both can be compared. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/sim-web/sim-web.py` and `src/sim-web/index.html` thoroughly before starting. Build with `make` from `sim/`.
+Rewrite sim-web from Python to C for better performance. Keep the Python version as `sim/mcu/sim` and add the C version as `sim/mcu/sim-fast` so both can be compared. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/sim-web/sim-web.py` and `src/sim-web/index.html` thoroughly before starting. Build with `make` from `sim/mcu/`.
 
 ## Problem
 
@@ -45,8 +45,8 @@ $(BUILD)/sim-web: $(WEBOBJS)
 
 ## Launch scripts
 
-- `sim/sim` — keep as-is, launches Python sim-web.py (unchanged)
-- `sim/sim-fast` — new, launches C sim-web
+- `sim/mcu/sim` — keep as-is, launches Python sim-web.py (unchanged)
+- `sim/mcu/sim-fast` — new, launches C sim-web
 
 ## Testing
 

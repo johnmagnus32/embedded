@@ -1,6 +1,6 @@
 # Optimization 6: Fast Paths for Instruction Fetch and RAM Access
 
-The membus TLB is already implemented but every memory access still goes through `tlb_lookup` — even instruction fetches from flash and data accesses to RAM, which are 99%+ of all accesses. Add direct pointer fast paths that bypass the TLB entirely for these two ranges. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/core/membus.c` and `src/arch/armv7m/armv7m_cpu.c`. Build with `make` from `sim/`.
+The membus TLB is already implemented but every memory access still goes through `tlb_lookup` — even instruction fetches from flash and data accesses to RAM, which are 99%+ of all accesses. Add direct pointer fast paths that bypass the TLB entirely for these two ranges. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/core/membus.c` and `src/arch/armv7m/armv7m_cpu.c`. Build with `make` from `sim/mcu/`.
 
 ## Part 1: Direct flash pointer for instruction fetch
 

@@ -1,4 +1,4 @@
-Add a `--realtime` flag to sim-core that throttles the emulator to match the real STM32's clock speed. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/main.c` before making changes. Build with `make` from `sim/`.
+Add a `--realtime` flag to sim-core that throttles the emulator to match the real STM32's clock speed. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/main.c` before making changes. Build with `make` from `sim/mcu/`.
 
 ## Problem
 
@@ -80,7 +80,7 @@ Also call it in the GDB stub's continue loop if present.
 
 ## Update sim launch script
 
-Update `sim/sim` to pass `--realtime` by default:
+Update `sim/mcu/sim` to pass `--realtime` by default:
 
 ```bash
 exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF" --extra --realtime

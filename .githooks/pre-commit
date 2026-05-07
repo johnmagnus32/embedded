@@ -4,33 +4,40 @@ set -e
 # Get list of staged files
 STAGED=$(git diff --cached --name-only)
 
-SIM_CHANGED=0
-OS_CHANGED=0
+MCU_SIM_CHANGED=0
+FPGA_SIM_CHANGED=0
+RTOS_CHANGED=0
 FW_CHANGED=0
 
 for f in $STAGED; do
     case "$f" in
-        sim/*) SIM_CHANGED=1 ;;
-        os/*)  OS_CHANGED=1 ;;
+        sim/mcu/*) MCU_SIM_CHANGED=1 ;;
+        sim/fpga/*) FPGA_SIM_CHANGED=1 ;;
+        rtos/*)  RTOS_CHANGED=1 ;;
         projects/*) FW_CHANGED=1 ;;
     esac
 done
 
-if [ "$SIM_CHANGED" -eq 1 ]; then
-    echo "=== sim changed: building ==="
-    make -C sim
-    echo "=== sim changed: running tests ==="
-    python3 sim/tests/run_tests.py
+if [ "$MCU_SIM_CHANGED" -eq 1 ]; then
+    echo "=== sim/mcu changed: building ==="
+    make -C sim/mcu
+    echo "=== sim/mcu changed: running tests ==="
+    python3 sim/mcu/tests/run_tests.py
 fi
 
-if [ "$OS_CHANGED" -eq 1 ] || [ "$FW_CHANGED" -eq 1 ]; then
-    echo "=== os/firmware changed: building firmware ==="
+if [ "$FPGA_SIM_CHANGED" -eq 1 ]; then
+    echo "=== sim/fpga changed: building + testing ==="
+    make -C sim/fpga test
+fi
+
+if [ "$RTOS_CHANGED" -eq 1 ] || [ "$FW_CHANGED" -eq 1 ]; then
+    echo "=== rtos/firmware changed: building firmware ==="
     make -C projects/gameboy
 fi
 
-if [ "$OS_CHANGED" -eq 1 ]; then
-    echo "=== os changed: running sim tests (OS affects emulated firmware) ==="
-    python3 sim/tests/run_tests.py
+if [ "$RTOS_CHANGED" -eq 1 ]; then
+    echo "=== rtos changed: running sim tests (RTOS affects emulated firmware) ==="
+    python3 sim/mcu/tests/run_tests.py
 fi
 
 echo "=== Pre-commit checks passed ==="

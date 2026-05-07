@@ -25,7 +25,7 @@ Tests use QEMU's GDB stub (`-gdb tcp::PORT -S`) so failures are always debugger 
 
 ## Test targets
 
-Each target is a small standalone firmware (no OS, no RTOS) with a vector table, reset handler, and the specific code pattern being tested. Use the same toolchain and linker script as `os/tests/`.
+Each target is a small standalone firmware (no OS, no RTOS) with a vector table, reset handler, and the specific code pattern being tested. Use the same toolchain and linker script as `rtos/tests/`.
 
 ### test_hello.c
 Minimal program that writes to a known memory address and loops. Used to test basic connection, register read, memory read.
@@ -495,7 +495,7 @@ clean:
 	rm -rf build
 ```
 
-Use the same `linker.ld` as `os/tests/linker.ld`.
+Use the same `linker.ld` as `rtos/tests/linker.ld`.
 
 ### dbg/Makefile addition
 ```makefile

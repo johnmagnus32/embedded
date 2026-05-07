@@ -1,6 +1,6 @@
 # Optimization 4: Inline the Hot Tick Path
 
-3 levels of function calls per instruction (~10% host CPU). Flatten with inlining + LTO. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/machine/gameboy.c`, `src/soc/stm32f411.c`, `src/arch/armv7m/armv7m_cpu.c` before making changes. Build with `make` from `sim/`.
+3 levels of function calls per instruction (~10% host CPU). Flatten with inlining + LTO. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/machine/gameboy.c`, `src/soc/stm32f411.c`, `src/arch/armv7m/armv7m_cpu.c` before making changes. Build with `make` from `sim/mcu/`.
 
 ## Problem
 

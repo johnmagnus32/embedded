@@ -1,4 +1,4 @@
-Add performance and timing regression tests to the emulator test suite. Work in `/home/johmagnu/learning/simple-stm32/sim/tests`. Read `tests/firmware/test.h`, `tests/run_tests.py`, and the emulator's SysTick/NVIC/SPI/DMA models before making changes. Build firmware with `make` in `tests/firmware/`, run with `python3 tests/run_tests.py`.
+Add performance and timing regression tests to the emulator test suite. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu/tests`. Read `tests/firmware/test.h`, `tests/run_tests.py`, and the emulator's SysTick/NVIC/SPI/DMA models before making changes. Build firmware with `make` in `tests/firmware/`, run with `python3 tests/run_tests.py`.
 
 ## Goal
 

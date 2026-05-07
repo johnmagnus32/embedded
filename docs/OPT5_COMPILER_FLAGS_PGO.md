@@ -1,6 +1,6 @@
 # Optimization 5: Compiler Flags and PGO
 
-Current flags are `-O2 -g -flto`. Significant free performance left on the table. Work in `/home/johmagnu/learning/simple-stm32/sim`. Build with `make` from `sim/`.
+Current flags are `-O2 -g -flto`. Significant free performance left on the table. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Build with `make` from `sim/mcu/`.
 
 ## Step 1: Update CFLAGS
 

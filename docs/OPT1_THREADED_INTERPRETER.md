@@ -1,6 +1,6 @@
 # Optimization 1: Instruction Decode Optimization
 
-The if/else cascade in `armv7m_cpu_step` is the single largest CPU consumer (~37%). Try three approaches, benchmark each, and keep the fastest. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/arch/armv7m/armv7m_cpu.c` thoroughly before making changes. Build with `make` from `sim/`.
+The if/else cascade in `armv7m_cpu_step` is the single largest CPU consumer (~37%). Try three approaches, benchmark each, and keep the fastest. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/arch/armv7m/armv7m_cpu.c` thoroughly before making changes. Build with `make` from `sim/mcu/`.
 
 ## Baseline
 

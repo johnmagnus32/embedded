@@ -1,4 +1,4 @@
-Switch audio delivery from HTTP polling to WebSocket push in sim-web. Read `src/sim-web/sim-web.py` and `src/sim-web/index.html` before making changes. Work in `/home/johmagnu/learning/simple-stm32/sim`.
+Switch audio delivery from HTTP polling to WebSocket push in sim-web. Read `src/sim-web/sim-web.py` and `src/sim-web/index.html` before making changes. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`.
 
 ## Problem
 

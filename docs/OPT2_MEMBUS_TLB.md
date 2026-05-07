@@ -1,6 +1,6 @@
 # Optimization 2: Direct-Mapped TLB for membus
 
-The membus `find_region` linear scan accounts for ~16% of host CPU. Replace with a direct-mapped cache. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/core/membus.c` before making changes. Build with `make` from `sim/`.
+The membus `find_region` linear scan accounts for ~16% of host CPU. Replace with a direct-mapped cache. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/core/membus.c` before making changes. Build with `make` from `sim/mcu/`.
 
 ## Problem
 

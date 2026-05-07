@@ -1,6 +1,6 @@
 # Optimization 3: Lazy SysTick and NVIC
 
-SysTick and NVIC are called every tick even when nothing changed (~8% host CPU). Make them lazy. Work in `/home/johmagnu/learning/simple-stm32/sim`. Read `src/arch/armv7m/armv7m_systick.c` and `armv7m_nvic.c` before making changes. Build with `make` from `sim/`.
+SysTick and NVIC are called every tick even when nothing changed (~8% host CPU). Make them lazy. Work in `/home/johmagnu/learning/simple-stm32/sim/mcu`. Read `src/arch/armv7m/armv7m_systick.c` and `armv7m_nvic.c` before making changes. Build with `make` from `sim/mcu/`.
 
 ## SysTick: countdown instead of increment
 

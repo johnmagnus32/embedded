@@ -1,4 +1,4 @@
-Flush chardevs on every debug stop event in `sim/src/debug/dbg_stub.c`. Read the file before making changes. Build with `make` from `sim/`.
+Flush chardevs on every debug stop event in `mcu-sim/mcu/src/debug/dbg_stub.c`. Read the file before making changes. Build with `make` from `sim/mcu/`.
 
 ## Problem
 
