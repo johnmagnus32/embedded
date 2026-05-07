@@ -172,6 +172,6 @@ void display_on(const struct device *dev)
     static struct ili9341_data ili9341_data_##n;                        \
     DEVICE_DT_DEFINE(DT_INST_ILITEK_ILI9341_##n##_LABEL,              \
                      ili9341_init, &ili9341_data_##n,                   \
-                     &ili9341_cfg_##n, &ili9341_api);
+                     &ili9341_cfg_##n, &ili9341_api, 40);
 
 DT_INST_FOREACH_STATUS_OKAY(ILITEK_ILI9341, ILI9341_DEFINE)

@@ -219,6 +219,6 @@ static const struct flash_driver_api flash_nor_api = {
     };                                                              \
     DEVICE_DT_DEFINE(_FLASH_INST_LABEL(n),                          \
                      flash_nor_init, NULL, &flash_cfg_##n,           \
-                     &flash_nor_api);
+                     &flash_nor_api, 40);
 
 DT_INST_FOREACH_STATUS_OKAY(JEDEC_SPI_NOR, JEDEC_SPI_NOR_DEFINE)

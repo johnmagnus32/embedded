@@ -61,6 +61,6 @@ static const struct gpio_keys_api gpio_keys_api = {
 
 #define GPIO_KEYS_DEFINE(n) \
     DEVICE_DT_DEFINE(_BTN_INST_LABEL(n), \
-                     gpio_keys_init, NULL, NULL, &gpio_keys_api);
+                     gpio_keys_init, NULL, NULL, &gpio_keys_api, 60);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_KEYS, GPIO_KEYS_DEFINE)

@@ -221,6 +221,6 @@ static const struct enc28j60_config enc28j60_cfg = {
     .mac = {{ 0x02, 0x00, 0x00, 0x00, 0x00, 0x01 }},
 };
 
-DEVICE_DT_DEFINE(eth0, enc28j60_init, NULL, &enc28j60_cfg, &enc28j60_api);
+DEVICE_DT_DEFINE(eth0, enc28j60_init, NULL, &enc28j60_cfg, &enc28j60_api, 40);
 
 #endif /* CONFIG_ETH_ENC28J60 */

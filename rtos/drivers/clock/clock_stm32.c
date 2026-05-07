@@ -49,6 +49,6 @@ static const struct clock_driver_api clock_stm32_api = {
         .base = DT_INST_ST_STM32_RCC_##n##_REG_ADDR,               \
     };                                                              \
     DEVICE_DT_DEFINE(_CLK_INST_LABEL(n),                            \
-                     NULL, NULL, &clock_cfg_##n, &clock_stm32_api);
+                     NULL, NULL, &clock_cfg_##n, &clock_stm32_api, 10);
 
 DT_INST_FOREACH_STATUS_OKAY(ST_STM32_RCC, STM32_RCC_DEFINE)

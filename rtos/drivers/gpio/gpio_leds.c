@@ -49,6 +49,6 @@ static const struct gpio_leds_api gpio_leds_api = {
 
 #define GPIO_LEDS_DEFINE(n) \
     DEVICE_DT_DEFINE(_LEDS_INST_LABEL(n), \
-                     gpio_leds_init_fn, NULL, NULL, &gpio_leds_api);
+                     gpio_leds_init_fn, NULL, NULL, &gpio_leds_api, 60);
 
 DT_INST_FOREACH_STATUS_OKAY(GPIO_LEDS, GPIO_LEDS_DEFINE)

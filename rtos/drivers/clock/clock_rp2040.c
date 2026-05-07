@@ -53,7 +53,7 @@ static const struct clock_driver_api clock_rp2040_api = {
     };                                                              \
     DEVICE_DT_DEFINE(_RP2040_CLK_LABEL(n),                          \
                      NULL, NULL, &clock_rp2040_cfg_##n,              \
-                     &clock_rp2040_api);
+                     &clock_rp2040_api, 10);
 
 DT_INST_FOREACH_STATUS_OKAY(RASPBERRYPI_RP2040_RESETS, RP2040_RESETS_DEFINE)
 

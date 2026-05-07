@@ -96,7 +96,7 @@ static const struct gpio_driver_api gpio_rp2040_api = {
     };                                                              \
     DEVICE_DT_DEFINE(_RP2040_GPIO_LABEL(n),                         \
                      NULL, NULL, &gpio_rp2040_cfg_##n,               \
-                     &gpio_rp2040_api);
+                     &gpio_rp2040_api, 20);
 
 DT_INST_FOREACH_STATUS_OKAY(RASPBERRYPI_RP2040_GPIO, RP2040_GPIO_DEFINE)
 

@@ -105,7 +105,7 @@ static const struct ipc_driver_api ipc_stm32h745_api = {
         .rx_channel = _IPC_PROP(n, RX_CHANNEL),                     \
     };                                                              \
     DEVICE_DT_DEFINE(_IPC_LABEL(n),                                 \
-                     NULL, NULL, &ipc_cfg_##n, &ipc_stm32h745_api);
+                     NULL, NULL, &ipc_cfg_##n, &ipc_stm32h745_api, 60);
 
 DT_INST_FOREACH_STATUS_OKAY(SHARED_MEMORY_IPC, STM32H745_IPC_DEFINE)
 

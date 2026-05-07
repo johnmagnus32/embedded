@@ -95,6 +95,8 @@ static int gpio_stm32_pin_interrupt_configure(const struct device *dev, uint8_t 
 
     /* Select this GPIO port for the EXTI line via SYSCFG_EXTICR.
      * Port number derived from base address: GPIOA=0, GPIOB=1, etc. */
+    /* SYSCFG clock must be enabled (APB2 bit 14) */
+    clock_on(DEVICE_DT_GET(rcc), 2, 14);
     uint8_t port = (cfg->base - 0x40020000) / 0x400;
     int reg_idx = pin / 4;
     int shift = (pin % 4) * 4;
@@ -179,6 +181,6 @@ static const struct gpio_driver_api gpio_stm32_api = {
         .clk_bit = DT_INST_ST_STM32_GPIO_##n##_CLK_BIT,            \
     };                                                              \
     DEVICE_DT_DEFINE(_GPIO_INST_LABEL(n),                           \
-                     NULL, NULL, &gpio_cfg_##n, &gpio_stm32_api);
+                     NULL, NULL, &gpio_cfg_##n, &gpio_stm32_api, 20);
 
 DT_INST_FOREACH_STATUS_OKAY(ST_STM32_GPIO, STM32_GPIO_DEFINE)

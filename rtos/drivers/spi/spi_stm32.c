@@ -178,6 +178,6 @@ static const struct spi_driver_api spi_stm32_api = {
     };                                                              \
     DEVICE_DT_DEFINE(_SPI_INST_LABEL(n),                            \
                      spi_stm32_init, NULL, &spi_cfg_##n,            \
-                     &spi_stm32_api);
+                     &spi_stm32_api, 20);
 
 DT_INST_FOREACH_STATUS_OKAY(ST_STM32_SPI, STM32_SPI_DEFINE)

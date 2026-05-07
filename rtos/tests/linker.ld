@@ -25,7 +25,7 @@ SECTIONS
     .device_area :
     {
         _device_start = .;
-        KEEP(*(device_area))
+        KEEP(*(SORT_BY_NAME(device_area.*)))
         _device_end = .;
     } > FLASH
 

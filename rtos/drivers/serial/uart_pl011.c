@@ -123,7 +123,7 @@ static const struct uart_driver_api uart_pl011_api = {
     };                                                              \
     DEVICE_DT_DEFINE(_PL011_LABEL(n),                               \
                      uart_pl011_init, NULL, &uart_pl011_cfg_##n,     \
-                     &uart_pl011_api);
+                     &uart_pl011_api, 20);
 
 DT_INST_FOREACH_STATUS_OKAY(ARM_PL011, PL011_UART_DEFINE)
 

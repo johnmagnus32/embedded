@@ -29,24 +29,31 @@ struct device {
 };
 
 /*
- * DEVICE_DT_DEFINE(label, init_fn, data, config, api)
+ * DEVICE_DT_DEFINE(label, init_fn, data, config, api, prio)
  *
  * Creates a struct device in a special ELF section so the boot code
- * can find and init all devices. Same pattern as your module_init()
- * in test-modules.
+ * can find and init all devices. The priority (0-99) controls init
+ * order: lower numbers init first. Use this to ensure buses init
+ * before their clients (e.g., SPI at prio 20, display at prio 40).
+ *
+ * Priorities:
+ *   10 - Clocks, RCC
+ *   20 - Buses (SPI, I2S, UART)
+ *   40 - Devices on buses (display, flash, audio DAC)
+ *   60 - High-level (GPIO keys, LEDs)
  */
-#define _DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api) \
-    const struct device __device_##label                        \
-        __attribute__((used, section("device_area"))) = {       \
-            .name = #label,                                     \
-            .config = (_config),                                \
-            .data = (_data),                                    \
-            .api = (_api),                                      \
-            .init = (init_fn),                                  \
+#define _DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api, _prio) \
+    const struct device __device_##label                                \
+        __attribute__((used, section("device_area." #_prio))) = {       \
+            .name = #label,                                             \
+            .config = (_config),                                        \
+            .data = (_data),                                            \
+            .api = (_api),                                              \
+            .init = (init_fn),                                          \
         }
 /* Extra indirection so macro-expanded labels get pasted correctly */
-#define DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api) \
-    _DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api)
+#define DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api, _prio) \
+    _DEVICE_DT_DEFINE(label, init_fn, _data, _config, _api, _prio)
 
 /*
  * DEVICE_DT_GET(label) — get a pointer to the device struct.

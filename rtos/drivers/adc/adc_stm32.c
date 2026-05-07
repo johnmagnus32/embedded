@@ -61,6 +61,6 @@ static const struct adc_driver_api adc_stm32_api = {
     };                                                                  \
     DEVICE_DT_DEFINE(DT_INST_ST_STM32_ADC_##n##_LABEL,                \
                      adc_stm32_init, NULL, &adc_cfg_##n,               \
-                     &adc_stm32_api);
+                     &adc_stm32_api, 40);
 
 DT_INST_FOREACH_STATUS_OKAY(ST_STM32_ADC, ADC_STM32_DEFINE)

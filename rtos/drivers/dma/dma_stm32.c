@@ -166,6 +166,6 @@ static int dma_stm32_init(const struct device *dev)
     static struct dma_stm32_data dma_data_##n;                         \
     DEVICE_DT_DEFINE(DT_INST_ST_STM32_DMA_##n##_LABEL,                \
                      dma_stm32_init, &dma_data_##n, &dma_cfg_##n,      \
-                     &dma_stm32_api);
+                     &dma_stm32_api, 15);
 
 DT_INST_FOREACH_STATUS_OKAY(ST_STM32_DMA, DMA_DEFINE)

@@ -154,7 +154,7 @@ static const struct uart_driver_api uart_stm32_api = {
     };                                                                  \
     DEVICE_DT_DEFINE(_DT_INST_LABEL(ST_STM32_USART, n),                \
                      uart_stm32_init, NULL, &uart_cfg_##n,              \
-                     &uart_stm32_api);
+                     &uart_stm32_api, 20);
 
 /*
  * Instantiate for EVERY st,stm32-usart node with status="okay".

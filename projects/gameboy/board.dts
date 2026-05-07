@@ -75,6 +75,13 @@
             compatible = "st,stm32-i2s";
             reg = <0x40003800>;
             clocks = <&rcc 1 14>;
+            ws-port = <0x40020400>;
+            ws-pin = <12>;
+            sck-port = <0x40020400>;
+            sck-pin = <13>;
+            sd-port = <0x40020400>;
+            sd-pin = <15>;
+            af = <5>;
             status = "okay";
         };
 
