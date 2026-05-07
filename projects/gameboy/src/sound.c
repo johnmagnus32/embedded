@@ -22,8 +22,8 @@ static volatile const unsigned char *sfx_data = NULL;
 
 void sfx_jump(void)
 {
-    sfx_data = assets_sfx_jump_raw;
-    sfx_len = assets_sfx_jump_raw_len;
+    sfx_data = assets_sfx_jump_raw;  /* just a trigger flag */
+    sfx_len = 4410;  /* 0.2s at 22050 Hz */
     sfx_pos = 0;
 }
 
@@ -32,7 +32,7 @@ void sfx_beep(void)
     sfx_jump();  /* reuse jump sound */
 }
 
-static uint32_t volume = 2048;
+static uint32_t volume = 1024;
 static uint32_t sample_count = 0;
 
 /* Called from DMA ISR context via I2S driver.
@@ -50,7 +50,6 @@ static void fill_audio(int16_t *buf, int count, void *user_data)
 
     for (int i = 0; i < nsamples; i++) {
         if (++sample_count >= 256) {
-            volume = adc_read(adc_dev);
             sample_count = 0;
         }
 
@@ -58,10 +57,18 @@ static void fill_audio(int16_t *buf, int count, void *user_data)
         int16_t music = ((int16_t)assets_loop_raw[audio_pos] - 128) * 200;
         audio_pos = (audio_pos + 1) % assets_loop_raw_len;
 
-        /* Sound effect from PCM sample */
+        /* Sound effect — synthesized jump (frequency sweep) */
         int16_t sfx = 0;
         if (sfx_pos < sfx_len && sfx_data) {
-            sfx = ((int16_t)sfx_data[sfx_pos] - 128) * 256;
+            /* Rising then falling pitch sweep */
+            uint32_t p = sfx_pos;
+            uint32_t half = sfx_len / 2;
+            uint32_t freq = (p < half) ? (200 + p * 800 / half) : (1000 - (p - half) * 800 / half);
+            /* Simple square wave at variable frequency */
+            uint32_t period = 22050 / freq;
+            sfx = ((p % period) < period / 2) ? 12000 : -12000;
+            /* Fade out */
+            sfx = (int16_t)((int32_t)sfx * (int32_t)(sfx_len - p) / (int32_t)sfx_len);
             sfx_pos++;
         }
 

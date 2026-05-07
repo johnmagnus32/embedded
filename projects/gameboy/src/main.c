@@ -54,6 +54,11 @@ void main(void)
     *(volatile uint32_t *)0x40023844 |= (1 << 4);  /* USART1 clock */
     *(volatile uint32_t *)0x40023844 |= (1 << 12); /* SPI1 clock */
     *(volatile uint32_t *)0x40023844 |= (1 << 14); /* SYSCFG clock (needed for EXTI routing) */
+    *(volatile uint32_t *)0x40023840 |= (1 << 14); /* SPI2/I2S2 clock (APB1) */
+    /* Enable PLLI2S with defaults (N=192, R=2 → I2SCLK≈96MHz) */
+    *(volatile uint32_t *)0x40023844 &= ~(1 << 22); /* I2SSRC=0 (PLLI2S) */
+    *(volatile uint32_t *)0x40023800 |= (1 << 26); /* CR: PLLI2SON */
+    while (!(*(volatile uint32_t *)0x40023800 & (1 << 27))) {} /* wait PLLI2SRDY */
     /* SPI1 pins: PA5=SCK(AF5), PA6=MISO(AF5), PA7=MOSI(AF5) */
     *(volatile uint32_t *)0x40020000 = (*(volatile uint32_t *)0x40020000 & ~((3<<10)|(3<<12)|(3<<14)))
                                        | (2<<10)|(2<<12)|(2<<14);  /* AF mode */
@@ -68,6 +73,11 @@ void main(void)
     /* SPI1: master, /2, SSM+SSI, enable */
     *(volatile uint32_t *)0x40013000 = (1<<2)|(1<<8)|(1<<9);
     *(volatile uint32_t *)0x40013000 |= (1<<6);
+    /* I2S2 pins: PB12=WS(AF5), PB13=SCK(AF5), PB15=SD(AF5) */
+    *(volatile uint32_t *)0x40020400 = (*(volatile uint32_t *)0x40020400 & ~((3<<24)|(3<<26)|(3<<30)))
+                                       | (2<<24)|(2<<26)|(2<<30);  /* AF mode */
+    *(volatile uint32_t *)0x40020424 = (*(volatile uint32_t *)0x40020424 & ~((0xF<<16)|(0xF<<20)|(0xF<<28)))
+                                       | (5<<16)|(5<<20)|(5<<28);  /* AF5 */
     *(volatile uint32_t *)0x40020000 &= ~(3 << 18); *(volatile uint32_t *)0x40020000 |= (2 << 18);
     *(volatile uint32_t *)0x40020024 &= ~(0xF << 4); *(volatile uint32_t *)0x40020024 |= (7 << 4);
     *(volatile uint32_t *)0x40011008 = 0x8B;
@@ -91,10 +101,16 @@ void main(void)
     buttons_init();
 
     uart_print("start\n");
+    /* Debug: print PLLCFGR PLLM value */
+    uart_print("PLLM=");
+    print_int(*(volatile uint32_t *)0x40023804 & 0x3F);
+    uart_print(" I2SCFGR=");
+    print_int(*(volatile uint32_t *)0x40023884);
+    uart_print("\n");
 
     /* Start DMA audio — fill_audio runs in ISR context */
-    //extern void start_audio(void);
-    //start_audio();
+    extern void start_audio(void);
+    start_audio();
 
     //sched_create_task(task_a,     "task_a", 1);
     //sched_create_task(task_b,     "task_b", 1);

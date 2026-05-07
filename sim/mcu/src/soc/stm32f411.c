@@ -12,15 +12,17 @@
 /* RCC stub — reads return 0, writes ignored */
 /* Minimal RCC model — tracks clock enable registers */
 static struct {
-    uint32_t ahb1enr;  /* offset 0x30 */
-    uint32_t apb1enr;  /* offset 0x40 */
-    uint32_t apb2enr;  /* offset 0x44 */
+    uint32_t ahb1enr;
+    uint32_t apb1enr;
+    uint32_t apb2enr;
+    uint32_t cr;
 } rcc_state;
 
 static uint32_t rcc_read(void *opaque, uint32_t offset)
 {
     (void)opaque;
     switch (offset) {
+    case 0x00: return rcc_state.cr;
     case 0x30: return rcc_state.ahb1enr;
     case 0x40: return rcc_state.apb1enr;
     case 0x44: return rcc_state.apb2enr;
@@ -32,6 +34,12 @@ static void rcc_write(void *opaque, uint32_t offset, uint32_t val)
 {
     (void)opaque;
     switch (offset) {
+    case 0x00:
+        rcc_state.cr = val;
+        /* Auto-set ready bits when PLLs enabled */
+        if (val & (1 << 24)) rcc_state.cr |= (1 << 25); /* PLLRDY */
+        if (val & (1 << 26)) rcc_state.cr |= (1 << 27); /* PLLI2SRDY */
+        break;
     case 0x30: rcc_state.ahb1enr |= val; break;
     case 0x40: rcc_state.apb1enr |= val; break;
     case 0x44: rcc_state.apb2enr |= val; break;

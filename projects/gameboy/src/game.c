@@ -108,6 +108,10 @@ void task_game(void)
     draw_string(112, 80, "DINO RUN", YELLOW);
     draw_string(64, 120, "PRESS A TO START", GREEN);
     display_vsync(display);
+
+    /* Turn display on now that framebuffer is painted */
+    extern void display_on(const struct device *dev);
+    display_on(display);
     button_pressed(0);
     while (!button_pressed(0)) sched_sleep_ms(50);
 
@@ -206,9 +210,8 @@ void task_game(void)
 
             /* Score display */
             if (score > prev_score) {
-                /* Erase old score area and redraw */
-                display_fill_rect(display, SCR_W - 108, 4, 104, 16, SKY);
-                draw_string(SCR_W - 108, 4, "SCORE", WHITE);
+                /* Erase only the number area and redraw */
+                display_fill_rect(display, SCR_W - 36, 4, 32, 16, SKY);
                 draw_number(SCR_W - 36, 4, score, WHITE);
                 prev_score = score;
             }

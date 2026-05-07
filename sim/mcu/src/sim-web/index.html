@@ -97,9 +97,9 @@ function _applyFrame(data, isDelta) {
   for (let i = 0, n = _lcdW * _lcdH; i < n; i++) {
     const rgb565 = _lcdRaw[i*2] | (_lcdRaw[i*2+1] << 8);
     const j = i * 4;
-    d[j]   = (rgb565 << 3) & 0xF8;  /* B (BGR) */
+    d[j]   = (rgb565 >> 8) & 0xF8;
     d[j+1] = (rgb565 >> 3) & 0xFC;
-    d[j+2] = (rgb565 >> 8) & 0xF8;  /* R (BGR) */
+    d[j+2] = (rgb565 << 3) & 0xF8;
     d[j+3] = 255;
   }
   _lcdCtx.putImageData(_lcdImg, 0, 0);
@@ -174,8 +174,8 @@ function initAudio() {
     src.buffer = ab;
     src.connect(_audioCtx.destination);
     const now = _audioCtx.currentTime;
-    if (_audioNextTime < now - 0.1) _audioNextTime = now;
-    if (_audioNextTime > now + 0.3) _audioNextTime = now;
+    if (_audioNextTime < now - 0.05) _audioNextTime = now;
+    if (_audioNextTime > now + 0.2) return;  /* drop — too far ahead */
     src.start(_audioNextTime);
     _audioNextTime += ab.duration;
   };

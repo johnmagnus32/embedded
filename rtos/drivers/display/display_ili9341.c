@@ -140,7 +140,7 @@ static int ili9341_init(const struct device *dev)
     ili9341_end(data);
     ili9341_delay_ms(120);
 
-    ili9341_send_cmd(data, cfg, 0x29);  /* Display ON */
+    /* Display left OFF — app calls display_on() after first fill */
     ili9341_end(data);
 
     return 0;
@@ -151,6 +151,14 @@ static const struct display_driver_api ili9341_api = {
     .set_rotation = ili9341_set_rotation,
     .vsync        = ili9341_vsync,
 };
+
+void display_on(const struct device *dev)
+{
+    struct ili9341_data *data = dev->data;
+    const struct ili9341_config *cfg = dev->config;
+    ili9341_send_cmd(data, cfg, 0x29);
+    ili9341_end(data);
+}
 
 /* ---- DT_INST instantiation ---- */
 
