@@ -21,12 +21,14 @@ DEVICE_DT_DECLARE(ili9341);
 DEVICE_DT_DECLARE(i2s2);
 DEVICE_DT_DECLARE(adc1);
 DEVICE_DT_DECLARE(gpiob);
+DEVICE_DT_DECLARE(gpioc);
 
 const struct device *uart;
 const struct device *display;
 const struct device *audio_dev;
 const struct device *adc_dev;
 const struct device *dev_gpiob;
+const struct device *dev_gpioc;
 
 void uart_print(const char *s)
 {
@@ -45,30 +47,40 @@ extern char _heap_size;
 
 void main(void)
 {
-    /* Raw UART1 init for early debug — same as blink project */
-    *(volatile uint32_t *)0x40023830 |= (1 << 0);   /* RCC AHB1ENR: GPIOA */
-    *(volatile uint32_t *)0x40023844 |= (1 << 4);   /* RCC APB2ENR: USART1 */
-    for (volatile int d = 0; d < 100; d++) {}
-    *(volatile uint32_t *)0x40020000 &= ~(3 << 18); /* PA9 AF mode */
-    *(volatile uint32_t *)0x40020000 |=  (2 << 18);
-    *(volatile uint32_t *)0x40020024 &= ~(0xF << 4); /* PA9 AF7 */
-    *(volatile uint32_t *)0x40020024 |=  (7 << 4);
-    *(volatile uint32_t *)0x40011008 = 0x8B;         /* BRR: 115200 @ 16MHz */
-    *(volatile uint32_t *)0x4001100C = (1 << 13);    /* UE */
-    for (volatile int d = 0; d < 100; d++) {}
-    *(volatile uint32_t *)0x4001100C |= (1 << 3);   /* TE */
-    for (volatile int d = 0; d < 1000; d++) {}
-    const char *msg = "ALIVE\r\n";
-    while (*msg) {
-        while (!(*(volatile uint32_t *)0x40011000 & (1 << 7))) {}
-        *(volatile uint32_t *)0x40011004 = *msg++;
-    }
+    /* Early clock enables — needed before device_init_all */
+    *(volatile uint32_t *)0x40023830 |= (1 << 0);  /* GPIOA clock */
+    *(volatile uint32_t *)0x40023830 |= (1 << 1);  /* GPIOB clock */
+    *(volatile uint32_t *)0x40023830 |= (1 << 2);  /* GPIOC clock */
+    *(volatile uint32_t *)0x40023844 |= (1 << 4);  /* USART1 clock */
+    *(volatile uint32_t *)0x40023844 |= (1 << 12); /* SPI1 clock */
+    *(volatile uint32_t *)0x40023844 |= (1 << 14); /* SYSCFG clock (needed for EXTI routing) */
+    /* SPI1 pins: PA5=SCK(AF5), PA6=MISO(AF5), PA7=MOSI(AF5) */
+    *(volatile uint32_t *)0x40020000 = (*(volatile uint32_t *)0x40020000 & ~((3<<10)|(3<<12)|(3<<14)))
+                                       | (2<<10)|(2<<12)|(2<<14);  /* AF mode */
+    *(volatile uint32_t *)0x40020020 = (*(volatile uint32_t *)0x40020020 & ~((0xF<<20)|(0xF<<24)|(0xF<<28)))
+                                       | (5<<20)|(5<<24)|(5<<28);  /* AF5 */
+    /* PA4=CS output, high */
+    *(volatile uint32_t *)0x40020000 = (*(volatile uint32_t *)0x40020000 & ~(3<<8)) | (1<<8);
+    *(volatile uint32_t *)0x40020018 = (1<<4);
+    /* PB5=DC output, high */
+    *(volatile uint32_t *)0x40020400 = (*(volatile uint32_t *)0x40020400 & ~(3<<10)) | (1<<10);
+    *(volatile uint32_t *)0x40020418 = (1<<5);
+    /* SPI1: master, /2, SSM+SSI, enable */
+    *(volatile uint32_t *)0x40013000 = (1<<2)|(1<<8)|(1<<9);
+    *(volatile uint32_t *)0x40013000 |= (1<<6);
+    *(volatile uint32_t *)0x40020000 &= ~(3 << 18); *(volatile uint32_t *)0x40020000 |= (2 << 18);
+    *(volatile uint32_t *)0x40020024 &= ~(0xF << 4); *(volatile uint32_t *)0x40020024 |= (7 << 4);
+    *(volatile uint32_t *)0x40011008 = 0x8B;
+    *(volatile uint32_t *)0x4001100C = (1<<13)|(1<<3);
+    for (volatile int d=0;d<1000;d++){}
+    const char *m = "OK\r\n"; while(*m){while(!(*(volatile uint32_t*)0x40011000&(1<<7))){} *(volatile uint32_t*)0x40011004=*m++;}
 
     uart      = DEVICE_DT_GET(usart1);
     display   = DEVICE_DT_GET(ili9341);
     audio_dev = DEVICE_DT_GET(i2s2);
     adc_dev   = DEVICE_DT_GET(adc1);
     dev_gpiob = DEVICE_DT_GET(gpiob);
+    dev_gpioc = DEVICE_DT_GET(gpioc);
 
     heap_init(&_heap_start, (size_t)&_heap_size);
 

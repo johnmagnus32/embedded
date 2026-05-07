@@ -101,7 +101,7 @@ static int check_collision(int py, int obs_x[], int obs_gap[], int n)
 void task_game(void)
 {
     uart_print("game: init\n");
-    display_set_rotation(display, 0x20);
+    display_set_rotation(display, 0x28);
 
     /* Title screen */
     display_fill_rect(display, 0, 0, SCR_W, SCR_H, SKY);

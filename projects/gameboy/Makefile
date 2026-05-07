@@ -10,7 +10,7 @@ SIZE    = $(TC)-size
 OBJDUMP = $(TC)-objdump
 NM      = $(TC)-nm
 
-OS      = ../../os
+OS      = ../../rtos
 BUILD   = build
 
 CFLAGS  = -mcpu=cortex-m4 -mthumb -nostdlib -ffreestanding -Wall -Og -g \

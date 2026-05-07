@@ -32,6 +32,13 @@
             status = "okay";
         };
 
+        gpioc: gpio@40020800 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020800>;
+            clocks = <&rcc 0 2>;
+            status = "okay";
+        };
+
         usart1: serial@40011000 {
             compatible = "st,stm32-usart";
             reg = <0x40011000>;
@@ -89,7 +96,7 @@
         ili9341: display@1 {
             compatible = "ilitek,ili9341";
             dc-port = <&gpiob>;
-            dc-pin = <1>;
+            dc-pin = <5>;
             status = "okay";
         };
     };

@@ -14,6 +14,7 @@ extern const struct device *display;
 extern const struct device *audio_dev;
 extern const struct device *adc_dev;
 extern const struct device *dev_gpiob;
+extern const struct device *dev_gpioc;
 
 /* Utility functions */
 void uart_print(const char *s);
