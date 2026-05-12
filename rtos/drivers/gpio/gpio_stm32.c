@@ -140,14 +140,14 @@ static void exti_common_handler(uint8_t pin)
         exti_callbacks[pin](pin);
 }
 
-void exti0_handler(void) { exti_common_handler(0); }
-void exti1_handler(void) { exti_common_handler(1); }
-void exti2_handler(void) { exti_common_handler(2); }
-void exti3_handler(void) { exti_common_handler(3); }
-void exti4_handler(void) { exti_common_handler(4); }
+void exti0_handler(void *arg) { (void)arg; exti_common_handler(0); }
+void exti1_handler(void *arg) { (void)arg; exti_common_handler(1); }
+void exti2_handler(void *arg) { (void)arg; exti_common_handler(2); }
+void exti3_handler(void *arg) { (void)arg; exti_common_handler(3); }
+void exti4_handler(void *arg) { (void)arg; exti_common_handler(4); }
 
-void exti9_5_handler(void)
-{
+void exti9_5_handler(void *arg)
+{ (void)arg;
     for (uint8_t pin = 5; pin <= 9; pin++) {
         if (REG(EXTI_BASE, EXTI_PR) & (1U << pin)) {
             exti_common_handler(pin);
@@ -155,8 +155,8 @@ void exti9_5_handler(void)
     }
 }
 
-void exti15_10_handler(void)
-{
+void exti15_10_handler(void *arg)
+{ (void)arg;
     for (uint8_t pin = 10; pin <= 15; pin++) {
         if (REG(EXTI_BASE, EXTI_PR) & (1U << pin)) {
             exti_common_handler(pin);

@@ -36,6 +36,7 @@
             compatible = "st,stm32-gpio";
             reg = <0x40020800>;
             clocks = <&rcc 0 2>;
+            exti-irqs = <6 7 8 9 10 23 40>;
             status = "okay";
         };
 
@@ -46,7 +47,11 @@
             tx-pin = <9>;
             tx-af = <7>;
             tx-port = <&gpioa>;
+            rx-pin = <10>;
+            rx-af = <7>;
+            rx-port = <&gpioa>;
             baudrate = <115200>;
+            irq = <37>;
             status = "okay";
         };
 
@@ -63,11 +68,34 @@
             mosi-port = <&gpioa>;
             mosi-pin = <7>;
             mosi-af = <5>;
+            cs-port = <&gpioa>;
+            cs-pin = <4>;
+            status = "okay";
+        };
+
+        spi3: spi@40003C00 {
+            compatible = "st,stm32-spi";
+            reg = <0x40003C00>;
+            clocks = <&rcc 1 15>;
+            sck-port = <&gpioc>;
+            sck-pin = <10>;
+            sck-af = <6>;
+            miso-port = <&gpioc>;
+            miso-pin = <11>;
+            miso-af = <6>;
+            mosi-port = <&gpioc>;
+            mosi-pin = <12>;
+            mosi-af = <6>;
+            cs-port = <&gpiob>;
+            cs-pin = <0>;
             status = "okay";
 
-            flash@0 {
-                cs-port = <&gpioa>;
-                cs-pin = <4>;
+            w25q128: flash@0 {
+                compatible = "jedec,spi-nor";
+                size = <134217728>;
+                page-size = <256>;
+                sector-size = <4096>;
+                status = "okay";
             };
         };
 
@@ -89,6 +117,7 @@
             compatible = "st,stm32-dma";
             reg = <0x40026000>;
             clocks = <&rcc 0 21>;
+            irqs = <11 12 13 14 15 16 17>;
             status = "okay";
         };
 

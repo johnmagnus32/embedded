@@ -1,5 +1,8 @@
 /*
- * audio.h — Audio driver API (I2S output)
+ * audio.h — Audio driver API (buffer submission model)
+ *
+ * The app loops: get_buffer → fill → put_buffer → repeat.
+ * No callbacks, no ISR concerns in application code.
  */
 
 #ifndef DRIVERS_AUDIO_H
@@ -8,33 +11,37 @@
 #include "device.h"
 #include <stdint.h>
 
-/* Callback: fill buf with count samples. Called from ISR context. */
-typedef void (*audio_fill_fn)(int16_t *buf, int count, void *user_data);
+#define AUDIO_BUF_SAMPLES 128  /* samples per half-buffer (stereo pairs) */
 
 struct audio_driver_api {
-    void (*write_sample)(const struct device *dev, int16_t left, int16_t right);
-    int  (*start)(const struct device *dev, audio_fill_fn fill, void *user_data);
+    int  (*start)(const struct device *dev);
     int  (*stop)(const struct device *dev);
+    int16_t *(*get_buffer)(const struct device *dev);
+    void (*put_buffer)(const struct device *dev, int16_t *buf);
 };
 
-static inline void audio_write_sample(const struct device *dev,
-                                      int16_t left, int16_t right)
+static inline int audio_start(const struct device *dev)
 {
     const struct audio_driver_api *api = dev->api;
-    api->write_sample(dev, left, right);
-}
-
-static inline int audio_start(const struct device *dev,
-                              audio_fill_fn fill, void *user_data)
-{
-    const struct audio_driver_api *api = dev->api;
-    return api->start(dev, fill, user_data);
+    return api->start(dev);
 }
 
 static inline int audio_stop(const struct device *dev)
 {
     const struct audio_driver_api *api = dev->api;
     return api->stop(dev);
+}
+
+static inline int16_t *audio_get_buffer(const struct device *dev)
+{
+    const struct audio_driver_api *api = dev->api;
+    return api->get_buffer(dev);
+}
+
+static inline void audio_put_buffer(const struct device *dev, int16_t *buf)
+{
+    const struct audio_driver_api *api = dev->api;
+    api->put_buffer(dev, buf);
 }
 
 #endif

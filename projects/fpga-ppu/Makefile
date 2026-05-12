@@ -3,8 +3,8 @@ PROJ  = ppu_top
 PCF   = icebreaker.pcf
 BUILD = build
 
-SRCS  = src/ppu_top.v src/spi_cmd.v src/game_regs.v src/sprite_mem.v src/pixel_gen.v src/lcd_driver.v
-LOGIC = src/spi_cmd.v src/game_regs.v src/sprite_mem.v src/pixel_gen.v src/lcd_driver.v
+SRCS  = src/ppu_top.v src/spi_cmd.v src/sprite_table.v src/tile_table.v src/sprite_mem.v src/pixel_gen.v src/lcd_driver.v
+LOGIC = src/spi_cmd.v src/sprite_table.v src/tile_table.v src/sprite_mem.v src/pixel_gen.v src/lcd_driver.v
 TB    = tb/tb_ppu.v
 
 all: sim netlist schematic

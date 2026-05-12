@@ -13,6 +13,7 @@
 #include "device.h"
 #include "drivers/uart.h"
 #include "drivers/clock.h"
+#include "irq.h"
 #include "sync.h"
 
 #define USART_SR   0x00
@@ -24,7 +25,6 @@
 #define GPIO_AFRL   0x20
 
 /* NVIC registers for enabling IRQs */
-#define NVIC_ISER1  (*(volatile uint32_t *)0xE000E104)  /* IRQs 32-63 */
 
 #define REG(base, off) (*(volatile uint32_t *)((base) + (off)))
 
@@ -34,8 +34,11 @@ struct uart_stm32_config {
     uint32_t gpio_base;
     uint8_t  tx_pin;
     uint8_t  tx_af;
+    uint8_t  rx_pin;
+    uint8_t  rx_af;
     uint8_t  uart_clk_bus;
     uint8_t  uart_clk_bit;
+    uint8_t  irq;
 };
 
 /* RX ring buffer (filled by ISR, read by poll_in) */
@@ -71,12 +74,23 @@ static int uart_stm32_init(const struct device *dev)
     *afr   &= ~(0xFU << (af_pin * 4));
     *afr   |=  (cfg->tx_af << (af_pin * 4));
 
+    /* Configure RX pin (from DTS) */
+    uint8_t rx_pin = cfg->rx_pin;
+    int rx_af_pin = rx_pin;
+    volatile uint32_t *rx_afr = (volatile uint32_t *)(cfg->gpio_base +
+        (rx_af_pin < 8 ? GPIO_AFRL : GPIO_AFRL + 4));
+    if (rx_af_pin >= 8) rx_af_pin -= 8;
+    *moder &= ~(3U << (rx_pin * 2));
+    *moder |=  (2U << (rx_pin * 2));
+    *rx_afr &= ~(0xFU << (rx_af_pin * 4));
+    *rx_afr |=  (cfg->rx_af << (rx_af_pin * 4));
+
     REG(cfg->base, USART_BRR) = (DT_SYSCLK_HZ + cfg->baudrate / 2) / cfg->baudrate;
     /* UE + TE + RE + RXNEIE (RX interrupt enable) */
     REG(cfg->base, USART_CR1) = (1 << 13) | (1 << 3) | (1 << 2) | (1 << 5);
 
-    /* Enable USART2 IRQ in NVIC (IRQ 38 → ISER1 bit 6) */
-    NVIC_ISER1 = (1 << (38 - 32));
+    /* Enable USART IRQ in NVIC — number from device tree */
+    irq_enable(cfg->irq);
 
     return 0;
 }
@@ -86,13 +100,15 @@ static int uart_stm32_init(const struct device *dev)
  * Puts the byte in the ring buffer and signals the semaphore.
  * The shell task (blocked on sem_take) gets woken up.
  */
-void usart2_isr(void)
+void uart_stm32_isr(void *arg)
 {
-    uint32_t base = DT_CONSOLE_BASE;
-    uint32_t sr = REG(base, USART_SR);
+    const struct device *dev = (const struct device *)arg;
+    const struct uart_stm32_config *cfg = dev->config;
+    uint32_t sr = REG(cfg->base, USART_SR);
 
     if (sr & (1 << 5)) {  /* RXNE — data available */
-        char c = (char)REG(base, USART_DR);
+        char c = (char)REG(cfg->base, USART_DR);
+
         uint8_t next = (rx_head + 1) % RX_BUF_SIZE;
         if (next != rx_tail) {  /* not full */
             rx_buf[rx_head] = c;
@@ -149,8 +165,11 @@ static const struct uart_driver_api uart_stm32_api = {
         .gpio_base    = _DT_INST(ST_STM32_USART, n, TX_PORT_BASE),     \
         .tx_pin       = _DT_INST(ST_STM32_USART, n, TX_PIN),           \
         .tx_af        = _DT_INST(ST_STM32_USART, n, TX_AF),            \
+        .rx_pin       = _DT_INST(ST_STM32_USART, n, RX_PIN),           \
+        .rx_af        = _DT_INST(ST_STM32_USART, n, RX_AF),            \
         .uart_clk_bus = _DT_INST_CLK(ST_STM32_USART, n, BUS),         \
         .uart_clk_bit = _DT_INST_CLK(ST_STM32_USART, n, BIT),         \
+        .irq          = _DT_INST(ST_STM32_USART, n, IRQ),              \
     };                                                                  \
     DEVICE_DT_DEFINE(_DT_INST_LABEL(ST_STM32_USART, n),                \
                      uart_stm32_init, NULL, &uart_cfg_##n,              \

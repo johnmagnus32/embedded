@@ -2,7 +2,7 @@
  * flash.c — W25Q128 SPI NOR flash driver
  *
  * Uses the SPI driver API — no hardcoded register addresses.
- * The SPI bus device is referenced via DEVICE_DT_GET(spi1).
+ * The SPI bus is resolved from the DTS parent node (DT_PARENT_LABEL).
  *
  * All hardware knowledge is split:
  *   - SPI driver knows how to clock bytes in/out (from DT: base, pins)
@@ -36,12 +36,12 @@ struct flash_nor_config {
     uint16_t sector_size;
 };
 
-/* Reference to the SPI bus this flash sits on */
-DEVICE_DT_DECLARE(spi1);
+/* Reference to the SPI bus this flash sits on (from DTS parent node) */
+DEVICE_DT_DECLARE(DT_INST_JEDEC_SPI_NOR_0_PARENT_LABEL);
 
 static const struct device *spi(void)
 {
-    return DEVICE_DT_GET(spi1);
+    return DEVICE_DT_GET(DT_INST_JEDEC_SPI_NOR_0_PARENT_LABEL);
 }
 
 #ifdef CONFIG_PM
@@ -113,7 +113,7 @@ static int flash_nor_init(const struct device *dev)
 {
     (void)dev;
 
-    /* Verify JEDEC ID */
+    /* Verify JEDEC ID — accept Winbond W25Q128 or GigaDevice GD25Q128 */
     uint8_t cmd = CMD_JEDEC_ID;
     uint8_t id[3];
 
@@ -122,7 +122,8 @@ static int flash_nor_init(const struct device *dev)
     spi_read(spi(), id, 3);
     spi_cs_release(spi());
 
-    if (id[0] != 0xEF || id[1] != 0x40 || id[2] != 0x18)
+    /* id[0]=manufacturer, id[1]=type(0x40), id[2]=capacity(0x18=128Mbit) */
+    if ((id[0] != 0xEF && id[0] != 0xC8) || id[1] != 0x40 || id[2] != 0x18)
         return -1;
 
     return 0;

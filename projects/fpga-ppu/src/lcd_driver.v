@@ -1,170 +1,114 @@
 /*
- * lcd_driver.v — SPI master that streams pixels to ILI9341
+ * lcd_driver.v — ILI9341 8-bit parallel (8080) interface
  *
- * Continuously renders frames:
- *   1. Send column/row address set commands
- *   2. Send memory write command (0x2C)
- *   3. Stream 240×320 pixels (requests from pixel_gen)
- *   4. Repeat
+ * Outputs pixels via 8-bit parallel bus at clk/4 rate.
+ * Two write cycles per pixel (high byte, low byte).
+ * Drives pixel_req to pixel_gen, receives pixel_color back.
  *
- * SPI output at clk/2 (6MHz with 12MHz system clock).
+ * Pin mapping:
+ *   D[7:0] — 8-bit data bus
+ *   WR     — write strobe (active low, rising edge latches)
+ *   DC     — data/command (1=data, 0=command)
+ *   CS     — chip select (active low, active during frame)
  */
 module lcd_driver (
     input         clk,
-
     // Pixel interface (to pixel_gen)
     output reg [8:0] pixel_x,
     output reg [8:0] pixel_y,
     output reg       pixel_req,
-    input      [15:0] pixel_color,
-    input             pixel_valid,
-
-    // SPI output (to ILI9341)
-    output reg       lcd_sclk,
-    output reg       lcd_mosi,
-    output reg       lcd_cs,
-    output reg       lcd_dc     // 0=command, 1=data
+    input  [15:0]    pixel_color,
+    input            pixel_valid,
+    // Parallel LCD pins
+    output reg [7:0] lcd_data,
+    output reg       lcd_wr,
+    output reg       lcd_dc,
+    output reg       lcd_cs
 );
-    // States
-    localparam S_INIT     = 0;
-    localparam S_CMD      = 1;  // sending command/init bytes
-    localparam S_PIXELS   = 2;  // streaming pixel data
-    localparam S_WAIT     = 3;  // waiting for pixel_valid
+    localparam W = 240;  // landscape: 240 columns
+    localparam H = 320;  // landscape: 320 rows (rotated)
 
+    localparam S_INIT = 0, S_REQ = 1, S_WAIT = 2, S_HI = 3, S_LO = 4, S_DONE = 5;
     reg [2:0] state = S_INIT;
-    reg [4:0] init_idx = 0;
-    reg [7:0] tx_byte = 0;
-    reg [2:0] tx_bit = 0;
-    reg       tx_active = 0;
-    reg       sclk_phase = 0;
-    reg       pixel_high = 1;  // sending high byte or low byte of pixel
+    reg [15:0] cur_color;
+    reg [1:0] wr_phase;
 
-    // Init sequence: minimal ILI9341 setup
-    // [dc, byte] pairs
-    reg [8:0] init_seq [0:11];
+    // Frame timing: 60 FPS = 16.67ms. At 48MHz = 800,000 cycles/frame.
+    // Pixel output: 240*320 = 76800 pixels, ~10 cycles each = 768,000 cycles.
+    reg [19:0] frame_timer = 0;
+    localparam FRAME_CYCLES = 800000;
+
     initial begin
-        init_seq[0]  = {1'b0, 8'h01};  // software reset
-        init_seq[1]  = {1'b0, 8'h11};  // sleep out
-        init_seq[2]  = {1'b0, 8'h3A};  // pixel format
-        init_seq[3]  = {1'b1, 8'h55};  //   16-bit RGB565
-        init_seq[4]  = {1'b0, 8'h2A};  // column address set
-        init_seq[5]  = {1'b1, 8'h00};  //   start high
-        init_seq[6]  = {1'b1, 8'h00};  //   start low (0)
-        init_seq[7]  = {1'b1, 8'h00};  //   end high
-        init_seq[8]  = {1'b1, 8'hEF};  //   end low (239)
-        init_seq[9]  = {1'b0, 8'h2B};  // row address set
-        init_seq[10] = {1'b1, 8'h00};  //   0 to 319 (4 bytes)
-        init_seq[11] = {1'b0, 8'h29};  // display on
+        lcd_wr = 1;
+        lcd_dc = 1;
+        lcd_cs = 1;
+        pixel_req = 0;
     end
 
-    // Delay counter for init
-    reg [15:0] delay_cnt = 0;
-    reg        delaying = 0;
-
-    // Frame pixel counter
-    reg [16:0] pixel_count = 0;  // 240*320 = 76800 pixels
-
     always @(posedge clk) begin
-        // SPI clock generation (clk/2)
-        if (tx_active) begin
-            sclk_phase <= ~sclk_phase;
-            if (!sclk_phase) begin
-                // Rising edge: shift out bit
-                lcd_sclk <= 1;
-                lcd_mosi <= tx_byte[7];
-            end else begin
-                // Falling edge: advance to next bit
-                lcd_sclk <= 0;
-                tx_byte <= {tx_byte[6:0], 1'b0};
-                tx_bit <= tx_bit + 1;
-                if (tx_bit == 7) begin
-                    tx_active <= 0;
-                end
-            end
-        end
-
         pixel_req <= 0;
 
         case (state)
         S_INIT: begin
+            // Start of frame
             lcd_cs <= 0;
-            if (delaying) begin
-                delay_cnt <= delay_cnt - 1;
-                if (delay_cnt == 0) delaying <= 0;
-            end else if (!tx_active) begin
-                if (init_idx < 12) begin
-                    lcd_dc <= init_seq[init_idx][8];
-                    tx_byte <= init_seq[init_idx][7:0];
-                    tx_active <= 1;
-                    tx_bit <= 0;
-                    sclk_phase <= 0;
-                    init_idx <= init_idx + 1;
-                    // Add delay after reset and sleep out
-                    if (init_idx == 0 || init_idx == 1) begin
-                        delaying <= 1;
-                        delay_cnt <= 16'hFFFF;
-                    end
-                end else begin
-                    // Init done, start pixel streaming
-                    state <= S_CMD;
-                end
-            end
+            lcd_dc <= 1;  // data mode
+            pixel_x <= 0;
+            pixel_y <= 0;
+            state <= S_REQ;
         end
 
-        S_CMD: begin
-            // Send 0x2C (memory write) command before each frame
-            if (!tx_active) begin
-                lcd_dc <= 0;
-                tx_byte <= 8'h2C;
-                tx_active <= 1;
-                tx_bit <= 0;
-                sclk_phase <= 0;
-                pixel_x <= 0;
-                pixel_y <= 0;
-                pixel_count <= 0;
-                state <= S_PIXELS;
-            end
-        end
-
-        S_PIXELS: begin
-            if (!tx_active && !pixel_req) begin
-                if (pixel_count >= 76800) begin
-                    // Frame done, start next
-                    state <= S_CMD;
-                end else begin
-                    // Request next pixel
-                    pixel_req <= 1;
-                    state <= S_WAIT;
-                end
-            end
+        S_REQ: begin
+            pixel_req <= 1;
+            state <= S_WAIT;
         end
 
         S_WAIT: begin
             if (pixel_valid) begin
-                // Send high byte first
-                lcd_dc <= 1;
-                tx_byte <= pixel_color[15:8];
-                tx_active <= 1;
-                tx_bit <= 0;
-                sclk_phase <= 0;
-                pixel_high <= 0;
-                state <= S_PIXELS;
+                cur_color <= pixel_color;
+                state <= S_HI;
+                wr_phase <= 0;
             end
-            // After high byte sent, send low byte
-            if (!tx_active && !pixel_high) begin
-                tx_byte <= pixel_color[7:0];
-                tx_active <= 1;
-                tx_bit <= 0;
-                sclk_phase <= 0;
-                pixel_high <= 1;
-                // Advance pixel position
-                pixel_count <= pixel_count + 1;
-                if (pixel_x == 239) begin
-                    pixel_x <= 0;
-                    pixel_y <= pixel_y + 1;
-                end else begin
-                    pixel_x <= pixel_x + 1;
+        end
+
+        S_HI: begin
+            // Write high byte
+            case (wr_phase)
+                0: begin lcd_data <= cur_color[15:8]; lcd_wr <= 0; wr_phase <= 1; end
+                1: begin lcd_wr <= 1; state <= S_LO; wr_phase <= 0; end
+            endcase
+        end
+
+        S_LO: begin
+            // Write low byte
+            case (wr_phase)
+                0: begin lcd_data <= cur_color[7:0]; lcd_wr <= 0; wr_phase <= 1; end
+                1: begin
+                    lcd_wr <= 1;
+                    // Advance to next pixel
+                    if (pixel_x == W - 1) begin
+                        pixel_x <= 0;
+                        if (pixel_y == H - 1) begin
+                            state <= S_DONE;
+                        end else begin
+                            pixel_y <= pixel_y + 1;
+                            state <= S_REQ;
+                        end
+                    end else begin
+                        pixel_x <= pixel_x + 1;
+                        state <= S_REQ;
+                    end
                 end
+            endcase
+        end
+
+        S_DONE: begin
+            lcd_cs <= 1;
+            // Wait for frame timing
+            frame_timer <= frame_timer + 1;
+            if (frame_timer >= FRAME_CYCLES) begin
+                frame_timer <= 0;
+                state <= S_INIT;
             end
         end
         endcase

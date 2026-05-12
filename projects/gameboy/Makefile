@@ -148,7 +148,15 @@ defconfig:
 clean:
 	rm -f $(BUILD)/*
 
-test: all
-	cd ../../tests && make perf-bench
+# Convert WAV files in assets/ to a single flash image (build/songs.bin)
+# Format: [4-byte LE length][raw 8-bit unsigned PCM at 22050 Hz]
+audio: $(BUILD)/songs.bin
 
-.PHONY: all clean disasm sections symbols defconfig test
+$(BUILD)/songs.bin: assets/music.wav | $(BUILD)
+	ffmpeg -y -i $< -ar 22050 -ac 1 -f u8 $(BUILD)/raw.pcm 2>/dev/null
+	python3 -c "import struct; d=open('$(BUILD)/raw.pcm','rb').read(); \
+		f=open('$@','wb'); f.write(struct.pack('<I',len(d))+d); \
+		print(f'songs.bin: {len(d)} bytes ({len(d)/22050:.1f}s)')"
+	rm -f $(BUILD)/raw.pcm
+
+.PHONY: all clean disasm sections symbols defconfig audio

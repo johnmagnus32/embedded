@@ -157,7 +157,6 @@ static const struct spi_driver_api spi_stm32_api = {
 
 #define _SPI_INST_LABEL(n) DT_INST_ST_STM32_SPI_##n##_LABEL
 #define _SPI_PROP(n, p) DT_INST_ST_STM32_SPI_##n##_PROP_##p
-#define _SPI_CHILD(n, p) DT_INST_ST_STM32_SPI_##n##_CHILD_0_##p
 
 #define STM32_SPI_DEFINE(n)                                         \
     static const struct spi_stm32_config spi_cfg_##n = {            \
@@ -173,8 +172,8 @@ static const struct spi_driver_api spi_stm32_api = {
         .mosi_port = _SPI_PROP(n, MOSI_PORT_BASE),                 \
         .mosi_pin  = _SPI_PROP(n, MOSI_PIN),                       \
         .mosi_af   = _SPI_PROP(n, MOSI_AF),                        \
-        .cs_port   = _SPI_CHILD(n, CS_PORT_BASE),                  \
-        .cs_pin    = _SPI_CHILD(n, CS_PIN),                        \
+        .cs_port   = _SPI_PROP(n, CS_PORT_BASE),                    \
+        .cs_pin    = _SPI_PROP(n, CS_PIN),                         \
     };                                                              \
     DEVICE_DT_DEFINE(_SPI_INST_LABEL(n),                            \
                      spi_stm32_init, NULL, &spi_cfg_##n,            \

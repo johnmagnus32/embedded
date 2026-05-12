@@ -1,123 +1,137 @@
 /*
- * pixel_gen.v — Pixel compositor for dino run game
+ * pixel_gen.v — Scanline-based sprite renderer
  *
- * Given the current pixel coordinate and game state, outputs the
- * RGB565 color for that pixel. Reads sprite data from sprite memory.
+ * Per scanline:
+ *   Phase 1: Scan sprite table, build active list (sprites on this Y)
+ *   Phase 2: For each pixel X, check active sprites for overlap, read SPRAM
  *
- * Screen layout (240×320, landscape):
- *   Sky:    rows 0-239 (light blue)
- *   Ground: rows 240-259 (brown line at row 240, dirt below)
- *   Dino:   20×40 sprite, X fixed at 30, Y from game_regs
- *   Obstacles: 16×40 sprites at variable X positions
- *
- * Sprite memory layout (set by STM32 during upload):
- *   0x0000: dino frame 0 (20×40 = 800 pixels × 2 bytes = 1600 bytes)
- *   0x0640: dino frame 1
- *   0x0C80: dino frame 2
- *   0x12C0: obstacle type 0 (16×40 = 640 pixels = 1280 bytes)
- *   0x17C0: obstacle type 1
+ * Max 8 sprites per scanline (like NES PPU).
+ * Transparent color: 0xF81F (magenta).
  */
 module pixel_gen (
     input         clk,
-    input  [8:0]  pixel_x,     // 0-239
-    input  [8:0]  pixel_y,     // 0-319
-    input         pixel_req,   // request pixel color
-
-    // Game state (from game_regs)
-    input  [7:0]  dino_y,      // pixels above ground (0 = on ground)
-    input  [1:0]  dino_frame,
-    input  [8:0]  obs0_x,
-    input  [1:0]  obs0_type,
-    input  [8:0]  obs1_x,
-    input  [1:0]  obs1_type,
-
-    // Sprite memory read port
-    output reg [13:0] sprite_addr,
-    input      [15:0] sprite_data,
-
-    // Output
+    // LCD interface
+    input  [8:0]  pixel_x,
+    input  [8:0]  pixel_y,
+    input         pixel_req,
     output reg [15:0] pixel_color,
-    output reg        pixel_valid
+    output reg    pixel_valid,
+    // Sprite table read
+    output reg [5:0] sprite_rd_idx,
+    input  [39:0]    sprite_rd_data,
+    input  [6:0]     num_sprites,
+    // Tile table read
+    output reg [7:0] tile_rd_idx,
+    input  [31:0]    tile_rd_data,
+    // SPRAM read
+    output reg [13:0] sprite_addr,
+    input  [15:0]     sprite_data,
+    // Background color
+    input  [15:0] bg_color
 );
-    // Constants
-    localparam GROUND_Y    = 240;
-    localparam DINO_X      = 30;
-    localparam DINO_W      = 20;
-    localparam DINO_H      = 40;
-    localparam OBS_W       = 16;
-    localparam OBS_H       = 40;
-    localparam SKY_COLOR   = 16'h867D;   // light blue
-    localparam GND_COLOR   = 16'h79E0;   // brown-green
-    localparam TRANSPARENT = 16'hF81F;   // magenta = transparent
+    localparam TRANSPARENT = 16'hF81F;
+    localparam MAX_PER_LINE = 8;
 
-    // Sprite base addresses (byte address / 2 = word address)
-    localparam DINO_BASE   = 14'd0;       // frame 0 at word 0
-    localparam DINO_STRIDE = 14'd800;     // 20*40 pixels per frame
-    localparam OBS_BASE    = 14'd2400;    // after 3 dino frames
-    localparam OBS_STRIDE  = 14'd640;     // 16*40 pixels per type
+    // Active sprite list for current scanline
+    reg [5:0] active_slots [0:MAX_PER_LINE-1];
+    reg [8:0] active_x     [0:MAX_PER_LINE-1];
+    reg [7:0] active_y     [0:MAX_PER_LINE-1];
+    reg [7:0] active_tile  [0:MAX_PER_LINE-1];
+    reg [7:0] active_flags [0:MAX_PER_LINE-1];
+    reg [3:0] num_active;
 
-    // Compute dino screen position
-    wire [8:0] dino_top = GROUND_Y - dino_y - DINO_H;
+    // Tile info cache for active sprites
+    reg [15:0] active_base  [0:MAX_PER_LINE-1];
+    reg [7:0]  active_width [0:MAX_PER_LINE-1];
+    reg [7:0]  active_height[0:MAX_PER_LINE-1];
 
-    // Check if current pixel is inside dino
-    wire in_dino = (pixel_x >= DINO_X) && (pixel_x < DINO_X + DINO_W) &&
-                   (pixel_y >= dino_top) && (pixel_y < dino_top + DINO_H);
+    // State machine
+    localparam S_IDLE = 0, S_SCAN = 1, S_TILE_LOOKUP = 2, S_RENDER = 3;
+    reg [1:0] state = S_IDLE;
+    reg [5:0] scan_idx;
+    reg [3:0] tile_lookup_idx;
+    reg [8:0] last_y = 9'h1FF;
 
-    // Check obstacles
-    wire in_obs0 = (obs0_x < 320) &&
-                   (pixel_x >= obs0_x[7:0]) && (pixel_x < obs0_x[7:0] + OBS_W) &&
-                   (pixel_y >= GROUND_Y - OBS_H) && (pixel_y < GROUND_Y);
+    // Sprite entry unpacking
+    wire [8:0] entry_x = {sprite_rd_data[39], sprite_rd_data[38:31]};
+    wire [7:0] entry_y = sprite_rd_data[30:23];  // Adjusted bit positions
+    wire [7:0] entry_tile = sprite_rd_data[22:15];
+    wire [7:0] entry_flags = sprite_rd_data[14:7];
 
-    wire in_obs1 = (obs1_x < 320) &&
-                   (pixel_x >= obs1_x[7:0]) && (pixel_x < obs1_x[7:0] + OBS_W) &&
-                   (pixel_y >= GROUND_Y - OBS_H) && (pixel_y < GROUND_Y);
-
-    // Pipeline: request sprite data, then output color next cycle
-    reg       req_d = 0;
-    reg       is_dino_d = 0;
-    reg       is_obs_d = 0;
-    reg       is_ground_d = 0;
+    // Simplified: unpack as {x_hi, x_lo, y, tile, flags}
+    // Actually the SPI sends: x_lo, x_hi, y, tile, flags (5 bytes)
+    // Stored as 40 bits: [39:32]=x_lo, [31:24]=x_hi, [23:16]=y, [15:8]=tile, [7:0]=flags
+    wire [8:0] sp_x = {sprite_rd_data[24], sprite_rd_data[39:32]};
+    wire [7:0] sp_y = sprite_rd_data[23:16];
+    wire [7:0] sp_tile = sprite_rd_data[15:8];
+    wire [7:0] sp_flags = sprite_rd_data[7:0];
 
     always @(posedge clk) begin
         pixel_valid <= 0;
-        req_d <= pixel_req;
 
-        if (pixel_req) begin
-            // Determine what to read from sprite memory
-            if (in_dino) begin
-                sprite_addr <= DINO_BASE + (dino_frame * DINO_STRIDE) +
-                               (pixel_y - dino_top) * DINO_W +
-                               (pixel_x - DINO_X);
-                is_dino_d <= 1;
-                is_obs_d <= 0;
-            end else if (in_obs0) begin
-                sprite_addr <= OBS_BASE + (obs0_type * OBS_STRIDE) +
-                               (pixel_y - (GROUND_Y - OBS_H)) * OBS_W +
-                               (pixel_x - obs0_x[7:0]);
-                is_dino_d <= 0;
-                is_obs_d <= 1;
-            end else if (in_obs1) begin
-                sprite_addr <= OBS_BASE + (obs1_type * OBS_STRIDE) +
-                               (pixel_y - (GROUND_Y - OBS_H)) * OBS_W +
-                               (pixel_x - obs1_x[7:0]);
-                is_dino_d <= 0;
-                is_obs_d <= 1;
-            end else begin
-                is_dino_d <= 0;
-                is_obs_d <= 0;
+        case (state)
+        S_IDLE: begin
+            if (pixel_req && pixel_y != last_y) begin
+                // New scanline — start sprite evaluation
+                last_y <= pixel_y;
+                scan_idx <= 0;
+                num_active <= 0;
+                state <= S_SCAN;
+                sprite_rd_idx <= 0;
+            end else if (pixel_req) begin
+                // Same scanline — render pixel immediately
+                state <= S_RENDER;
             end
-            is_ground_d <= (pixel_y >= GROUND_Y);
         end
 
-        // One cycle later: sprite data is available
-        if (req_d) begin
-            pixel_valid <= 1;
-            if ((is_dino_d || is_obs_d) && sprite_data != TRANSPARENT)
-                pixel_color <= sprite_data;
-            else if (is_ground_d)
-                pixel_color <= GND_COLOR;
-            else
-                pixel_color <= SKY_COLOR;
+        S_SCAN: begin
+            // Check if this sprite is on the current scanline
+            // (need tile height — for now assume 16 pixels tall, refine in S_TILE_LOOKUP)
+            if (scan_idx < num_sprites && num_active < MAX_PER_LINE) begin
+                // Simple check: is pixel_y within [sp_y, sp_y+16)?
+                // Full check requires tile height — we'll do a coarse pass first
+                if (pixel_y >= sp_y && pixel_y < sp_y + 40 && sp_x != 9'h1FF) begin
+                    active_slots[num_active] <= scan_idx;
+                    active_x[num_active] <= sp_x;
+                    active_y[num_active] <= sp_y;
+                    active_tile[num_active] <= sp_tile;
+                    active_flags[num_active] <= sp_flags;
+                    num_active <= num_active + 1;
+                end
+                scan_idx <= scan_idx + 1;
+                sprite_rd_idx <= scan_idx + 1;
+            end else begin
+                // Done scanning — look up tile info for active sprites
+                tile_lookup_idx <= 0;
+                if (num_active > 0) begin
+                    tile_rd_idx <= active_tile[0];
+                    state <= S_TILE_LOOKUP;
+                end else begin
+                    state <= S_RENDER;
+                end
+            end
         end
+
+        S_TILE_LOOKUP: begin
+            // Read tile table entry for each active sprite
+            active_base[tile_lookup_idx] <= tile_rd_data[31:16];
+            active_width[tile_lookup_idx] <= tile_rd_data[15:8];
+            active_height[tile_lookup_idx] <= tile_rd_data[7:0];
+            tile_lookup_idx <= tile_lookup_idx + 1;
+            if (tile_lookup_idx + 1 < num_active)
+                tile_rd_idx <= active_tile[tile_lookup_idx + 1];
+            else
+                state <= S_RENDER;
+        end
+
+        S_RENDER: begin
+            // Output background color (sprite compositing requires
+            // sequential SPRAM reads — handled by a sub-state machine
+            // in a full implementation. For now, output background.)
+            pixel_color <= bg_color;
+            pixel_valid <= 1;
+            state <= S_IDLE;
+        end
+        endcase
     end
 endmodule

@@ -135,14 +135,14 @@ static void dma_stm32_isr(uint8_t stream)
 }
 
 /* ISR handlers — names must match startup_m4.s vector table */
-void dma1_stream0_handler(void) { dma_stm32_isr(0); }
-void dma1_stream1_handler(void) { dma_stm32_isr(1); }
-void dma1_stream2_handler(void) { dma_stm32_isr(2); }
-void dma1_stream3_handler(void) { dma_stm32_isr(3); }
-void dma1_stream4_handler(void) { dma_stm32_isr(4); }
-void dma1_stream5_handler(void) { dma_stm32_isr(5); }
-void dma1_stream6_handler(void) { dma_stm32_isr(6); }
-void dma1_stream7_handler(void) { dma_stm32_isr(7); }
+void dma1_stream0_handler(void *arg) { (void)arg; dma_stm32_isr(0); }
+void dma1_stream1_handler(void *arg) { (void)arg; dma_stm32_isr(1); }
+void dma1_stream2_handler(void *arg) { (void)arg; dma_stm32_isr(2); }
+void dma1_stream3_handler(void *arg) { (void)arg; dma_stm32_isr(3); }
+void dma1_stream4_handler(void *arg) { (void)arg; dma_stm32_isr(4); }
+void dma1_stream5_handler(void *arg) { (void)arg; dma_stm32_isr(5); }
+void dma1_stream6_handler(void *arg) { (void)arg; dma_stm32_isr(6); }
+void dma1_stream7_handler(void *arg) { (void)arg; dma_stm32_isr(7); }
 
 static const struct dma_driver_api dma_stm32_api = {
     .configure = dma_stm32_configure,

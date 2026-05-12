@@ -14,7 +14,11 @@
 #include "drivers/gpio.h"
 #include "sched.h"
 #include "heap.h"
-#include "app.h"
+#include "board.h"
+#include "buttons.h"
+#include "audio.h"
+#include "flash_audio.h"
+#include "game.h"
 
 DEVICE_DT_DECLARE(usart1);
 DEVICE_DT_DECLARE(ili9341);
@@ -45,6 +49,11 @@ void print_int(int n)
 extern char _heap_start;
 extern char _heap_size;
 
+static void idle_task(void)
+{
+    while (1) {}
+}
+
 void main(void)
 {
     uart      = DEVICE_DT_GET(usart1);
@@ -64,14 +73,10 @@ void main(void)
 
     uart_print("start\n");
 
-    /* Start DMA audio — fill_audio runs in ISR context */
-    extern void start_audio(void);
-    start_audio();
-
-    //sched_create_task(task_a,     "task_a", 1);
-    //sched_create_task(task_b,     "task_b", 1);
-    sched_create_task(task_game,  "game",   1);
-    sched_create_task(idle_task,  "idle",   255);
+    sched_create_task(audio_task,      "audio",  0);
+    sched_create_task(flash_audio_task, "upload", 1);
+    sched_create_task(game_task,       "game",   1);
+    sched_create_task(idle_task,       "idle",   255);
 
     extern void systick_init(uint32_t cpu_hz, uint32_t tick_hz);
     systick_init(DT_SYSCLK_HZ, 1000);

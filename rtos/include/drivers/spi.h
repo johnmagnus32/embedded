@@ -41,10 +41,7 @@ static inline int spi_write(const struct device *dev,
                             const uint8_t *tx, size_t tx_len)
 {
     const struct spi_driver_api *api = dev->api;
-    api->cs_select(dev);
-    int r = api->transceive(dev, tx, tx_len, (void *)0, 0);
-    api->cs_release(dev);
-    return r;
+    return api->transceive(dev, tx, tx_len, (void *)0, 0);
 }
 
 /* Send tx_len bytes with flags (SPI_HOLD_CS to keep CS low) */
@@ -64,10 +61,7 @@ static inline int spi_read(const struct device *dev,
                            uint8_t *rx, size_t rx_len)
 {
     const struct spi_driver_api *api = dev->api;
-    api->cs_select(dev);
-    int r = api->transceive(dev, (void *)0, 0, rx, rx_len);
-    api->cs_release(dev);
-    return r;
+    return api->transceive(dev, (void *)0, 0, rx, rx_len);
 }
 
 /* Full duplex: send and receive simultaneously */

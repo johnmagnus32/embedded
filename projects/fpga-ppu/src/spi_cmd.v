@@ -1,118 +1,177 @@
 /*
- * spi_cmd.v — SPI slave with command protocol
+ * spi_cmd.v — SPI command decoder (generic sprite protocol)
  *
- * Commands from STM32:
- *   0x01 [dino_y] [dino_frame] [n_obs] [obs0_xl obs0_xh obs0_type] ...
- *        → frame update (writes to game registers)
- *   0x02 [addr_h addr_l] [data...]
- *        → sprite upload (writes to SPRAM until CS deasserts)
+ * Commands:
+ *   0x01: Update sprite table (N entries × 5 bytes)
+ *   0x02: Upload tile pixels to SPRAM
+ *   0x03: Set background color
+ *   0x04: Upload tile table (N entries × 4 bytes)
+ *
+ * Frame valid: asserted on CS rising edge after cmd 0x01.
  */
 module spi_cmd (
-    input        clk,
-    input        spi_clk,
-    input        spi_mosi,
-    input        spi_cs,
-
-    // Frame update outputs
-    output reg [7:0] dino_y,
-    output reg [1:0] dino_frame,
-    output reg [8:0] obs0_x,
-    output reg [1:0] obs0_type,
-    output reg [8:0] obs1_x,
-    output reg [1:0] obs1_type,
-    output reg       frame_valid,
-
-    // Sprite memory write port
+    input         clk,
+    input         spi_clk,
+    input         spi_mosi,
+    input         spi_cs,
+    // Sprite table write
+    output reg [5:0]  sprite_wr_idx,
+    output reg [39:0] sprite_wr_data,
+    output reg        sprite_wr_en,
+    output reg [6:0]  sprite_num,
+    output reg        sprite_num_en,
+    output reg        frame_valid,
+    // Tile table write
+    output reg [7:0]  tile_wr_idx,
+    output reg [31:0] tile_wr_data,
+    output reg        tile_wr_en,
+    // SPRAM write
     output reg [14:0] mem_addr,
     output reg [7:0]  mem_wdata,
-    output reg        mem_we
+    output reg        mem_we,
+    // Background color
+    output reg [15:0] bg_color
 );
-    // SPI clock synchronizer (3-stage for safe edge detection)
-    reg [2:0] sclk_sync = 0;
-    always @(posedge clk)
-        sclk_sync <= {sclk_sync[1:0], spi_clk};
-    wire sclk_rise = (sclk_sync[2:1] == 2'b01);
+    // SPI shift register (synchronized to clk domain)
+    reg [2:0] spi_clk_sync;
+    reg [1:0] spi_cs_sync;
+    always @(posedge clk) begin
+        spi_clk_sync <= {spi_clk_sync[1:0], spi_clk};
+        spi_cs_sync <= {spi_cs_sync[0], spi_cs};
+    end
+    wire spi_clk_rise = (spi_clk_sync[2:1] == 2'b01);
+    wire cs_active = ~spi_cs_sync[1];
+    wire cs_deassert = (spi_cs_sync == 2'b01);
 
-    // CS synchronizer
-    reg [1:0] cs_sync = 2'b11;
-    always @(posedge clk)
-        cs_sync <= {cs_sync[0], spi_cs};
-    wire cs_active = !cs_sync[1];
-    wire cs_deassert = (cs_sync == 2'b10);
-
-    // Shift register
-    reg [7:0] shift = 0;
-    reg [2:0] bit_count = 0;
-    wire byte_done = (bit_count == 7) && sclk_rise && cs_active;
+    reg [7:0] shift_reg;
+    reg [2:0] bit_cnt;
+    reg byte_ready;
+    reg [7:0] rx_byte;
 
     always @(posedge clk) begin
+        byte_ready <= 0;
         if (!cs_active) begin
-            bit_count <= 0;
-        end else if (sclk_rise) begin
-            shift <= {shift[6:0], spi_mosi};
-            bit_count <= bit_count + 1;
+            bit_cnt <= 0;
+        end else if (spi_clk_rise) begin
+            shift_reg <= {shift_reg[6:0], spi_mosi};
+            bit_cnt <= bit_cnt + 1;
+            if (bit_cnt == 7) begin
+                rx_byte <= {shift_reg[6:0], spi_mosi};
+                byte_ready <= 1;
+            end
         end
     end
 
     // Command state machine
-    localparam S_CMD     = 0;  // waiting for command byte
-    localparam S_FRAME   = 1;  // receiving frame update bytes
-    localparam S_SPRITE_ADDR = 2;  // receiving sprite address
-    localparam S_SPRITE_DATA = 3;  // receiving sprite data
+    localparam S_CMD = 0, S_SPRITE_NUM = 1, S_SPRITE_DATA = 2,
+               S_MEM_ADDR = 3, S_MEM_DATA = 4,
+               S_BG_COLOR = 5, S_TILE_NUM = 6, S_TILE_DATA = 7;
 
-    reg [1:0] state = S_CMD;
-    reg [3:0] byte_idx = 0;
-    reg [14:0] sprite_addr = 0;
+    reg [2:0] state = S_CMD;
+    reg [7:0] cmd;
+    reg [2:0] byte_idx;     // byte within current entry
+    reg [7:0] sprites_remaining;
+    reg [7:0] tiles_remaining;
+    reg [39:0] sprite_accum;
+    reg [31:0] tile_accum;
+    reg [14:0] mem_addr_reg;
+
+    initial bg_color = 16'h867D;  // default sky blue
 
     always @(posedge clk) begin
-        frame_valid <= 0;
+        sprite_wr_en <= 0;
+        sprite_num_en <= 0;
+        tile_wr_en <= 0;
         mem_we <= 0;
+        frame_valid <= 0;
 
         if (cs_deassert) begin
+            if (cmd == 8'h01) frame_valid <= 1;
             state <= S_CMD;
-            byte_idx <= 0;
-            if (state == S_FRAME)
-                frame_valid <= 1;
-        end else if (byte_done) begin
+        end
+
+        if (byte_ready && cs_active) begin
             case (state)
             S_CMD: begin
-                byte_idx <= 0;
-                if ({shift[6:0], spi_mosi} == 8'h01)
-                    state <= S_FRAME;
-                else if ({shift[6:0], spi_mosi} == 8'h02)
-                    state <= S_SPRITE_ADDR;
-            end
-
-            S_FRAME: begin
-                case (byte_idx)
-                0: dino_y     <= {shift[6:0], spi_mosi};
-                1: dino_frame <= {shift[6:0], spi_mosi};
-                2: obs0_x[7:0] <= {shift[6:0], spi_mosi};
-                3: obs0_x[8]   <= spi_mosi;
-                4: obs0_type   <= {shift[6:0], spi_mosi};
-                5: obs1_x[7:0] <= {shift[6:0], spi_mosi};
-                6: obs1_x[8]   <= spi_mosi;
-                7: obs1_type   <= {shift[6:0], spi_mosi};
+                cmd <= rx_byte;
+                case (rx_byte)
+                    8'h01: state <= S_SPRITE_NUM;
+                    8'h02: begin state <= S_MEM_ADDR; byte_idx <= 0; end
+                    8'h03: begin state <= S_BG_COLOR; byte_idx <= 0; end
+                    8'h04: state <= S_TILE_NUM;
                 endcase
-                byte_idx <= byte_idx + 1;
             end
 
-            S_SPRITE_ADDR: begin
-                if (byte_idx == 0) begin
-                    sprite_addr[14:8] <= {shift[6:0], spi_mosi};
-                    byte_idx <= 1;
-                end else begin
-                    sprite_addr[7:0] <= {shift[6:0], spi_mosi};
+            // --- Cmd 0x01: Sprite table ---
+            S_SPRITE_NUM: begin
+                sprites_remaining <= rx_byte;
+                sprite_num <= rx_byte[6:0];
+                sprite_num_en <= 1;
+                sprite_wr_idx <= 0;
+                byte_idx <= 0;
+                state <= (rx_byte == 0) ? S_CMD : S_SPRITE_DATA;
+            end
+            S_SPRITE_DATA: begin
+                sprite_accum <= {sprite_accum[31:0], rx_byte};
+                byte_idx <= byte_idx + 1;
+                if (byte_idx == 4) begin
+                    // All 5 bytes received for this sprite
+                    sprite_wr_data <= {sprite_accum[31:0], rx_byte};
+                    sprite_wr_en <= 1;
+                    sprite_wr_idx <= sprite_wr_idx + 1;
+                    sprites_remaining <= sprites_remaining - 1;
                     byte_idx <= 0;
-                    state <= S_SPRITE_DATA;
+                    if (sprites_remaining == 1) state <= S_CMD;
                 end
             end
 
-            S_SPRITE_DATA: begin
-                mem_addr <= sprite_addr;
-                mem_wdata <= {shift[6:0], spi_mosi};
+            // --- Cmd 0x02: SPRAM pixel upload ---
+            S_MEM_ADDR: begin
+                if (byte_idx == 0) begin
+                    mem_addr_reg[14:8] <= rx_byte[6:0];
+                    byte_idx <= 1;
+                end else begin
+                    mem_addr_reg[7:0] <= rx_byte;
+                    mem_addr <= {mem_addr_reg[14:8], rx_byte};
+                    state <= S_MEM_DATA;
+                end
+            end
+            S_MEM_DATA: begin
+                mem_wdata <= rx_byte;
+                mem_addr <= mem_addr;
                 mem_we <= 1;
-                sprite_addr <= sprite_addr + 1;
+                mem_addr <= mem_addr + 1;
+            end
+
+            // --- Cmd 0x03: Background color ---
+            S_BG_COLOR: begin
+                if (byte_idx == 0) begin
+                    bg_color[15:8] <= rx_byte;
+                    byte_idx <= 1;
+                end else begin
+                    bg_color[7:0] <= rx_byte;
+                    state <= S_CMD;
+                end
+            end
+
+            // --- Cmd 0x04: Tile table ---
+            S_TILE_NUM: begin
+                tiles_remaining <= rx_byte;
+                tile_wr_idx <= 0;
+                byte_idx <= 0;
+                state <= (rx_byte == 0) ? S_CMD : S_TILE_DATA;
+            end
+            S_TILE_DATA: begin
+                tile_accum <= {tile_accum[23:0], rx_byte};
+                byte_idx <= byte_idx + 1;
+                if (byte_idx == 3) begin
+                    tile_wr_data <= {tile_accum[23:0], rx_byte};
+                    tile_wr_en <= 1;
+                    tile_wr_idx <= tile_wr_idx + 1;
+                    tiles_remaining <= tiles_remaining - 1;
+                    byte_idx <= 0;
+                    if (tiles_remaining == 1) state <= S_CMD;
+                end
             end
             endcase
         end

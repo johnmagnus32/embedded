@@ -1,8 +1,14 @@
 #!/bin/bash
 # sim — Run the game in the browser (no debugger)
-# sim-web.py spawns sim-core internally, so we just launch sim-web.
+# Usage: ./sim <firmware.elf> [songs.bin]
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
-ELF="${1:?Usage: $0 <firmware.elf>}"
+ELF="${1:?Usage: $0 <firmware.elf> [flash.bin]}"
+shift
 
-exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF"
+EXTRA_ARGS=()
+if [ -n "$1" ]; then
+    EXTRA_ARGS+=(--device "flash0=$1")
+fi
+
+exec python3 "$DIR/src/sim-web/sim-web.py" --machine gameboy --firmware "$ELF" "${EXTRA_ARGS[@]}"
