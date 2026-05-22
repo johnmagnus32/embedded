@@ -551,6 +551,24 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
         return 0;
     }
 
+    /* ADDW Rd, Rn, #imm12 (T4 encoding) */
+    if ((hi & 0xFBF0) == 0xF200) {
+        int rd = (lo >> 8) & 0xF;
+        int rn = hi & 0xF;
+        uint32_t imm = ((hi & 0x0400) << 1) | ((lo & 0x7000) >> 4) | (lo & 0xFF);
+        c->r[rd] = c->r[rn] + imm;
+        return 0;
+    }
+
+    /* SUBW Rd, Rn, #imm12 (T4 encoding) */
+    if ((hi & 0xFBF0) == 0xF2A0) {
+        int rd = (lo >> 8) & 0xF;
+        int rn = hi & 0xF;
+        uint32_t imm = ((hi & 0x0400) << 1) | ((lo & 0x7000) >> 4) | (lo & 0xFF);
+        c->r[rd] = c->r[rn] - imm;
+        return 0;
+    }
+
     /* MOV.W / MOVW (16-bit immediate) */
     if ((hi & 0xFBF0) == 0xF240) {
         int rd = (lo >> 8) & 0xF;
@@ -694,6 +712,9 @@ static int exec_thumb32(struct armv7m_cpu *c, struct membus *bus, uint32_t insn)
         int sysm = lo & 0xFF;
         switch (sysm) {
         case 0: c->r[rd] = c->xpsr & 0xF8000000; break; /* APSR (flags) */
+        case 3: c->r[rd] = c->xpsr; break;              /* xPSR (all) */
+        case 5: c->r[rd] = c->xpsr & 0x1FF; break;      /* IPSR (vector number) */
+        case 6: c->r[rd] = c->xpsr & 0xF80001FF; break; /* EPSR+IPSR */
         case 8: c->r[rd] = c->msp; break;
         case 9: c->r[rd] = c->psp; break;
         case 16: c->r[rd] = c->primask; break;
@@ -922,6 +943,9 @@ void armv7m_take_interrupt(struct armv7m_cpu *c, struct membus *bus, int vector_
     c->r[REG_SP] = c->msp;
     c->in_handler = 1;
 
+    /* Set IPSR (xPSR bits [8:0]) to active vector number */
+    c->xpsr = (c->xpsr & ~0x1FF) | (vector_num & 0x1FF);
+
     /* Jump to vector */
     uint32_t handler = membus_read32(bus, FLASH_BASE + vector_num * 4);
     c->r[REG_PC] = handler & ~1u;
@@ -961,6 +985,7 @@ static void exc_return(struct armv7m_cpu *c, struct membus *bus, uint32_t exc_re
     }
 
     c->in_handler = 0;
+    c->xpsr &= ~0x1FF;  /* Clear IPSR — back to thread mode */
 
     /* Record which task/context we're returning to */
 

@@ -101,7 +101,7 @@ void render_game_over(int score)
 
 void render_frame(const struct game_state *cur, const struct game_state *prev)
 {
-    /* Player dirty-rect */
+    /* Player erase + draw */
     if (cur->player_y > prev->player_y) {
         int h = cur->player_y - prev->player_y;
         display_fill_rect(display, PLAYER_X, prev->player_y, PLAYER_W, h, SKY);
@@ -112,45 +112,37 @@ void render_frame(const struct game_state *cur, const struct game_state *prev)
     display_fill_rect(display, PLAYER_X, cur->player_y, PLAYER_W, PLAYER_H, YELLOW);
     display_fill_rect(display, PLAYER_X + 10, cur->player_y + 5, 3, 3, BLACK);
 
-    /* Obstacles dirty-rect */
+    /* Pass 1: Erase ALL obstacle trails */
     for (int i = 0; i < MAX_OBS; i++) {
         int old_x = prev->obs_x[i];
         int new_x = cur->obs_x[i];
         int gap = cur->obs_gap[i];
 
-        /* Obstacle wrapped — erase old position fully */
-        if (new_x > old_x) {
-            int ex = old_x < 0 ? 0 : old_x;
-            int er = old_x + OBS_W;
-            if (er > SCR_W) er = SCR_W;
-            int ew = er - ex;
-            if (ew > 0 && ex < SCR_W)
-                display_fill_rect(display, ex, GROUND_Y - prev->obs_gap[i], ew, prev->obs_gap[i], SKY);
-            continue;  /* new position is off-screen right, nothing to draw */
-        }
-
-        /* Trail erase */
-        int old_right = old_x + OBS_W;
-        int new_right = new_x + OBS_W;
-        if (old_right > new_right && old_right > 0 && new_right < SCR_W) {
-            int ex = new_right < 0 ? 0 : new_right;
-            int ew = old_right - new_right;
-            if (ex + ew > SCR_W) ew = SCR_W - ex;
-            if (ew > 0)
-                display_fill_rect(display, ex, GROUND_Y - gap, ew, gap, SKY);
-        }
-
-        /* Draw obstacle */
-        if (new_x < SCR_W && new_x + OBS_W > 0) {
-            int dx = new_x < 0 ? 0 : new_x;
-            int dw = OBS_W + (new_x < 0 ? new_x : 0);
-            if (dx + dw > SCR_W) dw = SCR_W - dx;
-            if (dw > 0)
-                display_fill_rect(display, dx, GROUND_Y - gap, dw, gap, RED);
+        if (new_x < old_x && old_x < SCR_W) {
+            int trail_x = new_x + OBS_W;
+            int trail_w = old_x - new_x;
+            if (trail_x >= 0 && trail_x < SCR_W && trail_w > 0)
+                display_fill_rect(display, trail_x, GROUND_Y - gap, trail_w, gap, SKY);
+        } else if (new_x > old_x && old_x >= 0 && old_x < SCR_W) {
+            /* Wrapped: erase old position */
+            display_fill_rect(display, old_x, GROUND_Y - prev->obs_gap[i],
+                              OBS_W, prev->obs_gap[i], SKY);
         }
     }
 
-    /* Score — only redraw the number when it changes */
+    /* Pass 2: Draw ALL obstacles */
+    for (int i = 0; i < MAX_OBS; i++) {
+        int new_x = cur->obs_x[i];
+        int gap = cur->obs_gap[i];
+        if (new_x >= 0 && new_x < SCR_W) {
+            int dw = OBS_W;
+            if (new_x + dw > SCR_W) dw = SCR_W - new_x;
+            if (dw > 0)
+                display_fill_rect(display, new_x, GROUND_Y - gap, dw, gap, RED);
+        }
+    }
+
+    /* Score */
     if (cur->score > prev->score) {
         display_fill_rect(display, SCR_W - 36, 4, 32, 16, SKY);
         draw_number(SCR_W - 36, 4, cur->score, WHITE);

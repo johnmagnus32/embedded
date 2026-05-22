@@ -20,3 +20,4 @@ void uart_print(const char *s);
 void print_int(int n);
 
 #endif
+void game_task(void);
