@@ -1,1 +1,11 @@
 build/
+
+# macOS Finder metadata
+.DS_Store
+
+# KiCad auto-generated backups and caches
+*-backups/
+fp-info-cache
+
+# Editor local-history snapshots
+.history/

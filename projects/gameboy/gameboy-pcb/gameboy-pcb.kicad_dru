@@ -1,0 +1,19 @@
+(version 1)
+
+# Type-C connector (USBC1) footprint-inherent DRC relaxations.
+# The vendor footprint easyeda2kicad:USB-C_SMD-TYPE-C-31-M-12_1 places pads at
+# the connector's real ~0.4mm pitch and defines shield/alignment holes with
+# pad size == drill (zero annular ring). These are physical properties of the
+# part, not routing errors, so we relax the relevant rules ONLY inside USBC1.
+
+(rule "USBC1 internal pad clearance"
+	(constraint clearance (min 0.1mm))
+	(condition "A.memberOfFootprint('USBC1') && B.memberOfFootprint('USBC1')"))
+
+(rule "USBC1 internal hole clearance"
+	(constraint hole_clearance (min 0.15mm))
+	(condition "A.memberOfFootprint('USBC1') && B.memberOfFootprint('USBC1')"))
+
+(rule "USBC1 shield hole annular ring"
+	(constraint annular_width (min -0.01mm))
+	(condition "A.memberOfFootprint('USBC1')"))
