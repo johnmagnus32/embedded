@@ -1,0 +1,14 @@
+Comment,Designator,Footprint,LCSC Part #
+100nF,"C1, C2, C3, C4, C5, C6, C7",easyeda2kicad:C0603,C14663
+10k,"R1, R2, R4",easyeda2kicad:R0603,C99198
+10uF,C12,easyeda2kicad:C0805,C1713
+1x13,"H5, H6",easyeda2kicad:HDR-TH_13P-P2.54-V-M,C2932703
+1x4,H2,easyeda2kicad:HDR-TH_4P-P2.54-V-M,C2905435
+1x5,U4,easyeda2kicad:HDR-TH_5P-P2.54-V-M,C358687
+1x6,"H1, H7, H8",easyeda2kicad:HDR-TH_6P-P2.54-V-M-1,C37208
+4.7uF,"C8, C9, C10, C11",easyeda2kicad:C0603,C109456
+510,R3,easyeda2kicad:R0603,C23193
+AP2127K,U1,easyeda2kicad:SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BR,C151376
+GZ1608D601TF,L1,easyeda2kicad:L0603,C1002
+ICE40UP5K-SG48I,U2,easyeda2kicad:QFN-48_L7.0-W7.0-P0.50-TL-EP5.4-1,C2678152
+LED,U3,easyeda2kicad:LED0603-RD,C2986027

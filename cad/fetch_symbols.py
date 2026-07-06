@@ -53,25 +53,124 @@ PARTS = [
     ("C37208",   "Pin Header 1x6, 2.54mm, Through-Hole"),
     ("C2932700", "Pin Header 1x7, 2.54mm, Through-Hole"),
     ("C50981",   "Pin Header 1x20, 2.54mm, Through-Hole"),
+    # --- ice40-breakout (projects/ice40-breakout) ---
+    ("C2678152", "FPGA, iCE40UP5K, 5.3K LUT, QFN-48 7x7mm 0.5mm pitch"),
+    ("C151376",  "1.2V LDO Regulator, 300mA, SOT-23-5"),
+    ("C2932703", "Pin Header 1x13, 2.54mm, Through-Hole"),
 ]
 
 
+def already_fetched(lcsc_id):
+    """True if this LCSC id's symbol is already in the .kicad_sym library."""
+    sym_path = Path(SYM_FILE)
+    if not sym_path.exists():
+        return False
+    return lcsc_id in sym_path.read_text()
+
+
 def fetch_all():
-    """Download symbols and footprints from LCSC."""
+    """Download symbols and footprints from LCSC for any parts not already present."""
     Path(OUTPUT).mkdir(parents=True, exist_ok=True)
     print("Fetching symbols and footprints from JLCPCB/LCSC...\n")
 
+    fetched = skipped = failed = 0
     for i, (lcsc_id, desc) in enumerate(PARTS, 1):
+        if already_fetched(lcsc_id):
+            print(f"  [{i:2d}/{len(PARTS)}] {lcsc_id} — already present, skipping")
+            skipped += 1
+            continue
+
         print(f"  [{i:2d}/{len(PARTS)}] {lcsc_id} — {desc}")
+        # Invoke via the current interpreter so it works whether or not the
+        # venv is activated (easyeda2kicad need not be on PATH).
         result = subprocess.run(
-            ["easyeda2kicad", f"--lcsc_id={lcsc_id}",
+            [sys.executable, "-m", "easyeda2kicad", f"--lcsc_id={lcsc_id}",
              "--symbol", "--footprint", "--overwrite", "--output", OUTPUT],
             capture_output=True, text=True
         )
         if result.returncode != 0:
             print(f"         WARN: {result.stderr.strip()}")
+            failed += 1
+        else:
+            fetched += 1
 
-    print(f"\nFetched {len(PARTS)} parts.")
+    print(f"\nFetched {fetched} new, skipped {skipped} existing, {failed} failed "
+          f"(of {len(PARTS)} total).")
+
+
+def _skip_string(text, i):
+    """text[i] is an opening quote; return the index just past the closing quote."""
+    i += 1
+    while i < len(text):
+        if text[i] == '\\':
+            i += 2
+            continue
+        if text[i] == '"':
+            return i + 1
+        i += 1
+    return i
+
+
+def _match_paren(text, open_idx):
+    """text[open_idx] is '('; return the index just past the matching ')'.
+
+    Counts nesting depth and skips over quoted strings so parens inside string
+    literals don't throw off the balance. Returns -1 if unbalanced.
+    """
+    depth = 0
+    i = open_idx
+    while i < len(text):
+        c = text[i]
+        if c == '"':
+            i = _skip_string(text, i)
+            continue
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return -1
+
+
+def _find_property(block, name):
+    """Return (start, end) of the `(property "name" ...)` s-expr in block, or None.
+
+    Uses balanced-paren matching, so it is robust to however many nested parens
+    the effects/font sub-expressions contain.
+    """
+    search = 0
+    while True:
+        p = block.find('(property', search)
+        if p == -1:
+            return None
+        end = _match_paren(block, p)
+        if end == -1:
+            return None
+        m = re.match(r'\(property\s+"([^"]*)"', block[p:end])
+        if m and m.group(1) == name:
+            return (p, end)
+        search = end
+
+
+def _esc(s):
+    """Escape a string for embedding in a KiCad s-expr string literal."""
+    return s.replace('\\', '\\\\').replace('"', '\\"')
+
+
+def _make_desc_prop(desc, idnum):
+    """Build a ki_description property block matching the file's 4/6-space style."""
+    id_line = f'      (id {idnum})\n' if idnum is not None else ''
+    return (
+        f'    (property\n'
+        f'      "ki_description"\n'
+        f'      "{_esc(desc)}"\n'
+        f'{id_line}'
+        f'      (at 0 0 0)\n'
+        f'      (effects (font (size 1.27 1.27) ) hide)\n'
+        f'    )'
+    )
 
 
 def patch_descriptions():
@@ -81,68 +180,46 @@ def patch_descriptions():
         print(f"ERROR: {SYM_FILE} not found. Run fetch first.")
         sys.exit(1)
 
-    content = sym_path.read_text()
-
-    # Build map of LCSC ID → description
-    lcsc_to_desc = {lcsc_id: desc for lcsc_id, desc in PARTS}
+    content = sym_path.read_text(encoding="utf-8")
 
     patched = 0
     for lcsc_id, desc in PARTS:
-        if lcsc_id not in content:
-            continue
-
-        # Find the LCSC property line with this ID
         lcsc_str = f'"{lcsc_id}"'
         idx = content.find(lcsc_str)
         if idx == -1:
             continue
 
-        # Walk backwards to find the start of this symbol block
+        # Bound this symbol's block: from its `(symbol "` header to the next one.
         sym_start = content.rfind('\n  (symbol "', 0, idx)
         if sym_start == -1:
             continue
-
-        # Find the end of this symbol (next top-level symbol or end of file)
         next_sym = content.find('\n  (symbol "', idx)
         if next_sym == -1:
             next_sym = content.rfind('\n)')  # end of library
-        
         block = content[sym_start:next_sym]
 
-        # Check if ki_description already exists in this block
-        ki_desc_pattern = r'(\(property\s*\n\s*"ki_description"\s*\n\s*)"[^"]*"'
-        match = re.search(ki_desc_pattern, block)
-
-        if match:
-            # Update existing
-            new_block = re.sub(ki_desc_pattern, f'\\1"{desc}"', block, count=1)
+        existing = _find_property(block, "ki_description")
+        if existing:
+            # Replace in place, preserving the existing id if present.
+            start, end = existing
+            id_match = re.search(r'\(id (\d+)\)', block[start:end])
+            idnum = int(id_match.group(1)) if id_match else None
+            new_block = block[:start] + _make_desc_prop(desc, idnum).lstrip() + block[end:]
         else:
-            # Insert after the "Value" property block
-            # Find the end of the Value property (after its closing parenthesis)
-            value_match = re.search(
-                r'(\(property\s*\n\s*"Value"\s*\n\s*"[^"]*"\s*\n\s*\(id 1\)\s*\n\s*\(at [^)]+\)\s*\n\s*\(effects[^)]*\)[^)]*\)\s*\n\s*\))',
-                block
-            )
-            if value_match:
-                insert_pos = value_match.end()
-                desc_block = (
-                    f'\n    (property\n'
-                    f'      "ki_description"\n'
-                    f'      "{desc}"\n'
-                    f'      (id 9)\n'
-                    f'      (at 0 0 0)\n'
-                    f'      (effects (font (size 1.27 1.27) ) hide)\n'
-                    f'    )'
-                )
-                new_block = block[:insert_pos] + desc_block + block[insert_pos:]
-            else:
+            value = _find_property(block, "Value")
+            if not value:
                 continue
+            # Give the new property an id one past the highest already used.
+            ids = [int(n) for n in re.findall(r'\(id (\d+)\)', block)]
+            idnum = (max(ids) + 1) if ids else None
+            insert_pos = value[1]
+            new_block = block[:insert_pos] + '\n' + _make_desc_prop(desc, idnum) + block[insert_pos:]
 
         if new_block != block:
             content = content[:sym_start] + new_block + content[next_sym:]
             patched += 1
 
-    sym_path.write_text(content)
+    sym_path.write_text(content, encoding="utf-8")
     print(f"Patched descriptions for {patched}/{len(PARTS)} symbols.")
 
 

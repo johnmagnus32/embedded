@@ -20,6 +20,13 @@
       (effects (font (size 1.27 1.27) ) )
     )
     (property
+      "ki_description"
+      "MCU, ARM Cortex-M4, 512KB Flash, 128KB RAM, 100MHz, LQFP-64"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
       "Footprint"
       "easyeda2kicad:LQFP-64_L10.0-W10.0-P0.50-LS12.0-BL"
       (id 2)
@@ -524,7 +531,7 @@
       "ki_description"
       "3.3V LDO Regulator, 500mA, SOT-23-5"
       (id 9)
-      (at 0 -25.40 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "ME6211C33M5G-N_0_1"
@@ -595,6 +602,13 @@
       (id 1)
       (at 0 -8.89 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "128Mbit SPI NOR Flash, SOIC-8"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -724,6 +738,13 @@
       (id 1)
       (at 0 -17.78 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "I2S Class-D Mono Amplifier, 3.2W, TQFN-16"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -903,6 +924,13 @@
       (effects (font (size 1.27 1.27) ) )
     )
     (property
+      "ki_description"
+      "1µF 16V X5R Ceramic Capacitor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
       "Footprint"
       "easyeda2kicad:C0603"
       (id 2)
@@ -1051,7 +1079,7 @@
       "ki_description"
       "10µF 16V X5R Ceramic Capacitor, 0805"
       (id 9)
-      (at 0 -22.86 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "CL21A106KOQNNNE_0_1"
@@ -1161,7 +1189,7 @@
       "ki_description"
       "100nF 50V X7R Ceramic Capacitor, 0603"
       (id 9)
-      (at 0 -22.86 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "CC0603KRX7R9BB104_0_1"
@@ -1224,6 +1252,13 @@
       (id 1)
       (at 0 -5.08 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "10nF 50V X7R Ceramic Capacitor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -1327,6 +1362,13 @@
       (id 1)
       (at 0 -5.08 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "4.7µF 6.3V X5R Ceramic Capacitor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -1477,7 +1519,7 @@
       "ki_description"
       "10µF 10V X5R Ceramic Capacitor, 0805"
       (id 9)
-      (at 0 -22.86 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "CL21A106KPFNNNE_0_1"
@@ -1540,6 +1582,13 @@
       (id 1)
       (at 0 -5.08 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "10KΩ 1% Resistor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -1623,6 +1672,13 @@
       (effects (font (size 1.27 1.27) ) )
     )
     (property
+      "ki_description"
+      "1MΩ 1% Resistor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
       "Footprint"
       "easyeda2kicad:R0603"
       (id 2)
@@ -1702,6 +1758,13 @@
       (id 1)
       (at 0 -5.08 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "100KΩ 1% Resistor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -1918,7 +1981,7 @@
       "ki_description"
       "510Ω 1% Resistor, 0603"
       (id 9)
-      (at 0 -22.86 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "0603WAF5100T5E_0_1"
@@ -1959,6 +2022,13 @@
       (id 1)
       (at 0 -5.08 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "5.1KΩ 1% Resistor, 0603"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -2087,7 +2157,7 @@
       "ki_description"
       "Ferrite Bead 600Ω@100MHz, 0603"
       (id 9)
-      (at 0 -22.86 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "GZ1608D601TF_0_1"
@@ -2150,6 +2220,13 @@
       (id 1)
       (at 0 -31.75 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "18-pin 0.5mm FPC Connector, Top Contact"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -2347,6 +2424,13 @@
       (effects (font (size 1.27 1.27) ) )
     )
     (property
+      "ki_description"
+      "JST PH 1.25mm 2-pin Connector, SMD"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
       "Footprint"
       "easyeda2kicad:CONN-SMD_P2.00_S2B-PH-SM4-TB-LF-SN"
       (id 2)
@@ -2444,6 +2528,13 @@
       (id 1)
       (at 0 -19.05 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "USB Type-C Receptacle, Power Only, 16-pin"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -2611,6 +2702,13 @@
       (effects (font (size 1.27 1.27) ) )
     )
     (property
+      "ki_description"
+      "Pin Header 1x5, 2.54mm, Through-Hole"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
       "Footprint"
       "easyeda2kicad:HDR-TH_5P-P2.54-V-M"
       (id 2)
@@ -2761,7 +2859,7 @@
       "ki_description"
       "Pin Header 1x3, 2.54mm, Through-Hole"
       (id 9)
-      (at 0 -25.40 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "Header-Male-2.54_1x3_0_1"
@@ -2808,6 +2906,13 @@
       (id 1)
       (at 0 -10.16 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "Tactile Switch 6x6mm, SMD"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -2942,6 +3047,13 @@
       (id 1)
       (at 0 -6.35 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "Green LED, 0603"
+      (id 7)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -3505,6 +3617,13 @@
       (effects (font (size 1.27 1.27) ) )
     )
     (property
+      "ki_description"
+      "Pin Header 1x4, 2.54mm, Through-Hole"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
       "Footprint"
       "easyeda2kicad:HDR-TH_4P-P2.54-V-M"
       (id 2)
@@ -3759,7 +3878,7 @@
       "ki_description"
       "Pin Header 1x6, 2.54mm, Through-Hole"
       (id 9)
-      (at 0 -29.21 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "Header-Male-2.54_1x6_0_1"
@@ -3934,6 +4053,13 @@
       (id 1)
       (at 0 -12.70 0)
       (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "Pin Header 1x7, 2.54mm, Through-Hole"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
     )
     (property
       "Footprint"
@@ -4318,7 +4444,7 @@
       "ki_description"
       "Pin Header 1x20, 2.54mm, Through-Hole"
       (id 9)
-      (at 0 -46.99 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "Header-Male-2.54_1x20_0_1"
@@ -4453,6 +4579,654 @@
         (length 2.54)
         (name "20" (effects (font (size 1.27 1.27))))
         (number "20" (effects (font (size 1.27 1.27))))
+      )
+    )
+  )
+
+  (symbol "ICE40UP5K-SG48I"
+    (in_bom yes)
+    (on_board yes)
+    (property
+      "Reference"
+      "U"
+      (id 0)
+      (at 0 35.56 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "Value"
+      "ICE40UP5K-SG48I"
+      (id 1)
+      (at 0 -35.56 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "FPGA, iCE40UP5K, 5.3K LUT, QFN-48 7x7mm 0.5mm pitch"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Footprint"
+      "easyeda2kicad:QFN-48_L7.0-W7.0-P0.50-TL-EP5.4-1"
+      (id 2)
+      (at 0 -38.10 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Datasheet"
+      "https://www.lcsc.com/datasheet/C2678152.pdf"
+      (id 3)
+      (at 0 -40.64 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Manufacturer"
+      "LATTICE(莱迪思)"
+      (id 4)
+      (at 0 -43.18 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "MPN"
+      "ICE40UP5K-SG48I"
+      (id 5)
+      (at 0 -45.72 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "LCSC Part"
+      "C2678152"
+      (id 6)
+      (at 0 -48.26 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "ki_keywords"
+      "CPLD/FPGA"
+      (id 8)
+      (at 0 -50.80 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (symbol "ICE40UP5K-SG48I_0_1"
+      (rectangle
+        (start -24.13 33.02)
+        (end 24.13 -33.02)
+        (stroke (width 0) (type default))
+        (fill (type background))
+      )
+      (circle
+        (center -22.86 29.21)
+        (radius 0.38)
+        (stroke (width 0) (type default))
+        (fill (type none))
+      )
+      (pin unspecified line
+        (at -26.67 27.94 0)
+        (length 2.54)
+        (name "VCCIO_2" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 25.40 0)
+        (length 2.54)
+        (name "IOB_6a" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 22.86 0)
+        (length 2.54)
+        (name "IOB_9b" (effects (font (size 1.27 1.27))))
+        (number "3" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 20.32 0)
+        (length 2.54)
+        (name "IOB_8a" (effects (font (size 1.27 1.27))))
+        (number "4" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 17.78 0)
+        (length 2.54)
+        (name "VCC" (effects (font (size 1.27 1.27))))
+        (number "5" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 15.24 0)
+        (length 2.54)
+        (name "IOB_13b" (effects (font (size 1.27 1.27))))
+        (number "6" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 12.70 0)
+        (length 2.54)
+        (name "CDONE" (effects (font (size 1.27 1.27))))
+        (number "7" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 10.16 0)
+        (length 2.54)
+        (name "creset_b" (effects (font (size 1.27 1.27))))
+        (number "8" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 7.62 0)
+        (length 2.54)
+        (name "IOB_16a" (effects (font (size 1.27 1.27))))
+        (number "9" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 5.08 0)
+        (length 2.54)
+        (name "IOB_18a" (effects (font (size 1.27 1.27))))
+        (number "10" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 2.54 0)
+        (length 2.54)
+        (name "IOB_20a" (effects (font (size 1.27 1.27))))
+        (number "11" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -0.00 0)
+        (length 2.54)
+        (name "IOB_22a" (effects (font (size 1.27 1.27))))
+        (number "12" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -2.54 0)
+        (length 2.54)
+        (name "IOB_24a" (effects (font (size 1.27 1.27))))
+        (number "13" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -5.08 0)
+        (length 2.54)
+        (name "IOB_32a_SPI_SO" (effects (font (size 1.27 1.27))))
+        (number "14" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -7.62 0)
+        (length 2.54)
+        (name "IOB_34a_SPI_SCK" (effects (font (size 1.27 1.27))))
+        (number "15" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -10.16 0)
+        (length 2.54)
+        (name "IOB_35b_SPI_SS" (effects (font (size 1.27 1.27))))
+        (number "16" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -12.70 0)
+        (length 2.54)
+        (name "IOB_33b_SPI_SI" (effects (font (size 1.27 1.27))))
+        (number "17" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -15.24 0)
+        (length 2.54)
+        (name "IOB_31b" (effects (font (size 1.27 1.27))))
+        (number "18" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -17.78 0)
+        (length 2.54)
+        (name "IOB_29b" (effects (font (size 1.27 1.27))))
+        (number "19" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -20.32 0)
+        (length 2.54)
+        (name "IOB_25b_G3" (effects (font (size 1.27 1.27))))
+        (number "20" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -22.86 0)
+        (length 2.54)
+        (name "IOB_23b" (effects (font (size 1.27 1.27))))
+        (number "21" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -25.40 0)
+        (length 2.54)
+        (name "SPI_Vccio1" (effects (font (size 1.27 1.27))))
+        (number "22" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -27.94 0)
+        (length 2.54)
+        (name "IOT_37a" (effects (font (size 1.27 1.27))))
+        (number "23" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -26.67 -30.48 0)
+        (length 2.54)
+        (name "VPP_2V5" (effects (font (size 1.27 1.27))))
+        (number "24" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -30.48 180)
+        (length 2.54)
+        (name "IOT_36b" (effects (font (size 1.27 1.27))))
+        (number "25" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -27.94 180)
+        (length 2.54)
+        (name "IOT_39a" (effects (font (size 1.27 1.27))))
+        (number "26" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -25.40 180)
+        (length 2.54)
+        (name "IOT_38b" (effects (font (size 1.27 1.27))))
+        (number "27" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -22.86 180)
+        (length 2.54)
+        (name "IOT_41a" (effects (font (size 1.27 1.27))))
+        (number "28" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -20.32 180)
+        (length 2.54)
+        (name "VCCPLL" (effects (font (size 1.27 1.27))))
+        (number "29" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -17.78 180)
+        (length 2.54)
+        (name "VCC" (effects (font (size 1.27 1.27))))
+        (number "30" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -15.24 180)
+        (length 2.54)
+        (name "IOT_42b" (effects (font (size 1.27 1.27))))
+        (number "31" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -12.70 180)
+        (length 2.54)
+        (name "IOT_43a" (effects (font (size 1.27 1.27))))
+        (number "32" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -10.16 180)
+        (length 2.54)
+        (name "VCCIO_0" (effects (font (size 1.27 1.27))))
+        (number "33" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -7.62 180)
+        (length 2.54)
+        (name "IOT_44b" (effects (font (size 1.27 1.27))))
+        (number "34" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -5.08 180)
+        (length 2.54)
+        (name "IOT_46b_G0" (effects (font (size 1.27 1.27))))
+        (number "35" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -2.54 180)
+        (length 2.54)
+        (name "IOT_48b" (effects (font (size 1.27 1.27))))
+        (number "36" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 -0.00 180)
+        (length 2.54)
+        (name "IOT_45a_G1" (effects (font (size 1.27 1.27))))
+        (number "37" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 2.54 180)
+        (length 2.54)
+        (name "IOT_50b" (effects (font (size 1.27 1.27))))
+        (number "38" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 5.08 180)
+        (length 2.54)
+        (name "RGB0" (effects (font (size 1.27 1.27))))
+        (number "39" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 7.62 180)
+        (length 2.54)
+        (name "RGB1" (effects (font (size 1.27 1.27))))
+        (number "40" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 10.16 180)
+        (length 2.54)
+        (name "RGB2" (effects (font (size 1.27 1.27))))
+        (number "41" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 12.70 180)
+        (length 2.54)
+        (name "IOT_51a" (effects (font (size 1.27 1.27))))
+        (number "42" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 15.24 180)
+        (length 2.54)
+        (name "IOT_49a" (effects (font (size 1.27 1.27))))
+        (number "43" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 17.78 180)
+        (length 2.54)
+        (name "IOB_3b_G6" (effects (font (size 1.27 1.27))))
+        (number "44" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 20.32 180)
+        (length 2.54)
+        (name "IOB_5b" (effects (font (size 1.27 1.27))))
+        (number "45" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 22.86 180)
+        (length 2.54)
+        (name "IOB_0a" (effects (font (size 1.27 1.27))))
+        (number "46" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 25.40 180)
+        (length 2.54)
+        (name "IOB_2a" (effects (font (size 1.27 1.27))))
+        (number "47" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 27.94 180)
+        (length 2.54)
+        (name "IOB_4a" (effects (font (size 1.27 1.27))))
+        (number "48" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 26.67 30.48 180)
+        (length 2.54)
+        (name "EP" (effects (font (size 1.27 1.27))))
+        (number "49" (effects (font (size 1.27 1.27))))
+      )
+    )
+  )
+
+  (symbol "AP2127K-1.2TRG1"
+    (in_bom yes)
+    (on_board yes)
+    (property
+      "Reference"
+      "U"
+      (id 0)
+      (at 0 7.62 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "Value"
+      "AP2127K-1.2TRG1"
+      (id 1)
+      (at 0 -7.62 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "1.2V LDO Regulator, 300mA, SOT-23-5"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Footprint"
+      "easyeda2kicad:SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BR"
+      (id 2)
+      (at 0 -10.16 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Datasheet"
+      "https://lcsc.com/product-detail/Low-Dropout-Regulators-LDO_DIODES_AP2127K-1-2TRG1_AP2127K-1-2TRG1_C151376.html"
+      (id 3)
+      (at 0 -12.70 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Manufacturer"
+      "DIODES(美台)"
+      (id 4)
+      (at 0 -15.24 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "MPN"
+      "AP2127K-1.2TRG1"
+      (id 5)
+      (at 0 -17.78 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "LCSC Part"
+      "C151376"
+      (id 6)
+      (at 0 -20.32 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "ki_keywords"
+      "Linear Voltage Regulators (LDO)"
+      (id 8)
+      (at 0 -22.86 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (symbol "AP2127K-1.2TRG1_0_1"
+      (rectangle
+        (start -15.24 5.08)
+        (end 15.24 -5.08)
+        (stroke (width 0) (type default))
+        (fill (type background))
+      )
+      (circle
+        (center -13.97 3.81)
+        (radius 0.38)
+        (stroke (width 0) (type default))
+        (fill (type none))
+      )
+      (pin unspecified line
+        (at -17.78 2.54 0)
+        (length 2.54)
+        (name "VIN" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -17.78 -0.00 0)
+        (length 2.54)
+        (name "GND" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -17.78 -2.54 0)
+        (length 2.54)
+        (name "~{SHUTDOWN}" (effects (font (size 1.27 1.27))))
+        (number "3" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 17.78 -2.54 180)
+        (length 2.54)
+        (name "NC/ADJ" (effects (font (size 1.27 1.27))))
+        (number "4" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at 17.78 2.54 180)
+        (length 2.54)
+        (name "VOUT" (effects (font (size 1.27 1.27))))
+        (number "5" (effects (font (size 1.27 1.27))))
+      )
+    )
+  )
+
+  (symbol "KH-2.54PH180-1X13P-L11.5"
+    (in_bom yes)
+    (on_board yes)
+    (property
+      "Reference"
+      "H"
+      (id 0)
+      (at 0 20.32 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "Value"
+      "KH-2.54PH180-1X13P-L11.5"
+      (id 1)
+      (at 0 -20.32 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "ki_description"
+      "Pin Header 1x13, 2.54mm, Through-Hole"
+      (id 9)
+      (at 0 0 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Footprint"
+      "easyeda2kicad:HDR-TH_13P-P2.54-V-M"
+      (id 2)
+      (at 0 -22.86 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Datasheet"
+      "https://www.lcsc.com/datasheet/C2932703.pdf"
+      (id 3)
+      (at 0 -25.40 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Manufacturer"
+      "kinghelm(金航标)"
+      (id 4)
+      (at 0 -27.94 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "MPN"
+      "KH-2.54PH180-1X13P-L11.5"
+      (id 5)
+      (at 0 -30.48 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "LCSC Part"
+      "C2932703"
+      (id 6)
+      (at 0 -33.02 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "ki_keywords"
+      "Pin Headers"
+      (id 8)
+      (at 0 -35.56 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (symbol "KH-2.54PH180-1X13P-L11.5_0_1"
+      (rectangle
+        (start -1.27 17.78)
+        (end 3.81 -17.78)
+        (stroke (width 0) (type default))
+        (fill (type background))
+      )
+      (circle
+        (center 0.00 16.51)
+        (radius 0.38)
+        (stroke (width 0) (type default))
+        (fill (type none))
+      )
+      (pin unspecified line
+        (at -3.81 15.24 0)
+        (length 2.54)
+        (name "1" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 12.70 0)
+        (length 2.54)
+        (name "2" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 10.16 0)
+        (length 2.54)
+        (name "3" (effects (font (size 1.27 1.27))))
+        (number "3" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 7.62 0)
+        (length 2.54)
+        (name "4" (effects (font (size 1.27 1.27))))
+        (number "4" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 5.08 0)
+        (length 2.54)
+        (name "5" (effects (font (size 1.27 1.27))))
+        (number "5" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 2.54 0)
+        (length 2.54)
+        (name "6" (effects (font (size 1.27 1.27))))
+        (number "6" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -0.00 0)
+        (length 2.54)
+        (name "7" (effects (font (size 1.27 1.27))))
+        (number "7" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -2.54 0)
+        (length 2.54)
+        (name "8" (effects (font (size 1.27 1.27))))
+        (number "8" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -5.08 0)
+        (length 2.54)
+        (name "9" (effects (font (size 1.27 1.27))))
+        (number "9" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -7.62 0)
+        (length 2.54)
+        (name "10" (effects (font (size 1.27 1.27))))
+        (number "10" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -10.16 0)
+        (length 2.54)
+        (name "11" (effects (font (size 1.27 1.27))))
+        (number "11" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -12.70 0)
+        (length 2.54)
+        (name "12" (effects (font (size 1.27 1.27))))
+        (number "12" (effects (font (size 1.27 1.27))))
+      )
+      (pin unspecified line
+        (at -3.81 -15.24 0)
+        (length 2.54)
+        (name "13" (effects (font (size 1.27 1.27))))
+        (number "13" (effects (font (size 1.27 1.27))))
       )
     )
   )
