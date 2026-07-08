@@ -57,6 +57,18 @@ PARTS = [
     ("C2678152", "FPGA, iCE40UP5K, 5.3K LUT, QFN-48 7x7mm 0.5mm pitch"),
     ("C151376",  "1.2V LDO Regulator, 300mA, SOT-23-5"),
     ("C2932703", "Pin Header 1x13, 2.54mm, Through-Hole"),
+    # --- t113-breakout (projects/t113-breakout) ---
+    ("C5197687", "SoC, Allwinner T113-S3, dual Cortex-A7 + 128MB DDR3, eLQFP-128"),
+    ("C77234",   "Synchronous Buck Regulator, FP6161 1A 0.6V-FB, SOT-23-5"),
+    ("C135262",  "Power Inductor, 2.2uH 3.4A, 4x4mm SMD"),
+    ("C140074",  "680KΩ 1% Resistor, 0603"),
+    ("C22807",   "150KΩ 1% Resistor, 0603"),
+    ("C23242",   "75KΩ 1% Resistor, 0603"),
+    ("C22467599","microSD/TF Card Socket, Push-Push, SMD"),
+    ("C70571",   "Crystal, 24MHz CL=18pF, SMD3225-4P"),
+    ("C97607",   "Crystal, 32.768kHz CL=12.5pF, SMD2012-2P"),
+    ("C1555",    "22pF 50V C0G Ceramic Capacitor, 0402"),
+    ("C1549",    "18pF 50V C0G Ceramic Capacitor, 0402"),
 ]
 
 
