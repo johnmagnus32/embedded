@@ -44,6 +44,7 @@ PARTS = [
     ("C1002",    "Ferrite Bead 600Ω@100MHz, 0603"),
     ("C262640",  "18-pin 0.5mm FPC Connector, Top Contact"),
     ("C295747",  "JST PH 1.25mm 2-pin Connector, SMD"),
+    ("C3029359", "MX1.25 (PicoBlade) 1.25mm 2-pin Connector, SMD Right-Angle (speaker)"),
     ("C165948",  "USB Type-C Receptacle, Power Only, 16-pin"),
     ("C358687",  "Pin Header 1x5, 2.54mm, Through-Hole"),
     ("C49257",   "Pin Header 1x3, 2.54mm, Through-Hole"),
@@ -53,11 +54,13 @@ PARTS = [
     ("C37208",   "Pin Header 1x6, 2.54mm, Through-Hole"),
     ("C2932700", "Pin Header 1x7, 2.54mm, Through-Hole"),
     ("C50981",   "Pin Header 1x20, 2.54mm, Through-Hole"),
+    ("C41417332","Female Header 1x20, 2.54mm, Square-Hole, Through-Hole (TFT mount)"),
     # --- ice40-breakout (projects/ice40-breakout) ---
     ("C2678152", "FPGA, iCE40UP5K, 5.3K LUT, QFN-48 7x7mm 0.5mm pitch"),
     ("C151376",  "1.2V LDO Regulator, 300mA, SOT-23-5"),
     ("C2932703", "Pin Header 1x13, 2.54mm, Through-Hole"),
     # --- t113-breakout (projects/t113-breakout) ---
+    ("C49569761","Female Header 1x25, 2.54mm, Through-Hole (GPIO breakout, 4×)"),
     ("C5197687", "SoC, Allwinner T113-S3, dual Cortex-A7 + 128MB DDR3, eLQFP-128"),
     ("C77234",   "Synchronous Buck Regulator, FP6161 1A 0.6V-FB, SOT-23-5"),
     ("C135262",  "Power Inductor, 2.2uH 3.4A, 4x4mm SMD"),
@@ -69,6 +72,8 @@ PARTS = [
     ("C97607",   "Crystal, 32.768kHz CL=12.5pF, SMD2012-2P"),
     ("C1555",    "22pF 50V C0G Ceramic Capacitor, 0402"),
     ("C1549",    "18pF 50V C0G Ceramic Capacitor, 0402"),
+    ("C32949",   "10pF 50V C0G Ceramic Capacitor, 0402 (buck FB feed-forward)"),
+    ("C23350",   "240Ω 1% Resistor, 0603 (DDR ZQ calibration)"),
 ]
 
 
