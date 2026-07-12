@@ -21,7 +21,7 @@
 | 15 | RC0603FR-075K1L | 5.1KΩ 0603 resistor | 2 | C105580 | USB-C CC1/CC2 pull-down for 5V (R12, R13) |
 | 16 | GZ1608D601TF | Ferrite bead 600Ω 0603 | 1 | C1002 | VDD→VDDA filter. Replaces Nucleo's Tai-tech FCM1608KF-601T05. |
 | 17 | AFC07-S18ECA-00 | 18-pin 0.5mm FPC connector (EyeSPI display) | 1 | C262640 | JUSHUO. Replaces Molex 5034801800 (out of stock). |
-| 18 | S2B-PH-SM4-TB | JST PH 1.25mm 2-pin (speaker) | 1 | C295747 | MAX98357A bridge-tied output → speaker |
+| 18 | WAFER-MX1.25-2PWB | MX1.25 (PicoBlade) 1.25mm 2-pin SMD right-angle (speaker) | 1 | C3029359 | MAX98357A bridge-tied output → speaker. Replaces mislabeled JST PH (which is actually 2.0mm). NOTE: 1.25mm pitch — requires new footprint + re-route vs old 2.0mm part. Rated 1A: OK for 8Ω, marginal for 4Ω at high volume. |
 | 19 | TYPE-C-31-M-12 | USB-C power connector (5V input) | 1 | C165948 | Power only — VBUS/GND. CC resistors (#15) provide 5V advertisement. |
 | 20 | Pin Header 1x5 | 2.54mm header (SWD + Display SPI1 debug) | 2 | C358687 | SWD: 3.3V, SWDIO, SWCLK, GND, NRST. Display: SCK, MOSI, MISO, CS, GND. |
 | 21 | Pin Header 1x3 | 2.54mm header (UART + I2S2 debug) | 2 | C49257 | UART: TX, RX, GND. I2S2: BCLK, WS, SD. |
@@ -30,7 +30,7 @@
 | 24 | KH-2.54PH180-1X4P-L11.5 | 2.54mm header 1x4 (Flash SPI3 debug) | 1 | C2905435 | SCK, MOSI, MISO, CS. For Saleae probes. |
 | 25 | 2.54-1x6P Straight pin | 2.54mm header 1x6 | 1 | C37208 | — |
 | 26 | KH-2.54PH180-1X7P-L11.5 | 2.54mm header 1x7 | 1 | C2932700 | — |
-| 27 | 2.54-1*20P Straight pin | 2.54mm header 1x20 (TFT display mount) | 2 | C50981 | Top + bottom rows of Adafruit 2.8" TFT breakout |
+| 27 | HX PM2.54-1x20P ZC | 2.54mm header 1x20 FEMALE, square-hole (TFT display mount) | 2 | C41417332 | Female sockets on mainboard; male pins go on the Adafruit 2.8" TFT breakout so the screen is removable. Top + bottom rows. |
 
 ---
 
