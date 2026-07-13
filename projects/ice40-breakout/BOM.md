@@ -3,11 +3,18 @@
 **Status:** DRAFT / tentative parts — pending JLCPCB availability check. See
 [docs/BREADBOARD_ICE40_BOARD.md](../../docs/BREADBOARD_ICE40_BOARD.md) for the design spec.
 
-**~25 placements (26 with optional SS pull-down), 14 unique part numbers**
+**~21 placements (22 with optional SS pull-down), 10 unique part numbers**
 
 Sourcing legend:
-- ✅ **Reused from gameboy-v1** — already validated JLC-sourceable and in `cad/` library.
+- ✅ **Reused from gameboy-v1 / t113-breakout** — already validated JLC-sourceable and in `cad/` library.
 - ⚠️ **New / verify** — confirm LCSC stock + tier on JLCPCB before ordering.
+
+> **Header rework (2026-07-13):** consolidated the six functional headers (config /
+> runtime-SPI / LCD / power-probe / 2× spare-GPIO) into **2× 1x25 female headers, one
+> per left/right board side**. Power rails (3V3, 1V2) and grounds now interspersed into
+> the two big headers rather than a dedicated J5 probe header. Per-side pin assignment
+> still TBD — needs board edge length + decision on grouping (by chip edge vs. keeping
+> functional buses together). See Pin Mapping section.
 
 | # | Part Number | Description | Qty | LCSC # | Src | Notes |
 |---|-------------|-------------|-----|--------|-----|-------|
@@ -20,11 +27,7 @@ Sourcing legend:
 | 7 | RC0603JR-0710KL | 10KΩ 0603 resistor | 2 | C99198 | ✅ | CRESET_B pull-up to 3.3V (R1), CDONE pull-up to 3.3V (R2). |
 | 8 | 0603WAF5100T5E | 510Ω 0603 resistor | 1 | C23193 | ✅ | CDONE "config OK" LED current limit (~2.5mA). |
 | 9 | 19-213SYGC/S530-E2/5T | Green LED, 0603 | 1 | C2986027 | ✅ | CDONE status indicator (D1). |
-| 10 | Pin Header 1x6 | 2.54mm header (CONFIG bus) | 1 | C37208 | ✅ | SPI_SCK, SPI_SI, SPI_SO, SPI_SS_B, CRESET_B, CDONE (J1). |
-| 11 | KH-2.54PH180-1X4P-L11.5 | 2.54mm header 1x4 (RUNTIME SPI) | 1 | C2905435 | ✅ | SPI_CLK, SPI_MOSI, SPI_CS, GND (J2). |
-| 12 | KH-2.54PH180-1X7P-L11.5 | 2.54mm header 1x7 (LCD bus) | 2 | C2932700 | ✅ | LCD_D0–D7, WR, DC, CS + GND, 14 pos total (J3, J4). |
-| 13 | Pin Header 1x5 | 2.54mm header (POWER/probe) | 1 | C358687 | ✅ | 3V3, 1V2, GND ×3 (J5). |
-| 14 | KH-2.54PH180-1X13P-L11.5 | 2.54mm header 1x13 (spare GPIO) | 2 | C2932703 | ✅ | **Confirmed in stock.** Breaks out all remaining ~21 user I/O + ~5 interspersed GND (26 pos total, J6/J7). Right-sized vs. 2×1x20. Final pin split set at layout. |
+| 10 | 2044-1X25G00SA | 2.54mm 1x25 female header | 2 | C49569761 | ✅ | **2 headers, one per board side (BBB/Nucleo-style).** Consolidates all breakout: config bus + runtime SPI + LCD bus + all spare user I/O + interspersed GND. 50 positions total vs. 48 currently used → ~2 spare. Reuses the 1x25 female footprint (HDR-TH_25P-P2.54-V-F) from t113-breakout. Per-side pin split TBD (see Pin Mapping). |
 
 **Optional / not counted in the 25:** an optional 10KΩ SPI_SS_B pull-**down** (R3, C99198) may be
 fitted to guarantee slave-boot even if the STM32 is absent — see Design Note 4.
@@ -36,6 +39,79 @@ reset is ever needed on the bench.
 ---
 
 ## Pin Mapping
+
+> **Two-header layout (2026-07-13):** consolidated to **2× 1x25 female**, one per board side.
+> Split follows the QFN perimeter — pins **43→48→1→18** (chip's left half) go to the LEFT header,
+> pins **19→42** (right half) go to the RIGHT header. Because QFN pins run continuously around the
+> perimeter, listing them in arc order gives crossing-free fanout. The RIGHT header lists **descending**
+> (42→19) so both headers run top-to-bottom the same physical direction.
+> **Orientation caveat:** whether pos 1 is at the top or bottom of each header depends on final U2
+> rotation/placement — flip a header's order at layout if the fanout comes out reversed.
+> The J1–J7 tables further below are retained as the **STM32↔FPGA net reference** (unchanged).
+
+### LEFT header (1x25) — chip left half, pins 43→18
+
+| Pos | Net | iCE40 pin |
+|-----|-----|-----------|
+| 1 | +3V3 | — |
+| 2 | LCD_CS | 43 |
+| 3 | IOB_3b_G5 | 44 |
+| 4 | IOB_5b | 45 |
+| 5 | IOB_0a | 46 |
+| 6 | GND | — |
+| 7 | IOB_2a | 47 |
+| 8 | IOB_4a | 48 |
+| 9 | IOB_6a | 2 |
+| 10 | IOB_9b | 3 |
+| 11 | IOB_8a | 4 |
+| 12 | IOB_13b | 6 |
+| 13 | GND | — |
+| 14 | CDONE | 7 |
+| 15 | CRESET_B | 8 |
+| 16 | IOB_16a | 9 |
+| 17 | IOB_18a | 10 |
+| 18 | IOB_20a | 11 |
+| 19 | IOB_22a | 12 |
+| 20 | IOB_24a | 13 |
+| 21 | SPI_SO | 14 |
+| 22 | SPI_SCK | 15 |
+| 23 | SPI_SS_B | 16 |
+| 24 | SPI_SI | 17 |
+| 25 | RUNTIME_SPI_CS | 18 |
+
+*22 signals + 1 power + 2 GND = 25.*
+
+### RIGHT header (1x25) — chip right half, pins 42→19 (descending)
+
+| Pos | Net | iCE40 pin |
+|-----|-----|-----------|
+| 1 | +1V2 | — |
+| 2 | LCD_DC | 42 |
+| 3 | RGB2 | 41 |
+| 4 | RGB1 | 40 |
+| 5 | GND | — |
+| 6 | RGB0 | 39 |
+| 7 | LCD_WR | 38 |
+| 8 | IOT_45a_G1 | 37 |
+| 9 | LCD_D7 | 36 |
+| 10 | GND | — |
+| 11 | IOT_46b_G0 | 35 |
+| 12 | LCD_D6 | 34 |
+| 13 | LCD_D5 | 32 |
+| 14 | LCD_D4 | 31 |
+| 15 | GND | — |
+| 16 | LCD_D3 | 28 |
+| 17 | LCD_D2 | 27 |
+| 18 | LCD_D1 | 26 |
+| 19 | LCD_D0 | 25 |
+| 20 | GND | — |
+| 21 | IOT_37a | 23 |
+| 22 | RUNTIME_SPI_MOSI | 21 |
+| 23 | RUNTIME_SPI_CLK | 20 |
+| 24 | IOB_29b | 19 |
+| 25 | +3V3 | — |
+
+*19 signals + 2 power + 4 GND = 25. Total both headers: 41 signals + 3 power + 6 GND = 50.*
 
 FPGA-centric view. Config-pin package numbers on the SG48 are fixed by the part (confirm against the
 datasheet during schematic); runtime/LCD numbers are the `.pcf` assignments from the spec (§3b/§3c) and
