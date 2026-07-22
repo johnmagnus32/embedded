@@ -1,0 +1,7 @@
+# Pin constraint for the ice40-breakout board (projects/ice40-breakout).
+#
+# LED is a single user I/O. Verified against
+# projects/ice40-breakout/production/netlist.ipc:
+#   U2 (FPGA) pin 48 = net /IOB_4A -> header H3 pin 8.
+# Clip an external LED anode to H3-8, cathode -> ~330 ohm -> GND.
+set_io LED 48

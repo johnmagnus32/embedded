@@ -1,0 +1,132 @@
+/*
+ * fpga-spi board device tree — STM32F411RE (Nucleo) + ice40-breakout.
+ *
+ * Two SPI buses to the FPGA:
+ *   spi3 (config) — streams the bitstream in at boot via the iCE40 loader
+ *                   driver. SCK=PC10, MOSI=PC12; CRESET/CDONE/SS on PB1/PB2/PB6.
+ *                   Runs at BR=/2 (~8 MHz off 16 MHz HSI), inside the iCE40
+ *                   1-25 MHz slave-config window.
+ *   spi1 (runtime)— the LED command channel to the *configured* FPGA. The STM32
+ *                   is master; one command byte per CS frame sets LED0/LED1.
+ *                   SCK=PA5, MOSI=PA7, hardware CS=PA4. Runs SLOW (br=5 → /64 →
+ *                   ~250 kHz): the FPGA slave oversamples with a 12 MHz clock +
+ *                   3-stage synchronizer and can't track multi-MHz SCK.
+ *
+ * Runtime pin map (ice40-breakout BOM.md as-built):
+ *   SPI1 SCK  = PA5 (AF5) -> H4-23 -> iCE40 pin 20 (RUNTIME_SPI_CLK)
+ *   SPI1 MOSI = PA7 (AF5) -> H4-22 -> iCE40 pin 21 (RUNTIME_SPI_MOSI)
+ *   SPI1 CS   = PA4 (GPIO)-> H3-25 -> iCE40 pin 18 (RUNTIME_SPI_CS)
+ *   LED0 fb   = PC0 (in)  <- H3-8  <- iCE40 pin 48 (LED0, IOB_4A)
+ *   LED1 fb   = PC1 (in)  <- H3-9  <- iCE40 pin 2  (LED1, IOB_6A)
+ * PC0/PC1 are read as plain GPIO inputs by the app (not DT device nodes).
+ */
+/ {
+    compatible = "st,nucleo-f411re";
+    model = "STM32F411RE Nucleo + ice40-breakout (fpga-spi)";
+
+    clocks {
+        hsi: hsi {
+            compatible = "fixed-clock";
+            clock-frequency = <16000000>;
+        };
+    };
+
+    soc {
+        compatible = "st,stm32f411";
+
+        rcc: rcc@40023800 {
+            compatible = "st,stm32-rcc";
+            reg = <0x40023800>;
+        };
+
+        gpioa: gpio@40020000 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020000>;
+            clocks = <&rcc 0 0>;
+        };
+
+        gpiob: gpio@40020400 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020400>;
+            clocks = <&rcc 0 1>;
+        };
+
+        gpioc: gpio@40020800 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020800>;
+            clocks = <&rcc 0 2>;
+        };
+
+        usart2: serial@40004400 {
+            compatible = "st,stm32-usart";
+            reg = <0x40004400>;
+            clocks = <&rcc 1 17>;   /* APB1 bit 17 = USART2EN */
+            tx-pin = <2>;
+            tx-af = <7>;
+            tx-port = <&gpioa>;
+            rx-pin = <3>;
+            rx-af = <7>;
+            rx-port = <&gpioa>;
+            baudrate = <115200>;
+            irq = <38>;             /* USART2 global interrupt */
+            status = "okay";
+        };
+
+        /* SPI1: runtime LED command bus. SLOW (br=5 → fPCLK/64 → ~250 kHz) so
+         * the FPGA's oversampled SPI slave can track it. Hardware CS = PA4. */
+        spi1: spi@40013000 {
+            compatible = "st,stm32-spi";
+            reg = <0x40013000>;
+            clocks = <&rcc 2 12>;   /* APB2 bit 12 = SPI1EN */
+            br = <5>;               /* fPCLK/64 */
+            sck-port = <&gpioa>;
+            sck-pin = <5>;
+            sck-af = <5>;
+            miso-port = <&gpioa>;
+            miso-pin = <6>;
+            miso-af = <5>;
+            mosi-port = <&gpioa>;
+            mosi-pin = <7>;
+            mosi-af = <5>;
+            cs-port = <&gpioa>;
+            cs-pin = <4>;
+            status = "okay";
+        };
+
+        /* SPI3: iCE40 bitstream configuration bus (BR defaults to /2). */
+        spi3: spi@40003C00 {
+            compatible = "st,stm32-spi";
+            reg = <0x40003C00>;
+            clocks = <&rcc 1 15>;   /* APB1 bit 15 = SPI3EN */
+            sck-port = <&gpioc>;
+            sck-pin = <10>;
+            sck-af = <6>;
+            miso-port = <&gpioc>;
+            miso-pin = <11>;
+            miso-af = <6>;
+            mosi-port = <&gpioc>;
+            mosi-pin = <12>;
+            mosi-af = <6>;
+            /* No hardware CS — the ice40 loader drives SPI_SS_B (PB6) as GPIO.
+             * PB0 is an unused placeholder the SPI driver parks high. */
+            cs-port = <&gpiob>;
+            cs-pin = <0>;
+            status = "okay";
+
+            ice40cfg: ice40-cfg {
+                compatible = "lattice,ice40up5k-cfg";
+                creset-port = <&gpiob>;
+                creset-pin = <1>;
+                cdone-port = <&gpiob>;
+                cdone-pin = <2>;
+                ss-port = <&gpiob>;
+                ss-pin = <6>;
+                status = "okay";
+            };
+        };
+    };
+
+    chosen {
+        console = <&usart2>;
+    };
+};

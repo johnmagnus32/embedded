@@ -1,0 +1,105 @@
+/*
+ * fpga-blink board device tree — STM32F411RE (Nucleo) + ice40-breakout.
+ *
+ * The STM32 configures the iCE40UP5K over the config SPI bus (SPI3) at boot,
+ * then the FPGA free-runs a blink on one of its GPIOs. Console is USART2 on the
+ * Nucleo ST-Link virtual COM port.
+ *
+ * Config-bus wiring (matches projects/gameboy-v2 + ice40-breakout H3):
+ *   SPI3 SCK  = PC10 (AF6) -> H3-22 -> iCE40 pin 15
+ *   SPI3 MISO = PC11 (AF6) -> (SPI_SO, unused for slave config)
+ *   SPI3 MOSI = PC12 (AF6) -> H3-24 -> iCE40 pin 17
+ *   CRESET_B  = PB1  (GPIO) -> H3-15 -> iCE40 pin 8
+ *   CDONE     = PB2  (GPIO in) -> H3-14 -> iCE40 pin 7
+ *   SPI_SS_B  = PB6  (GPIO) -> H3-23 -> iCE40 pin 16
+ */
+/ {
+    compatible = "st,nucleo-f411re";
+    model = "STM32F411RE Nucleo + ice40-breakout (fpga-blink)";
+
+    clocks {
+        hsi: hsi {
+            compatible = "fixed-clock";
+            clock-frequency = <16000000>;
+        };
+    };
+
+    soc {
+        compatible = "st,stm32f411";
+
+        rcc: rcc@40023800 {
+            compatible = "st,stm32-rcc";
+            reg = <0x40023800>;
+        };
+
+        gpioa: gpio@40020000 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020000>;
+            clocks = <&rcc 0 0>;
+        };
+
+        gpiob: gpio@40020400 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020400>;
+            clocks = <&rcc 0 1>;
+        };
+
+        gpioc: gpio@40020800 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020800>;
+            clocks = <&rcc 0 2>;
+        };
+
+        usart2: serial@40004400 {
+            compatible = "st,stm32-usart";
+            reg = <0x40004400>;
+            clocks = <&rcc 1 17>;   /* APB1 bit 17 = USART2EN */
+            tx-pin = <2>;
+            tx-af = <7>;
+            tx-port = <&gpioa>;
+            rx-pin = <3>;
+            rx-af = <7>;
+            rx-port = <&gpioa>;
+            baudrate = <115200>;
+            irq = <38>;             /* USART2 global interrupt */
+            status = "okay";
+        };
+
+        /* SPI3: iCE40 bitstream configuration bus */
+        spi3: spi@40003C00 {
+            compatible = "st,stm32-spi";
+            reg = <0x40003C00>;
+            clocks = <&rcc 1 15>;   /* APB1 bit 15 = SPI3EN */
+            sck-port = <&gpioc>;
+            sck-pin = <10>;
+            sck-af = <6>;
+            miso-port = <&gpioc>;
+            miso-pin = <11>;
+            miso-af = <6>;
+            mosi-port = <&gpioc>;
+            mosi-pin = <12>;
+            mosi-af = <6>;
+            /* No hardware CS on this bus — the ice40 loader drives SPI_SS_B as a
+             * plain GPIO (PB6). PB0 is an unused placeholder the SPI driver
+             * parks high; it is not wired to anything. */
+            cs-port = <&gpiob>;
+            cs-pin = <0>;
+            status = "okay";
+
+            ice40cfg: ice40-cfg {
+                compatible = "lattice,ice40up5k-cfg";
+                creset-port = <&gpiob>;
+                creset-pin = <1>;
+                cdone-port = <&gpiob>;
+                cdone-pin = <2>;
+                ss-port = <&gpiob>;
+                ss-pin = <6>;
+                status = "okay";
+            };
+        };
+    };
+
+    chosen {
+        console = <&usart2>;
+    };
+};

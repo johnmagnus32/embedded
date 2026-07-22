@@ -1,7 +1,7 @@
 # iCE40 Breakout PCB — Bill of Materials
 
-**Status:** DRAFT / tentative parts — pending JLCPCB availability check. See
-[docs/BREADBOARD_ICE40_BOARD.md](../../docs/BREADBOARD_ICE40_BOARD.md) for the design spec.
+**Status:** As-built — parts confirmed JLC-sourceable, production files in `production/`. See
+[README.md](README.md) for the design rationale + spec.
 
 **~21 placements (22 with optional SS pull-down), 10 unique part numbers**
 

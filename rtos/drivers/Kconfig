@@ -33,6 +33,11 @@ config SPI
     default y
     depends on CLOCK
 
+config FPGA_ICE40
+    bool "Lattice iCE40 SPI-slave bitstream loader"
+    default n
+    depends on SPI && GPIO
+
 config FLASH
     bool "W25Q NOR flash driver"
     default y

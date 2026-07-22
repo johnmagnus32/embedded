@@ -29,6 +29,7 @@ struct spi_stm32_config {
     uint32_t base;          /* SPI peripheral base */
     uint8_t  clk_bus;       /* 0=AHB1, 1=APB1, 2=APB2 */
     uint8_t  clk_bit;
+    uint8_t  br;            /* CR1 baud-rate divisor field (0..7): SCK = fPCLK/2^(br+1) */
     /* Pin config */
     uint32_t sck_port;
     uint8_t  sck_pin;
@@ -93,12 +94,15 @@ static int spi_stm32_init(const struct device *dev)
     volatile uint32_t *cs_bsrr = (volatile uint32_t *)(cfg->cs_port + 0x18);
     *cs_bsrr = (1 << cfg->cs_pin);  /* set high (deselected) */
 
-    /* Configure SPI: master, 8-bit, CPOL=0, CPHA=0, fPCLK/4 */
+    /* Configure SPI: master, 8-bit, CPOL=0, CPHA=0.
+     * BR (CR1[5:3]) sets SCK = fPCLK / 2^(br+1). br defaults to 0 (fPCLK/2 —
+     * the historical behavior, e.g. 8 MHz at a 16 MHz APB2) unless the DTS
+     * node overrides it via the optional `br` property (see cfg->br). */
     REG(cfg->base, SPI_CR1_OFF) =
-        (1 << 2)   /* MSTR */
-                    /* BR = 000 → fPCLK/2 (8 MHz at 16 MHz APB2) */
-      | (1 << 8)   /* SSI */
-      | (1 << 9);  /* SSM */
+        (1 << 2)                        /* MSTR */
+      | ((uint32_t)(cfg->br & 7) << 3)  /* BR: baud-rate divisor */
+      | (1 << 8)                        /* SSI */
+      | (1 << 9);                       /* SSM */
     REG(cfg->base, SPI_CR1_OFF) |= (1 << 6);  /* SPE: enable */
 
     return 0;
@@ -158,11 +162,33 @@ static const struct spi_driver_api spi_stm32_api = {
 #define _SPI_INST_LABEL(n) DT_INST_ST_STM32_SPI_##n##_LABEL
 #define _SPI_PROP(n, p) DT_INST_ST_STM32_SPI_##n##_PROP_##p
 
+/* `br` is optional in the DTS: gen_devicetree.py only emits _PROP_BR for nodes
+ * that declare it. Default the macro to 0 (fPCLK/2 — the historical rate) for
+ * every instance that omits it, so existing boards are unaffected. Covers more
+ * SPI instances than any single board defines. A node opts in with e.g.
+ * `br = <5>;` (fPCLK/64). */
+#ifndef DT_INST_ST_STM32_SPI_0_PROP_BR
+#define DT_INST_ST_STM32_SPI_0_PROP_BR 0
+#endif
+#ifndef DT_INST_ST_STM32_SPI_1_PROP_BR
+#define DT_INST_ST_STM32_SPI_1_PROP_BR 0
+#endif
+#ifndef DT_INST_ST_STM32_SPI_2_PROP_BR
+#define DT_INST_ST_STM32_SPI_2_PROP_BR 0
+#endif
+#ifndef DT_INST_ST_STM32_SPI_3_PROP_BR
+#define DT_INST_ST_STM32_SPI_3_PROP_BR 0
+#endif
+#ifndef DT_INST_ST_STM32_SPI_4_PROP_BR
+#define DT_INST_ST_STM32_SPI_4_PROP_BR 0
+#endif
+
 #define STM32_SPI_DEFINE(n)                                         \
     static const struct spi_stm32_config spi_cfg_##n = {            \
         .base      = DT_INST_ST_STM32_SPI_##n##_REG_ADDR,          \
         .clk_bus   = DT_INST_ST_STM32_SPI_##n##_CLK_BUS,           \
         .clk_bit   = DT_INST_ST_STM32_SPI_##n##_CLK_BIT,           \
+        .br        = _SPI_PROP(n, BR),                              \
         .sck_port  = _SPI_PROP(n, SCK_PORT_BASE),                  \
         .sck_pin   = _SPI_PROP(n, SCK_PIN),                        \
         .sck_af    = _SPI_PROP(n, SCK_AF),                         \

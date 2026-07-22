@@ -1,8 +1,11 @@
-# Breadboard iCE40UP5K Board — Design Requirements
+# Breadboard iCE40UP5K Board (`ice40-breakout`)
 
-**Status:** Design spec / requirements. No board built yet.
-**Audience:** A future engineer (or Claude session with no prior context) who needs to understand
-*why* this board exists and *what it must do*, before designing the schematic/PCB.
+**Status:** **Design complete** — schematic (`ice40-breakout.kicad_sch`), PCB
+(`ice40-breakout.kicad_pcb`), and JLCPCB production files (`production/`) all live in this
+directory. **Not yet fabricated / brought up.** Parts confirmed JLC-sourceable (see `BOM.md`).
+**Audience:** Anyone (or a future Claude session) who needs to understand *why* this board exists,
+*what it must do*, and *how it was built*. This file is the design rationale + spec; `BOM.md` holds
+the as-built bill of materials and the full header pin map.
 
 > **Provenance / how to read the code references.** This board serves a companion firmware project,
 > `gameboy-v2`, which at the time of writing lives in `projects/gameboy-v2/` but is **not yet committed
@@ -13,6 +16,12 @@
 > trust them. The `projects/gameboy-v2/...` paths are given only so that, *if* you do have that work
 > tree, you can cross-check against the source. The facts below are the authority; the file paths are a
 > convenience.
+
+> **As-built vs. spec.** Sections 1–3 and 5 were written as *requirements* before layout and remain the
+> design rationale. The board has since been **built to this spec** — where a concrete build decision
+> differs from or resolves an open question in the text, an **`[AS-BUILT]`** note points at the real
+> value. The single authority for the final pinout is **`BOM.md`** (regenerated from
+> `production/netlist.ipc`); this document is the *why*, `BOM.md` is the *what*.
 
 ---
 
@@ -188,6 +197,14 @@ Display wiring gotchas (the FPGA only ever *writes*):
 > targets the iCEBreaker's PMOD layout. **When laying out a custom board these can be reassigned to
 > whatever routes cleanly** — but if they change, `icebreaker.pcf` must be updated to match, and the
 > bitstream re-synthesized. Keep a board-specific `.pcf` alongside the design.
+>
+> **`[AS-BUILT]` The runtime/LCD pins WERE reassigned for clean fanout.** The final board does not use
+> the iCEBreaker `.pcf` numbers listed in 3b/3c above; it routes each net to whatever QFN pin fell
+> nearest its header position. The authoritative net→package-pin map is the two-header table in
+> `BOM.md` (e.g. `LCD_CS`→pin 43, `RUNTIME_SPI_CLK`→pin 20, `RUNTIME_SPI_MOSI`→pin 21). **Before
+> running the gameboy-v2 bitstream on this board, generate a board-specific `.pcf` from that table** —
+> the stock `icebreaker.pcf` will map signals to the wrong physical pins. Config-bus pins (SPI_SCK/SI/
+> SO/SS_B, CRESET_B, CDONE) are fixed by the SG48 package and are *not* reassignable.
 
 ---
 
@@ -209,12 +226,25 @@ Functional requirements, in priority order:
    functional nets (config, runtime SPI, LCD) on their own labeled headers so the pinout is
    self-documenting, and route the leftover GPIO to a plain 0.1" header. Also expose **3.3 V, 1.2 V,
    and GND at multiple points** for easy probing/powering.
+
+> **`[AS-BUILT]` Header topology: 2× 1×25 female, one per board side — NOT per-function headers.**
+> Requirements 4–6 originally called for separate labeled headers (CONFIG / SPI / LCD / GPIO / PWR).
+> The build consolidated everything into **two 1×25 female headers** (`2044-1X25G00SA`, designators
+> **H3/H4**), one down each board edge, BeagleBone/Nucleo-style. The split follows the QFN perimeter:
+> the LEFT header (H3) carries the chip's left half (pins 43→18) incl. the full config bus + SPI_SO +
+> RUNTIME_SPI_CS; the RIGHT header (H4) carries the right half (pins 42→19) incl. the LCD bus +
+> RUNTIME_SPI_CLK/MOSI. Power and GND are interspersed into both headers (+3V3 on H3-1 & H4-25, +1V2 on
+> H4-1), so there is **no dedicated J5 power-probe header**. All ~39 user I/O are still broken out
+> (goal met), just on two big headers instead of many small ones. **The per-position pin map is in
+> `BOM.md`**; the J1–J7 tables later in this document are retained only as the STM32↔FPGA *net* reference.
 7. **Internal oscillator only** — the design uses `SB_HFOSC` (see `fpga/ppu_top.v`), so **no external
    crystal is required.**
 8. **CRESET_B**: 10 kΩ pull-up to SPI_VCCIO1 (3.3 V) + optional reset button, so the pin has a defined
-   idle state and the STM32 can still drive it (see 5d).
+   idle state and the STM32 can still drive it (see 5d). **`[AS-BUILT]`** pull-up fitted (R1);
+   **reset button omitted** — the STM32 reconfigures every boot, so a button is redundant; CRESET_B is
+   on header H3-15 if a manual reset is ever needed on the bench.
 9. **CDONE**: external ~10 kΩ pull-up to the STM32 3.3 V rail + optional LED indicator ("configured
-   OK") (see 5d).
+   OK") (see 5d). **`[AS-BUILT]`** pull-up (R2) + green LED (U3) via 510 Ω (R3) both fitted; CDONE on H3-14.
 10. Common ground with the STM32 board — obvious but non-negotiable on a breadboard; call it out on the
     header silkscreen.
 
@@ -249,7 +279,8 @@ are design decisions made for the prototype):
   numbers for every component, including the iCE40UP5K, chosen from parts JLC can source. Prefer JLC
   "Basic"/preferred parts where possible to avoid extended-part fees — but note the FPGA itself is
   almost certainly an Extended part (confirm LCSC stock before committing; it is the one component that
-  cannot be swapped). **Do not count on JLC placing the 0.1" through-hole headers** — generic THT
+  cannot be swapped). **`[AS-BUILT]`** the FPGA is **iCE40UP5K-SG48I, LCSC C2678152** (U2), confirmed
+  in JLC stock (Extended tier — order early). **Do not count on JLC placing the 0.1" through-hole headers** — generic THT
   headers are often not offered by the assembly service, so plan to hand-solder the headers yourself
   (they are the easy part). Keep the QFN land pattern and thermal-pad vias correct per section 5c
   regardless.
@@ -308,8 +339,8 @@ recommended, not required; POR waits for VCC before configuring), so no sequenci
 > a **"1.2 V-good"** signal — a voltage supervisor on the 1.2 V rail with a push-pull, HIGH-when-good
 > output (so it drives the enable directly, no inverter). Feed the 1.2 V LDO straight from the 3.3 V
 > input so the core still comes up first, and gate only the I/O rails. A verified JLC-sourceable parts
-> set for this (TPS22918 load switch + TPS3839 supervisor + the 1.2 V LDO) is preserved in the project
-> history if it is ever needed — but the current design deliberately omits it to stay minimal.
+> set and wiring diagram for this are kept in **Appendix A** at the end of this document — the current
+> design deliberately omits it to stay minimal.
 
 ### 5c. Package / assembly
 
@@ -329,7 +360,8 @@ iron-solderable.** Consider JLCPCB assembly for the QFN; passives and SOT-23-5 L
   our slave-config design the STM32 must drive SPI_SS_B **LOW** when releasing CRESET_B. Do **not**
   add a pull-up (the dev boards' 10 kΩ pull-up is exactly what forces master boot); an optional 10 kΩ
   **pull-down** is fine. There is **no CBSEL pin** — boot mode is selected solely by the SPI_SS level
-  at CRESET release.
+  at CRESET release. **`[AS-BUILT]`** the optional 10 kΩ SS_B pull-down **is fitted (R4)**, guaranteeing
+  slave boot even with no STM32 attached.
 - **SPI_SO** (FPGA output, IOB_32a): not used while streaming a slave bitstream; wire it to the STM32
   only if the STM32 will ever program NVCM. Otherwise may be left unconnected.
 - Config pins are all in **Bank 1, referenced to SPI_VCCIO1**: SPI_SCK=IOB_34a, SPI_SO=IOB_32a,
@@ -360,6 +392,8 @@ without it, but if config is ever flaky on real silicon, add it.
   UPduino v3 uses an AP2127K-1.2 (SOT-23-5) for this rail; pick any 1.2 V LDO with headroom for the
   ~12 mA core startup peak, 4.7 µF in/out. Since assembly is full JLC turnkey (4a), choose an LDO JLC
   stocks. (The AP2127K-3.3 the reference boards use is *not* needed here — 3.3 V comes in on a header.)
+  **`[AS-BUILT]` RESOLVED** — fitted the **AP2127K-1.2TRG1** (LCSC **C151376**, U1), confirmed in JLC
+  stock; 4.7 µF in/out per plan.
 - **SG48 land pattern / thermal-via count:** consult the mechanical drawing + FPGA-TN-02044.
 - **Pull-up reference supply:** this doc cites **SPI_VCCIO1** per the UP5K datasheet (the generic
   TN1248 says VCCIO_2 — wrong for this part). Harmless while all banks are 3.3 V, but do not split
@@ -422,3 +456,58 @@ For the record, three tiers were considered:
   PCB. The end goal; de-risked by Tiers 1–2.
 
 This document specifies **Tier 2**.
+
+---
+
+## Appendix A — Optional core-first power sequencing (NOT in the current build)
+
+This board's current revision uses the simple 3.3 V→1.2 V cascade and **accepts** the reversed power-up
+order (section 4a / 5b) — the lenient UP5K should configure fine. This appendix records a verified,
+JLC-sourceable circuit to **enforce** Lattice's core-first order **if config ever proves unreliable on
+silicon**. It is documented here (not built) so the option is not lost. Stock/tier figures are
+point-in-time (~2026-07) and **must be re-verified on jlcpcb.com before ordering.**
+
+**Idea:** feed the 1.2 V LDO directly from the 3.3 V input (core comes up first), and gate the FPGA's
+3.3 V I/O rails behind a load switch that only turns on once a supervisor says 1.2 V is good.
+
+**Parts (all enable polarities align → no inverter needed):**
+
+| Role | MPN | LCSC | Package | Tier | Notes |
+|------|-----|------|---------|------|-------|
+| 1.2 V LDO → VCC + VCCPLL | AP2127K-1.2TRG1 | C151376 | SOT-23-5 | Extended | The board's normal core LDO (same part as the baseline design). |
+| Load switch → gates 3.3 V I/O rails | TPS22918DBVR | C131941 | SOT-23-6 | Extended | VIN 1–5.5 V, **active-HIGH ON**, 52 mΩ. EN has **no internal pull-down — add an external 100 kΩ pull-down** (mandatory, guarantees default-OFF). |
+| 1.2 V-good supervisor → drives switch EN | TPS3839G12DBZR (1.1 V) | C2068201 | SOT-23-3 | Extended | Push-pull, **HIGH-when-good**, 1.1 V threshold. Stock was **~16 — critical**; see swap. |
+| ↳ supervisor stock swap | TPS3839A09DBZR (0.9 V) | C2066748 | SOT-23-3 | Extended | Same family/pinout/polarity, 0.9 V threshold (still ≫ Lattice's 0.5 V min). Use if the G12 is out of stock. |
+
+Support passives: **100 kΩ pull-down on TPS22918 EN** (mandatory), **0.1 µF on supervisor VDD** (sets
+~200 ms delay), 1 µF in/out on the LDO.
+
+**Wiring / enable-polarity chain (why no inverter is needed):**
+
+```
+3V3_IN ──▶ AP2127K-1.2 (LDO) ──▶ 1.2V  (VCC + VCCPLL)
+                                   │
+                                   └─▶ TPS3839 VDD (monitors 1.2V)
+                                          │ RESET = push-pull
+                                          │   LOW  while 1.2V < threshold
+                                          │   HIGH once 1.2V good (+~200 ms)
+                                          ▼
+3V3_IN ──▶ TPS22918 IN            TPS22918 EN (active-HIGH) ◀── wired straight to RESET
+              └─ OUT ──▶ SPI_VCCIO1, VPP_2V5, VCCIO_0/2      (+ 100k pull-down on EN → default OFF)
+```
+
+The TPS3839 is push-pull, HIGH-when-good; the load-switch EN is active-high → connect RESET straight to
+EN. (An open-drain active-low supervisor would be the wrong polarity and need an inverter — that's the
+specific reason to choose the push-pull TPS3839.)
+
+**Basic-tier alternative (avoids the load-switch feeder fee, +~3 passives):** replace the TPS22918 with
+a discrete high-side P-FET — **AO3401A** (LCSC C15127, SOT-23, **Basic**, ~1.2 M stock) or
+SI2301CDS-T1-GE3 (C10487, Basic). Source = 3.3 V in, drain = I/O rails, gate 100 kΩ pull-up to source
+(default OFF), gate pulled low through a small NMOS driven by the supervisor's HIGH-when-good output.
+The LDO and supervisor stay Extended regardless — there is **no** Basic-tier dedicated load switch,
+1.2 V LDO, or low-threshold supervisor on JLC, so at least one feeder fee is unavoidable either way.
+
+**Confirm before ordering any of the above:** (1) supervisor stock (G12 ~16 → likely use A09); (2) the
+mandatory TPS22918 EN pull-down; (3) if substituting any supervisor, that it is push-pull HIGH-when-good
+(else add an inverter); (4) **do NOT** use SGM2019-1.2 (C59589) or NCP163-1.2 — neither has a 1.2 V
+variant stocked at JLC. Use AP2127K-1.2 (C151376).

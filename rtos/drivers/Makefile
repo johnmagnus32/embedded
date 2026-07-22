@@ -2,6 +2,7 @@ include $(OS)/drivers/clock/Makefile
 include $(OS)/drivers/serial/Makefile
 include $(OS)/drivers/gpio/Makefile
 include $(OS)/drivers/spi/Makefile
+include $(OS)/drivers/fpga/Makefile
 include $(OS)/drivers/flash/Makefile
 include $(OS)/drivers/dma/Makefile
 include $(OS)/drivers/adc/Makefile

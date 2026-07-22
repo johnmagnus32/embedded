@@ -1,10 +1,10 @@
 /*
- * tb_blink.v — Testbench for the counter module
+ * tb_blink.v — Testbench for the blink counter module
  *
- * Instantiates the REAL counter module and verifies:
+ * Instantiates the REAL blink module and verifies:
  *   1. Counter starts at 0
  *   2. Counter increments each clock
- *   3. LED outputs reflect the correct counter bits
+ *   3. led output reflects counter bit 22
  */
 `timescale 1ns/1ps
 
@@ -12,13 +12,11 @@ module tb_blink;
     reg clk = 0;
     always #41.67 clk = ~clk;  // ~12MHz
 
-    wire led_r, led_g, led_b;
+    wire led;
 
-    counter uut (
+    blink uut (
         .clk(clk),
-        .led_r(led_r),
-        .led_g(led_g),
-        .led_b(led_b)
+        .led(led)
     );
 
     integer failures = 0;
@@ -49,31 +47,18 @@ module tb_blink;
             failures = failures + 1;
         end
 
-        // Test 4: LED outputs reflect correct bits
-        // Force counter to known value: bits 23,22,21 = 1,1,1
-        force uut.cnt = 24'hE00000;
+        // Test 4: led reflects bit 22 — high when bit 22 set
+        force uut.cnt = 24'h400000;   // bit 22 = 1
         #1;
-        if (led_r !== 1 || led_g !== 1 || led_b !== 1) begin
-            $display("FAIL: cnt=0xE00000, LEDs should be 1,1,1, got %b,%b,%b",
-                     led_r, led_g, led_b);
+        if (led !== 1) begin
+            $display("FAIL: cnt=0x400000, led should be 1, got %b", led);
             failures = failures + 1;
         end
 
-        // Force: bits 23,22,21 = 0,0,0
-        force uut.cnt = 24'h000000;
+        force uut.cnt = 24'h000000;   // bit 22 = 0
         #1;
-        if (led_r !== 0 || led_g !== 0 || led_b !== 0) begin
-            $display("FAIL: cnt=0x000000, LEDs should be 0,0,0, got %b,%b,%b",
-                     led_r, led_g, led_b);
-            failures = failures + 1;
-        end
-
-        // Force: bit 23=1, 22=0, 21=1
-        force uut.cnt = 24'hA00000;
-        #1;
-        if (led_r !== 1 || led_g !== 0 || led_b !== 1) begin
-            $display("FAIL: cnt=0xA00000, LEDs should be 1,0,1, got %b,%b,%b",
-                     led_r, led_g, led_b);
+        if (led !== 0) begin
+            $display("FAIL: cnt=0x000000, led should be 0, got %b", led);
             failures = failures + 1;
         end
 
