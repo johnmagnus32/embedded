@@ -1,0 +1,30 @@
+#!/bin/bash
+# sim — Run the game in the browser
+# Usage: ./sim gameboy   [firmware.elf] [flash.bin]
+#        ./sim gameboy-v2 [firmware.elf]
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECTS="$DIR/../projects"
+
+MACHINE="${1:?Usage: ./sim gameboy|gameboy-v2 [firmware.elf]}"
+shift
+
+case "$MACHINE" in
+    gameboy)
+        ELF="${1:-$PROJECTS/gameboy/build/gameboy.elf}"
+        FLASH="${2:-$PROJECTS/gameboy/build/songs.bin}"
+        EXTRA_ARGS=(--device "flash0=$FLASH")
+        ;;
+    gameboy-v2)
+        ELF="${1:-$PROJECTS/gameboy-v2/build/gameboy-v2.elf}"
+        NETLIST="$PROJECTS/gameboy-v2/build/ppu_top.json"
+        EXTRA_ARGS=(--device "fpga0=$NETLIST")
+        ;;
+    *)
+        echo "Unknown machine: $MACHINE"
+        echo "Usage: ./sim gameboy|gameboy-v2 [firmware.elf]"
+        exit 1
+        ;;
+esac
+
+exec python3 "$DIR/src/sim-web/sim-web.py" --machine "$MACHINE" --firmware "$ELF" "${EXTRA_ARGS[@]}"

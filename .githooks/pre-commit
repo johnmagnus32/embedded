@@ -4,30 +4,23 @@ set -e
 # Get list of staged files
 STAGED=$(git diff --cached --name-only)
 
-MCU_SIM_CHANGED=0
-FPGA_SIM_CHANGED=0
+SIM_CHANGED=0
 RTOS_CHANGED=0
 FW_CHANGED=0
 
 for f in $STAGED; do
     case "$f" in
-        sim/mcu/*) MCU_SIM_CHANGED=1 ;;
-        sim/fpga/*) FPGA_SIM_CHANGED=1 ;;
+        sim/*) SIM_CHANGED=1 ;;
         rtos/*)  RTOS_CHANGED=1 ;;
         projects/*) FW_CHANGED=1 ;;
     esac
 done
 
-if [ "$MCU_SIM_CHANGED" -eq 1 ]; then
-    echo "=== sim/mcu changed: building ==="
-    make -C sim/mcu
-    echo "=== sim/mcu changed: running tests ==="
-    python3 sim/mcu/tests/run_tests.py
-fi
-
-if [ "$FPGA_SIM_CHANGED" -eq 1 ]; then
-    echo "=== sim/fpga changed: building + testing ==="
-    make -C sim/fpga test
+if [ "$SIM_CHANGED" -eq 1 ]; then
+    echo "=== sim changed: building ==="
+    make -C sim
+    echo "=== sim changed: running tests ==="
+    python3 sim/tests/run_tests.py
 fi
 
 if [ "$RTOS_CHANGED" -eq 1 ] || [ "$FW_CHANGED" -eq 1 ]; then
@@ -37,7 +30,7 @@ fi
 
 if [ "$RTOS_CHANGED" -eq 1 ]; then
     echo "=== rtos changed: running sim tests (RTOS affects emulated firmware) ==="
-    python3 sim/mcu/tests/run_tests.py
+    python3 sim/tests/run_tests.py
 fi
 
 echo "=== Pre-commit checks passed ==="
