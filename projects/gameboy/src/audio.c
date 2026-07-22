@@ -11,6 +11,7 @@
 #include "audio.h"
 #include "drivers/audio.h"
 #include "drivers/flash.h"
+#include "sched.h"   /* sched_yield() */
 
 /* Flash streaming state */
 #define STREAM_BUF_SIZE 512
@@ -34,10 +35,13 @@ void sfx_jump(void)
     sfx_active = 1;
 }
 
-/* Convert unsigned 8-bit PCM (0-255) to signed 16-bit */
+/* Convert unsigned 8-bit PCM (0-255) to signed 16-bit.
+ * Scale by 64 (not 255): *255 pushed music to ~99% of full scale, leaving no
+ * headroom, so mixing in SFX overflowed int16 and wrapped -> loud crackle.
+ * *64 keeps music at ~1/4 scale so music+sfx stays well inside range. */
 static inline int16_t pcm_u8_to_s16(uint8_t sample)
 {
-    return ((int16_t)sample - 128) * 255;
+    return ((int16_t)sample - 128) * 64;
 }
 
 /* Read next 512 bytes of music from flash, looping at the end */
@@ -87,12 +91,21 @@ void audio_task(void)
 
     for (;;) {
         int16_t *buf = audio_get_buffer(audio_dev);
-        if (!buf) break;
+        if (!buf) break;   /* audio stopped (e.g. flash-upload takeover). Returning
+                            * from the task is now safe: the scheduler's task_entry
+                            * wrapper terminates it cleanly (TASK_DEAD), rather than
+                            * the old LR=0 -> PC=0 HardFault. */
 
         flash_read_next_chunk();
 
         for (int i = 0; i < AUDIO_BUF_SAMPLES; i++) {
-            int16_t music = pcm_u8_to_s16(stream_buf[stream_pos++]);
+            /* With no music in flash, flash_read_next_chunk() leaves
+             * stream_len == 0; reading stream_buf[stream_pos++] would then walk
+             * off the end of RAM (BusFault). Output silence instead. Also guard
+             * against stream_pos ever exceeding what was actually filled. */
+            int16_t music = 0;
+            if (stream_len != 0 && stream_pos < stream_len)
+                music = pcm_u8_to_s16(stream_buf[stream_pos++]);
 
             int16_t sfx = 0;
             if (sfx_active && sfx_pos < sfx_len) {
@@ -106,7 +119,13 @@ void audio_task(void)
                 if (sfx_pos >= sfx_len) sfx_active = 0;
             }
 
-            int16_t out = music + sfx;
+            /* Mix in 32-bit and saturate, so a music+sfx sum past full scale
+             * clamps at the rail instead of wrapping int16 (which produced
+             * loud clicks). */
+            int32_t mixed = (int32_t)music + (int32_t)sfx;
+            if (mixed > 32767)  mixed = 32767;
+            if (mixed < -32768) mixed = -32768;
+            int16_t out = (int16_t)mixed;
             buf[i * 2]     = out;  // left
             buf[i * 2 + 1] = out;  // right
         }
