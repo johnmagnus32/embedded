@@ -1,0 +1,33 @@
+# Pin constraints for the ice40-breakout board (projects/ice40-breakout).
+#
+# REAL as-built package pins from projects/ice40-breakout/BOM.md — NOT the
+# iCEBreaker/PMOD numbers in the old icebreaker.pcf (which map every signal to
+# the wrong physical pin on this board). fpga-blink/fpga-spi learned this.
+#
+# --- Runtime PPU command bus (STM32 SPI1 master -> iCE40 spi_cmd decoder) ---
+# This is the RUNTIME channel the STM32 uses to send tiles/sprites each frame,
+# NOT the config bus (config uses the iCE40's dedicated hard config pins, which
+# are fixed by the package and are not set here). Same net as fpga-spi:
+#   SPI_CLK  net RUNTIME_SPI_CLK  = pin 20 -> H4-23  (STM32 PA5, SPI1_SCK)
+#   SPI_MOSI net RUNTIME_SPI_MOSI = pin 21 -> H4-22  (STM32 PA7, SPI1_MOSI)
+#   SPI_CS   net RUNTIME_SPI_CS   = pin 18 -> H3-25  (STM32 PA4, GPIO CS)
+set_io SPI_CLK  20
+set_io SPI_MOSI 21
+set_io SPI_CS   18
+
+# --- 8-bit parallel LCD bus (iCE40 -> Adafruit 2090 ILI9341, 8080 mode) ---
+# net -> package pin -> ice40-breakout header (from BOM.md):
+#   LCD_D0=25/H4-19  D1=26/H4-18  D2=27/H4-17  D3=28/H4-16
+#   LCD_D4=31/H4-14  D5=32/H4-13  D6=34/H4-12  D7=36/H4-9
+#   LCD_WR=38/H4-7   LCD_DC=42/H4-2   LCD_CS=43/H3-2
+set_io LCD_D[0] 25
+set_io LCD_D[1] 26
+set_io LCD_D[2] 27
+set_io LCD_D[3] 28
+set_io LCD_D[4] 31
+set_io LCD_D[5] 32
+set_io LCD_D[6] 34
+set_io LCD_D[7] 36
+set_io LCD_WR   38
+set_io LCD_DC   42
+set_io LCD_CS   43

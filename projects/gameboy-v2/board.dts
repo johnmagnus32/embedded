@@ -1,0 +1,176 @@
+/* STM32F411RE + iCE40UP5K PPU board */
+
+/ {
+    clocks {
+        hsi: hsi {
+            compatible = "fixed-clock";
+            clock-frequency = <16000000>;
+        };
+    };
+
+    chosen {
+        /* TODO: revert console to <&usart1> (PA9/PA10) — the product uses USART1.
+         * Temporarily on USART2 (PA2/PA3) for bring-up because that is the pair
+         * wired to the Nucleo ST-Link virtual COM port (/dev/ttyACM0); USART1's
+         * PA9/PA10 are not bridged to USB, so its logs are invisible on the bench. */
+        console = <&usart2>;
+    };
+
+    soc {
+        rcc: rcc@40023800 {
+            compatible = "st,stm32-rcc";
+            reg = <0x40023800>;
+        };
+
+        gpioa: gpio@40020000 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020000>;
+            clocks = <&rcc 0 0>;
+            status = "okay";
+        };
+
+        gpiob: gpio@40020400 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020400>;
+            clocks = <&rcc 0 1>;
+            status = "okay";
+        };
+
+        gpioc: gpio@40020800 {
+            compatible = "st,stm32-gpio";
+            reg = <0x40020800>;
+            clocks = <&rcc 0 2>;
+            exti-irqs = <6 7 8 9 10 23 40>;
+            status = "okay";
+        };
+
+        usart1: serial@40011000 {
+            compatible = "st,stm32-usart";
+            reg = <0x40011000>;
+            clocks = <&rcc 2 4>;
+            tx-pin = <9>;
+            tx-af = <7>;
+            tx-port = <&gpioa>;
+            rx-pin = <10>;
+            rx-af = <7>;
+            rx-port = <&gpioa>;
+            baudrate = <115200>;
+            irq = <37>;
+            status = "okay";
+        };
+
+        /* USART2 -> Nucleo ST-Link virtual COM port (/dev/ttyACM0). Bring-up
+         * console (see chosen/console TODO above). PA2=TX, PA3=RX, AF7, APB1. */
+        usart2: serial@40004400 {
+            compatible = "st,stm32-usart";
+            reg = <0x40004400>;
+            clocks = <&rcc 1 17>;   /* APB1 bit 17 = USART2EN */
+            tx-pin = <2>;
+            tx-af = <7>;
+            tx-port = <&gpioa>;
+            rx-pin = <3>;
+            rx-af = <7>;
+            rx-port = <&gpioa>;
+            baudrate = <115200>;
+            irq = <38>;             /* USART2 global interrupt */
+            status = "okay";
+        };
+
+        /* SPI1: game data to iCE40 PPU (mode 0, MSB first) */
+        spi1: spi@40013000 {
+            compatible = "st,stm32-spi";
+            reg = <0x40013000>;
+            clocks = <&rcc 2 12>;
+            br = <5>;               /* fPCLK/64 -> ~250 kHz: the FPGA PPU command
+                                     * slave (spi_cmd.v) oversamples with a single-
+                                     * sample edge detector and cannot track multi-
+                                     * MHz SCK (same issue proven on fpga-spi). */
+            sck-port = <&gpioa>;
+            sck-pin = <5>;
+            sck-af = <5>;
+            miso-port = <&gpioa>;
+            miso-pin = <6>;
+            miso-af = <5>;
+            mosi-port = <&gpioa>;
+            mosi-pin = <7>;
+            mosi-af = <5>;
+            cs-port = <&gpioa>;
+            cs-pin = <4>;
+            status = "okay";
+
+            ice40: ppu@0 {
+                compatible = "lattice,ice40up5k";
+                status = "okay";
+            };
+        };
+
+        /* SPI2/I2S2: audio DAC (unchanged from gameboy) */
+        i2s2: i2s@40003800 {
+            compatible = "st,stm32-i2s";
+            reg = <0x40003800>;
+            clocks = <&rcc 1 14>;
+            ws-port = <0x40020400>;
+            ws-pin = <12>;
+            sck-port = <0x40020400>;
+            sck-pin = <13>;
+            sd-port = <0x40020400>;
+            sd-pin = <15>;
+            af = <5>;
+            status = "okay";
+        };
+
+        /* SPI3: FPGA bitstream configuration + W25Q128 flash */
+        spi3: spi@40003C00 {
+            compatible = "st,stm32-spi";
+            reg = <0x40003C00>;
+            clocks = <&rcc 1 15>;
+            sck-port = <&gpioc>;
+            sck-pin = <10>;
+            sck-af = <6>;
+            miso-port = <&gpioc>;
+            miso-pin = <11>;
+            miso-af = <6>;
+            mosi-port = <&gpioc>;
+            mosi-pin = <12>;
+            mosi-af = <6>;
+            cs-port = <&gpiob>;
+            cs-pin = <0>;
+            status = "okay";
+
+            w25q128: flash@0 {
+                compatible = "jedec,spi-nor";
+                size = <134217728>;
+                page-size = <256>;
+                sector-size = <4096>;
+                status = "okay";
+            };
+
+            ice40cfg: ice40-cfg {
+                compatible = "lattice,ice40up5k-cfg";
+                creset-port = <&gpiob>;
+                creset-pin = <1>;
+                cdone-port = <&gpiob>;
+                cdone-pin = <2>;
+                ss-port = <&gpiob>;
+                ss-pin = <6>;
+                status = "okay";
+            };
+        };
+
+        dma1: dma@40026000 {
+            compatible = "st,stm32-dma";
+            reg = <0x40026000>;
+            clocks = <&rcc 0 21>;
+            irqs = <11 12 13 14 15 16 17>;
+            status = "okay";
+        };
+
+        adc1: adc@40012000 {
+            compatible = "st,stm32-adc";
+            reg = <0x40012000>;
+            clocks = <&rcc 2 8>;
+            channel = <0>;
+            status = "okay";
+        };
+    };
+};

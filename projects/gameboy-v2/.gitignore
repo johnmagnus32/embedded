@@ -1,0 +1,9 @@
+# Build tree
+/build/
+# Generated asset blobs (produced from the PNGs by assets/convert_tiles.py +
+# assets/generate_sprites.py — regenerate with `make`). Sources are the PNGs,
+# the .py generators, and tiles.h.
+assets/tiles.bin
+assets/tile_table.bin
+assets/tile_table_fixed.bin
+assets/tile_table_orig.bin

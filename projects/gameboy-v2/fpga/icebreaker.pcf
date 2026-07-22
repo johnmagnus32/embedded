@@ -1,0 +1,19 @@
+# iCEBreaker pin assignments for PPU
+
+# SPI inputs from STM32 (PMOD 1A)
+set_io SPI_CLK  4
+set_io SPI_MOSI 2
+set_io SPI_CS   47
+
+# 8-bit parallel LCD output (PMOD 1B + 2)
+set_io LCD_D[0] 43
+set_io LCD_D[1] 38
+set_io LCD_D[2] 34
+set_io LCD_D[3] 31
+set_io LCD_D[4] 28
+set_io LCD_D[5] 27
+set_io LCD_D[6] 26
+set_io LCD_D[7] 25
+set_io LCD_WR   21
+set_io LCD_DC   20
+set_io LCD_CS   19
