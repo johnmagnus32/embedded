@@ -1,156 +1,193 @@
 # T113-S3 Breakout — Header Pinout Reference
 
-Complete pin→header assignment for the six 1×13 GPIO breakout headers, the
-functional/debug headers, and the deliberately-unused (No-Connect) pins.
+Complete pin→header assignment for the four 1×25 breakout headers, the on-board
+device connections, and the deliberately-unused (No-Connect) pins.
 
-**Routing strategy:** each 1×13 header maps to ONE chip edge, pins listed in
-physical pin-number order, so traces fan straight out with minimal crossing.
-Final pin↔position tweaks happen at layout (swap adjacent GPIO within a header
-to kill any last crossings).
+> **Source of truth:** this file is generated from the final layout
+> (`production/netlist.ipc` / `production/positions.csv`). If it ever disagrees
+> with the `.kicad_pcb`, the PCB wins.
+
+**Header layout:** four 1×25 female headers (`2044-1X25G00SA`), placed as two
+side-by-side pairs that each read like a 2×25 block (BeagleBone / Nucleo style):
+
+```
+        H10  H11                         H13  H12
+        (col A/B, left edge)   [ U1 ]    (col B/A, right edge)
+```
+
+- **Left block** — H10 + H11 (2.54 mm apart): the PG / SD / SPI-NOR / PE /
+  UART0 nets (top & left chip edges).
+- **Right block** — H12 + H13 (2.54 mm apart): the PB / PD nets (bottom edge =
+  the LCD0 / i8080 parallel-display bus).
+
+Grounds are interleaved on the PD block (H12/H13) for clean logic-analyzer
+probing, and grouped at the header ends on the left block.
 
 **GPIO total:** 72 user I/O. Committed: PF0–5 (SD, 6), PC2–7 (flash, 6),
-PE2/PE3 (UART0 console, 2) → **58 free GPIO** broken out below.
+PE2/PE3 (UART0 console, 2) → **58 free GPIO**. The SD, flash and UART0 nets are
+*also* fanned out to the headers (in addition to the on-board socket / flash /
+console pads) so every pin is probeable.
 
 ---
 
-## GPIO breakout headers (6 × 1×13)
-
-### Header 1 — top edge (PG-low + PF6 + PE13/12)
+## Header 1 — H10 (left block, column A)
 | Hdr pin | Net | SoC pin |
 |---|---|---|
-| 1 | PG6 | 1 |
-| 2 | PG7 | 2 |
-| 3 | PG8 | 3 |
-| 4 | PG9 | 4 |
-| 5 | PG10 | 5 |
-| 6 | PG11 | 6 |
-| 7 | PF6 | 13 |
-| 8 | PE13 | 31 |
-| 9 | PE12 | 32 |
-| 10 | GND | — |
-| 11 | GND | — |
-| 12 | GND | — |
-| 13 | GND | — |
-
-### Header 2 — left edge (PE bank)
-| Hdr pin | Net | SoC pin |
-|---|---|---|
-| 1 | PE11 | 36 |
-| 2 | PE10 | 37 |
-| 3 | PE9 | 38 |
-| 4 | PE8 | 39 |
-| 5 | PE7 | 40 |
-| 6 | PE6 | 41 |
-| 7 | PE5 | 42 |
-| 8 | PE4 | 43 |
-| 9 | PE0 | 44 |
-| 10 | PE1 | 45 |
-| 11 | GND | — |
-| 12 | GND | — |
-| 13 | GND | — |
-
-### Header 3 — left-bottom (PD low) — full, no spares
-| Hdr pin | Net | SoC pin |
-|---|---|---|
-| 1 | PD22 | 52 |
-| 2 | PD21 | 53 |
-| 3 | PD20 | 54 |
-| 4 | PD0 | 55 |
-| 5 | PD1 | 56 |
-| 6 | PD2 | 57 |
-| 7 | PD3 | 58 |
-| 8 | PD4 | 59 |
-| 9 | PD5 | 60 |
-| 10 | PD6 | 61 |
-| 11 | PD7 | 62 |
-| 12 | PD8 | 63 |
-| 13 | PD9 | 64 |
-
-### Header 4 — bottom (PD high, incl. PD15)
-| Hdr pin | Net | SoC pin |
-|---|---|---|
-| 1 | PD10 | 67 |
-| 2 | PD11 | 68 |
-| 3 | PD13 | 69 |
-| 4 | PD12 | 70 |
-| 5 | PD14 | 71 |
-| 6 | PD15 | 72 |
-| 7 | PD16 | 73 |
-| 8 | PD17 | 74 |
-| 9 | PD18 | 75 |
-| 10 | PD19 | 76 |
-| 11 | GND | — |
-| 12 | GND | — |
-| 13 | GND | — |
-
-### Header 5 — bottom (PB bank) — sparse (PB has only 6 free pins)
-| Hdr pin | Net | SoC pin |
-|---|---|---|
-| 1 | PB7 | 79 |
-| 2 | PB6 | 80 |
-| 3 | PB5 | 82 |
-| 4 | PB4 | 84 |
-| 5 | PB3 | 85 |
-| 6 | PB2 | 86 |
-| 7 | GND | — |
-| 8 | GND | — |
-| 9 | GND | — |
-| 10 | GND | — |
-| 11 | GND | — |
-| 12 | GND | — |
-| 13 | GND | — |
-
-### Header 6 — right edge (PG-high)
-| Hdr pin | Net | SoC pin |
-|---|---|---|
-| 1 | PG1 | 118 |
-| 2 | PG2 | 119 |
+| 1 | +3.3V | — |
+| 2 | PG1 | 118 |
 | 3 | PG0 | 120 |
-| 4 | PG3 | 121 |
-| 5 | PG5 | 122 |
-| 6 | PG4 | 123 |
-| 7 | PG12 | 124 |
-| 8 | PG13 | 125 |
-| 9 | PG14 | 126 |
-| 10 | PG15 | 127 |
-| 11 | GND | — |
-| 12 | GND | — |
-| 13 | GND | — |
+| 4 | PG5 | 122 |
+| 5 | PG12 | 124 |
+| 6 | PG14 | 126 |
+| 7 | PG6 | 1 |
+| 8 | PG8 | 3 |
+| 9 | PG10 | 5 |
+| 10 | SD_DAT1 | 7 (PF0) |
+| 11 | SD_CLK | 9 (PF2) |
+| 12 | SD_DAT3 | 11 (PF4) |
+| 13 | PF6 | 13 |
+| 14 | SPI_WP / IO2 | 15 (PC6) |
+| 15 | SPI_MOSI / IO0 | 17 (PC4) |
+| 16 | SPI_CLK | 19 (PC2) |
+| 17 | PE13 | 31 |
+| 18 | UART0_RX | 33 (PE3) |
+| 19 | PE11 | 36 |
+| 20 | PE9 | 38 |
+| 21 | PE7 | 40 |
+| 22 | PE5 | 42 |
+| 23 | PE0 | 44 |
+| 24 | GND | — |
+| 25 | GND | — |
 
-**GPIO count:** H1=9, H2=10, H3=13, H4=10, H5=6, H6=10 = **58 free GPIO** ✓
+## Header 2 — H11 (left block, column B)
+| Hdr pin | Net | SoC pin |
+|---|---|---|
+| 1 | +5V | — |
+| 2 | PG2 | 119 |
+| 3 | PG3 | 121 |
+| 4 | PG4 | 123 |
+| 5 | PG13 | 125 |
+| 6 | PG15 | 127 |
+| 7 | PG7 | 2 |
+| 8 | PG9 | 4 |
+| 9 | PG11 | 6 |
+| 10 | SD_DAT0 | 8 (PF1) |
+| 11 | SD_CMD | 10 (PF3) |
+| 12 | SD_DAT2 | 12 (PF5) |
+| 13 | SPI_HOLD / IO3 | 14 (PC7) |
+| 14 | SPI_MISO / IO1 | 16 (PC5) |
+| 15 | SPI_CS | 18 (PC3) |
+| 16 | GND | — |
+| 17 | PE12 | 32 |
+| 18 | UART0_TX | 35 (PE2) |
+| 19 | PE10 | 37 |
+| 20 | PE8 | 39 |
+| 21 | PE6 | 41 |
+| 22 | PE4 | 43 |
+| 23 | PE1 | 45 |
+| 24 | GND | — |
+| 25 | GND | — |
+
+## Header 3 — H12 (right block, PB + PD, column A)
+| Hdr pin | Net | SoC pin |
+|---|---|---|
+| 1 | +0V9 | — |
+| 2 | PB3 | 85 |
+| 3 | PB5 | 82 |
+| 4 | GND | — |
+| 5 | PB7 | 79 |
+| 6 | PD18 | 75 |
+| 7 | GND | — |
+| 8 | PD16 | 73 |
+| 9 | PD14 | 71 |
+| 10 | GND | — |
+| 11 | PD13 | 69 |
+| 12 | PD10 | 67 |
+| 13 | GND | — |
+| 14 | PD8 | 63 |
+| 15 | PD6 | 61 |
+| 16 | GND | — |
+| 17 | PD4 | 59 |
+| 18 | PD2 | 57 |
+| 19 | GND | — |
+| 20 | PD0 | 55 |
+| 21 | PD21 | 53 |
+| 22 | GND | — |
+| 23 | GND | — |
+| 24 | GND | — |
+| 25 | GND | — |
+
+## Header 4 — H13 (right block, PB + PD, column B)
+| Hdr pin | Net | SoC pin |
+|---|---|---|
+| 1 | +3.3V | — |
+| 2 | PB2 | 86 |
+| 3 | PB4 | 84 |
+| 4 | GND | — |
+| 5 | PB6 | 80 |
+| 6 | PD19 | 76 |
+| 7 | GND | — |
+| 8 | PD17 | 74 |
+| 9 | PD15 | 72 |
+| 10 | GND | — |
+| 11 | PD12 | 70 |
+| 12 | PD11 | 68 |
+| 13 | GND | — |
+| 14 | PD9 | 64 |
+| 15 | PD7 | 62 |
+| 16 | GND | — |
+| 17 | PD5 | 60 |
+| 18 | PD3 | 58 |
+| 19 | GND | — |
+| 20 | PD1 | 56 |
+| 21 | PD20 | 54 |
+| 22 | PD22 | 52 |
+| 23 | GND | — |
+| 24 | GND | — |
+| 25 | GND | — |
+
+**Free-GPIO count (deduped across all four headers):** PB (6) + PD (23) +
+PE0–PE1/PE4–PE13 (12) + PF6 (1) + PG0–PG15 (16) = **58 free GPIO** ✓
+(SD PF0–5, flash PC2–7, UART0 PE2/PE3 are committed and not counted here.)
+
+**Power / GND on the headers:** +5V (H11-1), +3.3V (H10-1, H13-1),
++0V9 core (H12-1), plus the interleaved / end-of-header GND pins above.
 
 ---
 
-## Functional / device connections (not on GPIO headers)
+## On-board device connections
 
-### SD card (SDC0 / PF bank) → microSD socket + SD debug tap
-| Signal | SoC pin |
-|--------|---------|
-| SD_DAT1 | PF0 (7) |
-| SD_DAT0 | PF1 (8) |
-| SD_CLK  | PF2 (9) |
-| SD_CMD  | PF3 (10) |
-| SD_DAT3 | PF4 (11) |
-| SD_DAT2 | PF5 (12) |
+These nets land on dedicated on-board devices. SD / flash / UART0 are *also*
+mirrored to the headers above; clocks, RESET, DZQ, USB and the codec references
+are **header-exclusive to the SoC / passives** (not broken out).
 
-### SPI-NOR flash (SPI0 / PC bank) → flash + QSPI debug tap
-| Signal | SoC pin |
-|--------|---------|
-| SPI_CLK  | PC2 (19) |
-| SPI_CS   | PC3 (18) |
-| SPI_MOSI/IO0 | PC4 (17) — also BOOT-SEL0 |
-| SPI_MISO/IO1 | PC5 (16) — also BOOT-SEL1 |
-| SPI_WP/IO2   | PC6 (15) |
-| SPI_HOLD/IO3 | PC7 (14) |
+### SD card (SDC0 / PF bank) → microSD socket (U4) + SD debug tap
+| Signal | SoC pin | Also on header |
+|--------|---------|----------------|
+| SD_DAT1 | PF0 (7)  | H10-10 |
+| SD_DAT0 | PF1 (8)  | H11-10 |
+| SD_CLK  | PF2 (9)  | H10-11 |
+| SD_CMD  | PF3 (10) | H11-11 |
+| SD_DAT3 | PF4 (11) | H10-12 |
+| SD_DAT2 | PF5 (12) | H11-12 |
 
-### UART0 console → 1×3 header
-| Signal | SoC pin |
-|--------|---------|
-| UART0_TX | PE2 (35) |
-| UART0_RX | PE3 (33) |
-| GND | — |
+### SPI-NOR flash (SPI0 / PC bank) → W25Q128 (U3) + QSPI debug tap
+| Signal | SoC pin | Also on header |
+|--------|---------|----------------|
+| SPI_CLK      | PC2 (19) | H10-16 |
+| SPI_CS       | PC3 (18) | H11-15 |
+| SPI_MOSI/IO0 | PC4 (17) — also BOOT-SEL0 | H10-15 |
+| SPI_MISO/IO1 | PC5 (16) — also BOOT-SEL1 | H11-14 |
+| SPI_WP/IO2   | PC6 (15) | H10-14 |
+| SPI_HOLD/IO3 | PC7 (14) | H11-13 |
 
-### Clocks
+### UART0 console
+| Signal | SoC pin | Header |
+|--------|---------|--------|
+| UART0_TX | PE2 (35) | H11-18 |
+| UART0_RX | PE3 (33) | H10-18 |
+
+### Clocks (not broken out)
 | Signal | SoC pin |
 |--------|---------|
 | DXIN (24 MHz) | 23 |
@@ -158,10 +195,10 @@ PE2/PE3 (UART0 console, 2) → **58 free GPIO** broken out below.
 | X32KIN (RTC) | 25 |
 | X32KOUT (RTC) | 24 |
 
-### Other dedicated pins
+### Other dedicated pins (not broken out)
 | Pin | SoC pin | Connection |
 |-----|---------|-----------|
-| RESET | 27 | 10K→+3V3 pull-up, 100nF→GND, reset button→GND |
+| RESET | 27 | 10K→+3V3 pull-up, 100nF→GND, reset button (SW1)→GND |
 | DZQ | 47 | 240Ω 1% → GND (DDR ZQ calibration) |
 | USB0-DP / USB0-DM | 115 / 114 | USB-C data pair (90Ω diff) |
 | VRA1 | 92 | 100nF → GND (codec reference bypass) |
@@ -194,10 +231,10 @@ Minimal board: no audio, no analog video, no WiFi, no touch panel.
 ---
 
 ## Notes
-- **PD bank (H3/H4)** = the LCD0 / i8080 parallel-display bus. Jumper from these to
-  drive an ILI9341 in 8-bit parallel if desired.
+- **PD bank (H12/H13)** = the LCD0 / i8080 parallel-display bus. Jumper from
+  these to drive an ILI9341 in 8-bit parallel if desired.
 - **PC4/PC5** double as BOOT-SEL straps (boot-media select) + SPI0 flash data.
-- Grounds shown at header ends for simplicity; move some mid-header at layout for
-  cleaner logic-analyzer probing.
-- This is the schematic-capture assignment; verify/adjust against footprint geometry
-  at PCB layout.
+- **GND** is interleaved through the PD block (H12/H13) and grouped at the ends
+  of the left block (H10/H11) for clean logic-analyzer probing.
+- SD / flash / UART0 nets appear on both the on-board device and the headers —
+  keep header stubs short and probe at a slow clock.

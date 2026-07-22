@@ -1,0 +1,10 @@
+# Build tree: toolchain, downloaded tarballs, and all build outputs.
+# Everything here is reproducible from scripts/ + pinned versions in env.sh,
+# so none of it belongs in git.
+/build/
+
+# Custom bootloader build output (reproducible from bootloader/ sources).
+/bootloader/build/
+
+# Custom kernel build output (reproducible from kernel/ sources).
+/kernel/build/
