@@ -30,6 +30,7 @@ enum task_state {
     TASK_RUNNING,
     TASK_BLOCKED,
     TASK_SLEEPING,
+    TASK_DEAD,      /* task function returned; never scheduled again */
 };
 
 /*
@@ -54,6 +55,11 @@ int  sched_create_task(task_fn fn, const char *name, uint8_t priority);
 void sched_start(void);
 void sched_yield(void);
 void sched_sleep_ms(uint32_t ms);
+
+/* Terminate the current task (marks it TASK_DEAD, never returns). Called
+ * automatically by the entry wrapper if a task function returns; can also be
+ * called explicitly. */
+void sched_task_exit(void);
 
 /* Block current task on a wait queue (called with IRQs locked) */
 void sched_block(struct wait_queue *wq);

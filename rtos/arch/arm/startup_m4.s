@@ -15,10 +15,10 @@
 .word _stack_top        /* 0x00: Initial SP */
 .word reset_handler     /* 0x04: Reset */
 .word 0                 /* 0x08: NMI */
-.word 0                 /* 0x0C: HardFault */
+.word hardfault_handler /* 0x0C: HardFault */
 .word memmanage_handler /* 0x10: MemManage */
-.word 0                 /* 0x14: BusFault */
-.word 0                 /* 0x18: UsageFault */
+.word hardfault_handler /* 0x14: BusFault (reuse handler; CFSR distinguishes) */
+.word hardfault_handler /* 0x18: UsageFault (reuse handler; CFSR distinguishes) */
 .word 0, 0, 0, 0       /* 0x1C-0x28: Reserved */
 .word svc_handler       /* 0x2C: SVCall */
 .word 0, 0             /* 0x30-0x34: Reserved */
