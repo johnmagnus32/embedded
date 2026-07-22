@@ -1,0 +1,76 @@
+// uart0-console.dtsi — move the console UART from UART3 (PB6/PB7, the MangoPi
+// MQ-R default) to UART0 (PE2/PE3), which is how the t113-breakout board wires
+// its serial console.
+//
+// SHARED by BOTH stages — they each have their own device tree, but the tree is
+// structurally identical (same serial3/uart3 default, same uart0/pio labels),
+// so this one overlay serves both:
+//   * U-Boot (01-uboot.sh) — its control DTB. U-Boot proper uses DM serial and
+//     reads chosen/stdout-path; without this it would switch back to UART3 even
+//     with CONFIG_CONS_INDEX=1 (which only fixes the SPL banner). Verified vs
+//     U-Boot v2026.04 (arch/arm/mach-sunxi/board.c + serial-uclass.c).
+//   * Linux kernel (02-kernel.sh) — its DTB. Sets serial0=&uart0 so Linux names
+//     uart0 "ttyS0"; the kernel cmdline console must then be ttyS0 (KERNEL_CONSOLE).
+//     Verified vs kernel v6.12.95 (same DTS layout).
+//
+// Each step #includes this into the board .dts before building. Node labels
+// (uart0 = serial@2500000, uart3, pio) exist in the shared sunxi-d1s-t113.dtsi
+// in both trees; uart0 ships status="disabled" and no uart0 pin group exists
+// upstream — so we define uart0_pe_pins ourselves.
+
+/ {
+	aliases {
+		/* U-Boot resolves stdout-path "serial0" through this alias. */
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		/*
+		 * bootargs placeholder. Our custom bootloader (bootloader/) has
+		 * no FDT editor — it overwrites this string's VALUE in place at
+		 * runtime (same slot, <= this length), so we reserve a generous
+		 * fixed-length buffer here. dtc makes the property exactly as
+		 * long as this literal (+ NUL); the kernel reads it as a C string
+		 * and stops at the first NUL, ignoring trailing padding.
+		 * (When booted via U-Boot instead, U-Boot overwrites bootargs
+		 * itself, so this value is harmless there.)
+		 * ~224 bytes reserved; real cmdline is ~90.
+		 */
+		bootargs = "PLACEHOLDER_bootargs_overwritten_by_gameboy-v3_bootloader________________________________________________________________________________________________________________________________________________________________";
+	};
+
+	/*
+	 * Memory node: 128 MiB DDR3 at 0x40000000. U-Boot normally fills this
+	 * in at boot from the SPL-detected size; our custom bootloader does not,
+	 * so we state it here. #address-cells/#size-cells are 1 at the root, so
+	 * reg is a single <base size> pair of 32-bit cells.
+	 * (Harmless under U-Boot, which overwrites the memory node anyway.)
+	 */
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x40000000 0x08000000>;   /* 128 MiB */
+	};
+};
+
+/* Add the PE2/PE3 pinmux group under the pin controller. function="uart0"
+ * matches the sunxi pinctrl driver's UART0 mux (same as SPL mux func 6). */
+&pio {
+	uart0_pe_pins: uart0-pe-pins {
+		pins = "PE2", "PE3";
+		function = "uart0";
+	};
+};
+
+/* Enable UART0 and bind it to the PE pins. */
+&uart0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pe_pins>;
+	status = "okay";
+};
+
+/* Drop UART3 from the console path. Leaving it enabled is harmless, but our
+ * board does not use it and disabling keeps the console unambiguous. */
+&uart3 {
+	status = "disabled";
+};
