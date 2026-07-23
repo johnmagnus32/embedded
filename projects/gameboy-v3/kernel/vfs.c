@@ -15,8 +15,8 @@ struct rf_inode *vfs_resolve(struct rf_inode *cwd, const char *path, int follow)
 	return ramfs_lookup(cwd, path, follow);
 }
 
-int vfs_load_elf(struct rf_inode *ino, uint32_t l1_pa,
-                 uint32_t *entry_out, uint32_t *brk_out)
+int vfs_load_elf(struct rf_inode *ino, uint32_t l1_pa, uint32_t bias,
+                 struct elf_info *info)
 {
 	if (!ino || ino->type != RF_REG)
 		return -K_EACCES;
@@ -32,7 +32,7 @@ int vfs_load_elf(struct rf_inode *ino, uint32_t l1_pa,
 	long n = ramfs_read(ino, 0, buf, sz);
 	if (n != (long)sz) { kfree(buf); return -K_EIO_S; }
 
-	int rc = elf_load(l1_pa, buf, sz, entry_out, brk_out);
+	int rc = elf_load(l1_pa, buf, sz, bias, info);
 	kfree(buf);
 	return rc;
 }

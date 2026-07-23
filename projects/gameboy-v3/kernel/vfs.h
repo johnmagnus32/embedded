@@ -18,11 +18,12 @@ struct rf_inode;
  * final symlink iff `follow`. Returns NULL if missing. */
 struct rf_inode *vfs_resolve(struct rf_inode *cwd, const char *path, int follow);
 
-/* Load the ELF stored in file inode `ino` into address space `l1_pa`, writing
- * the entry VA to *entry_out and the initial program break to *brk_out (may be
- * NULL). Returns 0, or negative on error. Reads the file into a temporary
- * kernel buffer, then hands it to the existing elf_load(). */
-int vfs_load_elf(struct rf_inode *ino, uint32_t l1_pa,
-                 uint32_t *entry_out, uint32_t *brk_out);
+/* Load the ELF stored in file inode `ino` into address space `l1_pa`, applying
+ * load `bias` (0 for ET_EXEC), and filling *info (entry, brk, phdrs, interp).
+ * Returns 0, or negative on error. Reads the file into a temporary kernel
+ * buffer, then hands it to elf_load(). */
+struct elf_info;
+int vfs_load_elf(struct rf_inode *ino, uint32_t l1_pa, uint32_t bias,
+                 struct elf_info *info);
 
 #endif /* GV3K_VFS_H */

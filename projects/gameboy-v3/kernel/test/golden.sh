@@ -38,6 +38,7 @@ BUILD="${KDIR}/build/virt"
 LOGDIR="${KDIR}/build/test"
 TOOLCHAIN_BIN="${PROJ}/build/toolchain/bin"
 BUSYBOX_INITRD="${PROJ}/build/output/initramfs.cpio.gz"
+DYNAMIC_INITRD="${PROJ}/build/output/initramfs-dynamic.cpio.gz"
 SMOKE_INITRD="${BUILD}/initramfs.cpio.gz"
 FAULT_INITRD="${BUILD}/faultramfs.cpio.gz"
 ORPHAN_INITRD="${BUILD}/orphanramfs.cpio.gz"
@@ -284,6 +285,35 @@ busybox_case() {
   run_case busybox "$BUSYBOX_INITRD" 30 feed_busybox
 }
 
+dynamic_case() {
+  # DYNAMICALLY-linked musl BusyBox: proves the kernel's dynamic-linking support
+  # (ET_DYN load bias, PT_INTERP -> /lib/ld-musl-armhf.so.1, full auxv, file-backed
+  # + MAP_FIXED mmap2). Same shell interactions as busybox, but the whole chain
+  # runs THROUGH ld.so. Build with: LINKAGE=dynamic ../scripts/03-rootfs.sh
+  if [ ! -f "$DYNAMIC_INITRD" ]; then
+    ylw "=== case: dynamic === SKIPPED (no ${DYNAMIC_INITRD#${PROJ}/}; run LINKAGE=dynamic ../scripts/03-rootfs.sh)"
+    return 0
+  fi
+  REQ=(
+    'pid 1 pc 0x2'                                    # PID 1 entered at ld.so (INTERP_BASE 0x20000000)
+    '[dynamic]'                                        # kernel took the dynamic path
+    'T113-S3 is alive.'
+    'Linux 0.9-gv3 armv7l'                            # $(uname -srm) via a forked dynamic applet
+    'cores online: 1'                                 # $(nproc)
+    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a
+    'sub: HI'                                         # $(echo hi | tr ...) over a pipe
+    '[kernel] last process exited; halting.'
+  )
+  FORB=(
+    'unimplemented syscall'
+    'interpreter'"'"' not found'                       # ld.so must be found
+    'interp not ET_DYN'
+    'MISMATCH'
+    '*** '                                             # a fault/panic
+  )
+  run_case dynamic "$DYNAMIC_INITRD" 30 feed_busybox
+}
+
 # ---- main -------------------------------------------------------------------
 main() {
   command -v "$QEMU" >/dev/null 2>&1 || { red "error: ${QEMU} not on PATH"; exit 2; }
@@ -305,8 +335,9 @@ main() {
     orphan)  orphan_case ;;
     preempt) preempt_case ;;
     busybox) busybox_case ;;
-    all)     smoke_case; fault_case; orphan_case; preempt_case; busybox_case ;;
-    *)       red "usage: $0 [smoke|fault|orphan|preempt|busybox|all]"; exit 2 ;;
+    dynamic) dynamic_case ;;
+    all)     smoke_case; fault_case; orphan_case; preempt_case; busybox_case; dynamic_case ;;
+    *)       red "usage: $0 [smoke|fault|orphan|preempt|busybox|dynamic|all]"; exit 2 ;;
   esac
 
   printf '\n=== summary ===\n'

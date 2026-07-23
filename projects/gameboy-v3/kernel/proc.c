@@ -111,9 +111,45 @@ static struct proc *pick_next(void)
  * argv/envp are arrays of kernel-side C string pointers (NULL-terminated), each
  * pointing at a string we copy into the new stack page. Returns the entry SP
  * (user VA) or 0 on failure (strings don't fit in the one stack page). */
+/* auxv types (see gv3-dynlink-abi). For a static exec only PAGESZ/RANDOM/NULL
+ * matter; a dynamic exec additionally needs PHDR/PHENT/PHNUM/ENTRY/BASE so ld.so
+ * can find the program + relocate it, plus UID/GID/SECURE to avoid musl's
+ * "secure mode" (which would scrub the environment). */
 #define AT_NULL     0
+#define AT_PHDR     3
+#define AT_PHENT    4
+#define AT_PHNUM    5
 #define AT_PAGESZ   6
+#define AT_BASE     7
+#define AT_ENTRY    9
+#define AT_UID     11
+#define AT_EUID    12
+#define AT_GID     13
+#define AT_EGID    14
+#define AT_SECURE  23
 #define AT_RANDOM  25
+
+/* Auxv inputs the loader computes so setup_user_stack can emit the right vector.
+ * For a static ET_EXEC, `dynamic` is 0 and only entry/brk matter (the stack gets
+ * the minimal auxv). For a dynamic exec, these describe the PROGRAM (phdr/entry)
+ * and the INTERPRETER (interp_base); the initial PC is the interpreter entry. */
+struct load_result {
+	uint32_t pc;          /* initial user PC: app entry (static) or ld.so entry */
+	uint32_t brk_end;     /* initial program break (page-rounded app image top) */
+	int      dynamic;     /* 1 if we loaded an interpreter (emit the full auxv)  */
+	uint32_t phdr_va;     /* AT_PHDR: program's phdrs in memory                  */
+	uint32_t phent;       /* AT_PHENT                                            */
+	uint32_t phnum;       /* AT_PHNUM                                            */
+	uint32_t app_entry;   /* AT_ENTRY: the program's own entry (biased)          */
+	uint32_t interp_base; /* AT_BASE: where we loaded the interpreter            */
+};
+
+/* Load bases for PIE executables and the dynamic linker. Both are ET_DYN linking
+ * at vaddr 0, so they need distinct, non-overlapping, 64KB-aligned bases (p_align
+ * is 0x10000), clear of the ELF's own low addresses, the heap, MMAP_TOP, and the
+ * stack. The app (if PIE) goes low; ld.so higher. Chosen well below MMAP_TOP. */
+#define PIE_BASE     0x00200000u   /* PIE executable load base (if app is ET_DYN) */
+#define INTERP_BASE  0x20000000u   /* dynamic linker load base                    */
 
 /* Initial user stack size. One page held the argv frame for our tiny test
  * programs, but a real shell (musl) touches more than 4 KB deep almost
@@ -142,7 +178,8 @@ static int map_user_stack(uint32_t l1)
 }
 
 static uint32_t setup_user_stack(uint32_t l1, uint32_t stack_top,
-                                 const char *const *argv, const char *const *envp)
+                                 const char *const *argv, const char *const *envp,
+                                 const struct load_result *lr)
 {
 	uint32_t page_va = (stack_top - 1) & ~(PAGE_SIZE - 1);
 	uint32_t pa = vm_walk(l1, page_va);
@@ -180,9 +217,11 @@ static uint32_t setup_user_stack(uint32_t l1, uint32_t stack_top,
 	uint32_t at_random_va = sp;
 	for (int i = 0; i < 16; i++) UVA2K(sp)[i] = (uint8_t)(0xA5 + i);
 
-	/* 3) reserve the argc/argv/NULL/envp/NULL/auxv vector, 16-byte aligned so
-	 * that argc's address is aligned. Word count: 1(argc)+argc+1+envc+1 + 2*3 auxv. */
-	uint32_t nwords = 1 + (uint32_t)argc + 1 + (uint32_t)envc + 1 + 6;
+	/* 3) reserve the argc/argv/NULL/envp/NULL/auxv vector, 16-byte aligned so that
+	 * argc's address is aligned. auxv pair count: static = 3 (PAGESZ,RANDOM,NULL);
+	 * dynamic = 13 (adds PHDR,PHENT,PHNUM,ENTRY,BASE,UID,EUID,GID,EGID,SECURE). */
+	uint32_t nauxpairs = (lr && lr->dynamic) ? 13u : 3u;
+	uint32_t nwords = 1 + (uint32_t)argc + 1 + (uint32_t)envc + 1 + 2 * nauxpairs;
 	if (sp < page_lo + nwords * 4) return 0;    /* no room (also avoids wrap) */
 	uint32_t vec = (sp - nwords * 4) & ~15u;
 	if (vec < page_lo) return 0;
@@ -194,12 +233,88 @@ static uint32_t setup_user_stack(uint32_t l1, uint32_t stack_top,
 	w[k++] = 0;                                 /* argv terminator */
 	for (int i = 0; i < envc; i++) w[k++] = envp_va[i];
 	w[k++] = 0;                                 /* envp terminator */
+	/* auxv. For a dynamic exec ld.so needs the program's phdrs+entry and its own
+	 * load base; UID/GID/SECURE=0 keep musl out of secure mode. We deliberately
+	 * OMIT AT_SYSINFO_EHDR (no vDSO — musl then issues all syscalls via svc). */
+	if (lr && lr->dynamic) {
+		w[k++] = AT_PHDR;   w[k++] = lr->phdr_va;
+		w[k++] = AT_PHENT;  w[k++] = lr->phent;
+		w[k++] = AT_PHNUM;  w[k++] = lr->phnum;
+		w[k++] = AT_ENTRY;  w[k++] = lr->app_entry;
+		w[k++] = AT_BASE;   w[k++] = lr->interp_base;
+		w[k++] = AT_UID;    w[k++] = 0;
+		w[k++] = AT_EUID;   w[k++] = 0;
+		w[k++] = AT_GID;    w[k++] = 0;
+		w[k++] = AT_EGID;   w[k++] = 0;
+		w[k++] = AT_SECURE; w[k++] = 0;
+	}
 	w[k++] = AT_PAGESZ;  w[k++] = PAGE_SIZE;
 	w[k++] = AT_RANDOM;  w[k++] = at_random_va;
 	w[k++] = AT_NULL;    w[k++] = 0;
 
 	#undef UVA2K
 	return vec;                                 /* entry SP points at argc */
+}
+
+/* Load an executable ELF (already resolved to `app`) into address space `l1`,
+ * plus its dynamic-linker interpreter if it has one. Fills *lr with the initial
+ * PC, break, and (for a dynamic exec) the auxv inputs. Returns 0 or -errno.
+ *
+ * Static ET_EXEC: bias 0, PC = app entry, dynamic = 0.
+ * ET_DYN (PIE)  : app loaded at PIE_BASE.
+ * If PT_INTERP present: resolve + load the interpreter (ld.so, an ET_DYN) at
+ * INTERP_BASE; PC = interpreter entry (ld.so runs first, relocates, then jumps
+ * to the program's AT_ENTRY). The kernel does NO relocation. */
+static int load_program(uint32_t l1, struct rf_inode *app, struct load_result *lr)
+{
+	/* Peek e_type (Elf32_Ehdr offset 16, u16 LE) WITHOUT loading — an ET_DYN
+	 * links at vaddr 0, so loading it at bias 0 would map page 0 (breaking
+	 * null-deref protection). Choose the bias first, then load exactly once. */
+	uint8_t hdr[20];
+	if (ramfs_read(app, 0, hdr, sizeof(hdr)) != (long)sizeof(hdr))
+		return -8;                              /* -ENOEXEC */
+	uint16_t etype = (uint16_t)(hdr[16] | (hdr[17] << 8));
+	uint32_t app_bias = (etype == 3 /*ET_DYN*/) ? PIE_BASE : 0;
+
+	struct elf_info ai;
+	int rc = vfs_load_elf(app, l1, app_bias, &ai);
+	if (rc != 0) return rc;
+
+	lr->dynamic     = 0;
+	lr->pc          = ai.entry;
+	lr->brk_end     = ai.brk_end;
+	lr->phdr_va     = ai.phdr_va;
+	lr->phent       = ai.phent;
+	lr->phnum       = ai.phnum;
+	lr->app_entry   = ai.entry;
+	lr->interp_base = 0;
+
+	if (!ai.has_interp) {
+		/* No interpreter. A plain ET_EXEC is a static binary — run it directly.
+		 * But an ET_DYN with no PT_INTERP is a static-PIE: we loaded it at
+		 * PIE_BASE, yet without emitting AT_PHDR/AT_ENTRY it has no way to
+		 * self-locate its relocations. Static-PIE is out of scope — reject it
+		 * rather than run a mis-set-up process. */
+		if (ai.is_dyn) { printf("exec: static-PIE unsupported\n"); return -8; }
+		return 0;                               /* static ET_EXEC */
+	}
+
+	/* Dynamic: load the interpreter (ld.so) at INTERP_BASE. */
+	struct rf_inode *interp = vfs_resolve(ramfs_root(), ai.interp, 1);
+	if (!interp || interp->type != RF_REG) {
+		printf("exec: interpreter '%s' not found\n", ai.interp);
+		return -2;                              /* -ENOENT */
+	}
+	struct elf_info ii;
+	rc = vfs_load_elf(interp, l1, INTERP_BASE, &ii);
+	if (rc != 0) { printf("exec: bad interpreter %s\n", ai.interp); return rc; }
+	if (!ii.is_dyn) { printf("exec: interp not ET_DYN\n"); return -8; }
+
+	lr->dynamic     = 1;
+	lr->pc          = ii.entry;                 /* run ld.so first, not the app */
+	lr->interp_base = INTERP_BASE;
+	/* brk stays the APP's image top; ld.so's own top isn't the program break */
+	return 0;
 }
 
 /* Give a fresh process its default open files: fd 0/1/2 all bound to
@@ -263,30 +378,30 @@ struct proc *proc_spawn_elf(const char *path, const char *name)
 	p->l1_pa = vm_create();
 	if (!p->l1_pa) { p->state = P_UNUSED; return 0; }
 
-	uint32_t entry = 0, brk0 = 0;
-	if (vfs_load_elf(ino, p->l1_pa, &entry, &brk0) != 0) {
-		printf("spawn: %s not an ELF\n", load_path);
+	struct load_result lr;
+	if (load_program(p->l1_pa, ino, &lr) != 0) {
+		printf("spawn: %s not loadable\n", load_path);
 		vm_destroy(p->l1_pa); p->state = P_UNUSED; return 0;
 	}
 
 	if (map_user_stack(p->l1_pa) != 0) {
 		vm_destroy(p->l1_pa); p->state = P_UNUSED; return 0;
 	}
-	uint32_t usp = setup_user_stack(p->l1_pa, USER_VA_MAX, argv, env0);
+	uint32_t usp = setup_user_stack(p->l1_pa, USER_VA_MAX, argv, env0, &lr);
 	if (!usp) { vm_destroy(p->l1_pa); p->state = P_UNUSED; return 0; }
 
-	p->brk_start = p->brk = brk0;
+	p->brk_start = p->brk = lr.brk_end;
 	p->mmap_top  = MMAP_TOP;
 	init_stdio(p);
 
 	for (int i = 0; i < 13; i++) p->tf.r[i] = 0;
 	p->tf.sp_usr = usp;
 	p->tf.lr_usr = 0;
-	p->tf.pc     = entry;
+	p->tf.pc     = lr.pc;
 	p->tf.cpsr   = 0x10;
 	p->state = P_RUNNABLE;
-	printf("proc: spawned '%s' pid %d entry 0x%x l1 0x%x\n",
-	       load_path, p->pid, entry, p->l1_pa);
+	printf("proc: spawned '%s' pid %d pc 0x%x l1 0x%x%s\n",
+	       load_path, p->pid, lr.pc, p->l1_pa, lr.dynamic ? " [dynamic]" : "");
 	return p;
 }
 
@@ -479,16 +594,18 @@ static int bprm_copy_vec(struct bprm *b, uint32_t vec_uptr,
 }
 
 /* Commit a loaded image to the current process: adopt the new address space,
- * build its stack with argv/envp, reset the trapframe to entry. Consumes new_l1
- * on success; on stack failure it tears new_l1 down and leaves the CALLER dead
- * (irrecoverable — argv strings already gone), so we exit the process. */
-static void exec_commit(uint32_t new_l1, uint32_t entry, uint32_t brk0,
+ * build its stack with argv/envp, reset the trapframe to entry. Consumes new_l1.
+ * A stack-build failure happens BEFORE the address-space swap (argv/envp are
+ * kernel bprm copies, still valid), so it's recoverable: tear down new_l1 and
+ * set_ret(-errno) — the caller (still on its old AS) sees a failed execve. Only
+ * a failure AFTER vm_switch would be irrecoverable, and there is none. */
+static void exec_commit(uint32_t new_l1, const struct load_result *lr,
                         const char *const *argv, const char *const *envp)
 {
 	if (map_user_stack(new_l1) != 0) {
 		vm_destroy(new_l1); set_ret(-12); return;
 	}
-	uint32_t usp = setup_user_stack(new_l1, USER_VA_MAX, argv, envp);
+	uint32_t usp = setup_user_stack(new_l1, USER_VA_MAX, argv, envp, lr);
 	if (!usp) { vm_destroy(new_l1); set_ret(-7); return; }   /* -E2BIG-ish */
 
 	uint32_t old_l1 = cur->l1_pa;
@@ -496,12 +613,12 @@ static void exec_commit(uint32_t new_l1, uint32_t entry, uint32_t brk0,
 	vm_switch(new_l1);
 	vm_destroy(old_l1);
 
-	cur->brk_start = cur->brk = brk0;
+	cur->brk_start = cur->brk = lr->brk_end;
 	cur->mmap_top  = MMAP_TOP;
 	for (int i = 0; i < 13; i++) cur->tf.r[i] = 0;
 	cur->tf.sp_usr = usp;
 	cur->tf.lr_usr = 0;
-	cur->tf.pc     = entry;
+	cur->tf.pc     = lr->pc;
 	cur->tf.cpsr   = 0x10;
 }
 
@@ -601,14 +718,14 @@ void proc_execve(const char *path, uint32_t argv_uptr, uint32_t envp_uptr)
 			continue;
 		}
 
-		/* real binary: load it as ELF into a fresh address space */
+		/* real binary: load it (+ its interpreter, if dynamic) into a fresh AS */
 		uint32_t new_l1 = vm_create();
 		if (!new_l1) { set_ret(-12); return; }
-		uint32_t entry = 0, brk0 = 0;
-		if (vfs_load_elf(ino, new_l1, &entry, &brk0) != 0) {
+		struct load_result lr;
+		if (load_program(new_l1, ino, &lr) != 0) {
 			vm_destroy(new_l1); set_ret(-8); return;   /* -ENOEXEC, caller intact */
 		}
-		exec_commit(new_l1, entry, brk0, b.argv, b.envp);
+		exec_commit(new_l1, &lr, b.argv, b.envp);
 		return;
 	}
 	set_ret(-40);                           /* -ELOOP: too many shebang levels */

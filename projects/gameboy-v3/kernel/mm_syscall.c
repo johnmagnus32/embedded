@@ -12,6 +12,8 @@
 #include "vm.h"
 #include "pmm.h"
 #include "fs_abi.h"
+#include "file.h"
+#include "ramfs.h"
 
 int printf(const char *fmt, ...);
 
@@ -72,43 +74,120 @@ long sys_brk(uint32_t addr)
 	return (long)addr;
 }
 
-/* ---- mmap2 (anonymous private only) -------------------------------------- */
+/* Map `npages` fresh zeroed frames at [base, base+npages*PAGE). If a page is
+ * already mapped (MAP_FIXED replacing an earlier reservation), free the old
+ * frame first. Returns 0 or -ENOMEM (rolling back the frames it added). */
+static int map_zeroed_range(struct proc *p, uint32_t base, uint32_t npages)
+{
+	for (uint32_t i = 0; i < npages; i++) {
+		uint32_t va = base + i * PAGE_SIZE;
+		uint32_t old = vm_walk(p->l1_pa, va);   /* MAP_FIXED over a reservation */
+		if (old) { vm_unmap_page(p->l1_pa, va); pmm_free_page(old); }
+		uint32_t pa = pmm_alloc_page();         /* zeroed */
+		if (!pa || vm_map_page(p->l1_pa, va, pa) != 0) {
+			if (pa) pmm_free_page(pa);
+			for (uint32_t j = 0; j < i; j++) {  /* roll back what we added */
+				uint32_t v = base + j * PAGE_SIZE, rp = vm_walk(p->l1_pa, v);
+				if (rp) { vm_unmap_page(p->l1_pa, v); pmm_free_page(rp); }
+			}
+			return -1;
+		}
+	}
+	return 0;
+}
+
+/* Copy up to `len` file bytes from fd's inode at byte offset `foff` into the
+ * user pages just mapped at `va` (which are zero-filled, so any tail past EOF or
+ * past filesz stays zero — the bss of a data segment). Writes go through the
+ * identity-mapped physical frames. Returns 0, or -errno for a bad fd. */
+static int copy_file_into(struct proc *p, uint32_t va, uint32_t len,
+                          int fd, uint32_t foff)
+{
+	struct file *f = fd_get(proc_fds(), fd);
+	if (!f || !f->inode || f->inode->type != RF_REG)
+		return -K_EACCES;                       /* not a regular file */
+	/* Read directly into each mapped page's physical frame (identity-mapped). */
+	uint32_t done = 0;
+	while (done < len) {
+		uint32_t p_va = va + done;
+		uint32_t pa   = vm_walk(p->l1_pa, p_va & ~PAGE_MASK);
+		if (!pa) break;                         /* shouldn't happen (just mapped) */
+		uint32_t in_pg = p_va & PAGE_MASK;
+		uint32_t chunk = PAGE_SIZE - in_pg;
+		if (chunk > len - done) chunk = len - done;
+		long n = ramfs_read(f->inode, foff + done,
+		                    (void *)(uintptr_t)(pa + in_pg), chunk);
+		if (n <= 0) break;                      /* EOF: leave the rest zero */
+		done += (uint32_t)n;
+		if ((uint32_t)n < chunk) break;         /* short read = hit EOF */
+	}
+	return 0;
+}
+
+/* ---- mmap2 (anonymous + file-backed private, incl. MAP_FIXED) ------------- *
+ * Supports what musl's malloc AND its dynamic linker need:
+ *  - anonymous private (fd==-1): zero-filled pages (malloc, thread stacks).
+ *  - file-backed private (fd>=0): pages zero-filled then file bytes copied in
+ *    (COW-equivalent: we always copy, we have no shared page cache); the tail
+ *    past EOF/filesz stays zero (a data segment's bss).
+ *  - MAP_FIXED: map at the caller's exact addr, replacing any existing mapping
+ *    (ld.so reserves a library span, then MAP_FIXEDs each segment over it).
+ * Non-FIXED requests are placed by a downward bump from p->mmap_top. `prot` is
+ * not enforced per-page (our L2 pages are RWX) — see sys_mprotect. */
 long sys_mmap2(uint32_t addr, uint32_t len, int prot, int flags, int fd, uint32_t pgoff)
 {
-	(void)addr; (void)prot; (void)pgoff;
+	(void)prot;
 	if (len == 0 || len > (USER_VA_MAX - USER_VA_MIN))
 		return -K_EINVAL;                  /* 0 or absurd len (PAGE_UP would wrap) */
-	/* We only serve anonymous private mappings (what musl's malloc/threads use).
-	 * File-backed or shared mappings aren't needed (we exec via read()). */
-	if (!(flags & MAP_ANONYMOUS) || (flags & MAP_TYPE) != MAP_PRIVATE || fd != -1)
-		return -K_ENOSYS;
+	if ((flags & MAP_TYPE) != MAP_PRIVATE)
+		return -K_ENOSYS;                  /* only PRIVATE (no shared page cache) */
+
+	int file_backed = !(flags & MAP_ANONYMOUS);
+	if (file_backed && fd < 0)
+		return -K_EBADF;                   /* file mapping needs a real fd */
 
 	struct proc *p = proc_current();
 	uint32_t npages = PAGE_UP(len) / PAGE_SIZE;
-	uint32_t span = npages * PAGE_SIZE;
-	if (span > p->mmap_top - USER_VA_MIN)  /* request bigger than the region -> no wrap */
-		return -K_ENOMEM;
-	uint32_t base = p->mmap_top - span;    /* grow downward */
-	if (base < PAGE_UP(p->brk))
-		return -K_ENOMEM;                  /* ran into the heap */
+	uint32_t span   = npages * PAGE_SIZE;
+	/* mmap2 offset is in 4096-byte units; compute in 64-bit to catch overflow. */
+	uint64_t foff64 = (uint64_t)pgoff << 12;
+	if (foff64 > 0xFFFFFFFFull)
+		return -K_EINVAL;
+	uint32_t foff = (uint32_t)foff64;
 
-	/* map npages fresh zeroed frames at [base, mmap_top) */
-	for (uint32_t i = 0; i < npages; i++) {
-		uint32_t va = base + i * PAGE_SIZE;
-		uint32_t pa = pmm_alloc_page();    /* zeroed — anon mem reads as 0 */
-		if (!pa || vm_map_page(p->l1_pa, va, pa) != 0) {
-			if (pa) pmm_free_page(pa);     /* free the frame we couldn't map */
-			/* roll back */
-			for (uint32_t j = 0; j < i; j++) {
-				uint32_t v = base + j * PAGE_SIZE;
-				uint32_t rp = vm_walk(p->l1_pa, v);
+	uint32_t base;
+	if (flags & MAP_FIXED) {
+		if (addr & PAGE_MASK) return -K_EINVAL;    /* must be page-aligned */
+		if (addr < USER_VA_MIN || addr + span > USER_VA_MAX || addr + span < addr)
+			return -K_EINVAL;
+		base = addr;                                /* caller chooses the address */
+	} else {
+		if (span > p->mmap_top - USER_VA_MIN)
+			return -K_ENOMEM;
+		base = p->mmap_top - span;                  /* grow downward */
+		if (base < PAGE_UP(p->brk))
+			return -K_ENOMEM;                       /* ran into the heap */
+	}
+
+	if (map_zeroed_range(p, base, npages) != 0)
+		return -K_ENOMEM;
+
+	if (file_backed) {
+		/* copy filesz-worth of bytes (clamped to the mapping length); ramfs_read
+		 * stops at EOF so a mapping that runs past the file keeps zeros there. */
+		int rc = copy_file_into(p, base, len, fd, foff);
+		if (rc != 0) {                              /* bad fd/inode: undo the map */
+			for (uint32_t i = 0; i < npages; i++) {
+				uint32_t v = base + i * PAGE_SIZE, rp = vm_walk(p->l1_pa, v);
 				if (rp) { vm_unmap_page(p->l1_pa, v); pmm_free_page(rp); }
 			}
-			return -K_ENOMEM;
+			return rc;
 		}
 	}
-	p->mmap_top = base;                    /* next mapping goes below this one */
-	return (long)base;                     /* the mapped VA */
+
+	if (!(flags & MAP_FIXED))
+		p->mmap_top = base;                         /* next mapping goes below this */
+	return (long)base;
 }
 
 long sys_munmap(uint32_t addr, uint32_t len)
