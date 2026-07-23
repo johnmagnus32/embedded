@@ -1,20 +1,31 @@
 #!/usr/bin/env bash
-# 03-rootfs.sh — Step 3: build a static BusyBox initramfs (boot-to-shell rootfs).
+# 03-rootfs.sh — Step 3: build a BusyBox initramfs (boot-to-shell rootfs).
+#
+# Linkage is selectable (LINKAGE=static|dynamic, default static):
+#   static  — CONFIG_STATIC=y: one self-contained busybox, no libs on the target.
+#             The simplest thing that boots; what the mainline-Linux path uses.
+#   dynamic — CONFIG_STATIC=n: busybox links against musl's shared libc and needs
+#             the dynamic loader at runtime. We ship /lib/libc.so plus the
+#             /lib/ld-musl-armhf.so.1 symlink musl's PT_INTERP names (for musl the
+#             loader AND libc are the SAME file). This is the artifact used to
+#             bring up + verify the kernel's dynamic-linking support (ET_DYN load
+#             bias, PT_INTERP, full auxv, file-backed mmap2).
 #
 # What it does:
 #   1. Fetch + verify (SHA256) BusyBox, extract into build/busybox.
-#   2. Configure a STATIC build (CONFIG_STATIC=y) with tc disabled (see below),
-#      cross-compile it, and `make install` into a rootfs skeleton.
+#   2. Configure the selected linkage, cross-compile, `make install` into a
+#      rootfs skeleton; for dynamic, also stage the musl loader into /lib.
 #   3. Add /init (PID 1 script) + the proc/sys/dev mountpoints.
 #   4. Pack into a root-owned cpio.gz initramfs via the kernel's gen_init_cpio
 #      (creates /dev/console without needing root), copy to build/output/.
 #
-# The result is the simplest possible rootfs: a single static busybox multi-call
-# binary + symlinks, that boots straight to a shell over UART0. No root
-# partition, no root= — U-Boot loads kernel + DTB + this initramfs together.
+# The output is named per-linkage so both can coexist:
+#   static  -> build/output/initramfs.cpio.gz          (the default name)
+#   dynamic -> build/output/initramfs-dynamic.cpio.gz
 #
-#   ./scripts/03-rootfs.sh            # build (idempotent)
-#   ./scripts/03-rootfs.sh --clean    # wipe busybox src + rootfs first
+#   ./scripts/03-rootfs.sh                     # static (default)
+#   LINKAGE=dynamic ./scripts/03-rootfs.sh     # dynamic (ships musl ld.so)
+#   ./scripts/03-rootfs.sh --clean             # wipe busybox src + rootfs first
 #
 # Prereqs: ./scripts/00-toolchain.sh (cross gcc) and ./scripts/02-kernel.sh
 # (we reuse the kernel's gen_init_cpio host tool for packaging).
@@ -27,6 +38,20 @@ source "${HERE}/env.sh"
 
 log()  { printf '\033[1;34m[03-rootfs]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[03-rootfs] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# --- linkage selection -------------------------------------------------------
+# LINKAGE=static (default) | dynamic. Chooses CONFIG_STATIC, the runtime libs we
+# stage, and the output filename.
+LINKAGE="${LINKAGE:-static}"
+case "${LINKAGE}" in
+  static|dynamic) : ;;
+  *) die "LINKAGE must be 'static' or 'dynamic' (got '${LINKAGE}')" ;;
+esac
+if [ "${LINKAGE}" = "dynamic" ]; then
+  OUT_IMAGE="initramfs-dynamic.cpio.gz"
+else
+  OUT_IMAGE="${INITRAMFS_IMAGE}"     # static keeps the canonical name
+fi
 
 CLEAN=0
 [ "${1:-}" = "--clean" ] && CLEAN=1
@@ -86,18 +111,23 @@ cd "${BUSYBOX_SRC_DIR}"
 log "make defconfig"
 make defconfig >/dev/null
 
-log "configuring static build (CONFIG_STATIC=y, CONFIG_TC=n)"
-# CONFIG_STATIC=y  → fully static binary (no shared libs needed on target).
+log "configuring ${LINKAGE} build (CONFIG_STATIC=$([ "${LINKAGE}" = static ] && echo y || echo n), CONFIG_TC=n)"
+# CONFIG_STATIC  → y: fully static binary (no shared libs on target).
+#                  n: dynamic — links musl's shared libc, needs the loader at
+#                     runtime (we stage it below).
 # CONFIG_TC=n      → the traffic-control applet (tc.c) uses TCA_CBQ_MAX, which
 #                    the kernel removed in v6.8; tc.c is UNFIXED upstream and
 #                    breaks against modern kernel headers. We don't need tc for
 #                    a minimal rootfs, so disable it (also clears TC_INGRESS).
 # (CONFIG_WERROR is already n in defconfig, so warnings won't fail the build —
 #  including the harmless static-glibc getpwnam/gethostbyname NSS warnings.)
-sed -i \
-  -e 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' \
-  -e 's/^CONFIG_TC=y/CONFIG_TC=n/' \
-  .config
+if [ "${LINKAGE}" = "static" ]; then
+  sed -i -e 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+else
+  # ensure STATIC is OFF whether the line is currently set or unset
+  sed -i -e 's/^CONFIG_STATIC=y/# CONFIG_STATIC is not set/' .config
+fi
+sed -i -e 's/^CONFIG_TC=y/CONFIG_TC=n/' .config
 # Pin the cross-compiler prefix IN THE CONFIG. BusyBox's CONFIG_CROSS_COMPILER_PREFIX
 # takes precedence over the CROSS_COMPILE make/env var, so setting it on the make
 # line alone is silently ignored (defconfig ships it ="", which then picks up the
@@ -105,7 +135,11 @@ sed -i \
 sed -i "s|^CONFIG_CROSS_COMPILER_PREFIX=.*|CONFIG_CROSS_COMPILER_PREFIX=\"${ROOTFS_CROSS_COMPILE}\"|" .config
 # normalize any dependent symbols non-interactively (accept all defaults)
 make oldconfig </dev/null >/dev/null
-grep -q '^CONFIG_STATIC=y' .config || die "CONFIG_STATIC did not take"
+if [ "${LINKAGE}" = "static" ]; then
+  grep -q '^CONFIG_STATIC=y' .config || die "CONFIG_STATIC=y did not take"
+else
+  grep -q '^CONFIG_STATIC=y' .config && die "CONFIG_STATIC still on for a dynamic build"
+fi
 grep -q "^CONFIG_CROSS_COMPILER_PREFIX=\"${ROOTFS_CROSS_COMPILE}\"" .config \
   || die "CONFIG_CROSS_COMPILER_PREFIX did not take (musl toolchain not selected)"
 
@@ -119,17 +153,24 @@ make clean >/dev/null
 # the musl toolchain. musl-static → ~34% smaller than glibc-static.
 make -j"$(nproc)" CROSS_COMPILE="${ROOTFS_CROSS_COMPILE}" >/dev/null
 
-# confirm the binary is actually static + ARM
+# confirm the binary is ARM and matches the requested linkage
 BB="${BUSYBOX_SRC_DIR}/busybox"
 [ -x "${BB}" ] || die "busybox binary not produced"
 BB_FILE="$(file "${BB}")"
 case "${BB_FILE}" in
-  *statically*linked*ARM*|*ARM*statically*linked*|*ARM*"statically linked"*) : ;;
-  # musl static binaries report as "statically linked" but sometimes without the
-  # exact word order; accept any static ARM ELF.
-  *ARM*) case "${BB_FILE}" in *dynamically*) die "busybox is dynamically linked: ${BB_FILE#*: }" ;; esac ;;
+  *ARM*) : ;;
   *) die "busybox is not an ARM binary: ${BB_FILE#*: }" ;;
 esac
+if [ "${LINKAGE}" = "static" ]; then
+  case "${BB_FILE}" in
+    *dynamically*) die "expected STATIC busybox but it is dynamic: ${BB_FILE#*: }" ;;
+  esac
+else
+  case "${BB_FILE}" in
+    *dynamically*) : ;;
+    *) die "expected DYNAMIC busybox but it is not: ${BB_FILE#*: }" ;;
+  esac
+fi
 log "built: ${BB_FILE#*: }"
 
 # --- 3. assemble the rootfs skeleton -----------------------------------------
@@ -147,12 +188,31 @@ make CONFIG_PREFIX="${ROOTFS_DIR}" CROSS_COMPILE="${ROOTFS_CROSS_COMPILE}" insta
 install -m 0755 "${SCRIPTS_DIR}/init" "${ROOTFS_DIR}/init"
 mkdir -p "${ROOTFS_DIR}/proc" "${ROOTFS_DIR}/sys" "${ROOTFS_DIR}/dev"
 
+# --- dynamic: stage the musl loader (== libc) into /lib ----------------------
+# A dynamic busybox has PT_INTERP = /lib/ld-musl-armhf.so.1 and NEEDED libc.so.
+# For musl the loader and libc are the SAME file: ld-musl-armhf.so.1 -> libc.so.
+# So we copy the real libc.so and recreate that symlink; nothing else is needed
+# (musl has no separate libdl/libm/libpthread — all folded into libc).
+if [ "${LINKAGE}" = "dynamic" ]; then
+  LIBC_SO="$(${ROOTFS_CROSS_COMPILE}gcc -print-file-name=libc.so)"
+  [ -f "${LIBC_SO}" ] || die "musl libc.so not found (gcc -print-file-name=libc.so -> '${LIBC_SO}')"
+  # The interpreter path busybox actually requests (defensive: verify it matches).
+  WANT_INTERP="$(${ROOTFS_CROSS_COMPILE}readelf -l "${BB}" 2>/dev/null \
+                 | sed -n 's/.*Requesting program interpreter: \(.*\)\]/\1/p')"
+  log "dynamic: PT_INTERP = ${WANT_INTERP:-<none>}; staging musl loader into /lib"
+  [ "${WANT_INTERP}" = "/lib/ld-musl-armhf.so.1" ] \
+    || die "unexpected interpreter '${WANT_INTERP}' (expected /lib/ld-musl-armhf.so.1)"
+  mkdir -p "${ROOTFS_DIR}/lib"
+  install -m 0755 "${LIBC_SO}" "${ROOTFS_DIR}/lib/libc.so"
+  ln -sf libc.so "${ROOTFS_DIR}/lib/ld-musl-armhf.so.1"   # loader == libc (musl)
+fi
+
 # --- 4. pack a root-owned cpio.gz via gen_init_cpio --------------------------
 # gen_init_cpio reads a device-table listing; it emits a cpio with the ownership
 # we declare (uid/gid 0) and can create device nodes without any privilege —
 # cleaner and more reproducible than mknod-as-root or fakeroot.
 log "generating initramfs listing"
-LISTING="${BUILD_DIR}/initramfs.list"
+LISTING="${BUILD_DIR}/initramfs-${LINKAGE}.list"
 {
   echo "# path                     mode uid gid   [maj min]"
   echo "dir /proc 0755 0 0"
@@ -180,28 +240,29 @@ LISTING="${BUILD_DIR}/initramfs.list"
     done
 } > "${LISTING}"
 
-log "packing ${INITRAMFS_IMAGE}"
+log "packing ${OUT_IMAGE}"
 mkdir -p "${OUTPUT_DIR}"
-"${GEN_INIT_CPIO}" "${LISTING}" | gzip -9 > "${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
+"${GEN_INIT_CPIO}" "${LISTING}" | gzip -9 > "${OUTPUT_DIR}/${OUT_IMAGE}"
 
 # --- report ------------------------------------------------------------------
-SIZE="$(du -h "${OUTPUT_DIR}/${INITRAMFS_IMAGE}" | cut -f1)"
-NAPPLETS="$(find "${ROOTFS_DIR}" -type l | wc -l)"
+SIZE="$(du -h "${OUTPUT_DIR}/${OUT_IMAGE}" | cut -f1)"
+# applet symlinks minus any lib symlinks we added (keep the count meaningful)
+NAPPLETS="$(find "${ROOTFS_DIR}/bin" "${ROOTFS_DIR}/sbin" "${ROOTFS_DIR}/usr" -type l 2>/dev/null | wc -l)"
+DYN_NOTE=""
+[ "${LINKAGE}" = "dynamic" ] && DYN_NOTE="
+  Loader     : /lib/ld-musl-armhf.so.1 -> /lib/libc.so (musl: loader == libc)"
 cat <<EOF
 
 $(printf '\033[1;32m[03-rootfs] DONE\033[0m')
-  BusyBox    : ${BUSYBOX_VERSION} (static, ARM)
-  Applets    : ${NAPPLETS} symlinks → /bin/busybox
+  BusyBox    : ${BUSYBOX_VERSION} (${LINKAGE}, ARM)
+  Applets    : ${NAPPLETS} symlinks → /bin/busybox${DYN_NOTE}
   Init       : /init (PID 1) mounts proc/sys/dev, execs /bin/sh on the console
-  Artifact   : ${OUTPUT_DIR}/${INITRAMFS_IMAGE}  (${SIZE})
+  Artifact   : ${OUTPUT_DIR}/${OUT_IMAGE}  (${SIZE})
 
-All four pieces are now in build/output/:
-  u-boot-sunxi-with-spl.bin   (Step 1)
-  zImage + *.dtb              (Step 2)
-  ${INITRAMFS_IMAGE}         (Step 3)
+Build the other linkage with:
+  $([ "${LINKAGE}" = static ] && echo "LINKAGE=dynamic ./scripts/03-rootfs.sh" || echo "./scripts/03-rootfs.sh   # static (default)")
 
-Next: Step 4 — assemble + flash the SD (write U-Boot at 8K, drop
-kernel/DTB/initramfs on a partition, boot script sets:
-  bootz \${kernel_addr_r} \${ramdisk_addr_r}:\${filesize} \${fdt_addr_r}
-  bootargs = console=${KERNEL_CONSOLE}).
+Boot it under QEMU with the custom kernel:
+  qemu-system-arm -M virt -cpu cortex-a7 -m 128M -nographic -net none \\
+    -kernel kernel/build/virt/gv3kernel.bin -initrd ${OUTPUT_DIR}/${OUT_IMAGE}
 EOF
