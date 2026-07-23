@@ -73,6 +73,7 @@ static struct proc *alloc_proc(void)
 	p->killed_sig = 0;
 	p->wait_chan = 0;
 	p->brk = 0;
+	p->brk_ceiling = MMAP_TOP;              /* safe default; load_program refines it */
 	for (int v = 0; v < 33; v++) p->vfp[v] = 0;     /* clean VFP: d0..d31=0, FPSCR=0 */
 	p->tls = 0;                                     /* no TLS until set_tls */
 	p->sig_blocked = 0;                             /* nothing blocked initially */
@@ -391,6 +392,7 @@ struct proc *proc_spawn_elf(const char *path, const char *name)
 	if (!usp) { vm_destroy(p->l1_pa); p->state = P_UNUSED; return 0; }
 
 	p->brk_start = p->brk = lr.brk_end;
+	p->brk_ceiling = lr.dynamic ? INTERP_BASE : MMAP_TOP;
 	p->mmap_top  = MMAP_TOP;
 	init_stdio(p);
 
@@ -509,6 +511,7 @@ static void do_fork(uint32_t child_sp)
 	child->cwd = cur->cwd;
 	child->brk_start = cur->brk_start;      /* inherit the memory map layout  */
 	child->brk = cur->brk;
+	child->brk_ceiling = cur->brk_ceiling;
 	child->mmap_top = cur->mmap_top;
 	child->sig_blocked = cur->sig_blocked;  /* inherit the signal mask + acts */
 	for (int s = 0; s < NSIG; s++)
@@ -614,6 +617,7 @@ static void exec_commit(uint32_t new_l1, const struct load_result *lr,
 	vm_destroy(old_l1);
 
 	cur->brk_start = cur->brk = lr->brk_end;
+	cur->brk_ceiling = lr->dynamic ? INTERP_BASE : MMAP_TOP;
 	cur->mmap_top  = MMAP_TOP;
 	for (int i = 0; i < 13; i++) cur->tf.r[i] = 0;
 	cur->tf.sp_usr = usp;

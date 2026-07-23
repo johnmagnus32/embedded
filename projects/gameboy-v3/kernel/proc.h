@@ -64,6 +64,9 @@ struct proc {
 	struct trapframe tf;         /* saved user frame when not RUNNING */
 	uint32_t         brk_start;  /* S10: initial break (page-rounded ELF top) */
 	uint32_t         brk;        /* S10: current program break (grows up) */
+	uint32_t         brk_ceiling;/* heap must not grow to/past this VA (the next
+	                              * region above the heap: the dynamic interpreter
+	                              * at INTERP_BASE if present, else mmap_top) */
 	uint32_t         mmap_top;   /* S10: next anon mmap goes just below this */
 	struct fdtable   fds;        /* S9: open file descriptors */
 	struct rf_inode *cwd;        /* S9: current working directory */

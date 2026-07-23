@@ -43,8 +43,12 @@ long sys_brk(uint32_t addr)
 
 	if (addr < p->brk_start)               /* query, or nonsense -> report current */
 		return (long)cur_brk;
-	if (addr >= p->mmap_top)               /* would collide with the mmap area */
-		return (long)cur_brk;              /* refuse: return unchanged (musl->mmap2) */
+	/* Refuse if the heap would grow into the next region above it: for a dynamic
+	 * exec, that's the interpreter at INTERP_BASE; otherwise mmap_top. Without
+	 * this check, a large brk could overwrite ld.so's mapped code (the gap the
+	 * user correctly identified). musl falls back to mmap on failure. */
+	if (addr >= p->brk_ceiling)
+		return (long)cur_brk;
 
 	uint32_t old_top = PAGE_UP(cur_brk);
 	uint32_t new_top = PAGE_UP(addr);
