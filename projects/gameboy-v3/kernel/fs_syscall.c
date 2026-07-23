@@ -544,25 +544,13 @@ long sys_getcwd(uint32_t buf_uptr, uint32_t size)
 	return (long)len;                         /* getcwd returns the length */
 }
 
-/* tty ioctls (ARM == asm-generic; verified). CRITICAL: musl's isatty() calls
- * TIOCGWINSZ (NOT TCGETS), so that ioctl succeeding on fd 0/1 is what makes the
- * shell take its INTERACTIVE path. TCGETS/TCSETS carry `struct termios` with
- * NCCS=19 (36 bytes total: 4 tcflag_t + 1 c_line byte, then c_cc[19]). */
-#define TCGETS      0x5401
-#define TCSETS      0x5402
-#define TCSETSW     0x5403
-#define TCSETSF     0x5404
-#define TIOCGWINSZ  0x5413
-#define TIOCSWINSZ  0x5414
-#define TIOCGPGRP   0x540F
-#define TIOCSPGRP   0x5410
-#define TIOCSCTTY   0x540E
-#define TIOCNOTTY   0x5422
-#define FIONREAD    0x541B
-
-#define NCCS 19
-/* struct termios { tcflag_t c_iflag,c_oflag,c_cflag,c_lflag; cc_t c_line; cc_t c_cc[19]; } */
-struct k_termios { uint32_t c_iflag, c_oflag, c_cflag, c_lflag; uint8_t c_line; uint8_t c_cc[NCCS]; };
+/* tty ioctls: the request codes (TCGETS/TIOCGWINSZ/...), NCCS, and the termios
+ * struct layout now come from the shared UAPI (uapi/gv3_abi.h, via fs_abi.h) so
+ * the kernel and the rootfs libc agree byte-for-byte. CRITICAL: musl's isatty()
+ * calls TIOCGWINSZ (NOT TCGETS), so that ioctl succeeding on fd 0/1 is what makes
+ * the shell take its INTERACTIVE path. We alias the historical kernel names. */
+#define NCCS      GV3_NCCS
+#define k_termios gv3_termios      /* `struct k_termios` == `struct gv3_termios` */
 
 /* termios flag bits we set so cooked-mode line handling looks sane to BusyBox.
  * Values are the ARM/asm-generic termbits octals (verified): c_lflag ISIG=0x1,
