@@ -324,39 +324,58 @@ timer heartbeat — now running with the MMU on.
 | **S9** | cpio → ramfs (RW) + kmalloc + VFS + fd tables + file syscalls | ✅ built |
 | **S10** | memory syscalls + tty + boot handoff + gunzip → real BusyBox `sh` | ✅ running in QEMU (interactive prompt) |
 
-## Files
+## Source tree
 
-- `start.S`    — entry, exception vector table, banked fault stacks, `svc_entry` + switchable `irq_entry` (both build a full trapframe) + `user_return`, `irq_save`/`irq_restore`
-- `vfp.S`      — VFP/NEON save/restore (d0-d31 + FPSCR) for context switches; hand-written (`.fpu neon-vfpv4`) since the kernel is `-mgeneral-regs-only`
-- `kmain.c`    — C entry: pmm + MMU init, MMU selftest, GIC/timer, `irq_dispatch` (timer tick + user-mode preemption seam), then spawn `/init` and enter the process world
-- `gic.c/.h`   — GIC-400 minimal driver (enable a PPI, ack/EOI)
-- `timer.c/.h` — ARMv7 generic timer (CP15), secure physical timer, periodic tick
-- `pmm.c/.h`   — physical page allocator (4 KB frames, bitmap over DRAM)
-- `mmu.c/.h`   — ARMv7 short-descriptor page table (1 MB sections), identity map + enable (the base map each process copies)
-- `mmu_asm.S`  — CP15 accessors (TTBR0/TTBCR/DACR/SCTLR) + the enable sequence
-- `vm.c/.h`    — per-process address spaces: 4 KB paging (L2 small pages), `vm_create/map/walk/copy/destroy/switch`
-- `proc.c/.h`  — PCB (+ fd table + cwd) + `fork`/`execve`/`wait4`/`exit` + minimal round-robin (uniform `cur->tf` switch model)
-- `elf.c/.h`   — minimal static `ET_EXEC` ARM loader (map + copy `PT_LOAD`, zero bss)
-- `syscall.c/.h` — `svc 0` trap dispatch (process + file syscalls, ARM EABI; else `-ENOSYS`)
-- `kmalloc.c/.h` — small kernel heap (first-fit free list over pmm pages, coalescing) for fs objects
-- `ramfs.c/.h` — in-memory RW filesystem: inodes, dir child lists, page-backed files, path resolution
-- `cpio.c/.h`  — `newc` (070701) cpio parser → ramfs (dirs/files/symlinks/device nodes)
-- `file.c/.h`  — `struct file` (inode+offset+flags+refcnt) + per-process fd table (fork copies, exit closes)
-- `vfs.c/.h`   — path resolve + load an ELF from a file inode (the seam `execve`/syscalls use)
-- `fs_syscall.c/.h` — the file syscalls over ramfs + fds; console (char 5,1) I/O → UART; tty ioctls
-- `mm_syscall.c/.h` — S10 memory syscalls: `mmap2` (anon private) / `munmap` / `mprotect` / real `brk`
-- `kfdt.c/.h`   — S10 boot-handoff FDT **reader**: validate blob, `getprop` by path, extract `initrd`/`/memory` (host-tested against the real DTB + QEMU's)
-- `inflate.c/.h` — in-kernel gunzip: puff-style DEFLATE (RFC1951) + gzip wrapper (RFC1952) + CRC32, so `initramfs.cpio.gz` is consumed directly
-- `board.h`     — board-selection seam: GIC/timer/UART addresses per `-DBOARD_VIRT` (QEMU) vs default (T113)
-- `board_pl011.c` — PL011 UART back-end (QEMU `virt`, `0x09000000`); `board_16550.c` — 16550 UART back-end (T113, `0x02500000`)
-- `fs_abi.h` / `kstat.h` / `dirent.h` — ABI-exact flag/errno constants, ARM `struct stat64` (104 B), `linux_dirent64` (all `_Static_assert`ed)
-- `user/uinit.c`, `user/uhello.c`, `user/user.ld` — the S9 test programs (standalone static ET_EXEC ELFs), built as a `-initrd` test image
-- `motd.txt`   — a data file packed into the test cpio at `/etc/motd`
-- `libk.c/.h`  — `memcpy`/`memset`/`memmove`/`memcmp` + `str*` helpers (GCC emits some under `-ffreestanding`)
-- `uart.c/.h`  — console wrapper (`\n`→`\r\n`) over the board's `uart_hw_*` back-end
-- `printf.c`   — tiny printf → UART0
-- `kernel.ld`  — link at `LOAD_ADDR` (default DRAM `0x41000000`; `0x40010000` for QEMU via `--defsym`); exports `_kernel_end`
-- `Makefile`   — `BOARD=t113`(default)/`virt`; builds `build/gv3kernel.bin` + a test `initramfs.cpio.gz`; `make BOARD=virt qemu` boots it
+Organized after the Linux kernel: the **arch-specific** half (anything that would
+change on a port to another CPU) lives under `arch/arm/`; everything else is
+portable C grouped by role (`kernel/` core, `mm/` memory, `fs/` filesystem +
+program loading, `drivers/` devices, `lib/` helpers). All headers are centralized
+under `include/` (with `include/uapi/` for the kernel↔user ABI), and the build
+adds `-Iinclude`.
+
+```
+arch/arm/          ARMv7-A / Cortex-A7 / T113 — the non-portable half
+  start.S          entry, vector table, banked fault stacks, svc_entry +
+                   switchable irq_entry (full trapframe) + user_return, irq_save/restore
+  vfp.S            VFP/NEON save/restore (d0-d31 + FPSCR); `.fpu neon-vfpv4`
+  mmu_asm.S        CP15 accessors (TTBR0/TTBCR/DACR/SCTLR) + the enable sequence
+  mmu.c            ARMv7 short-descriptor page table (1 MB sections), identity map
+  vm.c             per-process address spaces: 4 KB paging (L2), create/map/walk/copy/destroy/switch
+  syscall.c        `svc 0` trap dispatch (process + file syscalls, ARM EABI; else -ENOSYS)
+  kernel.ld        link at LOAD_ADDR (default 0x41000000; 0x40010000 for QEMU via --defsym)
+kernel/            portable core
+  main.c           C entry: pmm + MMU init, selftest, GIC/timer, irq_dispatch
+                   (tick + user-mode preemption seam), spawn /init, enter userspace
+  proc.c           PCB + fork/execve/wait4/exit + preempt/sleep/wakeup + ELF-load handoff
+mm/                memory management
+  pmm.c            physical page allocator (4 KB frames, bitmap over DRAM)
+  kmalloc.c        small kernel heap (first-fit free list over pmm pages, coalescing)
+  mmap.c           S10 memory syscalls: brk + mmap2 (anon + file-backed/MAP_FIXED) / munmap / mprotect
+fs/                filesystem + program loading
+  vfs.c            path resolve + load an ELF from a file inode (the execve seam)
+  ramfs.c          in-memory RW filesystem: inodes, dir lists, page-backed files, path resolution
+  cpio.c           `newc` (070701) cpio parser → ramfs
+  file.c           struct file + per-process fd table (fork copies, exit closes)
+  fs_syscall.c     file syscalls over ramfs + fds; console (char 5,1) → UART; tty ioctls
+  binfmt_elf.c     ELF loader: ET_EXEC + ET_DYN (load bias, PT_INTERP, AT_PHDR) — runs musl ld.so
+drivers/           devices
+  gic.c            GIC-400 (enable PPI, ack/EOI)
+  timer.c          ARMv7 CP15 generic timer, periodic tick
+  of/kfdt.c        boot-handoff FDT reader (initrd + /memory)
+  tty/uart.c       console wrapper (\n→\r\n) over the board's uart_hw_* back-end
+  tty/board_16550.c / board_pl011.c  the two UART back-ends (T113 16550 / QEMU PL011)
+lib/               portable helpers
+  libk.c           memcpy/memset/memmove/memcmp + str* (GCC emits some under -ffreestanding)
+  printf.c         tiny printf → UART
+  inflate.c        in-kernel gunzip: puff-style DEFLATE (RFC1951) + gzip (RFC1952) + CRC32
+include/           all headers (-Iinclude); board.h is the GIC/timer/UART board seam
+  uapi/            the kernel↔user ABI: gv3_syscalls.h (numbers) + gv3_abi.h (types/structs/flags)
+user/              standalone static test programs (uinit, uhello, ufault*, uorphan*, upreempt*) + user.ld
+test/              golden.sh regression harness (smoke/fault/orphan/preempt/busybox/dynamic)
+Documentation/     this README, PLAN.md, S8/S10_DESIGN.md
+Makefile           BOARD=t113(default)/virt; builds build/<board>/; `make test` runs golden.sh
+motd.txt           data file packed into the test cpio at /etc/motd
+```
 
 ## Stage 6 — the MMU, how it works
 

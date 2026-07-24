@@ -37,36 +37,42 @@ GEN_INIT_CPIO ?= ../build/linux/usr/gen_init_cpio
 # FPU (CPACR/FPEXC), so any VFP op traps as an Undefined Instruction. Keeping the
 # core register-only sidesteps that entirely (and means no FPU state to save on a
 # context switch, ever). This is the same choice the Linux kernel makes.
+# All headers live under include/ (Linux-style central header dir); -Iinclude
+# lets the bare-name quote-includes ("proc.h") AND the uapi ones ("uapi/gv3_*.h")
+# resolve. LDFLAGS points at the arch linker script.
 CFLAGS  := -mcpu=cortex-a7 -marm -mgeneral-regs-only -ffreestanding -nostdlib \
-           -nostartfiles -Os -Wall -Wextra -fno-builtin -fno-stack-protector
-LDFLAGS := -T kernel.ld -nostdlib -Wl,--build-id=none
+           -nostartfiles -Os -Wall -Wextra -fno-builtin -fno-stack-protector \
+           -Iinclude
+LDFLAGS := -T arch/arm/kernel.ld -nostdlib -Wl,--build-id=none
 
 # ---- board selection: UART driver + -DBOARD_VIRT flag -----------------------
 ifeq ($(BOARD),virt)
 CFLAGS  += -DBOARD_VIRT
-BOARD_UART_OBJ := $(BUILD)/board_pl011.o
+BOARD_UART_OBJ := $(BUILD)/drivers/tty/board_pl011.o
 # QEMU's raw `-kernel` loader places a 32-bit ARM image at RAM base + 0x10000;
 # link there so absolute addresses are correct and QEMU's Linux boot stub can
 # set r2=DTB (with linux,initrd-*) natively.
 LDFLAGS += -Wl,--defsym=LOAD_ADDR=0x40010000
 else
-BOARD_UART_OBJ := $(BUILD)/board_16550.o
+BOARD_UART_OBJ := $(BUILD)/drivers/tty/board_16550.o
 endif
 
+# Kernel objects, grouped like the source tree (arch / kernel / mm / fs /
+# drivers / lib). Object paths mirror the source subdir under $(BUILD).
+OBJS := $(BUILD)/arch/arm/start.o $(BUILD)/arch/arm/mmu_asm.o \
+        $(BUILD)/arch/arm/vfp.o $(BUILD)/arch/arm/mmu.o \
+        $(BUILD)/arch/arm/vm.o $(BUILD)/arch/arm/syscall.o \
+        $(BUILD)/kernel/main.o $(BUILD)/kernel/proc.o \
+        $(BUILD)/mm/pmm.o $(BUILD)/mm/kmalloc.o $(BUILD)/mm/mmap.o \
+        $(BUILD)/fs/vfs.o $(BUILD)/fs/ramfs.o $(BUILD)/fs/cpio.o \
+        $(BUILD)/fs/file.o $(BUILD)/fs/fs_syscall.o $(BUILD)/fs/binfmt_elf.o \
+        $(BUILD)/drivers/gic.o $(BUILD)/drivers/timer.o \
+        $(BUILD)/drivers/tty/uart.o $(BOARD_UART_OBJ) \
+        $(BUILD)/drivers/of/kfdt.o \
+        $(BUILD)/lib/libk.o $(BUILD)/lib/printf.o $(BUILD)/lib/inflate.o
 
-OBJS := $(BUILD)/start.o $(BUILD)/kmain.o $(BUILD)/gic.o \
-        $(BUILD)/timer.o $(BUILD)/uart.o $(BOARD_UART_OBJ) $(BUILD)/printf.o \
-        $(BUILD)/vfp.o \
-        $(BUILD)/pmm.o $(BUILD)/mmu.o $(BUILD)/mmu_asm.o \
-        $(BUILD)/syscall.o $(BUILD)/vm.o $(BUILD)/proc.o \
-        $(BUILD)/elf.o $(BUILD)/libk.o $(BUILD)/kmalloc.o \
-        $(BUILD)/ramfs.o $(BUILD)/cpio.o $(BUILD)/file.o \
-        $(BUILD)/vfs.o $(BUILD)/fs_syscall.o $(BUILD)/mm_syscall.o \
-        $(BUILD)/kfdt.o $(BUILD)/inflate.o
-
-HEADERS := uart.h gic.h timer.h pmm.h mmu.h syscall.h vm.h proc.h elf.h \
-           libk.h kmalloc.h ramfs.h cpio.h file.h vfs.h fs_syscall.h \
-           fs_abi.h kstat.h dirent.h mm_syscall.h kfdt.h inflate.h board.h
+# Rebuild everything if any header changes (coarse but correct for this size).
+HEADERS := $(wildcard include/*.h include/uapi/*.h)
 
 # ---- user test programs (standalone static ET_EXEC ELFs) --------------------
 UCFLAGS := -mcpu=cortex-a7 -marm -mgeneral-regs-only -ffreestanding -nostdlib \
@@ -156,13 +162,18 @@ $(BUILD)/preemptramfs.cpio.gz: $(BUILD)/preemptramfs.cpio
 	gzip -9 -c $< > $@
 	@echo "cpio.gz: $$(wc -c < $@) bytes -> $@"
 
+# Sources now live in subdirs (arch/arm, kernel, mm, fs, drivers/*, lib); the %
+# captures the full relative path (e.g. kernel/main), so mkdir -p the object's
+# parent dir before compiling.
 $(BUILD)/%.o: %.S | $(BUILD)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: %.c $(HEADERS) | $(BUILD)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/$(TARGET).elf: $(OBJS) kernel.ld
+$(BUILD)/$(TARGET).elf: $(OBJS) arch/arm/kernel.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@
 
 $(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf
