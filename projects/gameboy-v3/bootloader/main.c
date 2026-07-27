@@ -93,12 +93,15 @@ static int append_num(char *dst, int o, int cap, uint32_t v, int base)
 	return o;
 }
 
-/* Build "console=ttyS0,115200 earlycon=on mem=128M@0x40000000
- *        initrd=0x<addr>,<size> panic=10" into buf. */
+/* Build "console=ttyS0,115200 earlycon mem=128M@0x40000000
+ *        initrd=0x<addr>,<size> panic=10" into buf.
+ * Bare "earlycon" (not "=on", which is a silent no-op) makes the kernel scan the
+ * DTB /chosen/stdout-path and register the snps,dw-apb-uart earlycon, inheriting
+ * our 115200 baud — output from the very first kernel instructions. */
 static void build_cmdline(char *buf, int cap, uint32_t initrd_addr, uint32_t initrd_size)
 {
 	int o = 0;
-	o = append(buf, o, cap, "console=ttyS0,115200 earlycon=on "
+	o = append(buf, o, cap, "console=ttyS0,115200 earlycon "
 	                        "mem=128M@0x40000000 initrd=0x");
 	o = append_num(buf, o, cap, initrd_addr, 16);
 	o = append(buf, o, cap, ",");
@@ -165,12 +168,15 @@ void main(void)
 	/*
 	 * Build the kernel command line:
 	 *   console=ttyS0,115200   -> our UART0 console (matches the DTB alias)
-	 *   earlycon=on            -> see the very earliest kernel output
+	 *   earlycon               -> see the very earliest kernel output (bare form;
+	 *                             "=on" is a no-op — see build_cmdline)
 	 *   mem=128M@0x40000000    -> RAM size (also in the DTB /memory node)
 	 *   initrd=<addr>,<size>   -> where we loaded the initramfs + its size
 	 *                             (early_initrd parses exactly "addr,size")
 	 *   panic=10               -> reboot 10s after a panic
 	 * The initrd size is the one runtime-variable value, so we format it in.
+	 * fdt_set_bootargs() now grows/inserts as needed, so the DTB no longer
+	 * carries a placeholder bootargs — cmdline can be any length up to `cap`.
 	 */
 	char cmdline[224];
 	build_cmdline(cmdline, sizeof(cmdline), INITRD_ADDR, (uint32_t)isz);
