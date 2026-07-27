@@ -27,17 +27,14 @@
 	chosen {
 		stdout-path = "serial0:115200n8";
 		/*
-		 * bootargs placeholder. Our custom bootloader (bootloader/) has
-		 * no FDT editor — it overwrites this string's VALUE in place at
-		 * runtime (same slot, <= this length), so we reserve a generous
-		 * fixed-length buffer here. dtc makes the property exactly as
-		 * long as this literal (+ NUL); the kernel reads it as a C string
-		 * and stops at the first NUL, ignoring trailing padding.
-		 * (When booted via U-Boot instead, U-Boot overwrites bootargs
-		 * itself, so this value is harmless there.)
-		 * ~224 bytes reserved; real cmdline is ~90.
+		 * NO bootargs here — intentionally. The command line is set at boot
+		 * by whichever loader runs: U-Boot's boot.scr does `fdt set /chosen
+		 * bootargs ...`, and our custom bootloader's fdt_set_bootargs() now
+		 * grows/inserts the property properly (see bootloader/fdt.c). Leaving
+		 * bootargs absent keeps this a clean, stock-shaped chosen node and
+		 * avoids the "placeholder shadows the real cmdline" trap that once
+		 * silently booted the kernel with no console=.
 		 */
-		bootargs = "PLACEHOLDER_bootargs_overwritten_by_gameboy-v3_bootloader________________________________________________________________________________________________________________________________________________________________";
 	};
 
 	/*
@@ -73,4 +70,24 @@
  * board does not use it and disabling keeps the console unambiguous. */
 &uart3 {
 	status = "disabled";
+};
+
+/* --- microSD card-detect fix (t113-breakout) -------------------------------
+ * The MangoPi MQ-R DT declares the SD socket's card-detect on cd-gpios =
+ * <&pio 5 6> (PF6, active-low). On our t113-breakout, PF6 is broken out as a
+ * plain free GPIO and the SD socket's card-detect (socket pin 9) is left
+ * UNCONNECTED (BOM: "card-detect available → wire to a spare GPIO if wanted").
+ * So U-Boot/Linux read PF6, see it high, and declare "no card present" —
+ * refusing to scan mmc0 even with a card seated (the BROM boots fine because it
+ * ignores DT and CD). Verified on silicon: SPL boots from SD, but U-Boot proper
+ * then reports `Card did not respond to voltage select! : -110` / "no card
+ * present" on mmc0/mmc dev 1.
+ *
+ * Fix: delete the bogus cd-gpios and mark the slot broken-cd so the MMC driver
+ * always assumes a card is present and polls it. (Same overlay is shared by the
+ * U-Boot control DTB and the kernel DTB, so both get the fix.)
+ */
+&mmc0 {
+	/delete-property/ cd-gpios;
+	broken-cd;
 };
