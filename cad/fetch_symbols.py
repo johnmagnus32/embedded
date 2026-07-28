@@ -74,6 +74,7 @@ PARTS = [
     ("C1549",    "18pF 50V C0G Ceramic Capacitor, 0402"),
     ("C32949",   "10pF 50V C0G Ceramic Capacitor, 0402 (buck FB feed-forward)"),
     ("C23350",   "240Ω 1% Resistor, 0603 (DDR ZQ calibration)"),
+    ("C970677",  "47uF 25V Aluminium Electrolytic, SMD D6.3x5.4mm (Rev-B VBUS bulk reservoir)"),
     # --- gameboy-v3 (projects/gameboy-v3/pcb/BOM.md) ---
     # NOTE: gameboy-v3 also reuses many parts from the t113-breakout section above
     # (T113 C5197687, FP6161 C77234, crystals, decoupling caps, resistors, microSD,
