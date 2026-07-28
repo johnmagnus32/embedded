@@ -1,6 +1,9 @@
 # T113-S3 Breakout PCB — Bill of Materials
 
-**Status:** ✅ All 24 parts JLCPCB-verified (in stock, footprints confirmed). Ready for schematic capture.
+**Status:** Rev-A fabricated & boots Linux (with one bodge). **Rev-B in progress** — see
+[REV-B-FIXES.md](REV-B-FIXES.md) for the 4 hardware fixes folded into the BOM below (VBUS bulk
+cap, UART0 series resistors, USB 90 Ω retarget, SD card-detect). Rev-A parts were all
+JLCPCB-verified; the one new Rev-B part (47 µF bulk, #25) is marked VERIFY.
 
 | # | Category | Part | Description | Qty | LCSC # | Src |
 |---|----------|------|-------------|-----|--------|-----|
@@ -16,18 +19,19 @@
 | 10 | Power | 0603WAF2400T5E | 240Ω ±1% 0603 — DZQ DDR ZQ-calibration resistor, T113 pin 47 → GND | 1 | C23350 | ✅ |
 | 11 | Storage | W25Q128JVSIQ | 128 Mbit SPI NOR flash, SOIC-8 (IQ: QE=1 factory-set) | 1 | C97521 | ✅ |
 | 12 | Storage | A-MicroTF-1.85A | microSD/TF socket, SMD, push-push, has card-detect (MyAntenna) | 1 | C22467599 | ✅ |
-| 13 | Storage | RC0603JR-0710KL | 10 KΩ 0603 — SD pull-ups (CMD + DAT0-3, 5×) + RESET pull-up (1×), all → 3V3 | 6 | C99198 | ✅ |
+| 13 | Storage | RC0603JR-0710KL | 10 KΩ 0603 — SD pull-ups (CMD + DAT0-3, 5×) + RESET pull-up (1×) + **Rev-B: SD card-detect pull-up on /PF6 (R17, Fix 4)**, all → 3V3 | 7 | C99198 | ✅ |
 | 14 | Clock | X322524MRB4SI | 24 MHz crystal, SMD3225-4P, CL=18 pF, ±10/20 ppm (YXC) | 1 | C70571 | ✅ |
 | 15 | Clock | SC-20S 32.768kHz | 32.768 kHz RTC crystal, SMD2012-2P, ±20 ppm, CL=12.5 pF (Seiko) | 1 | C97607 | ✅ |
 | 16 | Clock | 0402CG220J500NT | 22 pF 50V C0G 0402 (Basic) — 24 MHz crystal load caps | 2 | C1555 | ✅ |
 | 17 | Clock | 0402CG180J500NT | 18 pF 50V C0G 0402 (Basic) — 32.768 kHz crystal load caps | 2 | C1549 | ✅ |
 | 18 | Decoupling | CC0603KRX7R9BB104 | 100nF 0603 X7R cap (per power pin + flash VCC + SD VDD + RESET filter) | 25 | C14663 | ✅ |
-| 19 | Decoupling | CL21A106KOQNNNE | 10µF 16V X5R 0805 cap (bulk + SD VDD) | 9 | C1713 | ✅ |
+| 19 | Decoupling | CL21A106KOQNNNE | 10µF 16V X5R 0805 cap (bulk + SD VDD) + **Rev-B: local CIN at each buck VIN, U2-4 & U7-4 (Fix 1)** | 11 | C1713 | ✅ |
 | 20 | Decoupling | CC0603KRX5R6BB475 | 4.7µF 0603 X5R cap (buck out / bulk) | 4 | C109456 | ✅ |
 | 21 | Header | 2044-1X25G00SA | 2.54mm 1x25 female — 4× (2 per side, BBB/Nucleo-style). ALL breakout: 58 free GPIO + SD (PF0–5) + flash (PC2–7) + UART0 (PE2/3) + power (5V/3V3/0V9) + ~24 GND. 100 positions total. | 4 | C49569761 | ✅ |
 | 22 | Status | 19-213SYGC | Green LED, 0603 (power indicator) | 1 | C2986027 | ✅ |
-| 23 | Status | 0603WAF5100T5E | 510Ω 0603 resistor (LED current limit) | 1 | C23193 | ✅ |
+| 23 | Status | 0603WAF5100T5E | 510Ω 0603 resistor (LED current limit) + **Rev-B: UART0 TX/RX series resistors R15/R16 (Fix 2, back-power protection)** | 3 | C23193 | ✅ |
 | 24 | Control | TS-1187A-B-A-B | 6×6mm SMD tactile switch — RESET button (RESET → GND) | 1 | C318884 | ✅ |
+| 25 | Power | RVT1E470M0605 (DMBJ) | **Rev-B: 47µF 25V aluminium electrolytic, SMD can D6.3×5.4mm — VBUS bulk reservoir on +5V near buck VINs (Fix 1, root-cause fix).** Electrolytic (not ceramic): no DC-bias derating → full ~47µF at 5V, and its ESR damps the input LC resonance the FP6161 datasheet warns about with all-ceramic input + long supply wires (the USB-C cable). **Bulk only — MUST stay paired with the local 10µF ceramics at each VIN (row 19); its 49mA@120Hz ripple rating means it cannot carry the switching ripple alone.** Check height (~5.4mm) + area near VBUS. | 1 | C970677 | ✅ |
 
 > **Crystal load caps (#13, #14):** values are starting points, tuned at bring-up.
 > #13 = 22 pF matches the MangoPi reference for the same 18 pF-CL 24 MHz crystal

@@ -44,6 +44,45 @@ Details for each below.
 
 ---
 
+## Verified implementation spec (2026-07 — parts, nets, exact steps)
+
+Each fix below was cross-checked against `t113-breakout.kicad_pcb`, the FP6161 datasheet,
+and re-derived math (adversarially verified). **Net names verified verbatim** — the board uses
+`+5V`, `+3.3V`, `+0V9`, `/PF6`, `/UART0_TX`, `/UART0_RX`, `/USB0_DP`, `/USB0_DN`.
+BOM impact is folded into [BOM.md](BOM.md) rows 13/19/23/25.
+
+### Fix 1 — VBUS bulk cap (two-tier scheme)
+- **Local CIN:** one **10 µF 0805 (C1713, reuse)** at *each* buck VIN — beside C3 (U2-4) and beside C5 (U7-4). Satisfies the FP6161 typical-app 10 µF CIN that Rev-A omitted. (Datasheet gives the RMS-current rule + X5R/X7R guidance; the 10 µF value is from the Typical Application Circuit.)
+- **Bulk reservoir:** one **47 µF 25 V X5R 1210 (NEW, VERIFY — e.g. Samsung CL32A476MQJNNNE)** on +5V near the USB-C VBUS entry where +5V branches to both bucks. 25 V rating so DC-bias derating at 5 V still leaves ~30–40 µF effective. No-new-footprint alt: **22 µF 25 V 0805** (reuse C0805 footprint).
+- **Keep** C3/C5 (2×100 nF) as HF decoupling. Effective bulk after fix ≈ 44–54 µF vs Rev-A's 0.2 µF (~250×).
+- **Worst-case CIN RMS = IO_MAX/2 = 0.5 A** (occurs at Vo≈Vin/2, i.e. the 0.9 V-from-5 V core buck) — not a limiter for these caps.
+- **Placement:** local 10 µF tight to each VIN pad with a short GND loop stitched to In1; the 47 µF near VBUS. New refdes C48/C49 (local) + C50 (bulk); C47 is current highest.
+
+### Fix 2 — UART0 series resistors
+- **2× 510 Ω 0603 (C23193, reuse — no new BOM value).** 510 Ω is inside the doc's 100 Ω–1 kΩ band and limits ESD-diode back-injection to ~5.1 mA @3.3 V / ~8.4 mA @5 V (both under the ~10 mA goal; 330 Ω @5 V would be ~13 mA, worse). Negligible at 115200 baud (τ ≈ 25 ns ≪ 8.68 µs bit).
+- **Net insertion:** cut each line at the header and put R in series.
+  - `/UART0_TX`: U1 pad35 (PE2) → **R15** → header H11-18 (new header-side net `/UART0_TX_HDR`).
+  - `/UART0_RX`: U1 pad33 (PE3) → **R16** → header H10-18 (new `/UART0_RX_HDR`). **R16 is the critical one** — PE3 is the SoC *input* whose ESD diode to VCC-PE (=+3.3V, pad34) back-powered/killed Rev-A board #1.
+- Refdes R15/R16 free (R1–R14 exist). **Optional ESD clamp = DNP/omit** for a bench header (see note below).
+
+### Fix 3 — USB D+/D- to 90 Ω ⚠️ *corrects the doc's original "tighten the pair" advice*
+- **The lever is a NARROWER trace, not a tighter gap.** At w=0.20 mm, the differential *ceiling* (gap→∞) is only ~**84–85 Ω** = 2·Z0se·mask, so Rev-A sits ~**80–84 Ω** and **tightening the gap can only push it lower**. To reach 90 Ω you must raise single-ended Z0 by narrowing the trace.
+- **Primary target: w = 0.15 mm, edge-gap = 0.20 mm (c-c 0.35 mm) → ~90–91 Ω.** Alt (tighter): w = 0.13 mm / gap 0.13 mm → ~90 Ω (near JLC economy min feature — prefer 0.15 mm).
+- Model: Hammerstad-Jensen + IPC-2141 edge-coupled, h=0.1 mm, Er=4.5, t=0.035 mm, ×0.955 soldermask. **±few Ω estimate — confirm in JLCPCB's impedance calculator for the ordered stackup.**
+- ⚠️ **Sensitivity:** the answer flips on the real L1→In1 prepreg height. If JLC builds ~0.21 mm prepreg (a common 4-layer default) instead of 0.1 mm, the correct geometry becomes ~w=0.20–0.22 mm / gap 0.13–0.15 mm. **Order impedance-controlled and pin the prepreg height.**
+- **Crosstalk:** the +0V9 core rail escapes U1 pad116 right next to DP (pad115, 0.4 mm pitch) and shadows the pair to ~0.2 mm — route +0V9 away at the escape, keep ≥0.5 mm edge clearance, solid In1 GND under the whole pair. Also make the gap **uniform** (Rev-A varies 0.20→0.30 mm along the run).
+- No BOM/net change — geometry only. Keep on F.Cu, 0 vias (already good).
+
+### Fix 4 — SD card-detect (recommended to wire, since a respin is happening anyway)
+- **1× 10 KΩ 0603 (C99198, reuse) as R15**… ⚠️ **refdes clash: Fix 2 also uses R15/R16 — assign the CD pull-up a distinct free refdes (e.g. R17).**
+- **Nets:** U4 pad9 (CARD_DETECT, currently `unconnected-(U4-CARD_DETECT-Pad9)`) → reassign to **`/PF6`**; add pull-up **R17: /PF6 → +3.3V** (use `+3.3V` verbatim, *not* `+3V3`). Resulting /PF6 = U1 pad13, H10 pad13, U4 pad9, R17.1.
+- **PF6 verified free** — only U1 pad13 + H10 pad13 today; and PF6 is not an SD-bus pin (SD is PF0–5), it's a spare EINT GPIO. Delete the NC flag on U4 pin 9 first.
+- **Placement:** R17 on B.Cu next to U4; grab +3.3V at U4 pad4 (VDD); tie /PF6 at the thru-hole H10 pad13 (no extra via needed).
+- **SW implication:** afterward, drop `broken-cd` + `/delete-property/ cd-gpios;` from `&mmc0` — **but that DT edit lives in the gameboy-v3 repo, not this board**, and until it lands the wired CD is simply ignored (safe to ship HW independently). Confirm CD switch polarity (assumed CD→GND on insert = active-low, matching the MangoPi DT).
+- Fallback: **Option 2 = leave unwired, keep `broken-cd`** (zero HW change, already proven on silicon).
+
+---
+
 ### Fix 1 — VBUS bulk input capacitor (REQUIRED) ⭐ root cause of the instability
 
 **Problem.** The `+5V` / VBUS rail (USB-C in) feeds **both** buck converters
