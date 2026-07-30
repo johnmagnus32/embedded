@@ -56,6 +56,13 @@ OVERLAY_DIR="${PROJECT_DIR}/overlay"
 # The board's memory + storage layout (NOR/DRAM offsets, SD image geometry).
 # shellcheck source=../board/t113-gameboy/layout.env
 [ -f "${BOARD_DIR}/layout.env" ] && source "${BOARD_DIR}/layout.env"
+# The board's provider build-targets (KERNEL_TARGET/ROOTFS_TARGET). board.mk is
+# strict KEY=value so it's sourceable here AND includable by forge/providers.mk.
+# Fall back to the board name's leading token if the board ships no board.mk.
+# shellcheck source=../board/t113-gameboy/board.mk
+[ -f "${BOARD_DIR}/board.mk" ] && source "${BOARD_DIR}/board.mk"
+KERNEL_TARGET="${KERNEL_TARGET:-${BOARD_NAME%%-*}}"
+ROOTFS_TARGET="${ROOTFS_TARGET:-${KERNEL_TARGET}}"
 
 # =============================================================================
 # PINNED VERSIONS  (the reproducibility contract)

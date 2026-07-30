@@ -54,5 +54,15 @@ else
     (needs forge overlay-staging). Use gv3+gv3 or musl+busybox.)
 endif
 
+# --- board target mapping (Phase 4: engine is board-agnostic) -----------------
+# The board tells the engine which build-target each generic provider builds for
+# THIS board — the engine must not bake in "t113". board.mk is KEY=value (also
+# bash-sourceable by env.sh). Fall back to the board name's leading token so a
+# board without a board.mk still resolves sensibly.
+BOARD_MK := $(PRODUCT_DIR)/board/$(BOARD)/board.mk
+-include $(BOARD_MK)
+KERNEL_TARGET := $(strip $(if $(KERNEL_TARGET),$(KERNEL_TARGET),$(firstword $(subst -, ,$(BOARD)))))
+ROOTFS_TARGET := $(strip $(if $(ROOTFS_TARGET),$(ROOTFS_TARGET),$(KERNEL_TARGET)))
+
 # config string used for bundle/image names
 CFG := $(BOOTLOADER)-$(BUILD_KERNEL)-$(BUILD_ROOTFS)$(if $(LCD),-lcd_$(LCD))

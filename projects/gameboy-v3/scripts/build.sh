@@ -98,9 +98,9 @@ build_kernel() {
       ;;
     custom)
       [ -z "$LCD" ] || note "LCD=$LCD only affects the mainline kernel; custom kernel has no DRM stack (ignored)."
-      log "kernel=custom: building kernel/ (BOARD=t113 zImage-headed .bin)"
-      make -C "${KERNEL_DIR}" BOARD=t113 >/dev/null || die "custom kernel build failed"
-      KERNEL_ARTIFACT="${KERNEL_DIR}/build/t113/gv3kernel.bin"
+      log "kernel=custom: building kernel/ (BOARD=${KERNEL_TARGET} zImage-headed .bin)"
+      make -C "${KERNEL_DIR}" BOARD="${KERNEL_TARGET}" >/dev/null || die "custom kernel build failed"
+      KERNEL_ARTIFACT="${KERNEL_DIR}/build/${KERNEL_TARGET}/gv3kernel.bin"
       DTB_ARTIFACT="${OUTPUT_DIR}/${KERNEL_DTB}"
       ;;
   esac
@@ -116,8 +116,8 @@ build_rootfs() {
       INITRD_ARTIFACT="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
       ;;
     scratch)
-      log "rootfs=scratch: building rootfs/ (BOARD=t113)"
-      make -C "${ROOTFS_DIR_SCRATCH}" BOARD=t113 rootfs >/dev/null || die "scratch rootfs build failed"
+      log "rootfs=scratch: building rootfs/ (BOARD=${ROOTFS_TARGET})"
+      make -C "${ROOTFS_DIR_SCRATCH}" BOARD="${ROOTFS_TARGET}" rootfs >/dev/null || die "scratch rootfs build failed"
       INITRD_ARTIFACT="${ROOTFS_DIR_SCRATCH}/build/rootfs.cpio.gz"
       ;;
   esac

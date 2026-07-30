@@ -38,7 +38,7 @@ BACKEND_ENV := BOOTLOADER=$(BOOTLOADER) KERNEL=$(BUILD_KERNEL) ROOTFS=$(BUILD_RO
 # `image` depends on the three component layers + the assembler; each layer
 # depends on the toolchain. Make orders them from the deps, not from NN- names.
 image: kernel bootloader rootfs
-	@$(MAKE) --no-print-directory -f $(dir $(lastword $(MAKEFILE_LIST)))image.mk \
+	@$(MAKE) --no-print-directory -f $(FORGE_DIR)/image.mk \
 	   BACKEND_ENV="$(BACKEND_ENV)" MEDIA=$(MEDIA) CFG=$(CFG) BUNDLE=$(BUNDLE) \
 	   PRODUCT_DIR=$(PRODUCT_DIR) SCRIPTS=$(SCRIPTS) assemble
 
@@ -48,10 +48,11 @@ toolchain:
 # Each layer delegates to its backend (forge/<layer>.mk), which shells the proven
 # builder. Ordered after toolchain via a normal prerequisite.
 kernel bootloader rootfs: toolchain
-	@$(MAKE) --no-print-directory -f $(dir $(lastword $(MAKEFILE_LIST)))$@.mk \
+	@$(MAKE) --no-print-directory -f $(FORGE_DIR)/$@.mk \
 	   BACKEND_ENV="$(BACKEND_ENV)" PRODUCT_DIR=$(PRODUCT_DIR) SCRIPTS=$(SCRIPTS) \
 	   KERNEL=$(KERNEL) BOOTLOADER=$(BOOTLOADER) LIBC=$(LIBC) COREUTILS=$(COREUTILS) \
 	   BUILD_KERNEL=$(BUILD_KERNEL) BUILD_ROOTFS=$(BUILD_ROOTFS) LCD=$(LCD) \
+	   KERNEL_TARGET=$(KERNEL_TARGET) ROOTFS_TARGET=$(ROOTFS_TARGET) \
 	   KERNEL_SRC=$(KERNEL_SRC) BOOTLDR_SRC=$(BOOTLDR_SRC) build
 
 flash: image
@@ -66,6 +67,7 @@ print-config:
 	@echo "  LIBC       = $(LIBC)        -> $(LIBC_SRC)"
 	@echo "  COREUTILS  = $(COREUTILS)   -> $(COREUTILS_SRC)"
 	@echo "  BOARD=$(BOARD)  MEDIA=$(MEDIA)  LCD=$(if $(LCD),$(LCD),none)"
+	@echo "  board targets: KERNEL_TARGET=$(KERNEL_TARGET)  ROOTFS_TARGET=$(ROOTFS_TARGET)"
 	@echo "  backend args: KERNEL=$(BUILD_KERNEL) ROOTFS=$(BUILD_ROOTFS) BOOTLOADER=$(BOOTLOADER)"
 	@echo "  cfg: $(CFG)"
 

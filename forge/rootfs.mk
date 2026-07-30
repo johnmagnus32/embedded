@@ -12,8 +12,8 @@
 .PHONY: build
 ifeq ($(BUILD_ROOTFS),scratch)
 build:
-	@echo "[forge] rootfs=scratch -> $(PRODUCT_DIR)/rootfs (our libc + coreutils, BOARD=t113)"
-	@$(MAKE) --no-print-directory -C $(PRODUCT_DIR)/rootfs BOARD=t113 rootfs
+	@echo "[forge] rootfs=scratch -> $(PRODUCT_DIR)/rootfs (our libc + coreutils, BOARD=$(ROOTFS_TARGET))"
+	@$(MAKE) --no-print-directory -C $(PRODUCT_DIR)/rootfs BOARD=$(ROOTFS_TARGET) rootfs
 else
 build:
 	@echo "[forge] rootfs=busybox -> scripts/03-rootfs.sh"
