@@ -149,12 +149,42 @@ make olddefconfig >/dev/null
 grep -q "^CONFIG_CONS_INDEX=${UBOOT_CONS_INDEX}$" .config \
   || die "CONFIG_CONS_INDEX did not take — check symbol name for this U-Boot version"
 
+# --- 3b. SPI-NOR flash support (the `sf` command) ----------------------------
+# The NOR boot path FEL-loads U-Boot proper and drives `sf probe`/`sf read` to
+# pull the kernel+DTB+initramfs out of the on-board W25Q128 (see flash.sh). The
+# sunxi defconfig does NOT enable this, so add it reproducibly here.
+#
+# ENABLE ORDER MATTERS: the whole SPI-flash Kconfig menu is behind `if MTD`, so
+# MTD must be enabled FIRST or olddefconfig silently drops SPI_FLASH/CMD_SF (this
+# bit us — see BOOT-MATRIX.md §"Reproducible sf build"). scripts/config applies in
+# order, then olddefconfig resolves deps; we verify the load-bearing symbols stuck.
+log "enabling SPI-NOR flash (MTD -> SPI_FLASH -> CMD_SF; W25Q128 = Winbond)"
+./scripts/config --enable MTD --enable SPI_FLASH --enable DM_SPI_FLASH \
+                 --enable SPI_FLASH_WINBOND --enable SPI_FLASH_SFDP_SUPPORT --enable CMD_SF
+make olddefconfig >/dev/null
+grep -q "^CONFIG_CMD_SF=y$" .config \
+  || die "CONFIG_CMD_SF did not take — SPI-flash menu likely still gated (MTD must precede it)"
+grep -q "^CONFIG_SPI_FLASH=y$" .config \
+  || die "CONFIG_SPI_FLASH did not take — check the MTD-first enable order"
+
 # --- 4. control-DTB console overlay (U-Boot proper console → UART0) ----------
 log "applying UART0 console overlay to the control DTB"
 cp -f "${BOARD_DIR}/${CONSOLE_OVERLAY}" "${BOARD_DTS_DIR_REL}/${CONSOLE_OVERLAY}"
 # Append the include once (pristine .dts was just restored, so it's absent).
 printf '\n%s\n' "${INCLUDE_LINE}" >> "${BOARD_DTS_REL}"
 grep -qF "${INCLUDE_LINE}" "${BOARD_DTS_REL}" || die "failed to append console overlay include"
+
+# --- 4b. control-DTB NOR overlay (so `sf probe` finds the on-board W25Q128) ---
+# CONFIG_CMD_SF alone gives the `sf` COMMAND, but `sf probe` still needs the chip
+# DECLARED in U-Boot proper's control DTB (spi0 + flash@0 jedec,spi-nor on CS0/PC3)
+# or it reports "No SPI flash selected". Same overlay pattern as the console one.
+# Verified on silicon: sf probe -> "Detected w25q128 ... 16 MiB" (BOOT-MATRIX.md).
+NOR_OVERLAY="nor-spi.dtsi"
+NOR_INCLUDE="#include \"${NOR_OVERLAY}\""
+log "applying SPI-NOR overlay to the control DTB (declares flash@0 for sf probe)"
+cp -f "${BOARD_DIR}/${NOR_OVERLAY}" "${BOARD_DTS_DIR_REL}/${NOR_OVERLAY}"
+printf '\n%s\n' "${NOR_INCLUDE}" >> "${BOARD_DTS_REL}"
+grep -qF "${NOR_INCLUDE}" "${BOARD_DTS_REL}" || die "failed to append NOR overlay include"
 
 # --- 5. build ----------------------------------------------------------------
 JOBS="$(nproc)"
