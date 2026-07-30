@@ -1,0 +1,45 @@
+// lcd-ili9341.dtsi — Adafruit 2.4" 240x320 ILI9341 SPI LCD on the t113-breakout.
+//
+// The panel is an external module wired to the header with jumpers, on SPI1
+// (NOT SPI0 — that's the on-board W25Q128 NOR flash bus). SPI1 is also the T113's
+// DBI-capable controller. Mainline has a first-class DRM driver for this exact
+// Adafruit module: drivers/gpu/drm/tiny/ili9341.c, compatible "adafruit,yx240qv29"
+// (MIPI-DBI over SPI, write-only — MISO is unused, so it's not wired).
+//
+// Wiring (jumpers header -> panel):
+//   panel SCK  -> PD11 (H13)  SPI1-CLK   func "spi1"
+//   panel MOSI -> PD12 (H13)  SPI1-MOSI  func "spi1"
+//   panel TCS  -> PD10 (H12)  SPI1-CS0   func "spi1"
+//   panel D/C  -> PD14 (H12)  plain GPIO (bank D=3, pin 14)
+//   panel RST  -> PD15 (H13)  plain GPIO (bank D=3, pin 15)
+//   panel VIN  -> 3V3,  GND -> GND,  LITE -> 3V3 (backlight always on)
+//   panel MISO -> not connected (driver is write-only)
+//
+// #included into the board .dts at build (same pattern as nor-spi.dtsi /
+// uart0-console.dtsi). Requires the kernel built with CONFIG_DRM_MIPI_DBI +
+// CONFIG_TINYDRM_ILI9341 (see the kernel config fragment in the LCD bring-up).
+
+&pio {
+	spi1_pins: spi1-pins {
+		pins = "PD10", "PD11", "PD12";   /* CS0, CLK, MOSI */
+		function = "spi1";
+	};
+};
+
+&spi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi1_pins>;
+	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	display@0 {
+		compatible = "adafruit,yx240qv29", "ilitek,ili9341";
+		reg = <0>;                       /* chip-select 0 (PD10 = SPI1-CS0) */
+		spi-max-frequency = <10000000>;  /* binding fixes ILI9341 DBI at 10 MHz */
+		dc-gpios = <&pio 3 14 0>;         /* PD14, D/C (bank 3=D, active high) */
+		reset-gpios = <&pio 3 15 1>;      /* PD15, RESET (active LOW) */
+		rotation = <0>;                   /* 0/90/180/270; tweak to taste */
+		/* no backlight phandle: LITE is tied to 3V3 (always on) */
+	};
+};

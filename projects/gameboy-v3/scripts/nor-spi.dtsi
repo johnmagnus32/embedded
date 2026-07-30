@@ -1,0 +1,22 @@
+// nor-spi.dtsi — enable SPI0 + the on-board W25Q128 SPI-NOR on the t113-breakout.
+//
+// The reused D1/T113 base DT ships spi0 (spi@4025000) status="disabled" with no
+// flash child (the MangoPi MQ-R has no SPI-NOR; our breakout adds one on SPI0 /
+// PC2-PC5). Upstream already defines the `spi0` label and the `spi0_pins` group
+// (PC2-PC5, function "spi0"), so we only enable the controller, bind the pins,
+// and declare the flash — mirroring the uart0-console.dtsi overlay pattern.
+//
+// Used by U-Boot (for the `sf` command: probe/read/erase the NOR) and reusable by
+// the kernel if we ever want MTD access. #included into the board .dts at build.
+
+&spi0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi0_pins>;
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";   /* W25Q128 is SFDP/JEDEC-discoverable */
+		reg = <0>;                      /* chip-select 0 (PC3 = SPI0-CS0)     */
+		spi-max-frequency = <40000000>; /* 40 MHz — conservative for the bodge */
+	};
+};

@@ -14,6 +14,6 @@
 #ifndef _GV3_SYS_SYSCALL_H
 #define _GV3_SYS_SYSCALL_H
 
-#include <gv3_syscalls.h>   /* installed from kernel/uapi/gv3_syscalls.h */
+#include <gv3_syscalls.h>   /* installed from kernel/include/uapi/gv3_syscalls.h */
 
 #endif /* _GV3_SYS_SYSCALL_H */

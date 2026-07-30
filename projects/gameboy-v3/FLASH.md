@@ -3,15 +3,12 @@
 How to put the built image on a microSD, wire up the serial console, and boot
 the T113-S3 on the t113-breakout board to a shell prompt.
 
-Build the image first (Steps 0–4):
+Build the SD image (toolchain once, then one command):
 
 ```bash
-./scripts/00-toolchain.sh
-./scripts/01-uboot.sh
-./scripts/02-kernel.sh
-./scripts/03-rootfs.sh
-./scripts/04-image.sh
-# → build/output/gameboy-v3-sd.img
+./scripts/00-toolchain.sh                 # once
+MEDIA=sd ./scripts/build.sh               # → build/output/gameboy-v3-<cfg>-sd.img
+# defaults to custom+linux+busybox; add BOOTLOADER=uboot / KERNEL=... / ROOTFS=... to vary
 ```
 
 ---

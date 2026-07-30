@@ -15,6 +15,17 @@
 #include "sdcard.h"
 #include "fat.h"
 #include "fdt.h"
+#include "spinor.h"
+#include "nor_layout.h"
+
+/* Boot source for Stage 3: read the payload from SD/FAT (BOOT_SRC_SD) or from
+ * raw SPI-NOR offsets (BOOT_SRC_NOR). Selected at compile time via -DBOOT_SRC=…;
+ * defaults to NOR (the remote FEL-load-loader + components-in-NOR dev loop). */
+#define BOOT_SRC_SD   0
+#define BOOT_SRC_NOR  1
+#ifndef BOOT_SRC
+#define BOOT_SRC BOOT_SRC_NOR
+#endif
 
 /* boot_kernel: ARM Linux handoff (in start.S). Sets r0=0/r1=~0/r2=dtb, MMU off,
  * and branches to the kernel entry. Never returns. */
@@ -36,7 +47,7 @@ int printf(const char *fmt, ...);   /* tiny printf in dram_shim.c */
 #define DTB_MAX       0x00100000u   /* 1 MiB cap (dtb ~18K)      */
 #define INITRD_MAX    0x00400000u   /* 4 MiB cap (initrd ~1.2M)  */
 
-#define KERNEL_NAME   "zImage"
+#define KERNEL_NAME   "zImage"      /* mainline zImage OR custom zImage-headed  */
 #define DTB_NAME      "sun8i-t113s-mangopi-mq-r-t113.dtb"
 #define INITRD_NAME   "initramfs.cpio.gz"
 
@@ -134,7 +145,9 @@ void main(void)
 	else
 		printf("Memory test FAILED: %d mismatches\n", errs);
 
-	/* ---- Stage 3: read the boot payload off the SD card ---------------- */
+	/* ---- Stage 3: read the boot payload (SD/FAT or SPI-NOR) ------------- */
+	long ksz, dsz, isz;
+#if BOOT_SRC == BOOT_SRC_SD
 	uart0_puts("\nStage 3: reading boot files from SD ...\n");
 	if (sd_init() != 0) {
 		uart0_puts("!! SD init FAILED\n");
@@ -144,14 +157,47 @@ void main(void)
 		uart0_puts("!! FAT mount FAILED\n");
 		return;
 	}
-
-	long ksz = fat_load(KERNEL_NAME, (void *)KERNEL_ADDR, KERNEL_MAX);
-	long dsz = fat_load(DTB_NAME,    (void *)DTB_ADDR,    DTB_MAX);
-	long isz = fat_load(INITRD_NAME, (void *)INITRD_ADDR, INITRD_MAX);
+	/* Both kernels are named "zImage" (mainline zImage or our custom
+	 * zImage-headed image) — one name, one interface. */
+	ksz = fat_load(KERNEL_NAME, (void *)KERNEL_ADDR, KERNEL_MAX);
+	dsz = fat_load(DTB_NAME,    (void *)DTB_ADDR,    DTB_MAX);
+	isz = fat_load(INITRD_NAME, (void *)INITRD_ADDR, INITRD_MAX);
 	if (ksz < 0 || dsz < 0 || isz < 0) {
 		uart0_puts("!! failed to load one or more boot files\n");
 		return;
 	}
+#else /* BOOT_SRC_NOR */
+	uart0_puts("\nStage 3: reading boot components from SPI-NOR ...\n");
+	if (spinor_init() != 0) {
+		uart0_puts("!! SPI-NOR init FAILED\n");
+		return;
+	}
+	/* Read the component table at NOR offset 0 (GV3NOR1 magic; see nor_layout.h). */
+	struct nor_table tbl;
+	if (spinor_read(NOR_TABLE_OFF, &tbl, sizeof(tbl)) != 0) {
+		uart0_puts("!! NOR table read FAILED\n");
+		return;
+	}
+	if (tbl.magic[0] != 'G' || tbl.magic[1] != 'V' || tbl.magic[2] != '3' ||
+	    tbl.magic[3] != 'N' || tbl.magic[4] != 'O' || tbl.magic[5] != 'R') {
+		printf("!! bad NOR table magic (%c%c%c%c%c%c)\n",
+		       tbl.magic[0], tbl.magic[1], tbl.magic[2],
+		       tbl.magic[3], tbl.magic[4], tbl.magic[5]);
+		return;
+	}
+	printf("NOR table: kernel@0x%x/%u  dtb@0x%x/%u  initrd@0x%x/%u\n",
+	       tbl.kernel_off, tbl.kernel_size, tbl.dtb_off, tbl.dtb_size,
+	       tbl.initrd_off, tbl.initrd_size);
+	if (spinor_read(tbl.kernel_off, (void *)KERNEL_ADDR, tbl.kernel_size) != 0 ||
+	    spinor_read(tbl.dtb_off,    (void *)DTB_ADDR,    tbl.dtb_size)    != 0 ||
+	    spinor_read(tbl.initrd_off, (void *)INITRD_ADDR, tbl.initrd_size) != 0) {
+		uart0_puts("!! NOR component read FAILED\n");
+		return;
+	}
+	ksz = tbl.kernel_size;
+	dsz = tbl.dtb_size;
+	isz = tbl.initrd_size;
+#endif
 
 	printf("\nAll loaded into DRAM:\n");
 	printf("  kernel   @ 0x%x  (%u bytes)\n", KERNEL_ADDR, (unsigned)ksz);
@@ -187,6 +233,15 @@ void main(void)
 		return;
 	}
 
+	/*
+	 * Both kernels are zImages: the mainline self-decompressing zImage and our
+	 * custom kernel (which carries a zImage-compatible header — `b _start` at
+	 * offset 0, magic at 0x24). A zImage is entered at its load address (offset
+	 * 0), MMU/caches off, r0=0/r1=~0/r2=DTB — exactly what boot_kernel sets up.
+	 * So we jump to KERNEL_ADDR for either kernel; no format handling needed
+	 * (same interface U-Boot's `bootz` uses).
+	 */
+	(void)ksz;
 	uart0_puts("Jumping to kernel. Bye from the bootloader!\n\n");
 	boot_kernel(KERNEL_ADDR, DTB_ADDR);   /* never returns */
 

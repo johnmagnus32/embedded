@@ -23,7 +23,7 @@ LIBC  := libc
 # so the libc builds standalone against a snapshot rather than reaching into
 # ../kernel live. Staging into build/ (not the source tree) keeps libc/include/
 # pure source and makes `make clean` a single `rm -rf build`.
-KERNEL_UAPI_DIR := ../kernel/uapi
+KERNEL_UAPI_DIR := ../kernel/include/uapi
 UAPI_HDRS       := gv3_syscalls.h gv3_abi.h
 STAGE_INC       := $(BUILD)/include
 UAPI_DST        := $(patsubst %,$(STAGE_INC)/%,$(UAPI_HDRS))
@@ -118,14 +118,13 @@ stage: $(patsubst %,$(BUILD)/bin/%,$(SHIP_PROGS)) init.sh $(if $(filter dynamic,
 	@mkdir -p $(STAGE)/bin
 	@install -m 0755 init.sh $(STAGE)/init
 	@for p in $(SHIP_PROGS); do install -m 0755 $(BUILD)/bin/$$p $(STAGE)/bin/$$p; done
-	@# dynamic build: ship libc.so as BOTH the DT_NEEDED library (/lib/libc.so) and
-	@# the interpreter path (/lib/ld-gv3.so.1). Like musl, one file, two names —
-	@# the dynamic linker and libc are the same object. (The linker itself is TODO;
-	@# this just puts the file where PT_INTERP/DT_NEEDED will look for it.)
+	@# dynamic build: ship the real ld-gv3.so.1 (the dynamic linker, ld/Makefile)
+	@# and libc.so into /lib at the paths the programs' PT_INTERP + DT_NEEDED record.
 	@if [ "$(LINK)" = "dynamic" ]; then \
+	  $(MAKE) -C ld BOARD=$(BOARD) >/dev/null 2>&1 || exit 1; \
 	  mkdir -p $(STAGE)/lib; \
+	  install -m 0755 $(BUILD)/ld-gv3.so.1 $(STAGE)/lib/ld-gv3.so.1; \
 	  install -m 0755 $(BUILD)/libc.so $(STAGE)/lib/libc.so; \
-	  ln -sf libc.so $(STAGE)/lib/ld-gv3.so.1; \
 	fi
 
 # ---- package the staging tree into a bootable initramfs (root-owned cpio) ----

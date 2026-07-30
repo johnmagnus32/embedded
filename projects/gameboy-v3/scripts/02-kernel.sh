@@ -104,6 +104,35 @@ cp -f "${SCRIPTS_DIR}/${CONSOLE_OVERLAY}" "${BOARD_DTS_DIR_REL}/${CONSOLE_OVERLA
 printf '\n%s\n' "${INCLUDE_LINE}" >> "${BOARD_DTS_REL}"
 grep -qF "${INCLUDE_LINE}" "${BOARD_DTS_REL}" || die "failed to append console overlay include"
 
+# --- 4b. OPTIONAL: ILI9341 SPI LCD (opt-in via LCD=ili9341) ------------------
+# External Adafruit 2.4" ILI9341 panel on SPI1 (PD10-12) + D/C PD14 / RST PD15.
+# Off by default (no panel on a bare board); enable with: LCD=ili9341 ./02-kernel.sh
+# Adds the mainline DRM tiny driver (selects DRM_MIPI_DBI/KMS/GEM_DMA/backlight)
+# + FBDEV emulation (for a /dev/fb0 test path) + the DT overlay. See
+# scripts/lcd-ili9341.dtsi and LCD-ILI9341.md.
+if [ "${LCD:-}" = "ili9341" ]; then
+  log "LCD=ili9341: enabling TINYDRM_ILI9341 + FBDEV emulation + /dev/fb0 node"
+  # TINYDRM_ILI9341 selects DRM_MIPI_DBI/DRM_KMS_HELPER/DRM_GEM_DMA_HELPER/
+  # BACKLIGHT_CLASS_DEVICE automatically; we add FBDEV_EMULATION for the DRM->fbdev
+  # console, and FB_DEVICE to actually create the /dev/fb0 CHAR NODE (without it
+  # the driver's fbdev registers + paints the console but no /dev/fb0 exists, so
+  # `cat > /dev/fb0` can't work — verified on silicon: /proc/fb empty, no node).
+  # FB_DEVICE only needs FB_CORE (already on via sunxi_defconfig); we do NOT need
+  # the full legacy CONFIG_FB stack.
+  ./scripts/config --enable DRM_FBDEV_EMULATION --enable TINYDRM_ILI9341 --enable FB_DEVICE
+  make olddefconfig </dev/null >/dev/null   # </dev/null: any NEW symbol takes its default, never prompts
+  grep -qE '^CONFIG_TINYDRM_ILI9341=(y|m)' .config \
+    || die "failed to enable CONFIG_TINYDRM_ILI9341 (deps DRM && SPI must hold)"
+  grep -qE '^CONFIG_FB_DEVICE=y' .config \
+    || die "FB_DEVICE not enabled — no /dev/fb0 node will be created"
+  LCD_OVERLAY="lcd-ili9341.dtsi"
+  LCD_INCLUDE="#include \"${LCD_OVERLAY}\""
+  cp -f "${SCRIPTS_DIR}/${LCD_OVERLAY}" "${BOARD_DTS_DIR_REL}/${LCD_OVERLAY}"
+  grep -qF "${LCD_INCLUDE}" "${BOARD_DTS_REL}" \
+    || printf '\n%s\n' "${LCD_INCLUDE}" >> "${BOARD_DTS_REL}"
+  log "LCD overlay applied (spi1 + adafruit,yx240qv29 panel node)"
+fi
+
 # --- 5. build zImage + DTB ---------------------------------------------------
 JOBS="$(nproc)"
 log "building ${KERNEL_IMAGE_TARGET} + DTB (-j${JOBS}) ..."

@@ -20,12 +20,18 @@ SECTIONS
 	. = LOAD_ADDR;
 
 	.text : {
-		KEEP(*(.text.boot))     /* _start first */
+		KEEP(*(.text.head))     /* zImage boot header: b _start @0x00, magic @0x24 */
+		KEEP(*(.text.boot))     /* _vectors + _start                              */
 		*(.text*)
 	}
 
 	.rodata : { *(.rodata*) }
 	.data   : { *(.data*)   }
+
+	/* End of the LOADABLE image (matches the raw .bin size: everything below is
+	 * NOBITS .bss / reserved stack space, absent from the file). */
+	. = ALIGN(4);
+	_image_end = .;
 
 	. = ALIGN(8);
 	_bss_start = .;
@@ -56,3 +62,9 @@ SECTIONS
 
 	/DISCARD/ : { *(.comment) *(.ARM.attributes) *(.note*) }
 }
+/* The zImage header field values live in start.S (.text.head) as literals, NOT
+ * as linker symbols referenced from asm: this kernel links as a PIE, so a
+ * `.word <absolute-symbol>` would emit an R_ARM_RELATIVE dynamic relocation that
+ * nothing processes here and needlessly grows the image. See the header comment
+ * in arch/arm/start.S. Only _image_start/_image_end (defined above) are needed,
+ * and start.S uses them as an assemble-relative difference (folded, no reloc). */

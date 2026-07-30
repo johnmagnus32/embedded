@@ -9,26 +9,29 @@
 
 ENTRY(_start)
 
-MEMORY
-{
-	SRAM (rwx) : ORIGIN = 0x00020000, LENGTH = 160K
-}
+/* Load/run address. Defaults to 0x20000 (the SPL slot the BROM uses for a
+ * medium boot). For FEL delivery, xfel cannot bulk-write 0x20000 (it collides
+ * with the live FEL USB buffers in SRAM A1), so the FEL build overrides this to
+ * a higher SRAM address via `-Wl,--defsym=LOAD_ADDR=0x28000`. Nothing in the
+ * code hardcodes 0x20000 (the eGON branch is relative; stack/BSS use symbols),
+ * so the image runs correctly at whichever address it's linked + loaded to. */
+LOAD_ADDR = DEFINED(LOAD_ADDR) ? LOAD_ADDR : 0x00020000;
 
 SECTIONS
 {
-	. = 0x00020000;
+	. = LOAD_ADDR;
 
 	.text : {
 		KEEP(*(.text.head))     /* eGON header first — BROM enters here */
 		*(.text*)
-	} > SRAM
+	}
 
-	.rodata : { *(.rodata*) } > SRAM
-	.data   : { *(.data*)   } > SRAM
+	.rodata : { *(.rodata*) }
+	.data   : { *(.data*)   }
 
 	. = ALIGN(8);
 	_bss_start = .;
-	.bss : { *(.bss*) *(COMMON) } > SRAM
+	.bss : { *(.bss*) *(COMMON) }
 	. = ALIGN(8);
 	_bss_end = .;
 

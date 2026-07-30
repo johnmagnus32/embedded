@@ -16,6 +16,7 @@
 #include "ramfs.h"
 
 int printf(const char *fmt, ...);
+void sync_icache(void);          /* mmu_asm.S — clean D-cache + invalidate I-cache/BP */
 
 /* mmap flag/prot bits (ARM = asm-generic; verified). */
 #define PROT_NONE   0x0
@@ -140,7 +141,6 @@ static int copy_file_into(struct proc *p, uint32_t va, uint32_t len,
  * not enforced per-page (our L2 pages are RWX) — see sys_mprotect. */
 long sys_mmap2(uint32_t addr, uint32_t len, int prot, int flags, int fd, uint32_t pgoff)
 {
-	(void)prot;
 	if (len == 0 || len > (USER_VA_MAX - USER_VA_MIN))
 		return -K_EINVAL;                  /* 0 or absurd len (PAGE_UP would wrap) */
 	if ((flags & MAP_TYPE) != MAP_PRIVATE)
@@ -187,6 +187,13 @@ long sys_mmap2(uint32_t addr, uint32_t len, int prot, int flags, int fd, uint32_
 			}
 			return rc;
 		}
+		/* If this maps CODE (PROT_EXEC) — the dynamic linker (ld.so) MAP_FIXEDs
+		 * each shared-library / PIE segment this way — the bytes we just copied are
+		 * dirty in the D-cache and the I-cache may hold stale lines for these VAs.
+		 * Sync so the program executes the real code (else a dynamically-linked
+		 * binary runs stale instructions on silicon; QEMU is I/D-coherent). */
+		if (prot & PROT_EXEC)
+			sync_icache();
 	}
 
 	if (!(flags & MAP_FIXED))

@@ -279,7 +279,7 @@ tree will read like a checklist of things you already understand.
 Assembles the four artifacts into one flashable full-disk image:
 
 ```bash
-./scripts/04-image.sh            # → build/output/gameboy-v3-sd.img (~64 MiB)
+MEDIA=sd ./scripts/build.sh      # → build/output/gameboy-v3-<cfg>-sd.img (~64 MiB)
 ```
 
 Image layout (verified after build):

@@ -28,6 +28,20 @@
 int printf(const char *fmt, ...);
 extern void mmu_set_ttbr0(uint32_t v);
 extern void mmu_tlbiall(void);
+extern void mmu_tlbimva(uint32_t va);
+extern void mmu_clean_dcache_line(uint32_t addr);   /* clean one line to PoC */
+
+/* Clean a range of freshly-written page-table descriptors to memory. TTBR0 walks
+ * are NON-cacheable, so the hardware walker reads descriptors from memory; with
+ * the D-cache enabled a plain store leaves the descriptor dirty in the cache and
+ * the walker would read the stale value. Clean every cache line the [base,base+n)
+ * table occupies. (Caches off -> cheap no-op.) Lines are 64 B on Cortex-A7; step
+ * by 32 to be safe on any line size. */
+static void clean_table(uint32_t base, uint32_t bytes)
+{
+	for (uint32_t off = 0; off < bytes; off += 32)
+		mmu_clean_dcache_line(base + off);
+}
 
 #define L1_ENTRIES   4096u
 #define L1_SIZE      16384u
@@ -63,6 +77,7 @@ uint32_t vm_create(void)
 	volatile uint32_t *ker = ptr(mmu_l1_base());
 	for (uint32_t i = 0; i < L1_ENTRIES; i++)
 		dst[i] = ker[i];
+	clean_table(l1, L1_SIZE);          /* make the new L1 visible to the walker */
 	return l1;
 }
 
@@ -88,7 +103,17 @@ static uint32_t l2_for(uint32_t l1_pa, uint32_t va, int create)
 	volatile uint32_t *t = ptr(l2);
 	for (uint32_t k = 0; k < L2_ENTRIES; k++)
 		t[k] = 0;
+	clean_table(l2, L2_SIZE);              /* zeroed L2 -> memory                */
 	l1[i] = L1_COARSE(l2);
+	mmu_clean_dcache_line((uint32_t)(uintptr_t)&l1[i]);   /* new coarse entry    */
+	/* BREAK-BEFORE-MAKE: this slot was a VALID 1 MB section (copied from the
+	 * kernel identity map as a Device section for VA < DRAM_BASE). We just changed
+	 * its block size (1 MB section -> 4 KB pages via a coarse entry). If this AS is
+	 * live, a speculatively-cached 1 MB section TLB entry would shadow the new page
+	 * mappings and send heap/mmap accesses to the wrong (Device-attributed) PA —
+	 * silent corruption on real silicon (invisible on QEMU). Invalidate the whole
+	 * 1 MB VA so the next access re-walks to the coarse table. */
+	mmu_tlbimva(va & 0xFFF00000u);
 	return l2;
 }
 
@@ -101,6 +126,7 @@ int vm_map_page(uint32_t l1_pa, uint32_t va, uint32_t pa)
 		return -2;
 	volatile uint32_t *t = ptr(l2);
 	t[l2_index(va)] = L2_SMALL_BASE(pa) | L2_SMALL_USER;
+	mmu_clean_dcache_line((uint32_t)(uintptr_t)&t[l2_index(va)]);  /* PTE -> memory */
 	return 0;
 }
 
@@ -127,14 +153,11 @@ int vm_unmap_page(uint32_t l1_pa, uint32_t va)
 	if (!L2_IS_VALID(t[l2_index(va)]))
 		return -1;
 	t[l2_index(va)] = 0;
-	/* Barrier BEFORE the TLB op: ensure the descriptor store above is visible to
-	 * the page-table walker before we invalidate, else the walk could reload the
-	 * stale entry (ARM ARM B3.10.1 recommended sequence: store; DSB; TLBI; DSB;
-	 * ISB — the trailing DSB+ISB live in mmu_tlbimva). Without this leading DSB
-	 * the unmap can silently not take effect. Plain dsb to match mmu_asm.S. */
-	__asm__ volatile("dsb" ::: "memory");
-	/* If this VA is in the currently-active address space, drop its TLB entry. */
-	extern void mmu_tlbimva(uint32_t va);
+	/* Clean the cleared descriptor to memory (non-cacheable walks read from
+	 * memory, so a dirty line would leave the OLD mapping live), then the ARM ARM
+	 * B3.10.1 sequence: store; DSB; TLBI; DSB; ISB (the trailing DSB+ISB live in
+	 * mmu_tlbimva; mmu_clean_dcache_line ends in a DSB, covering the leading one). */
+	mmu_clean_dcache_line((uint32_t)(uintptr_t)&t[l2_index(va)]);
 	mmu_tlbimva(va & ~0xFFFu);
 	return 0;
 }

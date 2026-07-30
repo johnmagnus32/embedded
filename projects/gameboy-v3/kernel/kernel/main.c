@@ -63,14 +63,30 @@ static void mmu_selftest(void)
 	mmu_map_section(test_va, pa, MEM_NORMAL);
 
 	volatile uint32_t *via_va = (volatile uint32_t *)(uintptr_t)test_va;
-	volatile uint32_t *via_pa = (volatile uint32_t *)(uintptr_t)pa;   /* identity-mapped */
 
 	via_va[0] = 0xC0FFEE42u;                    /* write through the new VA */
 	via_va[1] = 0xDEADBEEFu;
+	__asm__ volatile("dsb" ::: "memory");
 
-	int ok = (via_pa[0] == 0xC0FFEE42u) && (via_pa[1] == 0xDEADBEEFu);
-	printf("mmu selftest: VA 0x%x -> PA 0x%x, readback %s\n",
-	       test_va, pa, ok ? "MATCH (translation works)" : "MISMATCH!");
+	/*
+	 * Verify translation via the hardware address-translation register (ATS1CPR
+	 * → PAR): ask the MMU to walk the CURRENT tables for a privileged read of
+	 * test_va and confirm it resolves to `pa`. This is the ground-truth check of
+	 * the descriptor + walker, and — unlike reading the same physical location
+	 * back through its identity-mapped VA — it is immune to the D-cache aliasing
+	 * between two VA mappings of one PA. (That alias readback gave a false
+	 * MISMATCH under U-Boot's handoff even though PAR + the descriptor were
+	 * correct and the kernel ran fine translated; ATS1CPR avoids the trap.)
+	 * PAR[31:12] = resolved PA base; bit0 = fault.
+	 */
+	uint32_t par;
+	__asm__ volatile("mcr p15,0,%0,c7,c8,0; isb" :: "r"(test_va));   /* ATS1CPR   */
+	__asm__ volatile("mrc p15,0,%0,c7,c4,0" : "=r"(par));            /* read PAR  */
+
+	int ok = !(par & 1) && ((par & 0xFFF00000u) == (pa & 0xFFF00000u))
+	         && (via_va[0] == 0xC0FFEE42u) && (via_va[1] == 0xDEADBEEFu);
+	printf("mmu selftest: VA 0x%x -> PA 0x%x (PAR=0x%x), readback %s\n",
+	       test_va, pa, par, ok ? "MATCH (translation works)" : "MISMATCH!");
 	/* (leave the test region mapped/allocated — harmless; kernel runs on) */
 }
 
@@ -125,6 +141,17 @@ struct trapframe *irq_dispatch(struct trapframe *tf)
  * cpio_load directly. Returns cpio_load's entry count (or negative). The scratch
  * buffer is intentionally NOT freed — decompression is a one-shot at boot and
  * the freed-page bookkeeping isn't worth it for a 1.4 MB transient. */
+/* Read the 24 MHz physical count register (CNTPCT) low word — a cheap wall-clock
+ * source for boot-phase timing (e.g. how long the initramfs decompress takes).
+ * 24 MHz -> the low word wraps every ~179 s, fine for sub-phase deltas. */
+static uint32_t cntpct_lo(void)
+{
+	uint32_t lo, hi;
+	__asm__ volatile("mrrc p15, 0, %0, %1, c14" : "=r"(lo), "=r"(hi));
+	return lo;
+}
+#define US_SINCE(t0) (((cntpct_lo() - (t0)) ) / 24u)   /* microseconds */
+
 static int load_archive(const void *arch, uint32_t sz)
 {
 	const uint8_t *b = arch;
@@ -139,14 +166,24 @@ static int load_archive(const void *arch, uint32_t sz)
 	uint32_t scratch = pmm_alloc_aligned(npages, PAGE_SIZE);
 	if (!scratch) { printf("gunzip: no %u-page scratch buffer\n", npages); return -101; }
 
+	uint32_t t0 = cntpct_lo();
 	long n = gunzip(b, sz, (uint8_t *)(uintptr_t)scratch, npages * PAGE_SIZE);
+	uint32_t us_gz = US_SINCE(t0);
 	if (n < 0) { printf("gunzip: inflate error %ld\n", n); return -102; }
-	printf("gunzip: %u -> %u bytes\n", sz, (uint32_t)n);
-	return cpio_load((const void *)(uintptr_t)scratch, (uint32_t)n);
+	printf("gunzip: %u -> %u bytes  [%u ms]\n", sz, (uint32_t)n, us_gz / 1000u);
+	uint32_t t1 = cntpct_lo();
+	int e = cpio_load((const void *)(uintptr_t)scratch, (uint32_t)n);
+	printf("cpio_load: [%u ms]\n", US_SINCE(t1) / 1000u);
+	return e;
 }
+
+/* wall-clock baseline (24 MHz CNTPCT low word) captured at kmain entry, so we can
+ * report how long kernel bring-up + initramfs unpack takes to the shell handoff. */
+static uint32_t g_boot_t0;
 
 void kmain(void)
 {
+	g_boot_t0 = cntpct_lo();
 	uart0_init();
 	uart0_puts("\n");
 	uart0_puts("===================================================\n");
@@ -244,6 +281,12 @@ void kmain(void)
 		uart0_puts("failed to spawn /init\n");
 		goto idle;
 	}
+
+	/* Kernel bring-up is done (DTB + MMU/caches + GIC + timer + initramfs + /init
+	 * loaded). Report wall-clock from kmain entry to here — everything before
+	 * userspace runs. (Userspace /init then runs its mounts + banner + shell.) */
+	printf("boot: kernel bring-up to userspace handoff: %u ms\n",
+	       US_SINCE(g_boot_t0) / 1000u);
 
 	/* Enter the process world. proc_run_first drops to USER mode at /init's
 	 * entry; from there fork/execve/wait/exit + the file syscalls drive

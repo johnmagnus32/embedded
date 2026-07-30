@@ -22,6 +22,7 @@ echo "==================================================="
 echo "  gameboy-v3 initramfs — T113-S3 is alive."
 echo "  $(uname -srm)"
 echo "  cores online: $(nproc)"
+echo "  >>> REMOTE-LOOP-PROOF build 20260728-A <<<"
 echo "==================================================="
 echo
 

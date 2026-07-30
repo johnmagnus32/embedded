@@ -11,6 +11,56 @@
  * aligned), IRQ return = subs pc, lr, #4.
  */
 
+/* ---- zImage-compatible boot header --------------------------------------- *
+ * Make this kernel present the SAME interface to a loader as the mainline Linux
+ * zImage, so U-Boot's `bootz` (and any zImage-aware loader) boots it identically
+ * — one image format, one boot command, for both our kernel and mainline Linux.
+ *
+ * A loader enters at the load address (offset 0x00); we branch to _start. bootz
+ * checks a magic word at offset 0x24 and boots the image IN PLACE at the load
+ * address — it does NOT relocate it (verified: bootz_run runs no
+ * BOOTM_STATE_LOADOS). Our kernel is position-DEPENDENT (linked at 0x41000000),
+ * so this is safe precisely because the boot script loads us at that link
+ * address; a real zImage tolerates any address because its decompressor is
+ * position-independent — we don't need that, since we control the load address.
+ *
+ * STRUCTURE — how this differs from mainline arch/arm, deliberately:
+ *   - Mainline's zImage magic belongs to the DECOMPRESSOR stage
+ *     (arch/arm/boot/compressed/head.S), a separate self-decompressing program
+ *     that wraps the raw kernel `Image` — arch/arm/kernel/head.S carries NO magic.
+ *     We have no decompressor (our kernel is small and uncompressed), so the
+ *     equivalent of `Image` self-identifies as a zImage. A deliberate
+ *     simplification, not a port of the decompressor.
+ *   - Mainline defines the field VALUES in the linker script (vmlinux.lds.S:
+ *     _magic_sig/_magic_start/_magic_end) and head.S emits `.word <symbol>`. We
+ *     use literals here instead of linker symbols ON PURPOSE: this kernel links
+ *     as a (position-dependent) PIE, so a `.word <absolute-symbol>` emits an
+ *     R_ARM_RELATIVE dynamic relocation — dead metadata nothing processes in a
+ *     freestanding kernel, and it bloats the image. A literal bakes the value in
+ *     with no relocation. (zi_end still needs a link-time value, so we compute
+ *     _image_end - _image_start as an ASSEMBLE-relative difference, which the
+ *     assembler folds to a constant — no relocation.)
+ *
+ * Layout matches U-Boot's struct arm_z_header (arch/arm/lib/zimage.c):
+ *   0x00      b _start          entry (mainline: 8 nops + branch; we only branch)
+ *   0x04-0x23 (8 reserved words) pad up to the magic
+ *   0x24      0x016f2818        zi_magic (LINUX_ARM_ZIMAGE_MAGIC; LE, no swap)
+ *   0x28      0                 zi_start, 0-relative — matches a real zImage
+ *                               byte-for-byte (its PIC decompressor _start links
+ *                               at base 0, so mainline's _magic_start is 0 too)
+ *   0x2c      _image_end - _image_start   zi_end = loadable image size
+ * bootz uses only (zi_end - zi_start) as the number of bytes to reserve at the
+ * load address, so a 0-relative start with end = image size is exactly right.
+ */
+.section .text.head, "ax"
+.global _image_start
+_image_start:
+	b       _start                /* 0x00: loader enters here -> real entry   */
+	.word   0, 0, 0, 0, 0, 0, 0, 0 /* 0x04..0x23: reserved (code[1..8])        */
+	.word   0x016f2818            /* 0x24: zi_magic (LINUX_ARM_ZIMAGE_MAGIC)   */
+	.word   0                     /* 0x28: zi_start (0-relative, as real zImage)*/
+	.word   _image_end - _image_start /* 0x2c: zi_end = loadable image size    */
+
 /* ---- exception vector table (must be 32-byte aligned for VBAR) ----------- */
 .section .text.boot, "ax"
 .align 5                          /* 2^5 = 32-byte alignment */
@@ -49,6 +99,33 @@ _start:
 	bic     r0, r0, #(1 << 13)    /* V:  low vectors (use VBAR, not 0xFFFF0000) */
 	mcr     p15, 0, r0, c1, c0, 0
 	isb
+
+	/* Enable SMP coherency (ACTLR.SMP, bit 6) — REQUIRED on Cortex-A7 BEFORE any
+	 * cache/MMU enable or set/way maintenance. With SMP=0 the data cache is
+	 * effectively disabled for coherency and cache-maintenance ops are
+	 * architecturally UNPREDICTABLE (Cortex-A7 TRM 4.3.11): our set/way invalidate
+	 * below and the later caches-on path would be undefined on real silicon (QEMU
+	 * ignores ACTLR, so this only bites the T113). Even single-core needs it set —
+	 * it's what makes the D-cache function correctly, not just SMP snooping.
+	 * U-Boot normally sets it, but the FEL/custom-loader path may not, so do it
+	 * ourselves. Must precede mmu_flush_caches_tlb (which does set/way ops). */
+	mrc     p15, 0, r0, c1, c0, 1     /* ACTLR                                   */
+	orr     r0, r0, #(1 << 6)         /* SMP = 1                                 */
+	mcr     p15, 0, r0, c1, c0, 1
+	isb
+
+	/* Scrub all cache + TLB state the loader may have left. With caches now OFF
+	 * (SCTLR.C/I cleared above), invalidate the D-cache (by set/way), I-cache,
+	 * branch predictor, and TLBs, so we do NOT inherit stale lines from whoever
+	 * loaded us. Our own bootloader runs caches-off (clean handoff), but U-Boot
+	 * hands off with a populated D-cache — without this, stale lines shadowed the
+	 * freshly-built L1 table and mmu_selftest read back MISMATCH. Must run BEFORE
+	 * mmu_init builds/enables the MMU.
+	 * mmu_flush_caches_tlb push/pops, so it needs a stack: point SP at the SVC
+	 * stack top now (it's reserved space past _bss_end in kernel.ld — valid DRAM,
+	 * safe to use before .bss is zeroed; the banked-stack setup below re-sets it). */
+	ldr     sp, =_svc_stack_top
+	bl      mmu_flush_caches_tlb
 
 	/* Install the vector table base (VBAR). */
 	ldr     r0, =_vectors

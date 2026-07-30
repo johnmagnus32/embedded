@@ -89,6 +89,16 @@ boot_kernel:
 	orr     r0, r0, #0x13           /* SVC mode                              */
 	msr     cpsr_c, r0
 
+	/* Set the ARM generic timer frequency (CNTFRQ) = 24 MHz (0x016E3600).
+	 * The BROM/our SPL never programs it; the kernel reads CNTFRQ for the
+	 * arch timer, and a 0 value causes a div-by-zero ("arch_timer: frequency
+	 * not available" -> "Failed to initialize '/timer'") that kills the boot
+	 * before userspace. T113 generic-timer clock = the 24 MHz oscillator.
+	 * (U-Boot normally does this for us; on the FEL/custom path we must.)   */
+	movw    r0, #0x3600
+	movt    r0, #0x016E
+	mcr     p15, 0, r0, c14, c0, 0  /* CNTFRQ                                 */
+
 	/* Turn off MMU + caches via SCTLR (should already be off from _start,
 	 * but the kernel REQUIRES MMU off + D-cache off, so be explicit).       */
 	mrc     p15, 0, r0, c1, c0, 0

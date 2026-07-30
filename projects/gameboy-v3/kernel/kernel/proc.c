@@ -27,6 +27,11 @@ int printf(const char *fmt, ...);
 void user_return(struct trapframe *tf);   /* start.S — resume a frame (no return) */
 void vfp_save(void *dst);                 /* vfp.S — save d0..d31 + FPSCR         */
 void vfp_restore(const void *src);        /* vfp.S — restore d0..d31 + FPSCR      */
+void sync_icache(void);                   /* mmu_asm.S — I-cache+BP invalidate after
+                                           * writing code (execve/fork/spawn) so the
+                                           * new image isn't executed from stale
+                                           * I-cache/branch-predictor state on real
+                                           * silicon (QEMU never needs it).        */
 
 static struct proc proctab[NPROC];
 static struct proc *cur;
@@ -390,6 +395,7 @@ struct proc *proc_spawn_elf(const char *path, const char *name)
 	}
 	uint32_t usp = setup_user_stack(p->l1_pa, USER_VA_MAX, argv, env0, &lr);
 	if (!usp) { vm_destroy(p->l1_pa); p->state = P_UNUSED; return 0; }
+	sync_icache();          /* freshly-loaded code — drop stale I-cache/BP lines */
 
 	p->brk_start = p->brk = lr.brk_end;
 	p->brk_ceiling = lr.dynamic ? INTERP_BASE : MMAP_TOP;
@@ -501,6 +507,11 @@ static void do_fork(uint32_t child_sp)
 	if (vm_copy(child->l1_pa, cur->l1_pa) != 0) {
 		vm_destroy(child->l1_pa); child->state = P_UNUSED; set_ret(-12); return;
 	}
+	/* vm_copy memcpy'd the parent's pages — including CODE — into the child's new
+	 * frames via the kernel (data-side) identity map. Before the child executes
+	 * them, drop stale I-cache/branch-predictor state so it doesn't fetch old
+	 * instructions for those physical frames (silicon; QEMU is I/D-coherent). */
+	sync_icache();
 
 	child->parent = cur;
 	child->tf = cur->tf;                    /* identical frame ...            */
@@ -614,6 +625,7 @@ static void exec_commit(uint32_t new_l1, const struct load_result *lr,
 	uint32_t old_l1 = cur->l1_pa;
 	cur->l1_pa = new_l1;
 	vm_switch(new_l1);
+	sync_icache();          /* freshly-loaded code — drop stale I-cache/BP lines */
 	vm_destroy(old_l1);
 
 	cur->brk_start = cur->brk = lr->brk_end;

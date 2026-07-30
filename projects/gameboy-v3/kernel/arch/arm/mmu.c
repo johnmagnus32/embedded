@@ -47,6 +47,9 @@ extern void mmu_set_dacr(uint32_t v);
 extern void mmu_tlbiall(void);
 extern void mmu_enable_sctlr(void);      /* set SCTLR.M with barriers */
 extern void mmu_tlbimva(uint32_t va);    /* invalidate one VA in the TLB */
+extern void mmu_clean_dcache_all(void);  /* clean D-cache by set/way (to memory) */
+extern void mmu_enable_caches(void);     /* set SCTLR.C + SCTLR.I */
+extern void mmu_clean_dcache_line(uint32_t addr); /* clean one line to PoC (descriptors) */
 
 static uint32_t sect_attr(enum mem_type t)
 {
@@ -57,6 +60,10 @@ void mmu_map_section(uint32_t va, uint32_t pa, enum mem_type type)
 {
 	uint32_t idx = va >> 20;                     /* VA[31:20] indexes L1 */
 	l1[idx] = (pa & SECT_MASK) | sect_attr(type);
+	/* Clean the descriptor to memory BEFORE the TLB invalidate: TTBR0 walks are
+	 * non-cacheable, so the walker reads descriptors from memory — a dirty line
+	 * (D-cache on) would leave the walker seeing the stale value. */
+	mmu_clean_dcache_line((uint32_t)(uintptr_t)&l1[idx]);
 	mmu_tlbimva(va & SECT_MASK);                 /* drop stale TLB entry */
 }
 
@@ -83,10 +90,21 @@ void mmu_init(void)
 	mmu_tlbiall();                 /* clear any stale TLB entries         */
 	mmu_set_dacr(0x55555555u);     /* all domains = client (AP checked)   */
 	mmu_set_ttbcr(0);              /* N=0: TTBR0 covers all VAs           */
-	mmu_set_ttbr0(l1_pa);          /* table base, non-cacheable walks     */
-	mmu_enable_sctlr();            /* DSB/ISB, set SCTLR.M, ISB           */
+	mmu_set_ttbr0(l1_pa);          /* table base                          */
+	mmu_enable_sctlr();            /* TLBIALL/BPIALL, set SCTLR.M, ISB    */
 
-	printf("mmu: enabled (translation on)\n");
+	/* Now turn the caches ON — this is the ~150x speedup (with caches off, every
+	 * fetch/load/store hit uncached DDR3: measured 792KB gunzip = 14.5s). The L1
+	 * table was built with the D-cache OFF, so those writes went straight to DRAM
+	 * and the table is already coherent in memory; clean the D-cache anyway (cheap,
+	 * belt-and-suspenders) + invalidate the I-cache so no stale instruction lines
+	 * survive, THEN set SCTLR.C/I. NOTE: TTBR0 walk-attr bits are 0 = NON-cacheable
+	 * walks, so the hardware reads descriptors from memory — which is exactly why
+	 * every descriptor write (mmu_map_section / vm.c) must clean its line to PoC. */
+	mmu_clean_dcache_all();
+	mmu_enable_caches();           /* SCTLR.C=1, I=1                       */
+
+	printf("mmu: enabled (translation on, caches on)\n");
 }
 
 uint32_t mmu_l1_base(void) { return l1_pa; }
