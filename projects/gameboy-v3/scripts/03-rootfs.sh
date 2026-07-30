@@ -264,5 +264,5 @@ Build the other linkage with:
 
 Boot it under QEMU with the custom kernel:
   qemu-system-arm -M virt -cpu cortex-a7 -m 128M -nographic -net none \\
-    -kernel kernel/build/virt/gv3kernel.bin -initrd ${OUTPUT_DIR}/${OUT_IMAGE}
+    -kernel ${REPO_ROOT}/kernel/build/virt/gv3kernel.bin -initrd ${OUTPUT_DIR}/${OUT_IMAGE}
 EOF

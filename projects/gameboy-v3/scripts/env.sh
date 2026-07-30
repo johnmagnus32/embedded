@@ -32,6 +32,11 @@ if [ "$(basename "${PROJECT_DIR}")" != "gameboy-v3" ]; then
   return 1 2>/dev/null || exit 1
 fi
 
+# Repo root: the generic PROVIDERS (kernel/, bootloader/, libc/, coreutils/) +
+# the shared engine (forge/) graduated here in the forge refactor. gameboy-v3 is
+# at projects/gameboy-v3, so the repo root is two levels up from PROJECT_DIR.
+REPO_ROOT="$(cd "${PROJECT_DIR}/../.." && pwd)"
+
 # All build inputs/outputs live under build/ (git-ignored). One tree, easy to
 # nuke and rebuild — that is the reproducibility test.
 BUILD_DIR="${PROJECT_DIR}/build"
@@ -161,9 +166,9 @@ KERNEL_IMAGE_TARGET="zImage"              # ARMv7 compressed kernel
 # Same board DTB name as U-Boot; the kernel builds it under allwinner/.
 KERNEL_DTB="${UBOOT_BOARD_DT}.dtb"
 KERNEL_DTB_SUBDIR="allwinner"             # arch/arm/boot/dts/allwinner/
-# Console: the kernel DTB gets the SAME UART0 overlay as U-Boot (scripts/
-# uart0-console.dtsi). With serial0=&uart0, Linux names uart0 "ttyS0", so the
-# kernel command line console must be ttyS0 (see KERNEL_CONSOLE).
+# Console: the kernel DTB gets the SAME UART0 overlay as U-Boot
+# (board/$BOARD_NAME/uart0-console.dtsi). With serial0=&uart0, Linux names uart0
+# "ttyS0", so the kernel command line console must be ttyS0 (see KERNEL_CONSOLE).
 KERNEL_CONSOLE="ttyS0,115200"
 
 # --- Step 3: BusyBox rootfs (static, initramfs) ------------------------------

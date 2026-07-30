@@ -56,7 +56,7 @@ fi
 
 # Providers graduated to the repo root (forge refactor phase 1); the rootfs
 # ASSEMBLER stays in-project (it consumes the libc/coreutils providers).
-REPO_ROOT="$(cd "${PROJECT_DIR}/../.." && pwd)"
+# REPO_ROOT comes from env.sh (sourced above).
 BOOTLOADER_DIR="${REPO_ROOT}/bootloader"
 KERNEL_DIR="${REPO_ROOT}/kernel"
 ROOTFS_DIR_SCRATCH="${PROJECT_DIR}/rootfs"
