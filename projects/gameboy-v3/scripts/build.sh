@@ -54,8 +54,11 @@ if [ "$KERNEL" = linux ] && [ "$ROOTFS" = scratch ]; then
   note "KERNEL=linux + ROOTFS=scratch: scratch libc targets the custom kernel ABI; expect gaps."
 fi
 
-BOOTLOADER_DIR="${PROJECT_DIR}/bootloader"
-KERNEL_DIR="${PROJECT_DIR}/kernel"
+# Providers graduated to the repo root (forge refactor phase 1); the rootfs
+# ASSEMBLER stays in-project (it consumes the libc/coreutils providers).
+REPO_ROOT="$(cd "${PROJECT_DIR}/../.." && pwd)"
+BOOTLOADER_DIR="${REPO_ROOT}/bootloader"
+KERNEL_DIR="${REPO_ROOT}/kernel"
 ROOTFS_DIR_SCRATCH="${PROJECT_DIR}/rootfs"
 
 command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \

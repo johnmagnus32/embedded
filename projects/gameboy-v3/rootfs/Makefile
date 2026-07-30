@@ -14,8 +14,18 @@ CC      := $(CROSS_COMPILE)gcc
 AR      := $(CROSS_COMPILE)ar
 OBJCOPY := $(CROSS_COMPILE)objcopy
 
+# Phase 1 of the forge refactor: libc + coreutils graduated to top-level PROVIDERS
+# at the repo root; the kernel too. This Makefile is now the rootfs ASSEMBLER — it
+# builds those providers' sources (still via this file for now; Phase 2 moves the
+# assembly into forge/rootfs.mk) and stages them into an initramfs. Paths reach UP
+# to the repo root (rootfs/ is at projects/gameboy-v3/rootfs -> 3 levels down).
+# Provider homes at the repo root (no trailing-comment whitespace — it would leak
+# into the value and break $(wildcard)/globs).
+REPO_ROOT := $(abspath ../../..)
 BUILD := build
-LIBC  := libc
+LIBC  := $(REPO_ROOT)/libc
+COREUTILS := $(REPO_ROOT)/coreutils
+KERNEL_PROVIDER := $(REPO_ROOT)/kernel
 
 # The kernel owns the UAPI (single source of truth): syscall numbers
 # (gv3_syscalls.h) AND the ABI types/constants (gv3_abi.h). We install COPIES of
@@ -23,7 +33,7 @@ LIBC  := libc
 # so the libc builds standalone against a snapshot rather than reaching into
 # ../kernel live. Staging into build/ (not the source tree) keeps libc/include/
 # pure source and makes `make clean` a single `rm -rf build`.
-KERNEL_UAPI_DIR := ../kernel/include/uapi
+KERNEL_UAPI_DIR := $(KERNEL_PROVIDER)/include/uapi
 UAPI_HDRS       := gv3_syscalls.h gv3_abi.h
 STAGE_INC       := $(BUILD)/include
 UAPI_DST        := $(patsubst %,$(STAGE_INC)/%,$(UAPI_HDRS))
@@ -80,16 +90,22 @@ endif
 # Every .c under libc/src is a libc unit — no hand-maintained list. crt0 is
 # handled SEPARATELY (below): _start belongs in the executable, never in the
 # library (a .so must not own the program entry point).
+# libc sources live in the provider (absolute path); build objects under a clean
+# $(BUILD)/libc/ prefix keyed on the bare filename (via vpath), so the object
+# paths don't embed the absolute source path.
 LIBC_SRCS := $(wildcard $(LIBC)/src/*.c)
-LIBC_OBJS := $(patsubst %,$(BUILD)/%.o,$(LIBC_SRCS))
-CRT_SRC   := $(LIBC)/src/crt/crt0.S
-CRT_OBJ   := $(BUILD)/$(CRT_SRC).o
+LIBC_OBJS := $(patsubst %.c,$(BUILD)/libc/%.c.o,$(notdir $(LIBC_SRCS)))
+CRT_OBJ   := $(BUILD)/libc/crt0.S.o
+vpath %.c $(LIBC)/src
+vpath %.S $(LIBC)/src/crt
 
-# ---- programs (auto-discovered: one bin/*.c -> one static ELF) --------------
-# Adding a coreutil is a one-file drop into bin/ — no Makefile edit. /init is a
-# SHELL SCRIPT (init.sh), not a compiled program, so it isn't here.
-PROGS      := $(patsubst bin/%.c,%,$(wildcard bin/*.c))
+# ---- programs (auto-discovered: one coreutils/*.c -> one static ELF) ---------
+# Adding a coreutil is a one-file drop into the coreutils/ provider — no Makefile
+# edit. /init is a SHELL SCRIPT (init.sh), not a compiled program, so it isn't here.
+PROGS      := $(notdir $(patsubst %.c,%,$(wildcard $(COREUTILS)/*.c)))
 PROG_ELVES := $(patsubst %,$(BUILD)/bin/%,$(PROGS))
+# find coreutils sources by bare name (the provider dir is an absolute path)
+vpath %.c $(COREUTILS)
 
 # Programs that are DEMOS/tests, not shipped in the rootfs image (still built by
 # `make all` so they can be run standalone, just excluded from the cpio).
@@ -97,7 +113,7 @@ DEMO_PROGS  := hello
 SHIP_PROGS  := $(filter-out $(DEMO_PROGS),$(PROGS))
 
 # gen_init_cpio host tool (built by the kernel step; falls back to $PATH)
-GEN_INIT_CPIO ?= ../build/linux/usr/gen_init_cpio
+GEN_INIT_CPIO ?= $(REPO_ROOT)/projects/gameboy-v3/build/linux/usr/gen_init_cpio
 
 # The staging tree: a real directory that MIRRORS the final "/". We install the
 # programs + init into it, then WALK it to generate the cpio listing (plus the
@@ -121,7 +137,7 @@ stage: $(patsubst %,$(BUILD)/bin/%,$(SHIP_PROGS)) init.sh $(if $(filter dynamic,
 	@# dynamic build: ship the real ld-gv3.so.1 (the dynamic linker, ld/Makefile)
 	@# and libc.so into /lib at the paths the programs' PT_INTERP + DT_NEEDED record.
 	@if [ "$(LINK)" = "dynamic" ]; then \
-	  $(MAKE) -C ld BOARD=$(BOARD) >/dev/null 2>&1 || exit 1; \
+	  $(MAKE) -C $(LIBC)/ld BOARD=$(BOARD) >/dev/null 2>&1 || exit 1; \
 	  mkdir -p $(STAGE)/lib; \
 	  install -m 0755 $(BUILD)/ld-gv3.so.1 $(STAGE)/lib/ld-gv3.so.1; \
 	  install -m 0755 $(BUILD)/libc.so $(STAGE)/lib/libc.so; \
@@ -150,7 +166,7 @@ $(BUILD)/rootfs.cpio.gz: stage rootfs.devs
 # ---- boot the rootfs on the custom kernel under QEMU virt -------------------
 # Requires a virt kernel: (cd ../kernel && make BOARD=virt). This target builds
 # the rootfs BOARD=virt automatically via the recursive call in its prereq.
-KERNEL_VIRT := ../kernel/build/virt/gv3kernel.bin
+KERNEL_VIRT := $(KERNEL_PROVIDER)/build/virt/gv3kernel.bin
 qemu: $(BUILD)/rootfs.cpio.gz
 	qemu-system-arm -M virt -cpu cortex-a7 -m 128M -nographic -net none \
 	  -kernel $(KERNEL_VIRT) -initrd $(BUILD)/rootfs.cpio.gz
@@ -163,15 +179,15 @@ $(STAGE_INC)/%.h: $(KERNEL_UAPI_DIR)/%.h | $(BUILD)
 	@echo "  UAPI  $< -> $@"
 
 $(BUILD):
-	mkdir -p $(BUILD)/$(LIBC)/src/crt $(BUILD)/bin $(STAGE_INC)
+	mkdir -p $(BUILD)/libc $(BUILD)/bin $(STAGE_INC)
 
 # assemble/compile every libc unit. PICFLAGS is empty for static, -fPIC for
 # dynamic (position-independent so the .so works at any load address). Order-only
 # dep on the installed UAPI header so it's present before anything includes it.
-$(BUILD)/%.S.o: %.S | $(BUILD) $(UAPI_DST)
+$(BUILD)/libc/%.S.o: %.S | $(BUILD) $(UAPI_DST)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(PICFLAGS) -c $< -o $@
-$(BUILD)/%.c.o: %.c | $(BUILD) $(UAPI_DST)
+$(BUILD)/libc/%.c.o: %.c | $(BUILD) $(UAPI_DST)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(PICFLAGS) -c $< -o $@
 
@@ -191,7 +207,7 @@ $(BUILD)/libc.so: $(LIBC_OBJS)
 # link a program. crt0.o (the entry point) is always linked into the EXECUTABLE.
 # static: our user.ld + libc.a copied in. dynamic: default script + -lc (records
 # DT_NEEDED) + the interpreter path (PT_INTERP).
-$(BUILD)/bin/%: bin/%.c $(CRT_OBJ) $(LIBDEP) | $(BUILD) $(UAPI_DST)
+$(BUILD)/bin/%: %.c $(CRT_OBJ) $(LIBDEP) | $(BUILD) $(UAPI_DST)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(PICFLAGS) $(PROG_LDFLAGS) $(CRT_OBJ) $< $(LINKLIB) -o $@
 	@echo "  LD  $@  [$(LINK)]  ($$($(CROSS_COMPILE)readelf -h $@ | grep Type | tr -s ' ' | cut -d' ' -f3))"

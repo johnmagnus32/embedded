@@ -30,8 +30,12 @@ set -u
 
 # ---- locate ourselves + the kernel dir --------------------------------------
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KDIR="$(cd "${HERE}/.." && pwd)"                 # projects/gameboy-v3/kernel
-PROJ="$(cd "${KDIR}/.." && pwd)"                 # projects/gameboy-v3
+KDIR="$(cd "${HERE}/.." && pwd)"                 # <repo>/kernel (a top-level PROVIDER since the forge refactor)
+REPO_ROOT="$(cd "${KDIR}/.." && pwd)"            # <repo> (= 'embedded/')
+# The kernel is now a top-level provider, but the golden test still consumes a
+# PRODUCT's build artifacts (toolchain + busybox initramfs). Point at the
+# gameboy-v3 product. (Phase 4 would parameterize this; for now name it.)
+PROJ="${GV3_PRODUCT:-${REPO_ROOT}/projects/gameboy-v3}"
 # The kernel builds per-board under build/<board>/; the golden test always runs
 # the QEMU virt build.
 BUILD="${KDIR}/build/virt"

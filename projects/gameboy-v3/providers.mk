@@ -25,14 +25,15 @@ $(if $(filter-out gv3 busybox,$(COREUTILS)),     $(error COREUTILS must be gv3|b
 $(if $(filter-out nor sd,$(MEDIA)),              $(error MEDIA must be nor|sd (got '$(MEDIA)')))
 $(if $(filter-out ili9341,$(LCD)),$(if $(LCD),   $(error LCD must be empty|ili9341 (got '$(LCD)'))))
 
-# --- resolve each provider selection to its (current, in-project) source ------
-# In Phase 1 these graduate to $(EMBEDDED)/{kernel,bootloader,libc,coreutils};
-# for now they point at the in-project locations so nothing has to move yet.
+# --- resolve each provider selection to its source ---------------------------
+# Phase 1: the custom providers graduated to the repo root ($(REPO_ROOT)); the
+# open-source references are fetched into the product's build/ by 0N-*.sh.
 PRODUCT_DIR    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-KERNEL_SRC     := $(if $(filter custom,$(KERNEL)),     $(PRODUCT_DIR)/kernel,        $(PRODUCT_DIR)/build/linux)
-BOOTLDR_SRC    := $(if $(filter custom,$(BOOTLOADER)), $(PRODUCT_DIR)/bootloader,    $(PRODUCT_DIR)/build/u-boot)
-LIBC_SRC       := $(if $(filter gv3,$(LIBC)),          $(PRODUCT_DIR)/rootfs/libc,   $(PRODUCT_DIR)/build/musl)
-COREUTILS_SRC  := $(if $(filter gv3,$(COREUTILS)),     $(PRODUCT_DIR)/rootfs/bin,    $(PRODUCT_DIR)/build/busybox)
+REPO_ROOT      := $(abspath $(PRODUCT_DIR)/../..)
+KERNEL_SRC     := $(if $(filter custom,$(KERNEL)),     $(REPO_ROOT)/kernel,        $(PRODUCT_DIR)/build/linux)
+BOOTLDR_SRC    := $(if $(filter custom,$(BOOTLOADER)), $(REPO_ROOT)/bootloader,    $(PRODUCT_DIR)/build/u-boot)
+LIBC_SRC       := $(if $(filter gv3,$(LIBC)),          $(REPO_ROOT)/libc,          $(PRODUCT_DIR)/build/musl)
+COREUTILS_SRC  := $(if $(filter gv3,$(COREUTILS)),     $(REPO_ROOT)/coreutils,     $(PRODUCT_DIR)/build/busybox)
 
 # --- translate to scripts/build.sh's current interface (Phase 0 bridge) -------
 # build.sh takes KERNEL={custom,linux}, BOOTLOADER={custom,uboot}, ROOTFS={busybox,scratch}.
