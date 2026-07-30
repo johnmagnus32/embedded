@@ -304,31 +304,48 @@ is the existing test harness:** the kernel's golden tests (`kernel/test/`) and
 `rootfs/test/dynamic.sh` boot the stack under QEMU `-M virt` and check output.
 Run them after each phase; a phase is done only when they pass as before.
 
-- **Phase 0 — provider selection in place, nothing moved.**
+> **STATUS (2026-07-30): Phases 0–4 DONE**, each committed with golden 6/6 green
+> and both the custom and all-OSS stacks building through the engine. Phase 5
+> waits on a second board. Silicon re-flash of a forge-built bundle is the one
+> post-refactor check still outstanding. Per-phase notes inline below.
+
+- **Phase 0 — provider selection in place, nothing moved.** ✅ (615655c)
   Add `config.mk` + a `providers.mk`-style resolver *inside* `gameboy-v3`, with
   paths still pointing at current in-project locations. Prove `make KERNEL=custom`
   and `make KERNEL=mainline` both build. Establishes the switch with zero moves.
 
-- **Phase 1 — graduate the providers (git mv, paths hardcoded).**
+- **Phase 1 — graduate the providers (git mv, paths hardcoded).** ✅ (8930d14)
   Move `kernel/`, `bootloader/`, `libc/` (+`ld`), `coreutils/` (was `rootfs/bin`)
   to `embedded/`. Update resolver paths. Do NOT parameterize board config yet —
   the kernel can still hardcode T113. Prove the full stack builds + boots in QEMU.
 
-- **Phase 2 — extract the engine into `forge/`.**
+- **Phase 2 — extract the engine into `forge/`.** ✅ (cffc9b5)
   Generalize the numbered scripts into `forge/*.mk`, replacing implicit ordering
   (encoded in the `NN-` filename prefixes) with real Make dependencies.
   `gameboy-v3/Makefile` becomes a thin `include`. Prove parity with the
-  pre-refactor build.
+  pre-refactor build. NB: the `.mk` layers delegate to the proven `0N-*.sh` +
+  `build.sh` backends rather than reimplement the fetch/verify/toolchain logic —
+  the engine's win is the reusable graph + thin product Makefile, not a rewrite.
 
-- **Phase 3 — split board/overlay out of the product.**
-  Move `*.dtsi` / `boot.cmd` / `image.cfg` / load-addresses to `board/`, `init` to
-  `overlay/`. Add the overlay-merge step. Replace `04-image*.sh` with `genimage` +
-  `image.cfg`. (T113/SoC facts stay in `board/` — no `soc/` tier yet.)
+- **Phase 3 — split board/overlay out of the product.** ✅ (d79ba72)
+  Move `*.dtsi` / `boot.cmd` / load-addresses to `board/`, `init` to `overlay/`.
+  Add the overlay-merge step (scratch rootfs assembler layers `overlay/*` on the
+  generic tree). Load addresses + SD geometry became `board/*/layout.env` (data,
+  sourced by env.sh + the bundle manifest). `image.cfg` is written in genimage's
+  format as the declarative SD layout, but genimage is NOT installed on the host,
+  so `image.mk` keeps shelling `build.sh`'s dd/sfdisk `emit_sd_img` (the doc's
+  sanctioned interim) — swap to genimage when it lands. (SoC facts stay in
+  `board/`/the kernel source — no `soc/` tier yet.)
 
-- **Phase 4 — parameterize providers on board config.**
-  Remove hardcoded T113 from `kernel/`/`bootloader/`; feed them from `board/`.
-  This is the deepest change and the true test that the providers are generic.
-  Deferrable until a second board actually needs it.
+- **Phase 4 — parameterize the ENGINE on board config.** ✅ (1ab08a5)
+  The real T113-hardcoding was in the *engine* (`forge/*.mk` + `build.sh` passed
+  `BOARD=t113` literally), not the kernel source — the kernel already had a clean
+  `board.h` `t113|virt` seam. Fixed: each provider's build-target now comes from
+  `board/<board>/board.mk` (`KERNEL_TARGET`/`ROOTFS_TARGET`), resolved in
+  `providers.mk` and passed down; the engine bakes in nothing board-specific. The
+  kernel's SoC address sets (GIC/UART/timer) stay in `board.h` — chip-level, not
+  board-level — awaiting the deferred `soc/` tier. `INIT_PATH="/init"` stays in
+  the kernel: a Linux-ABI convention, not a board fact.
 
 - **Phase 5 (on project #2) — validate reuse, THEN consider `soc/`.**
   Create the second product; confirm it reuses `forge/` + the providers and writes
