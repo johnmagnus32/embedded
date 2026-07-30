@@ -7,7 +7,7 @@
 #   2. Restore the board DTS to pristine (idempotent re-runs).
 #   3. make sunxi_defconfig  (32-bit ARM; enables 8250_DW UART, MMC_SUNXI, the
 #      D1/T113 clock + pinctrl drivers — everything needed to reach a console).
-#   4. Overlay the board DTB with scripts/uart0-console.dtsi so the kernel's
+#   4. Overlay the board DTB with board/t113-gameboy/uart0-console.dtsi so the kernel's
 #      console is UART0/PE2-PE3 (Linux will name it ttyS0 → KERNEL_CONSOLE).
 #   5. Build zImage + the board DTB; copy both to build/output/.
 #
@@ -100,7 +100,7 @@ grep -q '^# CONFIG_GCC_PLUGINS is not set' .config \
 
 # --- 4. console overlay (kernel DTB → UART0/PE2-PE3) -------------------------
 log "applying UART0 console overlay to the kernel board DTB"
-cp -f "${SCRIPTS_DIR}/${CONSOLE_OVERLAY}" "${BOARD_DTS_DIR_REL}/${CONSOLE_OVERLAY}"
+cp -f "${BOARD_DIR}/${CONSOLE_OVERLAY}" "${BOARD_DTS_DIR_REL}/${CONSOLE_OVERLAY}"
 printf '\n%s\n' "${INCLUDE_LINE}" >> "${BOARD_DTS_REL}"
 grep -qF "${INCLUDE_LINE}" "${BOARD_DTS_REL}" || die "failed to append console overlay include"
 
@@ -109,7 +109,7 @@ grep -qF "${INCLUDE_LINE}" "${BOARD_DTS_REL}" || die "failed to append console o
 # Off by default (no panel on a bare board); enable with: LCD=ili9341 ./02-kernel.sh
 # Adds the mainline DRM tiny driver (selects DRM_MIPI_DBI/KMS/GEM_DMA/backlight)
 # + FBDEV emulation (for a /dev/fb0 test path) + the DT overlay. See
-# scripts/lcd-ili9341.dtsi and LCD-ILI9341.md.
+# board/t113-gameboy/lcd-ili9341.dtsi and LCD-ILI9341.md.
 if [ "${LCD:-}" = "ili9341" ]; then
   log "LCD=ili9341: enabling TINYDRM_ILI9341 + FBDEV emulation + /dev/fb0 node"
   # TINYDRM_ILI9341 selects DRM_MIPI_DBI/DRM_KMS_HELPER/DRM_GEM_DMA_HELPER/
@@ -127,7 +127,7 @@ if [ "${LCD:-}" = "ili9341" ]; then
     || die "FB_DEVICE not enabled — no /dev/fb0 node will be created"
   LCD_OVERLAY="lcd-ili9341.dtsi"
   LCD_INCLUDE="#include \"${LCD_OVERLAY}\""
-  cp -f "${SCRIPTS_DIR}/${LCD_OVERLAY}" "${BOARD_DTS_DIR_REL}/${LCD_OVERLAY}"
+  cp -f "${BOARD_DIR}/${LCD_OVERLAY}" "${BOARD_DTS_DIR_REL}/${LCD_OVERLAY}"
   grep -qF "${LCD_INCLUDE}" "${BOARD_DTS_REL}" \
     || printf '\n%s\n' "${LCD_INCLUDE}" >> "${BOARD_DTS_REL}"
   log "LCD overlay applied (spi1 + adafruit,yx240qv29 panel node)"

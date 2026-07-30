@@ -181,7 +181,7 @@ config, overlays the control DTB, builds, and copies the artifact to `output/`:
 **Console → UART0/PE2-PE3 (the [#1 trap](#uart-console)):** the script applies
 **both** required changes and it's verified in the built DTB:
 1. `CONFIG_CONS_INDEX=1` (defconfig) → SPL console pinmux to PE2/PE3.
-2. `scripts/uart0-console.dtsi` overlay (`#include`d into the board `.dts`) →
+2. `board/t113-gameboy/uart0-console.dtsi` overlay (`#include`d into the board `.dts`) →
    sets `stdout-path=serial0`, `serial0=&uart0`, enables `&uart0` on a
    `uart0_pe_pins` (PE2/PE3) group, disables `&uart3`. Needed because U-Boot
    *proper* uses DM serial and reads the console from the DTB — `CONS_INDEX`
@@ -214,7 +214,7 @@ the UART0 console overlay, copies both to `output/`:
   `SERIAL_8250_DW` (UART), `MMC_SUNXI` (SD), the D1/T113 CCU + pinctrl.
 - **DTB:** `sun8i-t113s-mangopi-mq-r-t113.dtb` (SoC dtsi cross-includes the RISC-V
   D1's sun20i dtsi files — expected; same die).
-- **Console → UART0:** the script `#include`s the **same `scripts/uart0-console.dtsi`**
+- **Console → UART0:** the script `#include`s the **same `board/t113-gameboy/uart0-console.dtsi`**
   overlay used for U-Boot (the kernel DTS is structurally identical). Verified in
   the built DTB: `stdout-path=serial0`, uart0 okay on PE2/PE3, uart3 disabled.
   With `serial0=&uart0`, Linux names uart0 **ttyS0** → the kernel cmdline console
@@ -253,7 +253,7 @@ as a `cpio.gz` initramfs — the simplest thing that boots straight to a shell
   scripted `.config` edit + `make oldconfig`. `CONFIG_TC=n` avoids the `tc.c`
   `TCA_CBQ_MAX` break (kernel headers ≥ 6.8 removed it; unfixed upstream) and
   isn't needed for a minimal rootfs anyway.
-- **`/init` is PID 1** ([scripts/init](scripts/init)): mounts `/proc`, `/sys`,
+- **`/init` is PID 1** ([overlay/init.sh](overlay/init.sh) (scratch) / [overlay/init.busybox](overlay/init.busybox) (busybox)): mounts `/proc`, `/sys`,
   devtmpfs `/dev`, prints a banner + `nproc`, then `exec … /bin/sh`. If PID 1
   ever exits, the kernel panics — so it hands off to a shell that stays running.
 - **Packaged with the kernel's `gen_init_cpio`** (reused from Step 2's tree): it
@@ -295,7 +295,7 @@ offset 1 MiB  FAT partition 1:  zImage, sun8i-t113s-mangopi-mq-r-t113.dtb,
   populate the FAT fs, `dd conv=notrunc` splices U-Boot + the fs into the image.
 - U-Boot's `distro_bootcmd` auto-scans the partition (prefixes `/`, `/boot/`) for
   `boot.scr` and runs it — no `bootcmd` editing. The script
-  ([scripts/boot.cmd](scripts/boot.cmd) → compiled to `boot.scr` with mkimage)
+  ([board/t113-gameboy/boot.cmd](board/t113-gameboy/boot.cmd) → compiled to `boot.scr` with mkimage)
   sets `console=ttyS0,115200`, loads the three files to U-Boot's built-in sunxi
   load addresses (`kernel_addr_r=0x41000000`, `fdt_addr_r=0x41800000`,
   `ramdisk_addr_r=0x41C00000`), and runs

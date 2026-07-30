@@ -185,7 +185,7 @@ make CONFIG_PREFIX="${ROOTFS_DIR}" CROSS_COMPILE="${ROOTFS_CROSS_COMPILE}" insta
 # /init (PID 1) + mountpoints. devtmpfs will populate /dev at runtime, but the
 # kernel needs /dev/console to exist to give PID 1 its stdio — we add that node
 # in the cpio device table below (can't mknod as an unprivileged user).
-install -m 0755 "${SCRIPTS_DIR}/init" "${ROOTFS_DIR}/init"
+install -m 0755 "${OVERLAY_DIR}/init.busybox" "${ROOTFS_DIR}/init"
 mkdir -p "${ROOTFS_DIR}/proc" "${ROOTFS_DIR}/sys" "${ROOTFS_DIR}/dev"
 
 # --- dynamic: stage the musl loader (== libc) into /lib ----------------------

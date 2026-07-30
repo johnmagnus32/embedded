@@ -44,6 +44,19 @@ HOSTMAKE_DIR="${BUILD_DIR}/hostmake"               # locally-built GNU Make >=4 
 BUSYBOX_SRC_DIR="${BUILD_DIR}/busybox"            # BusyBox source
 ROOTFS_DIR="${BUILD_DIR}/rootfs"                  # assembled initramfs root
 
+# --- board + overlay (product BUILD INPUTS, forge refactor Phase 3) ----------
+# The board dir holds this board's build inputs (*.dtsi overlays, boot.cmd, and
+# the memory/storage layout.env). The overlay dir holds files shipped INTO the
+# rootfs (the PID-1 init policy). BOARD_NAME selects which board/ subdir; it is
+# the PRODUCT board, distinct from the rootfs Makefile's arch-target BOARD.
+BOARD_NAME="${BOARD_NAME:-t113-gameboy}"
+BOARD_DIR="${PROJECT_DIR}/board/${BOARD_NAME}"
+OVERLAY_DIR="${PROJECT_DIR}/overlay"
+[ -d "${BOARD_DIR}" ] || { echo "env.sh: board dir '${BOARD_DIR}' not found (BOARD_NAME=${BOARD_NAME})" >&2; return 1 2>/dev/null || exit 1; }
+# The board's memory + storage layout (NOR/DRAM offsets, SD image geometry).
+# shellcheck source=../board/t113-gameboy/layout.env
+[ -f "${BOARD_DIR}/layout.env" ] && source "${BOARD_DIR}/layout.env"
+
 # =============================================================================
 # PINNED VERSIONS  (the reproducibility contract)
 # =============================================================================
@@ -161,10 +174,10 @@ INITRAMFS_IMAGE="initramfs.cpio.gz"
 # Full-disk image: U-Boot at the 8 KiB offset, then one FAT boot partition at
 # 1 MiB holding zImage + DTB + initramfs + boot.scr. U-Boot's distro_bootcmd
 # auto-runs /boot.scr from the partition. dd the whole .img to a microSD.
+# The layout numbers (SDIMAGE_SIZE_MB / PART_START / UBOOT_SEEK, plus the NOR +
+# DRAM addresses) are BOARD inputs — sourced from board/$BOARD_NAME/layout.env
+# below, not owned here (forge refactor Phase 3).
 SDIMAGE="gameboy-v3-sd.img"
-SDIMAGE_SIZE_MB="64"          # plenty for ~7 MB of payload; keeps the .img small
-SDIMAGE_PART_START_MB="1"     # partition 1 starts at 1 MiB (never clobbers U-Boot)
-SDIMAGE_UBOOT_SEEK_KB="8"     # BROM reads SPL at the 8 KiB offset (sector 16)
 
 # --- host GNU Make (kernel build needs >= 4.0) -------------------------------
 # The Linux kernel Makefile hard-requires GNU Make >= 4.0. 00-toolchain.sh's

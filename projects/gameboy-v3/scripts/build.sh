@@ -161,15 +161,15 @@ LOADER_FILE="$([ "$BOOTLOADER" = custom ] && echo loader-fel.bin || echo uboot-p
 KERNEL_SIZE=${KSZ}
 DTB_SIZE=${DSZ}
 INITRD_SIZE=${ISZ}
-# NOR layout (must match NOR-LAYOUT.md / bootloader/nor_layout.h)
-NOR_KERNEL_OFF=0x010000
-NOR_DTB_OFF=0x610000
-NOR_INITRD_OFF=0x620000
-NOR_TABLE_OFF=0x000000
-# DRAM load addresses (match the bootloader + boot.cmd)
-DRAM_KERNEL=0x41000000
-DRAM_DTB=0x41800000
-DRAM_INITRD=0x41c00000
+# NOR + DRAM layout — from board/${BOARD_NAME}/layout.env (a board input, sourced
+# by env.sh). Must match NOR-LAYOUT.md / bootloader/nor_layout.h.
+NOR_KERNEL_OFF=${NOR_KERNEL_OFF}
+NOR_DTB_OFF=${NOR_DTB_OFF}
+NOR_INITRD_OFF=${NOR_INITRD_OFF}
+NOR_TABLE_OFF=${NOR_TABLE_OFF}
+DRAM_KERNEL=${DRAM_KERNEL}
+DRAM_DTB=${DRAM_DTB}
+DRAM_INITRD=${DRAM_INITRD}
 KERNEL_CONSOLE="${KERNEL_CONSOLE}"
 EOF
   printf '\n\033[1;32m[build] DONE\033[0m  bundle: %s\n' "$OUT"
@@ -202,7 +202,7 @@ emit_sd_img() {
   if [ "$BOOTLOADER" = uboot ]; then
     local MKIMAGE="${UBOOT_SRC_DIR}/tools/mkimage" BOOT_SCR="${BUILD_DIR}/boot.scr"
     [ -x "$MKIMAGE" ] || die "mkimage missing — 01-uboot.sh must have run"
-    "$MKIMAGE" -C none -A arm -T script -d "${SCRIPTS_DIR}/boot.cmd" "$BOOT_SCR" >/dev/null
+    "$MKIMAGE" -C none -A arm -T script -d "${BOARD_DIR}/boot.cmd" "$BOOT_SCR" >/dev/null
     MTOOLS_SKIP_CHECK=1 mcopy -i "$FAT" "$BOOT_SCR" ::boot.scr
   fi
 

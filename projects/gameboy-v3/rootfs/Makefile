@@ -26,6 +26,10 @@ BUILD := build
 LIBC  := $(REPO_ROOT)/libc
 COREUTILS := $(REPO_ROOT)/coreutils
 KERNEL_PROVIDER := $(REPO_ROOT)/kernel
+# Product overlay (forge refactor Phase 3): files SHIPPED into the rootfs, layered
+# on the generic staged tree. rootfs/ sits under the product, so `..` is it.
+PRODUCT_DIR := $(abspath ..)
+OVERLAY     := $(PRODUCT_DIR)/overlay
 
 # The kernel owns the UAPI (single source of truth): syscall numbers
 # (gv3_syscalls.h) AND the ABI types/constants (gv3_abi.h). We install COPIES of
@@ -126,14 +130,23 @@ all: headers $(PROG_ELVES)
 	@$(CROSS_COMPILE)size $(PROG_ELVES)
 
 # ---- populate the staging tree (mirrors the final "/") ----------------------
-# Install /init (the shell script) + the shipped programs into build/rootfs/.
+# Two layers, buildroot-style: (1) stage the GENERIC files this assembler builds
+# (the shipped programs); (2) MERGE the product's overlay/ on top (its PID-1 init
+# + any etc/... it ships). This is how "generic rootfs + this product's policy"
+# compose without forking the rootfs. init.sh -> /init (the shebang PID-1);
+# init.busybox is the OTHER backend's (03-rootfs.sh) PID-1, so it's excluded here.
 # .PHONY because it's simpler to always re-sync than to track per-file deps; the
 # programs it copies already carry the real dependency graph.
 .PHONY: stage
-stage: $(patsubst %,$(BUILD)/bin/%,$(SHIP_PROGS)) init.sh $(if $(filter dynamic,$(LINK)),$(BUILD)/libc.so)
+stage: $(patsubst %,$(BUILD)/bin/%,$(SHIP_PROGS)) $(OVERLAY)/init.sh $(if $(filter dynamic,$(LINK)),$(BUILD)/libc.so)
 	@mkdir -p $(STAGE)/bin
-	@install -m 0755 init.sh $(STAGE)/init
 	@for p in $(SHIP_PROGS); do install -m 0755 $(BUILD)/bin/$$p $(STAGE)/bin/$$p; done
+	@# overlay-merge: layer product files on top of the generic staged tree.
+	@# init.sh becomes /init; init.busybox belongs to the busybox backend (skip).
+	@for f in $$(cd $(OVERLAY) && find . -type f ! -name init.busybox | sed 's|^\./||'); do \
+	  dst="$(STAGE)/$$f"; [ "$$f" = init.sh ] && dst="$(STAGE)/init"; \
+	  mkdir -p "$$(dirname "$$dst")"; install -m 0755 "$(OVERLAY)/$$f" "$$dst"; \
+	done
 	@# dynamic build: ship the real ld-gv3.so.1 (the dynamic linker, ld/Makefile)
 	@# and libc.so into /lib at the paths the programs' PT_INTERP + DT_NEEDED record.
 	@if [ "$(LINK)" = "dynamic" ]; then \

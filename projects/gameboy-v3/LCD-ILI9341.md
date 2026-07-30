@@ -34,7 +34,7 @@ The driver + overlay are **opt-in** (a bare board has no panel), gated on `LCD=i
 
 ```bash
 LCD=ili9341 ./scripts/02-kernel.sh      # enables TINYDRM_ILI9341 + FBDEV emulation
-                                        # + applies scripts/lcd-ili9341.dtsi
+                                        # + applies board/t113-gameboy/lcd-ili9341.dtsi
 ./scripts/03-rootfs.sh                  # (unchanged)
 ```
 
@@ -45,10 +45,10 @@ What the `LCD=ili9341` hook does (see `02-kernel.sh` step 4b):
   actually compiling `ili9341.o` + `drm_mipi_dbi.o` (`DRM_MIPI_DBI` is a select-only
   tristate that kconfig may not even write to `.config`, so we trust the build, not
   a grep — same lesson as the U-Boot `sf`/MTD gotcha).
-- Copies `scripts/lcd-ili9341.dtsi` next to the board DTS and appends an `#include`
+- Copies `board/t113-gameboy/lcd-ili9341.dtsi` next to the board DTS and appends an `#include`
   (same mechanism as the UART0 console overlay), enabling `spi1` + the panel node.
 
-## Device tree (`scripts/lcd-ili9341.dtsi`)
+## Device tree (`board/t113-gameboy/lcd-ili9341.dtsi`)
 
 Enables `spi1` (`spi@4026000`, was `status="disabled"`), defines the PD10-12 pinmux
 group (`function = "spi1"`), and adds the panel child:

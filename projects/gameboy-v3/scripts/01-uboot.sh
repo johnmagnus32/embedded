@@ -8,7 +8,7 @@
 #   3. make mangopi_mq_r_defconfig, then flip CONFIG_CONS_INDEX=1 (SPL console
 #      → PE2/PE3) reproducibly via a .config fragment + olddefconfig.
 #   4. Overlay the control DTB so U-Boot *proper* also uses UART0 (see
-#      scripts/uart0-console.dtsi for the full why — CONS_INDEX alone is a trap).
+#      board/t113-gameboy/uart0-console.dtsi for the full why — CONS_INDEX alone is a trap).
 #   5. Build → u-boot-sunxi-with-spl.bin, copied to build/output/.
 #
 # The T113 is 32-bit ARMv7 (no EL3) → NO TF-A/BL31 is needed; the build emits no
@@ -151,7 +151,7 @@ grep -q "^CONFIG_CONS_INDEX=${UBOOT_CONS_INDEX}$" .config \
 
 # --- 4. control-DTB console overlay (U-Boot proper console → UART0) ----------
 log "applying UART0 console overlay to the control DTB"
-cp -f "${SCRIPTS_DIR}/${CONSOLE_OVERLAY}" "${BOARD_DTS_DIR_REL}/${CONSOLE_OVERLAY}"
+cp -f "${BOARD_DIR}/${CONSOLE_OVERLAY}" "${BOARD_DTS_DIR_REL}/${CONSOLE_OVERLAY}"
 # Append the include once (pristine .dts was just restored, so it's absent).
 printf '\n%s\n' "${INCLUDE_LINE}" >> "${BOARD_DTS_REL}"
 grep -qF "${INCLUDE_LINE}" "${BOARD_DTS_REL}" || die "failed to append console overlay include"
