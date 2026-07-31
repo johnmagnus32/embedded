@@ -13,7 +13,7 @@
 # hold the LED lit for seconds after VBUS drops, so the LED lies) and NOT uhubctl's
 # own "off" readout (that only means the command was accepted). See REMOTE-RIG.md §1.
 #
-# Runs ON the NUC. From the dev host:  ssh johmagnu-nuc 'bash -s' < scripts/t113power.sh <cmd>
+# Runs ON the NUC. From the dev host:  ssh johmagnu-nuc 'bash -s' < tools/t113power.sh <cmd>
 # Or copy it to the NUC and run directly.
 #
 # Usage:

@@ -28,8 +28,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${HERE}/lib.sh"
 
-log()  { printf '\033[1;33m[build]\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m[build] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;33m[image]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[image] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 note() { printf '\033[1;36m  note:\033[0m %s\n' "$*"; }
 
 # --- selectors ---------------------------------------------------------------
@@ -173,7 +173,7 @@ DRAM_DTB=${DRAM_DTB}
 DRAM_INITRD=${DRAM_INITRD}
 KERNEL_CONSOLE="${KERNEL_CONSOLE}"
 EOF
-  printf '\n\033[1;32m[build] DONE\033[0m  bundle: %s\n' "$OUT"
+  printf '\n\033[1;32m[image] DONE\033[0m  bundle: %s\n' "$OUT"
   printf '  %-18s %s\n' "kernel (zImage):" "$(du -h "$OUT/zImage" | cut -f1)"
   printf '  %-18s %s\n' "dtb:"             "$(du -h "$OUT/board.dtb" | cut -f1)"
   printf '  %-18s %s\n' "initramfs:"       "$(du -h "$OUT/initramfs.cpio.gz" | cut -f1)"
@@ -218,7 +218,7 @@ emit_sd_img() {
   printf 'label: dos\nstart=%d, type=0c\n' "$PART_START_SECT" | sfdisk --quiet "$IMG"
   dd if="$BL_ON_DISK" of="$IMG" bs=1024 seek="${SDIMAGE_UBOOT_SEEK_KB}" conv=notrunc status=none
   dd if="$FAT"        of="$IMG" bs=512  seek="${PART_START_SECT}"       conv=notrunc status=none
-  printf '\n\033[1;32m[build] DONE\033[0m  SD image: %s  (%s)\n' "$IMG" "$(du -h "$IMG" | cut -f1)"
+  printf '\n\033[1;32m[image] DONE\033[0m  SD image: %s  (%s)\n' "$IMG" "$(du -h "$IMG" | cut -f1)"
   note "flash: sudo dd if=$IMG of=/dev/sdX bs=4M conv=fsync status=progress  (then insert + reset)"
 }
 

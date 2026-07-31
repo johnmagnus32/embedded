@@ -36,8 +36,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${HERE}/lib.sh"
 
-log()  { printf '\033[1;34m[03-rootfs]\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m[03-rootfs] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;34m[rootfs]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[rootfs] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # --- linkage selection -------------------------------------------------------
 # LINKAGE=static (default) | dynamic. Chooses CONFIG_STATIC, the runtime libs we
@@ -182,10 +182,12 @@ mkdir -p "${ROOTFS_DIR}"
 # of busybox with glibc, undoing the musl build above. (This bit us once.)
 make CONFIG_PREFIX="${ROOTFS_DIR}" CROSS_COMPILE="${ROOTFS_CROSS_COMPILE}" install >/dev/null
 
-# /init (PID 1) + mountpoints. devtmpfs will populate /dev at runtime, but the
-# kernel needs /dev/console to exist to give PID 1 its stdio — we add that node
-# in the cpio device table below (can't mknod as an unprivileged user).
-install -m 0755 "${OVERLAY_DIR}/init.busybox" "${ROOTFS_DIR}/init"
+# /init (PID 1) + mountpoints. The SINGLE portable overlay/init.sh is shared with
+# the scratch rootfs — PID-1 policy is the product's, not the provider's; it runs
+# on busybox (real mounts, full shell) and the custom stack alike. devtmpfs will
+# populate /dev at runtime, but the kernel needs /dev/console to exist to give
+# PID 1 its stdio — we add that node in the cpio device table below.
+install -m 0755 "${OVERLAY_DIR}/init.sh" "${ROOTFS_DIR}/init"
 mkdir -p "${ROOTFS_DIR}/proc" "${ROOTFS_DIR}/sys" "${ROOTFS_DIR}/dev"
 
 # --- dynamic: stage the musl loader (== libc) into /lib ----------------------
@@ -253,7 +255,7 @@ DYN_NOTE=""
   Loader     : /lib/ld-musl-armhf.so.1 -> /lib/libc.so (musl: loader == libc)"
 cat <<EOF
 
-$(printf '\033[1;32m[03-rootfs] DONE\033[0m')
+$(printf '\033[1;32m[rootfs] DONE\033[0m')
   BusyBox    : ${BUSYBOX_VERSION} (${LINKAGE}, ARM)
   Applets    : ${NAPPLETS} symlinks → /bin/busybox${DYN_NOTE}
   Init       : /init (PID 1) mounts proc/sys/dev, execs /bin/sh on the console

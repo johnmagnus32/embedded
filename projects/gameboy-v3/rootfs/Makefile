@@ -23,8 +23,13 @@ OBJCOPY := $(CROSS_COMPILE)objcopy
 # into the value and break $(wildcard)/globs).
 REPO_ROOT := $(abspath ../../..)
 BUILD := build
-LIBC  := $(REPO_ROOT)/libc
-COREUTILS := $(REPO_ROOT)/coreutils
+# Provider source dirs. Named *_DIR (not LIBC/COREUTILS) DELIBERATELY: the forge
+# engine passes LIBC=/COREUTILS= as command-line SELECTION axes (custom|musl,
+# custom|busybox) into this sub-make, and a command-line var OVERRIDES an in-file
+# := of the same name — which would clobber these paths to "custom" and silently
+# build an EMPTY rootfs. Distinct names keep the selection axis and the path apart.
+LIBC_DIR  := $(REPO_ROOT)/libc
+COREUTILS_DIR := $(REPO_ROOT)/coreutils
 KERNEL_PROVIDER := $(REPO_ROOT)/kernel
 # Product overlay (forge refactor Phase 3): files SHIPPED into the rootfs, layered
 # on the generic staged tree. rootfs/ sits under the product, so `..` is it.
@@ -61,7 +66,7 @@ endif
 # then src (for private headers).
 CFLAGS := $(ARCH_FLAGS) -ffreestanding -nostdlib -nostartfiles \
           -fno-builtin -fno-stack-protector -Os -Wall -Wextra \
-          -I$(LIBC)/include -I$(STAGE_INC) -I$(LIBC)/src
+          -I$(LIBC_DIR)/include -I$(STAGE_INC) -I$(LIBC_DIR)/src
 
 # ---- LINK: static (default) vs dynamic ------------------------------------- *
 # STATIC  (Phase 1): libc.a's code is copied into each binary — self-contained,
@@ -86,7 +91,7 @@ else
   PICFLAGS :=
   LIBDEP   := $(BUILD)/libc.a
   LINKLIB  := $(BUILD)/libc.a
-  PROG_LDFLAGS := -T $(LIBC)/user.ld -nostdlib -static -Wl,--build-id=none \
+  PROG_LDFLAGS := -T $(LIBC_DIR)/user.ld -nostdlib -static -Wl,--build-id=none \
                   -Wl,-z,max-page-size=0x1000
 endif
 
@@ -97,19 +102,19 @@ endif
 # libc sources live in the provider (absolute path); build objects under a clean
 # $(BUILD)/libc/ prefix keyed on the bare filename (via vpath), so the object
 # paths don't embed the absolute source path.
-LIBC_SRCS := $(wildcard $(LIBC)/src/*.c)
+LIBC_SRCS := $(wildcard $(LIBC_DIR)/src/*.c)
 LIBC_OBJS := $(patsubst %.c,$(BUILD)/libc/%.c.o,$(notdir $(LIBC_SRCS)))
 CRT_OBJ   := $(BUILD)/libc/crt0.S.o
-vpath %.c $(LIBC)/src
-vpath %.S $(LIBC)/src/crt
+vpath %.c $(LIBC_DIR)/src
+vpath %.S $(LIBC_DIR)/src/crt
 
 # ---- programs (auto-discovered: one coreutils/*.c -> one static ELF) ---------
 # Adding a coreutil is a one-file drop into the coreutils/ provider — no Makefile
 # edit. /init is a SHELL SCRIPT (init.sh), not a compiled program, so it isn't here.
-PROGS      := $(notdir $(patsubst %.c,%,$(wildcard $(COREUTILS)/*.c)))
+PROGS      := $(notdir $(patsubst %.c,%,$(wildcard $(COREUTILS_DIR)/*.c)))
 PROG_ELVES := $(patsubst %,$(BUILD)/bin/%,$(PROGS))
 # find coreutils sources by bare name (the provider dir is an absolute path)
-vpath %.c $(COREUTILS)
+vpath %.c $(COREUTILS_DIR)
 
 # Programs that are DEMOS/tests, not shipped in the rootfs image (still built by
 # `make all` so they can be run standalone, just excluded from the cpio).
@@ -133,8 +138,8 @@ all: headers $(PROG_ELVES)
 # Two layers, buildroot-style: (1) stage the GENERIC files this assembler builds
 # (the shipped programs); (2) MERGE the product's overlay/ on top (its PID-1 init
 # + any etc/... it ships). This is how "generic rootfs + this product's policy"
-# compose without forking the rootfs. init.sh -> /init (the shebang PID-1);
-# init.busybox is the OTHER backend's (03-rootfs.sh) PID-1, so it's excluded here.
+# compose without forking the rootfs. init.sh -> /init (the shebang PID-1) — the
+# SINGLE portable init, shared with the busybox backend (forge/backends/rootfs.sh).
 # .PHONY because it's simpler to always re-sync than to track per-file deps; the
 # programs it copies already carry the real dependency graph.
 .PHONY: stage
@@ -142,15 +147,16 @@ stage: $(patsubst %,$(BUILD)/bin/%,$(SHIP_PROGS)) $(OVERLAY)/init.sh $(if $(filt
 	@mkdir -p $(STAGE)/bin
 	@for p in $(SHIP_PROGS); do install -m 0755 $(BUILD)/bin/$$p $(STAGE)/bin/$$p; done
 	@# overlay-merge: layer product files on top of the generic staged tree.
-	@# init.sh becomes /init; init.busybox belongs to the busybox backend (skip).
-	@for f in $$(cd $(OVERLAY) && find . -type f ! -name init.busybox | sed 's|^\./||'); do \
+	@# init.sh becomes /init (the single PORTABLE PID-1, shared with the busybox
+	@# backend — PID-1 policy is the product's, not the provider's).
+	@for f in $$(cd $(OVERLAY) && find . -type f | sed 's|^\./||'); do \
 	  dst="$(STAGE)/$$f"; [ "$$f" = init.sh ] && dst="$(STAGE)/init"; \
 	  mkdir -p "$$(dirname "$$dst")"; install -m 0755 "$(OVERLAY)/$$f" "$$dst"; \
 	done
 	@# dynamic build: ship the real ld-gv3.so.1 (the dynamic linker, ld/Makefile)
 	@# and libc.so into /lib at the paths the programs' PT_INTERP + DT_NEEDED record.
 	@if [ "$(LINK)" = "dynamic" ]; then \
-	  $(MAKE) -C $(LIBC)/ld BOARD=$(BOARD) >/dev/null 2>&1 || exit 1; \
+	  $(MAKE) -C $(LIBC_DIR)/ld BOARD=$(BOARD) >/dev/null 2>&1 || exit 1; \
 	  mkdir -p $(STAGE)/lib; \
 	  install -m 0755 $(BUILD)/ld-gv3.so.1 $(STAGE)/lib/ld-gv3.so.1; \
 	  install -m 0755 $(BUILD)/libc.so $(STAGE)/lib/libc.so; \

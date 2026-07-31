@@ -27,8 +27,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${HERE}/lib.sh"
 
-log()  { printf '\033[1;34m[01-uboot]\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m[01-uboot] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;34m[uboot]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[uboot] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 CLEAN=0
 [ "${1:-}" = "--clean" ] && CLEAN=1
@@ -200,7 +200,7 @@ cp -f "${UBOOT_IMAGE}" "${OUTPUT_DIR}/${UBOOT_IMAGE}"
 SIZE="$(du -h "${OUTPUT_DIR}/${UBOOT_IMAGE}" | cut -f1)"
 cat <<EOF
 
-$(printf '\033[1;32m[01-uboot] DONE\033[0m')
+$(printf '\033[1;32m[uboot] DONE\033[0m')
   U-Boot     : ${UBOOT_TAG}  (${UBOOT_DEFCONFIG})
   Console    : UART0 / PE2(TX) PE3(RX) @ 115200  [CONS_INDEX=${UBOOT_CONS_INDEX} + DTB overlay]
   Cores      : both A7s via U-Boot ARMv7 PSCI (no TF-A/BL31 needed)

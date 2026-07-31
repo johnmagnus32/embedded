@@ -4,6 +4,7 @@
  */
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/mount.h>
 #include "syscall_internal.h"
 
 ssize_t read(int fd, void *buf, size_t n)
@@ -32,6 +33,26 @@ off_t lseek(int fd, off_t off, int whence)
 int openat(int dirfd, const char *path, int flags, int mode)
 {
 	return (int)__ret(__syscall6(SYS_openat, dirfd, (long)path, flags, mode, 0, 0));
+}
+
+/* mount(source, target, fstype, flags, data) — 5 args via __sys6 (+trailing 0).
+ * On the custom kernel SYS_mount currently succeeds as a no-op (no procfs/sysfs/
+ * devtmpfs backend yet); on mainline it really mounts. Lets /init + a `mount`
+ * coreutil issue the standard proc/sys/dev mounts portably. */
+int mount(const char *source, const char *target, const char *fstype,
+          unsigned long flags, const void *data)
+{
+	return (int)__ret(__sys6(SYS_mount, source, target, fstype, flags, data, 0));
+}
+
+int umount2(const char *target, int flags)
+{
+	return (int)__ret(__sys2(SYS_umount2, target, flags));
+}
+
+int umount(const char *target)
+{
+	return umount2(target, 0);
 }
 
 int open(const char *path, int flags, ...)

@@ -1,12 +1,18 @@
 # Linux Build-System Refactor: Providers, Products, and a Shared Forge
 
 **Status:** IN PROGRESS — **Phases 0–4 DONE + committed** (golden 6/6 throughout;
-both stacks silicon-proven on the T113), Phase 5 pending a second board. This
-describes the target directory structure and the phased plan; see the per-phase
-checkboxes under "Phasing" for exactly what is done vs. deferred. One deliberate
-divergence from the target tree: the `0N-*.sh` fetch scripts and the dev tools
-(`flash.sh`/`t113power.sh`) were NOT absorbed into `forge/`/`tools/` — the engine
-DELEGATES to them in place (see "Honest cautions"). Everything else below is built.
+both stacks silicon-proven on the T113), plus **Phase 6** (backends graduated out
+of the product into the engine) and **Phase 7** (dev tools graduated to a repo-root
+`tools/`). Phase 5 pending a second board. This describes the target directory
+structure and the phased plan; see the per-phase checkboxes under "Phasing".
+
+The fetch/build backends (formerly the product's `0N-*.sh` scripts + `env.sh`) now
+live in **`forge/backends/*.sh`** — generic recipes owned by the engine, sourcing
+per-product DATA (`versions.env`, `board/<board>/board.env|layout.env|board.mk`).
+The `forge/*.mk` orchestrators delegate to them. This is the Buildroot split (a
+generic `package.mk`-style recipe reads per-product config); the product's
+`scripts/` dir is GONE, and `flash.sh`/`t113power.sh` now live in repo-root
+`tools/` (`make flash` shells `tools/flash.sh`). Everything below is built.
 
 **Scope — READ THIS FIRST.** This refactor concerns *only* the **Linux-class
 build path** in this repo: the parts that build a bootable Linux(-ABI) SD image
@@ -381,18 +387,32 @@ Run them after each phase; a phase is done only when they pass as before.
   RESOLVED as built: genimage is NOT installed on the host, so `board/*/image.cfg`
   is written in genimage format (the declarative layout) but `forge/image.mk`
   shells `build.sh`'s proven `dd`/`sfdisk` `emit_sd_img`; swap to genimage if it lands.
-- **The engine DELEGATES; it did not ABSORB the backends (as-built divergence).**
-  The target tree above shows the `0N-*.sh` fetch scripts folded INTO `forge/*.mk`
-  and the dev tools (`flash.sh`, `t113power.sh`) graduated to a repo-root `tools/`.
-  That was deliberately NOT done: `forge/{kernel,bootloader,rootfs}.mk` + `image.mk`
-  SHELL OUT to the proven `scripts/0N-*.sh` + `build.sh`, and `make flash` shells
-  `scripts/flash.sh` in place. Reimplementing the reproducible fetch/verify/pyenv/
-  host-make logic in Make would be a large rewrite for zero behavior gain — the
-  engine's win is the reusable Make graph + thin product, not a rewrite. So
-  `projects/gameboy-v3/scripts/` still holds `env.sh` + `00–03` + `build.sh` +
-  `flash.sh` + `t113power.sh`, and there is no `tools/`. This is a legitimate,
-  intended end state, not an unfinished migration; fold the scripts in only if the
-  legibility/reuse math ever changes.
+- **The engine ORCHESTRATES; backends stay SHELL, but now live in the engine
+  (Phase 6, as-built).** Two decisions, both deliberate:
+  1. The fetch/build logic is NOT reimplemented in Make — it stays as shell
+     (reproducible fetch/verify/pyenv/host-make logic is imperative and reads
+     cleanly as shell; rewriting it in Make would be a large rewrite for zero
+     behavior gain). The `.mk` files carry the reusable *orchestration* (the Make
+     dependency graph + provider selection); the shell carries the *mechanism*.
+  2. Those backends were MOVED OUT of the product into the engine:
+     `projects/gameboy-v3/scripts/{env.sh,00–03,build.sh}` → **`forge/backends/`**
+     (`lib.sh` + `toolchain.sh`/`kernel.sh`/`uboot.sh`/`rootfs.sh`/`image.sh`),
+     generic recipes that source per-product DATA (`versions.env`,
+     `board/<board>/board.env|layout.env|board.mk`). This is the Buildroot split
+     (a `package.mk`-style generic recipe reads a product's `defconfig`), and it
+     is what lets a *second* product reuse the backends without reaching into
+     gameboy-v3. The product's `scripts/` dir is now gone.
+- **Dev tools graduated to `tools/` (Phase 7, as-built).** `flash.sh` +
+  `t113power.sh` moved from the product's `scripts/` to repo-root `tools/` —
+  deliver+debug, distinct from the build engine, reusable by any product on the
+  rig. `make flash` shells `tools/flash.sh`.
+- **Init is ONE portable file (as-built).** A single `overlay/init.sh` is shipped
+  for every rootfs provider (PID-1 policy is the product's, not the provider's);
+  it is written in the shell subset both the gv3 shell and busybox parse, with
+  best-effort mounts (real on mainline; kernel no-op success on the custom stack).
+  A `mount` coreutil + libc `mount()` wrapper were added so the custom rootfs
+  issues real `mount(2)` calls. FUTURE: the custom kernel's mount is still a no-op
+  (no procfs/sysfs/devtmpfs backend) — real virtual filesystems are deferred work.
 
 ## One-paragraph summary
 

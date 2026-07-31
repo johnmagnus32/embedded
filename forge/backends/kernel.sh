@@ -26,8 +26,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${HERE}/lib.sh"
 
-log()  { printf '\033[1;34m[02-kernel]\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m[02-kernel] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;34m[kernel]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[kernel] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 CLEAN=0
 [ "${1:-}" = "--clean" ] && CLEAN=1
@@ -150,7 +150,7 @@ ZSIZE="$(du -h "${OUTPUT_DIR}/zImage" | cut -f1)"
 DSIZE="$(du -h "${OUTPUT_DIR}/${KERNEL_DTB}" | cut -f1)"
 cat <<EOF
 
-$(printf '\033[1;32m[02-kernel] DONE\033[0m')
+$(printf '\033[1;32m[kernel] DONE\033[0m')
   Kernel     : ${KERNEL_TAG}  (${KERNEL_DEFCONFIG})
   Console    : UART0 / PE2-PE3 → Linux ttyS0  (cmdline: console=${KERNEL_CONSOLE})
   Cores      : both A7s (U-Boot PSCI patches enable-method into this DTB at boot)

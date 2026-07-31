@@ -31,8 +31,8 @@ source "${HERE}/lib.sh"
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
-log()  { printf '\033[1;34m[00-toolchain]\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m[00-toolchain] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+log()  { printf '\033[1;34m[toolchain]\033[0m %s\n' "$*"; }
+die()  { printf '\033[1;31m[toolchain] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 # =============================================================================
 # setup_host_make — GNU Make >= 4.0 (kernel requirement)
@@ -193,10 +193,10 @@ setup_cross_toolchain
 
 cat <<EOF
 
-$(printf '\033[1;32m[00-toolchain] DONE\033[0m')
+$(printf '\033[1;32m[toolchain] DONE\033[0m')
   Host make  : $(make --version 2>/dev/null | sed -n '1s/.*GNU Make //p')  ($( [ -x "${HOSTMAKE_DIR}/bin/make" ] && echo "built locally at build/hostmake" || echo "host's own, >= 4.0" ))
-  Toolchain  : ${TOOLCHAIN_ARCH} ${TOOLCHAIN_LIBC} ${TOOLCHAIN_CHANNEL}-${TOOLCHAIN_VERSION}  [${CROSS_COMPILE}]  (U-Boot + kernel)
-  Rootfs TC  : ${TOOLCHAIN_ARCH} musl ${TOOLCHAIN_CHANNEL}-${ROOTFS_TC_VERSION}  [${ROOTFS_CROSS_COMPILE}]  (BusyBox — smaller static)
+  Toolchain  : ${TC_ARCH} ${TOOLCHAIN_LIBC} ${TOOLCHAIN_CHANNEL}-${TOOLCHAIN_VERSION}  [${CROSS_COMPILE}]  (U-Boot + kernel)
+  Rootfs TC  : ${TC_ARCH} musl ${TOOLCHAIN_CHANNEL}-${ROOTFS_TC_VERSION}  [${ROOTFS_CROSS_COMPILE}]  (BusyBox — smaller static)
   On PATH    : source forge/backends/lib.sh   (both compilers + make available)
 
 Next: make bootloader BOOTLOADER=uboot

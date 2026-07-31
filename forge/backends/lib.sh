@@ -59,66 +59,15 @@ OVERLAY_DIR="${PRODUCT_DIR}/overlay"
 [ -d "${BOARD_DIR}" ] || { echo "lib.sh: board dir '${BOARD_DIR}' not found (BOARD_NAME=${BOARD_NAME})" >&2; return 1 2>/dev/null || exit 1; }
 
 # =============================================================================
-# HOST-CONSTRAINED PINS  (engine tier — chosen by the BUILD HOST, not the product)
-# =============================================================================
-#
-# Cross toolchain: Bootlin prebuilt, armv7-eabihf (hard-float), glibc. The T113-S3
-# is 32-bit ARMv7-A (Cortex-A7), so an arm .*-gnueabihf toolchain, NOT arm-none-eabi.
-#
-# VERSION CHOICE — constrained by the HOST, not the target (why this is engine-tier):
-#   * This build host is glibc 2.26. Bootlin's NEWER toolchains (e.g. 2024.x /
-#     2025.08) ship a binutils `ld` linked against GLIBC_2.27, so its `ld` literally
-#     won't run here — U-Boot's build dies at the first LINK step.
-#   * U-Boot v2026.04 requires host/target GCC >= 10 (arch/arm/config.mk checkgcc10).
-#   => 2021.11 is the sweet spot: GCC 10.3.0 (satisfies checkgcc10) AND its `ld`
-#      only needs GLIBC_2.14 (runs on this host).
-#   If you build on a newer host (glibc >= 2.27), bump to 2025.08-1
-#      (sha 97d6fbaf…f9b4, .tar.xz) for a newer GCC.
-# To bump: pick a dir from
-#   https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/
-# then update version, SHA256 (from the matching .sha256), AND extension (older
-# releases are .tar.bz2, newer .tar.xz).
-TOOLCHAIN_ARCH="armv7-eabihf"
-TOOLCHAIN_LIBC="glibc"
-TOOLCHAIN_CHANNEL="stable"
-TOOLCHAIN_VERSION="2021.11-1"
-TOOLCHAIN_EXT="tar.bz2"
-TOOLCHAIN_TARBALL="${TOOLCHAIN_ARCH}--${TOOLCHAIN_LIBC}--${TOOLCHAIN_CHANNEL}-${TOOLCHAIN_VERSION}.${TOOLCHAIN_EXT}"
-TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/${TOOLCHAIN_ARCH}/tarballs/${TOOLCHAIN_TARBALL}"
-TOOLCHAIN_SHA256="6d10f356811429f1bddc23a174932c35127ab6c6f3b738b768f0c29c3bf92f10"
-
-# The cross-compiler prefix. Bootlin toolchains are built WITH Buildroot, so the
-# triple is arm-buildroot-linux-gnueabihf- (not the generic arm-linux-gnueabihf-).
-CROSS_COMPILE="arm-buildroot-linux-gnueabihf-"
-ARCH="arm"
-export CROSS_COMPILE ARCH
-
-# A SECOND, musl toolchain (rootfs only). U-Boot + the kernel don't link a target
-# libc, so they stay on glibc above. The ROOTFS (BusyBox / our libc) links libc,
-# and musl makes the static binary ~34% smaller + shrinks the syscall surface.
-# Same 2021.11 vintage so its `ld` runs on this host.
-ROOTFS_TC_VERSION="2021.11-1"
-ROOTFS_TC_EXT="tar.bz2"
-ROOTFS_TC_TARBALL="${TOOLCHAIN_ARCH}--musl--${TOOLCHAIN_CHANNEL}-${ROOTFS_TC_VERSION}.${ROOTFS_TC_EXT}"
-ROOTFS_TC_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/${TOOLCHAIN_ARCH}/tarballs/${ROOTFS_TC_TARBALL}"
-ROOTFS_TC_SHA256="767c99155f74d5620cfd59d0224df2f82dec7ce58be24d702081dca9793408a9"
-ROOTFS_CROSS_COMPILE="arm-buildroot-linux-musleabihf-"
-
-# Host GNU Make >= 4.0 (the Linux kernel Makefile hard-requires it). toolchain.sh
-# builds this into HOSTMAKE_DIR ONLY when the host's own make is too old.
-# Source: kernel.org GNU mirror (ftp.gnu.org has no egress here).
-MAKE_VERSION="4.4.1"
-MAKE_TARBALL="make-${MAKE_VERSION}.tar.gz"
-MAKE_URL="https://mirrors.kernel.org/gnu/make/${MAKE_TARBALL}"
-MAKE_SHA256="dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
-
-# =============================================================================
 # PER-PRODUCT DATA  (the "what" — supplied by the product being built)
 # =============================================================================
+# Sourced FIRST so it can set the target ISA / triple that the toolchain pins
+# below default from — a second, non-ARMv7 board overrides TC_ARCH/CROSS_COMPILE
+# here, and the pins pick those up via ${VAR:-default}.
 # OSS component version pins (kernel/uboot/busybox tags + urls + shas). In
 # Buildroot these are the board's defconfig BR2_*_VERSION lines: per-product data,
-# read by the generic recipe. Kept in versions.env (bash) rather than config.mk
-# because config.mk uses Make `?=` syntax bash can't source.
+# read by the generic recipe. versions.env is bash (config.mk's Make `?=` isn't
+# bash-sourceable).
 [ -f "${PRODUCT_DIR}/versions.env" ] && source "${PRODUCT_DIR}/versions.env"
 # Board build facts (defconfig names, board DT, console) + memory/storage layout +
 # the make-readable provider targets. board.mk is KEY=value so it is sourceable
@@ -128,6 +77,61 @@ MAKE_SHA256="dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
 [ -f "${BOARD_DIR}/board.mk" ]   && source "${BOARD_DIR}/board.mk"
 KERNEL_TARGET="${KERNEL_TARGET:-${BOARD_NAME%%-*}}"
 ROOTFS_TARGET="${ROOTFS_TARGET:-${KERNEL_TARGET}}"
+
+# =============================================================================
+# TOOLCHAIN + MAKE PINS
+# =============================================================================
+# TWO tiers are tangled in a cross-toolchain choice; keep them straight:
+#   * TARGET ISA/triple (TC_ARCH, CROSS_COMPILE, ARCH, ROOTFS_CROSS_COMPILE) is a
+#     BOARD/SoC fact — the T113-S3 is 32-bit ARMv7-A, so armv7-eabihf + an
+#     arm-*-gnueabihf triple. A different-arch board OVERRIDES these in its
+#     board.env (sourced above); the values here are just the ARMv7 default.
+#   * The toolchain VERSION is HOST-constrained (engine-tier), NOT a product
+#     choice — see the version note below.
+#
+# TARGET ISA/triple — BOARD facts (ARMv7 defaults; a board.env may override any
+# of TC_ARCH/CROSS_COMPILE/ARCH/ROOTFS_CROSS_COMPILE for a different-arch board).
+# NOT arm-none-eabi (that is bare-metal); Bootlin triples carry the buildroot tag.
+TC_ARCH="${TC_ARCH:-armv7-eabihf}"
+CROSS_COMPILE="${CROSS_COMPILE:-arm-buildroot-linux-gnueabihf-}"
+ARCH="${ARCH:-arm}"
+ROOTFS_CROSS_COMPILE="${ROOTFS_CROSS_COMPILE:-arm-buildroot-linux-musleabihf-}"
+export CROSS_COMPILE ARCH
+
+# TOOLCHAIN VERSION — HOST-constrained (engine-tier), NOT a product choice:
+#   * This build host is glibc 2.26. Bootlin's NEWER toolchains (e.g. 2024.x /
+#     2025.08) ship a binutils `ld` linked against GLIBC_2.27, so its `ld` literally
+#     won't run here — U-Boot's build dies at the first LINK step.
+#   * U-Boot v2026.04 requires host/target GCC >= 10 (arch/arm/config.mk checkgcc10).
+#   => 2021.11 is the sweet spot: GCC 10.3.0 (satisfies checkgcc10) AND its `ld`
+#      only needs GLIBC_2.14 (runs on this host). On a newer host (glibc >= 2.27)
+#      bump to 2025.08-1. To bump: pick a dir from
+#      https://toolchains.bootlin.com/downloads/releases/toolchains/<TC_ARCH>/tarballs/
+#      and update version + SHA256 (from the matching .sha256) + extension.
+# The SHAs default here but a board that overrides TC_ARCH must also override them.
+TOOLCHAIN_LIBC="glibc"
+TOOLCHAIN_CHANNEL="stable"
+TOOLCHAIN_VERSION="2021.11-1"
+TOOLCHAIN_EXT="tar.bz2"
+TOOLCHAIN_TARBALL="${TC_ARCH}--${TOOLCHAIN_LIBC}--${TOOLCHAIN_CHANNEL}-${TOOLCHAIN_VERSION}.${TOOLCHAIN_EXT}"
+TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/${TC_ARCH}/tarballs/${TOOLCHAIN_TARBALL}"
+TOOLCHAIN_SHA256="${TOOLCHAIN_SHA256:-6d10f356811429f1bddc23a174932c35127ab6c6f3b738b768f0c29c3bf92f10}"
+
+# A SECOND, musl toolchain (rootfs only): the ROOTFS links libc; musl-static is
+# ~34% smaller + a lighter syscall surface. Same 2021.11 vintage (runs on this host).
+ROOTFS_TC_VERSION="2021.11-1"
+ROOTFS_TC_EXT="tar.bz2"
+ROOTFS_TC_TARBALL="${TC_ARCH}--musl--${TOOLCHAIN_CHANNEL}-${ROOTFS_TC_VERSION}.${ROOTFS_TC_EXT}"
+ROOTFS_TC_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/${TC_ARCH}/tarballs/${ROOTFS_TC_TARBALL}"
+ROOTFS_TC_SHA256="${ROOTFS_TC_SHA256:-767c99155f74d5620cfd59d0224df2f82dec7ce58be24d702081dca9793408a9}"
+
+# Host GNU Make >= 4.0 (the Linux kernel Makefile hard-requires it). toolchain.sh
+# builds this into HOSTMAKE_DIR ONLY when the host's own make is too old.
+# Source: kernel.org GNU mirror (ftp.gnu.org has no egress here).
+MAKE_VERSION="4.4.1"
+MAKE_TARBALL="make-${MAKE_VERSION}.tar.gz"
+MAKE_URL="https://mirrors.kernel.org/gnu/make/${MAKE_TARBALL}"
+MAKE_SHA256="dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
 
 # =============================================================================
 # MECHANISM  (generic helpers + PATH setup)

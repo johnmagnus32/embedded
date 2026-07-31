@@ -264,9 +264,12 @@ make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox   # runs forge/backends/
   scripted `.config` edit + `make oldconfig`. `CONFIG_TC=n` avoids the `tc.c`
   `TCA_CBQ_MAX` break (kernel headers ≥ 6.8 removed it; unfixed upstream) and
   isn't needed for a minimal rootfs anyway.
-- **`/init` is PID 1** ([overlay/init.sh](overlay/init.sh) (scratch) / [overlay/init.busybox](overlay/init.busybox) (busybox)): mounts `/proc`, `/sys`,
-  devtmpfs `/dev`, prints a banner + `nproc`, then `exec … /bin/sh`. If PID 1
-  ever exits, the kernel panics — so it hands off to a shell that stays running.
+- **`/init` is PID 1** — a SINGLE portable [overlay/init.sh](overlay/init.sh)
+  shipped for EVERY rootfs provider (PID-1 policy is the product's, not the
+  provider's). Written in the shell subset both our gv3 shell and busybox parse:
+  best-effort mounts `/proc`, `/sys`, devtmpfs `/dev` (real on mainline; kernel
+  no-op success on the custom stack), a static banner, then `exec /bin/sh`. If
+  PID 1 ever exits the kernel panics — so it hands off to a shell that stays up.
 - **Packaged with the kernel's `gen_init_cpio`** (reused from Step 2's tree): it
   emits a root-owned cpio and creates `/dev/console` (char 5,1) **without needing
   root** — that node must exist in the initramfs or PID 1 gets no stdin/out/err.

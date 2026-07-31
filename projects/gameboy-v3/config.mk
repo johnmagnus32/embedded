@@ -20,12 +20,12 @@
 # after the value, or the spaces become part of it and break `ifeq` comparisons).
 KERNEL     ?= custom
 BOOTLOADER ?= custom
-LIBC       ?= gv3
-COREUTILS  ?= gv3
+LIBC       ?= custom
+COREUTILS  ?= custom
 #   KERNEL     custom -> repo-root kernel/     | mainline -> fetch Linux
 #   BOOTLOADER custom -> repo-root bootloader/ | uboot    -> fetch U-Boot
-#   LIBC       gv3    -> repo-root libc/       | musl     -> fetch musl
-#   COREUTILS  gv3    -> repo-root coreutils/  | busybox  -> fetch BusyBox
+#   LIBC       custom -> repo-root libc/       | musl     -> fetch musl
+#   COREUTILS  custom -> repo-root coreutils/  | busybox  -> fetch BusyBox
 # OSS component versions: versions.env. Board facts: board/$(BOARD)/.
 
 # --- board + media ------------------------------------------------------------

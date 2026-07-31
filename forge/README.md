@@ -22,8 +22,8 @@ include $(REPO_ROOT)/forge/rules.mk     # the engine
 ```make
 KERNEL     ?= custom      # custom -> repo-root kernel/      | mainline -> fetch Linux
 BOOTLOADER ?= custom      # custom -> repo-root bootloader/  | uboot    -> fetch U-Boot
-LIBC       ?= gv3         # gv3    -> repo-root libc/         | musl     -> fetch musl
-COREUTILS  ?= gv3         # gv3    -> repo-root coreutils/    | busybox  -> fetch BusyBox
+LIBC       ?= custom      # custom -> repo-root libc/         | musl     -> fetch musl
+COREUTILS  ?= custom      # custom -> repo-root coreutils/    | busybox  -> fetch BusyBox
 BOARD      ?= t113-gameboy
 MEDIA      ?= nor         # nor -> flash bundle (FEL loop)   | sd -> dd-able .img
 LCD        ?=             # empty | ili9341
@@ -82,7 +82,7 @@ make clean
   Makefiles, and `build.sh`'s media assembly. Reimplementing the fetch/verify/
   pyenv/host-make logic in Make would be a large rewrite for zero behavior gain;
   forge's win is *reusable engine + Make dependency graph + thin product Makefile*.
-- **Mixed rootfs (e.g. gv3 libc + BusyBox utils)** is the point of splitting
+- **Mixed rootfs (e.g. custom libc + BusyBox utils)** is the point of splitting
   coreutils into its own provider, but it needs an overlay-staging assembler that
   isn't wired yet — `providers.mk` errors clearly rather than build the wrong thing.
 - **The engine is board-agnostic; the board is an input.** forge/*.mk no longer

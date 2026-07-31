@@ -274,11 +274,9 @@ busybox_case() {
     return 0
   fi
   REQ=(
-    'T113-S3 is alive.'
-    'Linux 0.9-gv3 armv7l'                            # $(uname -srm) substitution
-    'cores online: 1'                                 # $(nproc) substitution
-    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a output
-    'sub: HI'                                         # $(echo hi | tr ...) over a pipe
+    'PID 1 is alive.'                                 # the single portable /init banner
+    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a (fed to the interactive shell)
+    'sub: HI'                                         # $(echo hi | tr ...) over a pipe — busybox shell does cmd-subst
     '[kernel] last process exited; halting.'
   )
   FORB=(
@@ -301,10 +299,8 @@ dynamic_case() {
   REQ=(
     'pid 1 pc 0x2'                                    # PID 1 entered at ld.so (INTERP_BASE 0x20000000)
     '[dynamic]'                                        # kernel took the dynamic path
-    'T113-S3 is alive.'
-    'Linux 0.9-gv3 armv7l'                            # $(uname -srm) via a forked dynamic applet
-    'cores online: 1'                                 # $(nproc)
-    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a
+    'PID 1 is alive.'                                 # the single portable /init banner
+    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a via a forked dynamic applet
     'sub: HI'                                         # $(echo hi | tr ...) over a pipe
     '[kernel] last process exited; halting.'
   )
