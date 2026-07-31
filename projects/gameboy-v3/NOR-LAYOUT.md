@@ -94,10 +94,10 @@ self-contained bundle, `flash.sh` flashes it to NOR AND FEL-boots it in one comm
 (it stages the bundle to the rig itself, so you run it from the dev host):
 
 ```
-./scripts/build.sh                                   # bundle (defaults: custom+linux+busybox)
-BOOTLOADER=custom KERNEL=custom ROOTFS=scratch ./scripts/build.sh   # any config
-LCD=ili9341 ./scripts/build.sh                       # + ILI9341 panel driver
-./scripts/flash.sh build/bundles/<cfg> nor           # flash NOR + FEL-boot, watch UART
+make image                                   # bundle (defaults: custom+linux+busybox)
+make image KERNEL=custom BOOTLOADER=custom LIBC=gv3 COREUTILS=gv3   # any config
+make image LCD=ili9341                       # + ILI9341 panel driver
+tools/flash.sh build/bundles/<cfg> nor           # flash NOR + FEL-boot, watch UART
 ```
 
 `flash.sh <bundle> nor` does, on the rig: power-cycle→FEL (t113power.sh) → xfel
@@ -130,5 +130,5 @@ timer div-by-zeros), and fdt.c is built -O0 (a GCC10 -Os miscompile hangs the
 FDT walk).
 
 _Single source of truth for both loaders + `flash.sh`. Keep offsets here in sync
-with `bootloader/nor_layout.h`, `scripts/build.sh` (manifest), and the U-Boot boot
+with `bootloader/nor_layout.h`, `forge/backends/image.sh` (manifest), and the U-Boot boot
 script._

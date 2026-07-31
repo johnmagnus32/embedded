@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # flash.sh — flash a build.sh BUNDLE to the T113-breakout and FEL-boot it, in one go.
 #
-#   ./scripts/flash.sh <bundle-dir> <media>
+#   tools/flash.sh <bundle-dir> <media>   (or: make flash  from the product dir)
 #     <bundle-dir>  a directory produced by build.sh (has manifest.env + components)
 #     <media>       nor            (SD/eMMC: see the clear error below)
 #

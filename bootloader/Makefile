@@ -4,7 +4,7 @@
 # at the 8 KiB offset (exactly where our U-Boot goes), replacing U-Boot.
 #
 # Uses the same pinned cross toolchain as the rest of the project (Step 0).
-# Run ../scripts/00-toolchain.sh first, or `source ../scripts/env.sh`.
+# Run forge/backends/toolchain.sh (or `make toolchain`) first, or `source forge/backends/lib.sh`.
 
 CROSS_COMPILE ?= arm-buildroot-linux-gnueabihf-
 CC      := $(CROSS_COMPILE)gcc
@@ -35,7 +35,7 @@ all: $(BUILD)/$(TARGET).egon.bin
 
 # FEL-loadable image: linked at 0x28000 (xfel can't bulk-write the 0x20000 SPL
 # slot — it collides with the live FEL USB buffers in SRAM A1). Named distinctly
-# so scripts/flash.sh (BOOTLOADER=custom) can FEL-load + exec it. Build with:
+# so tools/flash.sh (BOOTLOADER=custom) can FEL-load + exec it. Build with:
 #   make fel        (equivalent to: make LOAD_ADDR=0x28000 + rename)
 fel:
 	$(MAKE) clean

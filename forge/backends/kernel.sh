@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 02-kernel.sh — Step 2: build a mainline Linux kernel + device tree for the
+# kernel.sh — build a mainline Linux kernel + device tree for the
 # T113-S3, with the console on UART0/PE2-PE3 (same board wiring as U-Boot).
 #
 # What it does:
@@ -15,16 +15,16 @@
 # expected: U-Boot's PSCI patches enable-method="psci" into this DTB at boot, so
 # BOTH Cortex-A7 cores come up. Nothing to do here for SMP.
 #
-#   ./scripts/02-kernel.sh            # build (idempotent)
-#   ./scripts/02-kernel.sh --clean    # wipe the kernel checkout first
+#   make kernel KERNEL=mainline            # build (idempotent)
+#   make kernel KERNEL=mainline --clean    # wipe the kernel checkout first
 #
-# Prereq: ./scripts/00-toolchain.sh   (cross compiler)
+# Prereq: make toolchain   (cross compiler)
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=env.sh
-source "${HERE}/env.sh"
+# shellcheck source=lib.sh
+source "${HERE}/lib.sh"
 
 log()  { printf '\033[1;34m[02-kernel]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[02-kernel] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -35,7 +35,7 @@ CLEAN=0
 # --- preflight ---------------------------------------------------------------
 command -v git >/dev/null 2>&1 || die "git not found"
 command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-  || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH — run ./scripts/00-toolchain.sh first"
+  || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH — run make toolchain first"
 # Kernel host build deps. libelf (elfutils) headers are needed for objtool/CONFIG_UNWINDER.
 for t in bc bison flex perl gzip; do
   command -v "$t" >/dev/null 2>&1 || die "host build dep '$t' missing (apt: bc bison flex build-essential libssl-dev libelf-dev)"
@@ -44,12 +44,12 @@ done
 
 # The kernel Makefile requires GNU Make >= 4.0. Step 0 (00-toolchain.sh) is
 # responsible for providing it — either the host's own (if new enough) or a
-# pinned one built into build/hostmake/, which env.sh puts on PATH. Here we just
+# pinned one built into build/hostmake/, which lib.sh puts on PATH. Here we just
 # verify it's present so a missing Step 0 fails clearly instead of cryptically.
 MAKE_VER="$(make --version 2>/dev/null | sed -n '1s/.*GNU Make //p')"
 case "${MAKE_VER}" in
   4.*|5.*|6.*|7.*|8.*|9.*) log "using GNU Make ${MAKE_VER}" ;;
-  *) die "GNU Make on PATH is '${MAKE_VER:-none}', need >= 4.0 — run ./scripts/00-toolchain.sh first" ;;
+  *) die "GNU Make on PATH is '${MAKE_VER:-none}', need >= 4.0 — run make toolchain first" ;;
 esac
 
 KERNEL_SRC_DIR="${BUILD_DIR}/linux"
@@ -106,7 +106,7 @@ grep -qF "${INCLUDE_LINE}" "${BOARD_DTS_REL}" || die "failed to append console o
 
 # --- 4b. OPTIONAL: ILI9341 SPI LCD (opt-in via LCD=ili9341) ------------------
 # External Adafruit 2.4" ILI9341 panel on SPI1 (PD10-12) + D/C PD14 / RST PD15.
-# Off by default (no panel on a bare board); enable with: LCD=ili9341 ./02-kernel.sh
+# Off by default (no panel on a bare board); enable with: LCD=ili9341 make kernel KERNEL=mainline
 # Adds the mainline DRM tiny driver (selects DRM_MIPI_DBI/KMS/GEM_DMA/backlight)
 # + FBDEV emulation (for a /dev/fb0 test path) + the DT overlay. See
 # board/t113-gameboy/lcd-ili9341.dtsi and LCD-ILI9341.md.

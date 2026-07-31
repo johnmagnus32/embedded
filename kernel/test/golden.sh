@@ -16,7 +16,7 @@
 #            ALWAYS available. Exercises fs + mem syscalls + fork/exec/wait.
 #   busybox — the real musl BusyBox rootfs, driven with a fixed command script to
 #            an interactive prompt. Only runs if the image is present (it's a
-#            build artifact of ../scripts/03-rootfs.sh); otherwise SKIPPED.
+#            build artifact of the busybox rootfs (make image ... from the product)); otherwise SKIPPED.
 #
 # Usage:
 #   ./test/golden.sh                 # build (BOARD=virt) + run both cases
@@ -270,7 +270,7 @@ preempt_case() {
 
 busybox_case() {
   if [ ! -f "$BUSYBOX_INITRD" ]; then
-    ylw "=== case: busybox === SKIPPED (no ${BUSYBOX_INITRD#${PROJ}/}; run ../scripts/03-rootfs.sh)"
+    ylw "=== case: busybox === SKIPPED (no ${BUSYBOX_INITRD#${PROJ}/}; run: make image KERNEL=mainline LIBC=musl COREUTILS=busybox (from projects/gameboy-v3))"
     return 0
   fi
   REQ=(
@@ -293,9 +293,9 @@ dynamic_case() {
   # DYNAMICALLY-linked musl BusyBox: proves the kernel's dynamic-linking support
   # (ET_DYN load bias, PT_INTERP -> /lib/ld-musl-armhf.so.1, full auxv, file-backed
   # + MAP_FIXED mmap2). Same shell interactions as busybox, but the whole chain
-  # runs THROUGH ld.so. Build with: LINKAGE=dynamic ../scripts/03-rootfs.sh
+  # runs THROUGH ld.so. Build with: LINKAGE=dynamic make (from projects/gameboy-v3/rootfs) — see rootfs/README
   if [ ! -f "$DYNAMIC_INITRD" ]; then
-    ylw "=== case: dynamic === SKIPPED (no ${DYNAMIC_INITRD#${PROJ}/}; run LINKAGE=dynamic ../scripts/03-rootfs.sh)"
+    ylw "=== case: dynamic === SKIPPED (no ${DYNAMIC_INITRD#${PROJ}/}; run LINKAGE=dynamic make (from projects/gameboy-v3/rootfs) — see rootfs/README)"
     return 0
   fi
   REQ=(

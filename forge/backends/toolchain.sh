@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 00-toolchain.sh — Step 0: prepare the build environment.
+# toolchain.sh — prepare the build environment (Step 0 of the OSS pipeline).
 #
 # Two things must be in place before we can build U-Boot / the kernel, and both
 # are HOST-environment setup (not target code), so they live together here as
@@ -16,17 +16,17 @@
 #                            we cross-compile everything from this x86_64 host.
 #
 # Both are idempotent: re-running re-verifies and skips finished work.
-# All pins (versions + checksums) live in scripts/env.sh.
+# All pins (versions + checksums) live in forge/backends/lib.sh.
 #
-#   ./scripts/00-toolchain.sh          # do it
-#   ./scripts/00-toolchain.sh --force  # rebuild both from scratch
+#   make toolchain          # do it
+#   make toolchain --force  # rebuild both from scratch
 
 set -euo pipefail
 
 # --- locate + load the pinned config ----------------------------------------
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=env.sh
-source "${HERE}/env.sh"
+# shellcheck source=lib.sh
+source "${HERE}/lib.sh"
 
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
@@ -43,13 +43,13 @@ _make_ge4() { case "${1:-}" in 4.*|5.*|6.*|7.*|8.*|9.*) return 0 ;; *) return 1 
 # Version of the locally-built make, if present and runnable (empty otherwise).
 _local_make_version()  { [ -x "${HOSTMAKE_DIR}/bin/make" ] && "${HOSTMAKE_DIR}/bin/make" --version 2>/dev/null | sed -n '1s/.*GNU Make //p' || true; }
 # Version of whatever 'make' is first on PATH right now (the host's, when no
-# local one exists — env.sh only prepends hostmake if it's already built).
+# local one exists — lib.sh only prepends hostmake if it's already built).
 _system_make_version() { make --version 2>/dev/null | sed -n '1s/.*GNU Make //p' || true; }
 
 setup_host_make() {
   [ "${FORCE}" -eq 1 ] && rm -rf "${HOSTMAKE_DIR}"
 
-  # 1. Already built a good local make? env.sh put it on PATH → nothing to do.
+  # 1. Already built a good local make? lib.sh put it on PATH → nothing to do.
   local lv; lv="$(_local_make_version)"
   if _make_ge4 "${lv}"; then
     log "host make: using locally-built GNU Make ${lv}"
@@ -145,11 +145,11 @@ fetch_toolchain() {
       || die "SHA256 mismatch for ${tarball}! expected ${sha}
          got      $(sha256sum "${tb}" | cut -d' ' -f1)
          Refusing to use an unverified toolchain. If you bumped the version,
-         update the matching SHA256 in scripts/env.sh."
+         update the matching SHA256 in forge/backends/lib.sh."
     log "${label}: SHA256 OK"
   fi
 
-  # extract (normalize dir name so env.sh's PATH is stable)
+  # extract (normalize dir name so lib.sh's PATH is stable)
   local cc_bin="${dest}/bin/${prefix}gcc"
   if [ -x "${cc_bin}" ]; then
     log "${label}: already extracted at ${dest}"
@@ -197,7 +197,7 @@ $(printf '\033[1;32m[00-toolchain] DONE\033[0m')
   Host make  : $(make --version 2>/dev/null | sed -n '1s/.*GNU Make //p')  ($( [ -x "${HOSTMAKE_DIR}/bin/make" ] && echo "built locally at build/hostmake" || echo "host's own, >= 4.0" ))
   Toolchain  : ${TOOLCHAIN_ARCH} ${TOOLCHAIN_LIBC} ${TOOLCHAIN_CHANNEL}-${TOOLCHAIN_VERSION}  [${CROSS_COMPILE}]  (U-Boot + kernel)
   Rootfs TC  : ${TOOLCHAIN_ARCH} musl ${TOOLCHAIN_CHANNEL}-${ROOTFS_TC_VERSION}  [${ROOTFS_CROSS_COMPILE}]  (BusyBox — smaller static)
-  On PATH    : source scripts/env.sh   (both compilers + make available)
+  On PATH    : source forge/backends/lib.sh   (both compilers + make available)
 
-Next: Step 1 — build U-Boot (scripts/01-uboot.sh).
+Next: make bootloader BOOTLOADER=uboot
 EOF

@@ -21,15 +21,23 @@
 #   KERNEL BOOTLOADER LIBC COREUTILS BOARD MEDIA LCD  and  PRODUCT_DIR
 PRODUCT_DIR ?= $(CURDIR)
 BUILD       := $(PRODUCT_DIR)/build
-SCRIPTS     := $(PRODUCT_DIR)/scripts
 
 include $(dir $(lastword $(MAKEFILE_LIST)))providers.mk
+
+# The generic build backends (fetch/build recipes + mechanism) live WITH the
+# engine, not inside the product (forge refactor Phase 6). BACKENDS is where the
+# 0N-equivalent scripts + lib.sh live; TOOLS is the repo-root rig/dev tooling.
+BACKENDS := $(FORGE_DIR)/backends
+TOOLS    := $(REPO_ROOT)/tools
 
 OUTPUT := $(BUILD)/output
 BUNDLE := $(BUILD)/bundles/$(CFG)
 
-# Environment the shell backends (0N-*.sh / build.sh / flash.sh) read.
-BACKEND_ENV := BOOTLOADER=$(BOOTLOADER) KERNEL=$(BUILD_KERNEL) ROOTFS=$(BUILD_ROOTFS) \
+# Environment the shell backends read. They source forge/backends/lib.sh, which
+# needs PRODUCT_DIR + BOARD_NAME to resolve the product's data (versions.env,
+# board/*/{board.env,layout.env,board.mk}); pass both into every backend call.
+BACKEND_ENV := PRODUCT_DIR=$(PRODUCT_DIR) BOARD_NAME=$(BOARD) \
+               BOOTLOADER=$(BOOTLOADER) KERNEL=$(BUILD_KERNEL) ROOTFS=$(BUILD_ROOTFS) \
                MEDIA=$(MEDIA) LCD=$(LCD)
 
 .PHONY: image flash toolchain kernel bootloader rootfs print-config test clean
@@ -39,17 +47,18 @@ BACKEND_ENV := BOOTLOADER=$(BOOTLOADER) KERNEL=$(BUILD_KERNEL) ROOTFS=$(BUILD_RO
 # depends on the toolchain. Make orders them from the deps, not from NN- names.
 image: kernel bootloader rootfs
 	@$(MAKE) --no-print-directory -f $(FORGE_DIR)/image.mk \
-	   BACKEND_ENV="$(BACKEND_ENV)" MEDIA=$(MEDIA) CFG=$(CFG) BUNDLE=$(BUNDLE) \
-	   PRODUCT_DIR=$(PRODUCT_DIR) SCRIPTS=$(SCRIPTS) assemble
+	   BACKEND_ENV="$(BACKEND_ENV)" BACKENDS=$(BACKENDS) MEDIA=$(MEDIA) CFG=$(CFG) BUNDLE=$(BUNDLE) \
+	   PRODUCT_DIR=$(PRODUCT_DIR) BOARD_NAME=$(BOARD) assemble
 
 toolchain:
-	@$(SCRIPTS)/00-toolchain.sh
+	@$(BACKEND_ENV) $(BACKENDS)/toolchain.sh
 
 # Each layer delegates to its backend (forge/<layer>.mk), which shells the proven
-# builder. Ordered after toolchain via a normal prerequisite.
+# builder in forge/backends/. Ordered after toolchain via a normal prerequisite.
 kernel bootloader rootfs: toolchain
 	@$(MAKE) --no-print-directory -f $(FORGE_DIR)/$@.mk \
-	   BACKEND_ENV="$(BACKEND_ENV)" PRODUCT_DIR=$(PRODUCT_DIR) SCRIPTS=$(SCRIPTS) \
+	   BACKEND_ENV="$(BACKEND_ENV)" BACKENDS=$(BACKENDS) \
+	   PRODUCT_DIR=$(PRODUCT_DIR) BOARD_NAME=$(BOARD) \
 	   KERNEL=$(KERNEL) BOOTLOADER=$(BOOTLOADER) LIBC=$(LIBC) COREUTILS=$(COREUTILS) \
 	   BUILD_KERNEL=$(BUILD_KERNEL) BUILD_ROOTFS=$(BUILD_ROOTFS) LCD=$(LCD) \
 	   KERNEL_TARGET=$(KERNEL_TARGET) ROOTFS_TARGET=$(ROOTFS_TARGET) \
@@ -58,7 +67,7 @@ kernel bootloader rootfs: toolchain
 flash: image
 	@if [ "$(MEDIA)" != nor ]; then \
 	  echo "make flash needs MEDIA=nor (SD is a manual dd of build/output/*-sd.img)"; exit 1; fi
-	@$(SCRIPTS)/flash.sh $(BUNDLE) nor
+	@$(TOOLS)/flash.sh $(BUNDLE) nor
 
 print-config:
 	@echo "forge config:"

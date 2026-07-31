@@ -33,9 +33,9 @@ if you rewire.
 The driver + overlay are **opt-in** (a bare board has no panel), gated on `LCD=ili9341`:
 
 ```bash
-LCD=ili9341 ./scripts/02-kernel.sh      # enables TINYDRM_ILI9341 + FBDEV emulation
+make kernel KERNEL=mainline LCD=ili9341      # enables TINYDRM_ILI9341 + FBDEV emulation
                                         # + applies board/t113-gameboy/lcd-ili9341.dtsi
-./scripts/03-rootfs.sh                  # (unchanged)
+make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox                  # (unchanged)
 ```
 
 What the `LCD=ili9341` hook does (see `02-kernel.sh` step 4b):
@@ -74,8 +74,8 @@ group (`function = "spi1"`), and adds the panel child:
 
 Build the LCD kernel into a bundle and flash+boot it in one command:
 ```sh
-LCD=ili9341 ./scripts/build.sh                       # bundle with the ILI9341 kernel + overlay
-./scripts/flash.sh build/bundles/custom-linux-busybox-lcd_ili9341 nor
+make image LCD=ili9341                       # bundle with the ILI9341 kernel + overlay
+tools/flash.sh build/bundles/custom-linux-busybox-lcd_ili9341 nor
 ```
 Then on the console:
 

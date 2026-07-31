@@ -403,7 +403,7 @@ motd.txt           data file packed into the test cpio at /etc/motd
 ## Build
 
 ```bash
-../scripts/00-toolchain.sh      # once (shared toolchain)
+forge/backends/toolchain.sh (or `make toolchain`)      # once (shared toolchain)
 make                            # → build/gv3kernel.bin
 ```
 

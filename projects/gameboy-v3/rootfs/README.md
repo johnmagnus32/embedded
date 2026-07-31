@@ -4,7 +4,7 @@ A minimal root filesystem built **entirely from scratch**: our own C library
 (`gv3libc`), our own coreutils, and our own shell — no BusyBox, no external libc.
 It's the userspace counterpart to the from-scratch `bootloader/` and `kernel/`,
 and the third "drop-in replacement" in the project (replacing the reference
-BusyBox rootfs that `scripts/03-rootfs.sh` builds).
+BusyBox rootfs that `forge/backends/rootfs.sh` builds).
 
 The point is **understanding**: to see exactly what a libc, a crt0, a shell, and
 a rootfs image are made of, by writing each one against a known syscall ABI.
@@ -80,7 +80,7 @@ dir holds the **assembler** + the product's device table.
 ## Build & run
 
 ```bash
-# from rootfs/ (after ../scripts/00-toolchain.sh built the musl toolchain)
+# from rootfs/ (after `make toolchain` built the musl toolchain)
 make                     # build gv3libc (static) + all programs into build/
 make BOARD=virt          # same, VFP-free, for the QEMU -M virt kernel/test harness
 make rootfs              # package build/rootfs/ into build/rootfs.cpio.gz
@@ -97,7 +97,7 @@ make clean               # rm -rf build/
 ## The build pattern (staging tree + walk + device table)
 
 Packaging follows the same shape as Buildroot / Yocto / the kernel's own
-initramfs builder (and mirrors `scripts/03-rootfs.sh`):
+initramfs builder (and mirrors `forge/backends/rootfs.sh`):
 
 1. **Auto-discover** — every `../../../coreutils/*.c` is a program, every
    `../../../libc/src/*.c` is a libc unit (`$(wildcard)` + `vpath`). Adding a

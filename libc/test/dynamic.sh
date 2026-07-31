@@ -60,8 +60,8 @@ mkdir -p "${LOGDIR}"
 # ---- 1. reference kernel: build once if missing -----------------------------
 build_ref_kernel() {
   command -v "${GLIBC_BIN}/${GLIBC_PREFIX}gcc" >/dev/null 2>&1 \
-    || die "glibc cross toolchain missing — run scripts/00-toolchain.sh"
-  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run scripts/00-toolchain.sh"
+    || die "glibc cross toolchain missing — run forge/backends/toolchain.sh"
+  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run forge/backends/toolchain.sh"
   [ -d "${KSRC}/.git" ] || die "${KSRC} is not a git checkout (need it for a worktree)"
 
   ylw "building the mainline reference virt kernel (one-time, ~minutes) ..."
@@ -75,7 +75,7 @@ build_ref_kernel() {
     export PATH="${HOSTMAKE_BIN}:${GLIBC_BIN}:${PATH}"
     export ARCH=arm CROSS_COMPILE="${GLIBC_PREFIX}"
     make multi_v7_defconfig >/dev/null 2>&1 || exit 1
-    # same workaround as scripts/02-kernel.sh: gcc plugins need plugin headers we
+    # same workaround as forge/backends/kernel.sh: gcc plugins need plugin headers we
     # don't ship — disable them, they aren't needed to boot.
     ./scripts/config --disable GCC_PLUGINS
     make olddefconfig >/dev/null 2>&1 || exit 1
@@ -94,10 +94,10 @@ fi
 
 # ---- 2. assemble a dynamic-capable initramfs from a staging tree ------------
 # Walks the tree (dir/file/slink) + appends /dev nodes, exactly like the rootfs
-# Makefile and scripts/03-rootfs.sh. $1 = staging dir, $2 = output cpio.gz.
+# Makefile and forge/backends/rootfs.sh. $1 = staging dir, $2 = output cpio.gz.
 pack_initrd() {
   local stage="$1" out="$2"
-  [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing (run scripts/02-kernel.sh)"
+  [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing (run forge/backends/kernel.sh)"
   {
     echo 'dir /dev 0755 0 0'
     echo 'nod /dev/console 0600 0 0 c 5 1'
@@ -119,7 +119,7 @@ build_ref_initrd() {
   local stage="${BUILD}/reftest"
   rm -rf "${stage}"; mkdir -p "${stage}/lib"
   local cc="${MUSL_BIN}/${MUSL_PREFIX}gcc"
-  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run scripts/00-toolchain.sh"
+  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run forge/backends/toolchain.sh"
   local sysroot; sysroot="$("$cc" -print-sysroot)"
   # a trivial DYNAMIC program (normal link -> PT_INTERP + DT_NEEDED=libc.so)
   cat > "${BUILD}/refdyn.c" <<'EOF'

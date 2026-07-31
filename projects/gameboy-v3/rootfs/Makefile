@@ -159,7 +159,7 @@ stage: $(patsubst %,$(BUILD)/bin/%,$(SHIP_PROGS)) $(OVERLAY)/init.sh $(if $(filt
 # ---- package the staging tree into a bootable initramfs (root-owned cpio) ----
 # Generate the gen_init_cpio listing by WALKING the staging tree (dirs + files,
 # all uid/gid 0), then append the device table (the only hand-maintained part —
-# /dev nodes can't exist as real host files). Mirrors scripts/03-rootfs.sh.
+# /dev nodes can't exist as real host files). Mirrors forge/backends/rootfs.sh.
 rootfs: $(BUILD)/rootfs.cpio.gz
 $(BUILD)/rootfs.cpio.gz: stage rootfs.devs
 	@{ \

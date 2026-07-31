@@ -109,7 +109,7 @@ main.c   uart0_init(): mux PE2/PE3 → UART0 (func 6), ungate+dereset the UART0
 ## Build
 
 ```bash
-../scripts/00-toolchain.sh          # once (shared toolchain)
+forge/backends/toolchain.sh (or `make toolchain`)          # once (shared toolchain)
 make                                 # → build/gv3boot.egon.bin
 ```
 

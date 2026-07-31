@@ -1,6 +1,6 @@
 # gameboy-v3 boot matrix — interchangeable components & test results
 
-Every boot component is a **drop-in provider**. `scripts/build.sh` composes
+Every boot component is a **drop-in provider**. `forge/backends/image.sh` composes
 them via four selector variables; one image, one boot command (`bootz` on a
 zImage), for every combination.
 
@@ -105,9 +105,9 @@ loader. DTB is shared across all.
 
 ```bash
 # 1. build a bundle for the config (dev host):
-BOOTLOADER=custom KERNEL=custom ROOTFS=busybox ./scripts/build.sh
+make image KERNEL=custom BOOTLOADER=custom LIBC=musl COREUTILS=busybox
 # 2. flash it to NOR AND FEL-boot it, in one command (stages to the rig itself):
-./scripts/flash.sh build/bundles/custom-custom-busybox nor
+tools/flash.sh build/bundles/custom-custom-busybox nor
 ```
 
 `flash.sh` power-cycles to FEL (t113power.sh), `xfel spinor write`s the components +

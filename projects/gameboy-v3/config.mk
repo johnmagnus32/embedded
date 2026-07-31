@@ -10,9 +10,10 @@
 #   make KERNEL=mainline                   # our rootfs on a mainline kernel (bug isolation)
 #   make KERNEL=mainline LIBC=musl COREUTILS=busybox BOOTLOADER=uboot   # all-OSS reference
 #
-# NOTE (Phase 0): the resolver + Makefile here still drive the existing
-# scripts/build.sh; providers still live in-project (nothing has moved yet).
-# Later phases graduate the providers to embedded/ and the engine to forge/.
+# The Makefile here is a thin `include ../../forge/rules.mk`; the shared engine
+# (forge/) + the generic providers (repo-root kernel/ bootloader/ libc/ coreutils/)
+# + the build backends (forge/backends/) all live outside this product. This file
+# + versions.env + board/ are the only per-product inputs. See forge/README.md.
 
 # --- provider selection (custom implementation | open-source reference) ------
 # NB: trailing whitespace matters in Make — keep values flush (no aligned comments
@@ -21,10 +22,11 @@ KERNEL     ?= custom
 BOOTLOADER ?= custom
 LIBC       ?= gv3
 COREUTILS  ?= gv3
-#   KERNEL     custom -> our kernel/       | mainline -> fetch Linux
-#   BOOTLOADER custom -> our bootloader/   | uboot    -> fetch U-Boot
-#   LIBC       gv3    -> our rootfs/libc   | musl     -> fetch musl
-#   COREUTILS  gv3    -> our rootfs/bin    | busybox  -> fetch BusyBox
+#   KERNEL     custom -> repo-root kernel/     | mainline -> fetch Linux
+#   BOOTLOADER custom -> repo-root bootloader/ | uboot    -> fetch U-Boot
+#   LIBC       gv3    -> repo-root libc/       | musl     -> fetch musl
+#   COREUTILS  gv3    -> repo-root coreutils/  | busybox  -> fetch BusyBox
+# OSS component versions: versions.env. Board facts: board/$(BOARD)/.
 
 # --- board + media ------------------------------------------------------------
 BOARD      ?= t113-gameboy

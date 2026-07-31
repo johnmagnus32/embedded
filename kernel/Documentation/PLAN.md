@@ -171,7 +171,7 @@ musl's `_start`→`main` path does far less than glibc's (no NSS, lighter
 rseq/robust-list/tunables probing), so the shell reaches its prompt through a
 **smaller, more predictable syscall path**. That directly shrinks and de-risks
 S10 — the whole reason the rootfs was moved to musl. See
-`../scripts/03-rootfs.sh` and the toolchain memory.
+`forge/backends/rootfs.sh` and the toolchain memory.
 
 ## Open items to resolve before the hard stages
 
@@ -198,5 +198,5 @@ S10 — the whole reason the rootfs was moved to musl. See
 
 ## References
 - Bootloader (the loader + reusable drivers): `../bootloader/README.md`
-- Rootfs / musl toolchain: `../scripts/03-rootfs.sh`, project memories
+- Rootfs / musl toolchain: `forge/backends/rootfs.sh`, project memories
 - T113 boot facts + load addresses: project memory `gameboy-v3-t113-boot-facts`

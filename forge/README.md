@@ -38,12 +38,31 @@ to localize whether a bug is ours or upstream's).
 | file            | role |
 |-----------------|------|
 | `rules.mk`      | top-level targets + the dependency GRAPH (image ← kernel+bootloader+rootfs ← toolchain). Replaces the old `NN-` filename ordering with real Make deps. |
-| `providers.mk`  | normalize + validate the selection; resolve each axis → a source path; `-include` the board's `board.mk` for `KERNEL_TARGET`/`ROOTFS_TARGET`; translate to the current shell backends' arg vocabulary. |
-| `toolchain.mk`* | (targets in rules.mk) fetch/locate the cross toolchains — shells `00-toolchain.sh`. |
-| `kernel.mk`     | build the selected kernel provider (custom: `make -C kernel/ BOARD=t113`; mainline: `02-kernel.sh`). |
-| `bootloader.mk` | build the selected bootloader (custom: `make -C bootloader/` + `fel`; uboot: `01-uboot.sh`). |
-| `rootfs.mk`     | build the selected rootfs (scratch: the product rootfs assembler; busybox: `03-rootfs.sh`). |
-| `image.mk`      | assemble components → the MEDIA output (nor bundle / sd .img). |
+| `providers.mk`  | normalize + validate the selection; resolve each axis → a source path; `-include` the board's `board.mk` for `KERNEL_TARGET`/`ROOTFS_TARGET`; translate to the shell backends' arg vocabulary. |
+| `kernel.mk`     | build the selected kernel provider (custom: `make -C kernel/ BOARD=$(KERNEL_TARGET)`; mainline: `backends/kernel.sh`). |
+| `bootloader.mk` | build the selected bootloader (custom: `make -C bootloader/` + `fel`; uboot: `backends/uboot.sh`). |
+| `rootfs.mk`     | build the selected rootfs (scratch: the product rootfs assembler; busybox: `backends/rootfs.sh`). |
+| `image.mk`      | assemble components → the MEDIA output (nor bundle / sd .img) via `backends/image.sh`. |
+| `backends/`     | the generic fetch/build RECIPES (shell), owned by the engine — `lib.sh` (mechanism + host-pinned toolchains + sources the product's data), `toolchain.sh`, `uboot.sh`, `kernel.sh`, `rootfs.sh`, `image.sh`. Parameterized on `PRODUCT_DIR`+`BOARD_NAME`; a product supplies only data. |
+
+Sibling to `forge/`, the repo-root [`tools/`](../tools/) holds the rig/dev tooling
+(`flash.sh`, `t113power.sh`) — deliver+debug, distinct from build. `make flash`
+shells `tools/flash.sh`.
+
+### How a backend finds the product's data (the Buildroot split)
+
+`backends/lib.sh` is the shell analogue of a Buildroot `package.mk`: a generic
+recipe that reads per-product DATA rather than hardcoding a product. Every backend
+does `source "$(dirname "$0")/lib.sh"`; `lib.sh` requires `PRODUCT_DIR`+`BOARD_NAME`
+(forge passes them) and sources, from the product:
+- `versions.env` — OSS component pins (kernel/uboot/busybox tags) — the "what"
+- `board/<board>/board.env` — board build facts (defconfigs, board DT, console)
+- `board/<board>/layout.env` — memory/storage layout (NOR/DRAM/SD)
+- `board/<board>/board.mk` — provider build targets
+
+The HOST-constrained pins (cross toolchains, GNU make — chosen by the build host,
+not the product) stay in `lib.sh` itself. A second product reuses `forge/` + the
+providers and writes only its own `config.mk` + `versions.env` + `board/`.
 
 ## Targets
 

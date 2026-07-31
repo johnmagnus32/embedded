@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 01-uboot.sh — Step 1: build mainline U-Boot (SPL + U-Boot proper) for the
+# uboot.sh — build mainline U-Boot (SPL + U-Boot proper) for the
 # T113-S3, with the console moved to UART0/PE2-PE3 for our t113-breakout board.
 #
 # What it does:
@@ -16,16 +16,16 @@
 # at runtime via U-Boot's built-in ARMv7 PSCI monitor (MACH_SUN8I_R528 selects
 # it), which patches enable-method="psci" into the kernel DTB at boot.
 #
-#   ./scripts/01-uboot.sh            # build (idempotent)
-#   ./scripts/01-uboot.sh --clean    # wipe the U-Boot build tree first
+#   make bootloader BOOTLOADER=uboot            # build (idempotent)
+#   make bootloader BOOTLOADER=uboot --clean    # wipe the U-Boot build tree first
 #
-# Prereq: ./scripts/00-toolchain.sh   (this script checks the compiler exists)
+# Prereq: make toolchain   (this script checks the compiler exists)
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=env.sh
-source "${HERE}/env.sh"
+# shellcheck source=lib.sh
+source "${HERE}/lib.sh"
 
 log()  { printf '\033[1;34m[01-uboot]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[01-uboot] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -36,7 +36,7 @@ CLEAN=0
 # --- preflight ---------------------------------------------------------------
 command -v git >/dev/null 2>&1 || die "git not found"
 command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-  || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH — run ./scripts/00-toolchain.sh first"
+  || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH — run make toolchain first"
 # Host tools U-Boot's sunxi+SPL (binman) build needs. dtc is optional (U-Boot
 # builds its own), so we don't hard-require it.
 for t in bison flex bc swig; do
@@ -209,5 +209,5 @@ $(printf '\033[1;32m[01-uboot] DONE\033[0m')
   Flash to a microSD (Phase 1, all-on-SD) at the 8 KiB offset:
     sudo dd if=${OUTPUT_DIR}/${UBOOT_IMAGE} of=/dev/sdX bs=1024 seek=8 conv=fsync
 
-Next: Step 2 — kernel + device tree (scripts/02-kernel.sh, coming next).
+Next: make kernel KERNEL=mainline
 EOF

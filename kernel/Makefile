@@ -10,8 +10,8 @@
 # -initrd, located via the DTB). The test rootfs is built here as a standalone
 # build/initramfs.cpio.gz artifact to pass with `-initrd` (no longer embedded).
 #
-# Uses the pinned glibc cross toolchain (../scripts/00-toolchain.sh);
-# gen_init_cpio comes from ../scripts/02-kernel.sh.
+# Uses the pinned glibc cross toolchain (forge/backends/toolchain.sh (or `make toolchain`));
+# gen_init_cpio comes from forge/backends/kernel.sh.
 
 CROSS_COMPILE ?= arm-buildroot-linux-gnueabihf-
 CC      := $(CROSS_COMPILE)gcc

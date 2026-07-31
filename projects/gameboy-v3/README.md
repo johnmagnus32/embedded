@@ -5,9 +5,10 @@
 Display, sound, and input come later, once Linux boots reliably.
 
 **Build: complete (Steps 0–4 ✅).** All four artifacts + a flashable SD image
-(`build/output/gameboy-v3-sd.img`) build reproducibly from [`scripts/`](scripts/).
-**Not yet run on hardware** — flashing + first boot is [FLASH.md](FLASH.md); that
-is where the chain gets validated on real silicon.
+(`build/output/gameboy-v3-sd.img`) build reproducibly via `make image` through the
+shared engine [`forge/`](../../forge/) (see [BOOT-MATRIX.md](BOOT-MATRIX.md) for the
+provider matrix). **Runs on real T113 silicon** — both the custom and all-OSS
+stacks boot to an interactive shell (flashing loop: [FLASH.md](FLASH.md)).
 
 ## What this is
 
@@ -95,13 +96,23 @@ first teacher.
 We're **using a prebuilt toolchain** (not building our own — that's a separate
 rabbit hole). Everything else we build.
 
-**Reproducibility:** each step is a numbered, idempotent script under
-[`scripts/`](scripts/). [`scripts/env.sh`](scripts/env.sh) is the single source
-of truth — it pins every component version + checksum and defines the build
-layout. All build inputs/outputs land in `build/` (git-ignored); the whole tree
-rebuilds from `scripts/` + the pins, so `rm -rf build/` then re-run is the
-reproducibility test. To bump a version, edit the pin in `env.sh` (deliberately),
-never a floating "latest".
+**Reproducibility & structure (forge refactor):** the build is driven by the
+shared engine [`forge/`](../../forge/) (at the repo root, reused by any product),
+not per-product scripts. `make image` from here resolves this product's selection
+([config.mk](config.mk)) + board inputs and orchestrates the generic build
+backends in [`forge/backends/`](../../forge/backends/) (the idempotent fetch/build
+recipes — the old `NN-*.sh`, now engine-owned). Pins split by tier:
+- **Engine** ([`forge/backends/lib.sh`](../../forge/backends/lib.sh)) — the build
+  mechanism + the HOST-constrained cross-toolchain / GNU-make pins (chosen by the
+  build host, not this product).
+- **Product** ([`versions.env`](versions.env)) — the OSS component pins (kernel /
+  U-Boot / BusyBox tags + checksums), as data. Bump a version here.
+- **Board** ([`board/t113-gameboy/`](board/t113-gameboy/)) — `board.env`
+  (defconfigs, board DT, console), `layout.env` (NOR/DRAM/SD), the `*.dtsi` overlays.
+
+All build inputs/outputs land in `build/` (git-ignored); `rm -rf build/` then
+`make image` is the reproducibility test. Never a floating "latest" — bump a pin
+deliberately.
 
 **Target facts (all mainline, verified against U-Boot/kernel git):**
 - T113-S3 = **32-bit ARMv7-A** dual Cortex-A7 → an **`armv7-eabihf` glibc**
@@ -137,8 +148,7 @@ one into `build/hostmake/`.
   syscall surface — both a size win now and groundwork for a hand-written kernel.
 
 ```bash
-./scripts/00-toolchain.sh          # idempotent; --force to rebuild both
-source scripts/env.sh              # puts cross-gcc + make on PATH, sets CROSS_COMPILE/ARCH
+make toolchain                     # idempotent; runs forge/backends/toolchain.sh
 ```
 
 - Pinned: `armv7-eabihf--glibc--stable-2021.11-1` (GCC 10.3.0), verified against
@@ -149,11 +159,12 @@ source scripts/env.sh              # puts cross-gcc + make on PATH, sets CROSS_C
   won't run here — the build dies at the first *link* step (a compile-only check
   passes, so it surfaces mid-build, confusingly). 2021.11 gives GCC 10.3.0
   (satisfies U-Boot's host-gcc-≥10 requirement) with a `ld` needing only
-  GLIBC_2.14. On a newer host you can bump the pin to `2025.08-1` in `env.sh`.
+  GLIBC_2.14. On a newer host you can bump the pin to `2025.08-1` in
+  `forge/backends/lib.sh` (toolchain pins are engine-tier — host-constrained).
 - Installs to `build/toolchain/`; `CROSS_COMPILE=arm-buildroot-linux-gnueabihf-`
   (Bootlin builds their toolchains with Buildroot, hence the `buildroot` triple).
-- After `source scripts/env.sh`, `${CROSS_COMPILE}gcc --version` works from any
-  CWD. Every later step sources `env.sh`, so this is set once.
+- Every backend sources [`forge/backends/lib.sh`](../../forge/backends/lib.sh),
+  which puts both cross toolchains + make on PATH — set once, per build.
 
 ### Step 1 — U-Boot (SPL + U-Boot proper) ✅ implemented
 
@@ -161,7 +172,7 @@ Clones mainline U-Boot at a pinned tag, applies our board's console + host-tool
 config, overlays the control DTB, builds, and copies the artifact to `output/`:
 
 ```bash
-./scripts/01-uboot.sh            # idempotent; --clean to re-clone from scratch
+make bootloader BOOTLOADER=uboot   # idempotent; runs forge/backends/uboot.sh
 # → build/output/u-boot-sunxi-with-spl.bin  (SPL + U-Boot + DTB, one ~480K blob)
 ```
 
@@ -205,7 +216,7 @@ Clones mainline Linux at a pinned LTS tag, builds `zImage` + the board DTB with
 the UART0 console overlay, copies both to `output/`:
 
 ```bash
-./scripts/02-kernel.sh           # idempotent; --clean to re-clone
+make kernel KERNEL=mainline        # idempotent; runs forge/backends/kernel.sh
 # → build/output/zImage  and  build/output/sun8i-t113s-mangopi-mq-r-t113.dtb
 ```
 
@@ -239,7 +250,7 @@ as a `cpio.gz` initramfs — the simplest thing that boots straight to a shell
 (no root partition, no `root=`; U-Boot loads kernel + DTB + initramfs together).
 
 ```bash
-./scripts/03-rootfs.sh           # idempotent; --clean to rebuild from scratch
+make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox   # runs forge/backends/rootfs.sh
 # → build/output/initramfs.cpio.gz   (~792K: musl-static busybox + 401 applets)
 ```
 
@@ -279,7 +290,7 @@ tree will read like a checklist of things you already understand.
 Assembles the four artifacts into one flashable full-disk image:
 
 ```bash
-MEDIA=sd ./scripts/build.sh      # → build/output/gameboy-v3-<cfg>-sd.img (~64 MiB)
+make image MEDIA=sd              # → build/output/gameboy-v3-<cfg>-sd.img (~64 MiB)
 ```
 
 Image layout (verified after build):

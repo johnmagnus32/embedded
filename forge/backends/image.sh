@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# build.sh — build a gameboy-v3 boot configuration into a self-contained ARTIFACT
+# image.sh — assemble a gameboy-v3 boot configuration into a self-contained ARTIFACT
 # BUNDLE that flash.sh can flash to the T113-breakout (and FEL-boot) in one go.
 #
 # This is the "compile + package" half of the two-script loop:
-#     ./scripts/build.sh   [selectors]     ->  a bundle dir under build/bundles/
-#     ./scripts/flash.sh   <bundle> <media>  ->  flash it + FEL-boot on the rig
+#     make image   [selectors]     ->  a bundle dir under build/bundles/
+#     tools/flash.sh   <bundle> <media>  ->  flash it + FEL-boot on the rig
 #
 # Selectors (env vars):
 #   BOOTLOADER = uboot | custom      (mainline U-Boot   | our bootloader/)
@@ -22,11 +22,11 @@
 #                `dd` to a microSD by hand (SD is not FEL-flashable — xfel can't
 #                write it). The "insert a card" path.
 #
-# Prereq: ./scripts/00-toolchain.sh
+# Prereq: make toolchain
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=env.sh
-source "${HERE}/env.sh"
+# shellcheck source=lib.sh
+source "${HERE}/lib.sh"
 
 log()  { printf '\033[1;33m[build]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[build] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -56,13 +56,14 @@ fi
 
 # Providers graduated to the repo root (forge refactor phase 1); the rootfs
 # ASSEMBLER stays in-project (it consumes the libc/coreutils providers).
-# REPO_ROOT comes from env.sh (sourced above).
+# REPO_ROOT comes from lib.sh (sourced above); HERE is this backends/ dir, where
+# the sibling OSS backends (uboot.sh/kernel.sh/rootfs.sh) live.
 BOOTLOADER_DIR="${REPO_ROOT}/bootloader"
 KERNEL_DIR="${REPO_ROOT}/kernel"
-ROOTFS_DIR_SCRATCH="${PROJECT_DIR}/rootfs"
+ROOTFS_DIR_SCRATCH="${PRODUCT_DIR}/rootfs"
 
 command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-  || die "cross gcc not on PATH — run ./scripts/00-toolchain.sh (or source scripts/env.sh)"
+  || die "cross gcc not on PATH — run forge/backends/toolchain.sh (or 'make toolchain')"
 
 # =============================================================================
 # 1. BUILD PROVIDERS  (bootloader / kernel / rootfs)
@@ -70,8 +71,8 @@ command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
 build_bootloader() {
   case "$BOOTLOADER" in
     uboot)
-      log "bootloader=uboot: building via 01-uboot.sh"
-      "${SCRIPTS_DIR}/01-uboot.sh"
+      log "bootloader=uboot: building via uboot.sh"
+      "${HERE}/uboot.sh"
       BL_ARTIFACT="${OUTPUT_DIR}/${UBOOT_IMAGE}"
       # flash.sh's uboot NOR path FEL-loads U-Boot proper (u-boot.bin), not the eGON
       UBOOT_PROPER="${UBOOT_SRC_DIR}/u-boot.bin"
@@ -91,8 +92,8 @@ build_bootloader() {
 build_kernel() {
   case "$KERNEL" in
     linux)
-      log "kernel=linux: building via 02-kernel.sh${LCD:+ (LCD=$LCD)}"
-      LCD="$LCD" "${SCRIPTS_DIR}/02-kernel.sh"
+      log "kernel=linux: building via kernel.sh${LCD:+ (LCD=$LCD)}"
+      LCD="$LCD" "${HERE}/kernel.sh"
       KERNEL_ARTIFACT="${OUTPUT_DIR}/${KERNEL_IMAGE_TARGET}"
       DTB_ARTIFACT="${OUTPUT_DIR}/${KERNEL_DTB}"
       ;;
@@ -105,14 +106,14 @@ build_kernel() {
       ;;
   esac
   [ -f "$KERNEL_ARTIFACT" ] || die "kernel artifact missing: $KERNEL_ARTIFACT"
-  [ -f "$DTB_ARTIFACT" ] || die "board DTB missing: $DTB_ARTIFACT — run ./scripts/02-kernel.sh first"
+  [ -f "$DTB_ARTIFACT" ] || die "board DTB missing: $DTB_ARTIFACT — run forge/backends/kernel.sh first"
 }
 
 build_rootfs() {
   case "$ROOTFS" in
     busybox)
-      log "rootfs=busybox: building via 03-rootfs.sh"
-      "${SCRIPTS_DIR}/03-rootfs.sh"
+      log "rootfs=busybox: building via rootfs.sh"
+      "${HERE}/rootfs.sh"
       INITRD_ARTIFACT="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
       ;;
     scratch)
@@ -162,7 +163,7 @@ KERNEL_SIZE=${KSZ}
 DTB_SIZE=${DSZ}
 INITRD_SIZE=${ISZ}
 # NOR + DRAM layout — from board/${BOARD_NAME}/layout.env (a board input, sourced
-# by env.sh). Must match NOR-LAYOUT.md / bootloader/nor_layout.h.
+# by lib.sh). Must match NOR-LAYOUT.md / bootloader/nor_layout.h.
 NOR_KERNEL_OFF=${NOR_KERNEL_OFF}
 NOR_DTB_OFF=${NOR_DTB_OFF}
 NOR_INITRD_OFF=${NOR_INITRD_OFF}
@@ -178,7 +179,7 @@ EOF
   printf '  %-18s %s\n' "initramfs:"       "$(du -h "$OUT/initramfs.cpio.gz" | cut -f1)"
   printf '  %-18s %s\n' "loader:"          "$(basename "$(ls "$OUT"/loader-fel.bin "$OUT"/uboot-proper.bin 2>/dev/null | head -1)")"
   printf '\nNext: flash + FEL-boot on the rig:\n'
-  printf '  ./scripts/flash.sh %s nor\n' "$OUT"
+  printf '  tools/flash.sh %s nor\n' "$OUT"
 }
 
 # --- MEDIA=sd: a full-disk .img you dd to a microSD (the manual card path) -----

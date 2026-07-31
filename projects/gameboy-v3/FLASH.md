@@ -6,8 +6,8 @@ the T113-S3 on the t113-breakout board to a shell prompt.
 Build the SD image (toolchain once, then one command):
 
 ```bash
-./scripts/00-toolchain.sh                 # once
-MEDIA=sd ./scripts/build.sh               # → build/output/gameboy-v3-<cfg>-sd.img
+make toolchain                 # once
+make image MEDIA=sd               # → build/output/gameboy-v3-<cfg>-sd.img
 # defaults to custom+linux+busybox; add BOOTLOADER=uboot / KERNEL=... / ROOTFS=... to vary
 ```
 

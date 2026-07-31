@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 03-rootfs.sh — Step 3: build a BusyBox initramfs (boot-to-shell rootfs).
+# rootfs.sh — build a BusyBox initramfs (boot-to-shell rootfs).
 #
 # Linkage is selectable (LINKAGE=static|dynamic, default static):
 #   static  — CONFIG_STATIC=y: one self-contained busybox, no libs on the target.
@@ -23,18 +23,18 @@
 #   static  -> build/output/initramfs.cpio.gz          (the default name)
 #   dynamic -> build/output/initramfs-dynamic.cpio.gz
 #
-#   ./scripts/03-rootfs.sh                     # static (default)
-#   LINKAGE=dynamic ./scripts/03-rootfs.sh     # dynamic (ships musl ld.so)
-#   ./scripts/03-rootfs.sh --clean             # wipe busybox src + rootfs first
+#   make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox                     # static (default)
+#   LINKAGE=dynamic make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox     # dynamic (ships musl ld.so)
+#   make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox --clean             # wipe busybox src + rootfs first
 #
-# Prereqs: ./scripts/00-toolchain.sh (cross gcc) and ./scripts/02-kernel.sh
+# Prereqs: make toolchain (cross gcc) and make kernel KERNEL=mainline
 # (we reuse the kernel's gen_init_cpio host tool for packaging).
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=env.sh
-source "${HERE}/env.sh"
+# shellcheck source=lib.sh
+source "${HERE}/lib.sh"
 
 log()  { printf '\033[1;34m[03-rootfs]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[03-rootfs] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -60,7 +60,7 @@ CLEAN=0
 # The ROOTFS is built with the MUSL toolchain (not the glibc one U-Boot/kernel
 # use): musl-static BusyBox is ~34% smaller and has a lighter syscall surface.
 command -v "${ROOTFS_CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-  || die "musl cross compiler '${ROOTFS_CROSS_COMPILE}gcc' not on PATH — run ./scripts/00-toolchain.sh first"
+  || die "musl cross compiler '${ROOTFS_CROSS_COMPILE}gcc' not on PATH — run make toolchain first"
 for t in curl sha256sum tar bzip2 make; do
   command -v "$t" >/dev/null 2>&1 || die "host dep '$t' missing"
 done
@@ -72,7 +72,7 @@ if [ ! -x "${GEN_INIT_CPIO}" ]; then
     log "building gen_init_cpio host tool"
     cc -O2 -o "${GEN_INIT_CPIO}" "${BUILD_DIR}/linux/usr/gen_init_cpio.c" || die "failed to build gen_init_cpio"
   else
-    die "gen_init_cpio not found — run ./scripts/02-kernel.sh first (we reuse its host tool)"
+    die "gen_init_cpio not found — run make kernel KERNEL=mainline first (we reuse its host tool)"
   fi
 fi
 
@@ -148,7 +148,7 @@ log "cross-compiling BusyBox with musl (-j$(nproc)) ..."
 # selected toolchain (without it, objects from a prior glibc build can survive
 # and the link silently mixes toolchains / keeps the old libc).
 make clean >/dev/null
-# CROSS_COMPILE on the command line overrides the glibc value env.sh exported
+# CROSS_COMPILE on the command line overrides the glibc value lib.sh exported
 # (for U-Boot/kernel); combined with CONFIG_CROSS_COMPILER_PREFIX this selects
 # the musl toolchain. musl-static → ~34% smaller than glibc-static.
 make -j"$(nproc)" CROSS_COMPILE="${ROOTFS_CROSS_COMPILE}" >/dev/null
@@ -260,7 +260,7 @@ $(printf '\033[1;32m[03-rootfs] DONE\033[0m')
   Artifact   : ${OUTPUT_DIR}/${OUT_IMAGE}  (${SIZE})
 
 Build the other linkage with:
-  $([ "${LINKAGE}" = static ] && echo "LINKAGE=dynamic ./scripts/03-rootfs.sh" || echo "./scripts/03-rootfs.sh   # static (default)")
+  $([ "${LINKAGE}" = static ] && echo "LINKAGE=dynamic make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox" || echo "make rootfs KERNEL=mainline LIBC=musl COREUTILS=busybox   # static (default)")
 
 Boot it under QEMU with the custom kernel:
   qemu-system-arm -M virt -cpu cortex-a7 -m 128M -nographic -net none \\

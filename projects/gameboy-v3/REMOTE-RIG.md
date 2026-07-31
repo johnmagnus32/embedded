@@ -58,9 +58,9 @@ the generic "dd a card on your own bench" procedure.
 
 ---
 
-## 1. Power-cycle (reset) the board — use `scripts/t113power.sh`
+## 1. Power-cycle (reset) the board — use `tools/t113power.sh`
 
-**Preferred: the wrapper `scripts/t113power.sh`** (staged on the NUC at
+**Preferred: the wrapper `tools/t113power.sh`** (staged on the NUC at
 `~/t113boot/matrix/t113power.sh`). It addresses the MEGA4 by its **stable vendor id
 `2109`** (`uhubctl -n 2109`), NOT by location path — so it keeps working after the
 hub is unplugged/replugged or USB re-enumerates (the thing that broke a whole
@@ -184,7 +184,7 @@ output — that is NOT the T113.
 ### 4a. SD card (the normal path)
 
 The board boots from an SD image at the 8 KiB offset + a FAT partition. Build it
-with `MEDIA=sd ./scripts/build.sh` (see FLASH.md), copy to the NUC, and `dd` it.
+with `make image MEDIA=sd` (see FLASH.md), copy to the NUC, and `dd` it.
 
 ```bash
 # from the dev box: stage the image on the NUC
