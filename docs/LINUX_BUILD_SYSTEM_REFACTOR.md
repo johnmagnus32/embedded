@@ -1,7 +1,12 @@
 # Linux Build-System Refactor: Providers, Products, and a Shared Forge
 
-**Status:** proposal / design doc. Nothing has been moved yet. This describes a
-target directory structure and a phased plan to reach it safely.
+**Status:** IN PROGRESS — **Phases 0–4 DONE + committed** (golden 6/6 throughout;
+both stacks silicon-proven on the T113), Phase 5 pending a second board. This
+describes the target directory structure and the phased plan; see the per-phase
+checkboxes under "Phasing" for exactly what is done vs. deferred. One deliberate
+divergence from the target tree: the `0N-*.sh` fetch scripts and the dev tools
+(`flash.sh`/`t113power.sh`) were NOT absorbed into `forge/`/`tools/` — the engine
+DELEGATES to them in place (see "Honest cautions"). Everything else below is built.
 
 **Scope — READ THIS FIRST.** This refactor concerns *only* the **Linux-class
 build path** in this repo: the parts that build a bootable Linux(-ABI) SD image
@@ -373,6 +378,21 @@ Run them after each phase; a phase is done only when they pass as before.
 - **Genimage dependency.** Phase 3's `image.cfg` approach adds a host tool
   (`genimage`); confirm it's available/installable before committing, or keep a
   thin `image.mk` that shells the current `dd`-based logic in the interim.
+  RESOLVED as built: genimage is NOT installed on the host, so `board/*/image.cfg`
+  is written in genimage format (the declarative layout) but `forge/image.mk`
+  shells `build.sh`'s proven `dd`/`sfdisk` `emit_sd_img`; swap to genimage if it lands.
+- **The engine DELEGATES; it did not ABSORB the backends (as-built divergence).**
+  The target tree above shows the `0N-*.sh` fetch scripts folded INTO `forge/*.mk`
+  and the dev tools (`flash.sh`, `t113power.sh`) graduated to a repo-root `tools/`.
+  That was deliberately NOT done: `forge/{kernel,bootloader,rootfs}.mk` + `image.mk`
+  SHELL OUT to the proven `scripts/0N-*.sh` + `build.sh`, and `make flash` shells
+  `scripts/flash.sh` in place. Reimplementing the reproducible fetch/verify/pyenv/
+  host-make logic in Make would be a large rewrite for zero behavior gain — the
+  engine's win is the reusable Make graph + thin product, not a rewrite. So
+  `projects/gameboy-v3/scripts/` still holds `env.sh` + `00–03` + `build.sh` +
+  `flash.sh` + `t113power.sh`, and there is no `tools/`. This is a legitimate,
+  intended end state, not an unfinished migration; fold the scripts in only if the
+  legibility/reuse math ever changes.
 
 ## One-paragraph summary
 

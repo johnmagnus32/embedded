@@ -62,10 +62,10 @@ flash: image
 
 print-config:
 	@echo "forge config:"
-	@echo "  KERNEL     = $(KERNEL)      -> $(KERNEL_SRC)"
-	@echo "  BOOTLOADER = $(BOOTLOADER)  -> $(BOOTLDR_SRC)"
-	@echo "  LIBC       = $(LIBC)        -> $(LIBC_SRC)"
-	@echo "  COREUTILS  = $(COREUTILS)   -> $(COREUTILS_SRC)"
+	@printf '  %-10s = %-8s -> %s\n' KERNEL     "$(KERNEL)"     "$(KERNEL_SRC)"
+	@printf '  %-10s = %-8s -> %s\n' BOOTLOADER "$(BOOTLOADER)" "$(BOOTLDR_SRC)"
+	@printf '  %-10s = %-8s -> %s\n' LIBC       "$(LIBC)"       "$(LIBC_SRC)"
+	@printf '  %-10s = %-8s -> %s\n' COREUTILS  "$(COREUTILS)"  "$(COREUTILS_SRC)"
 	@echo "  BOARD=$(BOARD)  MEDIA=$(MEDIA)  LCD=$(if $(LCD),$(LCD),none)"
 	@echo "  board targets: KERNEL_TARGET=$(KERNEL_TARGET)  ROOTFS_TARGET=$(ROOTFS_TARGET)"
 	@echo "  backend args: KERNEL=$(BUILD_KERNEL) ROOTFS=$(BUILD_ROOTFS) BOOTLOADER=$(BOOTLOADER)"
