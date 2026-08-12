@@ -3209,9 +3209,9 @@
     )
     (property
       "ki_description"
-      "USBLC6-2SC6"
+      "STMicro USBLC6-2SC6 — USB2 D+/D- ESD array, SOT-23-6"
       (id 9)
-      (at 0 -30.48 0)
+      (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
     )
     (symbol "USBLC6-2SC6_0_1"

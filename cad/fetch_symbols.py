@@ -7,8 +7,8 @@ Prerequisites:
     pip install easyeda2kicad
 
 Usage:
-    cd /Users/johmagnu/Desktop/embedded/cad
-    source .venv/bin/activate
+    cd /home/johmagnu/learning/embedded/cad
+    source .venv/bin/activate   # (if a venv with easyeda2kicad exists)
     python3 fetch_symbols.py
 
 Output:
@@ -74,6 +74,44 @@ PARTS = [
     ("C1549",    "18pF 50V C0G Ceramic Capacitor, 0402"),
     ("C32949",   "10pF 50V C0G Ceramic Capacitor, 0402 (buck FB feed-forward)"),
     ("C23350",   "240Ω 1% Resistor, 0603 (DDR ZQ calibration)"),
+    # --- gameboy-v3 (projects/gameboy-v3/pcb/BOM.md) ---
+    # NOTE: gameboy-v3 also reuses many parts from the t113-breakout section above
+    # (T113 C5197687, FP6161 C77234, crystals, decoupling caps, resistors, microSD,
+    # USB-C, JST-PH C295747, etc.) — only the net-new gameboy-v3 parts are listed here.
+    ("C207280",    "Littelfuse SP3004-04XTG ×2 — microSD ESD array"),  # #12
+    ("C9160",      "BOOMELE 0.5-40PFGPZ — Display FPC connector, 40P 0.5mm"),  # #25
+    ("C2919568",   "HDGC 1.0K-1.5-6PWB — Touch FFC connector, 6P 1.0mm"),  # #26
+    ("C58756",     "TI TPS61165DBVR — Backlight WLED boost driver, SOT-23-6"),  # #27
+    ("C135263",    "SMNR4020-10UH — BL boost inductor, 10uH 1.6A"),  # #28
+    ("C2480",      "SS14 — BL boost Schottky diode, 40V 1A, SMA"),  # #29
+    ("C125847",    "YAGEO CC0805KKX7R9BB225 — BL boost output cap, 2.2uF 50V X7R 0805"),  # #30
+    ("C326590",    "YAGEO CC0402KRX7R7BB224 — BL boost COMP cap, 220nF 16V X7R 0402"),  # #33
+    ("C481766",    "ST LSM6DSOXTR — 6-axis IMU, LGA-14"),  # #34
+    ("C527464",    "TI DRV2605LDGSR — Haptic driver, VSSOP-10"),  # #39
+    ("C15849",     "1uF 16V X5R Ceramic Capacitor, 0603 (haptic REG cap)"),  # #40
+    ("C54313",     "TI BQ24074RGTR — Li-ion power-path charger, VQFN-16"),  # #51
+    ("C19666",     "4.7uF 16V X5R Ceramic Capacitor, 0603 (charger IN cap)"),  # #52
+    ("C22975",     "2KΩ 1% Resistor, 0603 (charger ISET)"),  # #55
+    ("C22765",     "1.2KΩ 1% Resistor, 0603 (charger ILIM)"),  # #56
+    ("C970725",    "CH224K — USB-PD sink controller"),  # #58
+    ("C21190",     "1KΩ 1% Resistor, 0603 (CH224K VDD series R)"),  # #59
+    ("C202140",    "TI TPS63021DSJR — 3.3V buck-boost regulator, ~2A, QFN"),  # #63
+    ("C21189",     "0Ω Resistor, 0603 (buck-boost FB tie)"),  # #64
+    ("C45783",     "22uF 25V X5R Ceramic Capacitor, 0805 (buck-boost output cap)"),  # #68
+    ("C408407",    "MWSA0503S-1R5MT — Buck-boost inductor, 1.5uH"),  # #69
+    ("C22827",     "180KΩ 1% Resistor, 0603 (fuel-gauge divider R_top)"),  # #72
+    ("C25803",     "100KΩ 1% Resistor, 0603 (fuel-gauge divider R_bot)"),  # #73
+    ("C2682616",   "Maxim MAX17048G+T10 — 1-cell Li battery fuel gauge, TDFN"),  # #74
+    ("C49851",     "TI INA226AIDGSR — I2C current/power monitor, VSSOP-10"),  # #78
+    ("C393072",    "RLP25FEGMR010 — 10mΩ 1% 3W current-sense shunt, 2512"),  # #79
+    ("C2864778",   "NXP PCA9555PWR — 16-bit I2C GPIO expander, TSSOP-24"),  # #82
+    ("C49234144",  "HX-3x5-CA-1.6N — Tactile switch, right-angle (volume +/-)"),  # #88
+    ("C109022",    "ST STM6601CA2BDM6F — Push-button on/off controller, TSOT-23-6"),  # #91
+    ("C22843",     "1.5KΩ 1% Resistor, 0603 (I2C pull-ups)"),  # #94
+    ("C7519",      "STMicro USBLC6-2SC6 — USB2 D+/D- ESD array, SOT-23-6"),  # #95
+    ("C107671",    "TI PCM5102APWR — Stereo I2S DAC (headphone out), TSSOP-20"),  # #100
+    ("C69901",     "TI TPA6132A2RTER — Stereo headphone amp, QFN-16"),  # #105
+    ("C145813",    "PJ-327C-4A — 3.5mm TRS headphone jack, SMD"),  # #110
 ]
 
 
