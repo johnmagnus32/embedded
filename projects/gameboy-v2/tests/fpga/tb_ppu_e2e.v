@@ -81,7 +81,7 @@ module tb_ppu_e2e;
     wire lcd_wr, lcd_dc, lcd_cs;
 
     lcd_driver u_lcd (
-        .clk(clk), .frame_start(lcd_frame_start),
+        .clk(clk), .frame_valid(cmd_frame_valid), .frame_start(lcd_frame_start),
         .pixel_x(pixel_x), .pixel_y(pixel_y),
         .pixel_req(pixel_req), .pixel_color(pixel_color), .pixel_valid(pixel_valid),
         .lcd_data(lcd_d), .lcd_wr(lcd_wr), .lcd_dc(lcd_dc), .lcd_cs(lcd_cs)

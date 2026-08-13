@@ -144,7 +144,6 @@ module spi_cmd (
                     sprites_remaining <= sprites_remaining - 1;
                     byte_idx <= 0;
                     if (sprites_remaining == 1) state <= S_CMD;
-                end else if (byte_idx == 0 && sprite_wr_idx != 0) begin
                 end
             end
 

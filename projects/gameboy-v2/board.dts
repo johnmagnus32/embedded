@@ -81,10 +81,12 @@
             compatible = "st,stm32-spi";
             reg = <0x40013000>;
             clocks = <&rcc 2 12>;
-            br = <5>;               /* fPCLK/64 -> ~250 kHz: the FPGA PPU command
-                                     * slave (spi_cmd.v) oversamples with a single-
-                                     * sample edge detector and cannot track multi-
-                                     * MHz SCK (same issue proven on fpga-spi). */
+            br = <5>;               /* fPCLK/64 -> ~250 kHz. The FPGA PPU command
+                                     * slave (spi_cmd.v) oversamples with a
+                                     * debounced edge detector and can't track
+                                     * multi-MHz SCK. (The ground-flash tearing was
+                                     * NOT this bus — it was a sprite_table
+                                     * double-buffer torn-read, now fixed.) */
             sck-port = <&gpioa>;
             sck-pin = <5>;
             sck-af = <5>;

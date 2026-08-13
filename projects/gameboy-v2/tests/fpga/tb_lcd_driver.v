@@ -4,6 +4,7 @@ module tb_lcd_driver;
     always #10 clk = ~clk;
 
     wire frame_start;
+    reg  frame_valid = 0;
     wire [8:0] pixel_x, pixel_y;
     wire pixel_req;
     reg [15:0] pixel_color;
@@ -13,6 +14,7 @@ module tb_lcd_driver;
 
     lcd_driver #(.SLEEP_OUT_DELAY(23'd50)) uut (   // shrink 120ms wake wait for sim
         .clk(clk),
+        .frame_valid(frame_valid),
         .frame_start(frame_start),
         .pixel_x(pixel_x), .pixel_y(pixel_y),
         .pixel_req(pixel_req), .pixel_color(pixel_color),
@@ -66,14 +68,18 @@ module tb_lcd_driver;
 
     initial begin
         #100;
+        // Render-on-demand: hold frame_valid high so the driver renders frames
+        // back-to-back (each frame boundary re-consumes the request). The wake
+        // sequence runs once first, then frames stream.
+        frame_valid = 1;
 
         // ═══════════════════════════════════════════════════════════
-        // Test 1: LCD starts immediately and free-runs (no external gating).
+        // Test 1: LCD wakes then renders when frame_valid is asserted.
         // ═══════════════════════════════════════════════════════════
         #500;
         if (wr_count == 0) begin
             $display("FAIL: LCD didn't start"); $finish; end
-        $display("PASS: LCD starts immediately");
+        $display("PASS: LCD starts on frame_valid");
 
         // Wait for init commands + some pixels
         wait(pixel_byte_count >= 4);
@@ -151,13 +157,17 @@ module tb_lcd_driver;
         $display("PASS: pixel position advances (pixel_y=%0d after row 0)", pixel_y);
 
         // ═══════════════════════════════════════════════════════════
-        // Test 7: Full frame — wait for CS to deassert (end of frame)
-        // 240*320*2 = 153600 pixel bytes
+        // Test 7: Full frame = exactly 240*320*2 = 153600 pixel bytes.
+        // (Render-on-demand deasserts CS in S_IDLE both after the one-time wake
+        // AND after each rendered frame, so we can't key on the first CS edge;
+        // instead wait for a full frame's worth of pixel bytes to be captured.)
         // ═══════════════════════════════════════════════════════════
-        wait(cs_deasserted);
+        wait(pixel_byte_count >= 240 * 320 * 2);
         #100;
         if (pixel_byte_count !== 240 * 320 * 2) begin
             $display("FAIL: pixel_byte_count=%0d, expected %0d", pixel_byte_count, 240*320*2); $finish; end
+        if (!cs_deasserted) begin
+            $display("FAIL: CS never deasserted"); $finish; end
         $display("PASS: full frame (%0d pixel bytes, CS deasserted)", pixel_byte_count);
 
         $display("PASS: tb_lcd_driver");

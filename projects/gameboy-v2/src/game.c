@@ -81,11 +81,7 @@ void game_task(void)
     uart_print("game: init\n");
     render_init();
 
-    /* Show the title for ~1.5 s, then run the self-playing demo. */
-    render_title();
-    uart_print("game: title\n");
-    for (int i = 0; i < 45; i++) sched_sleep_ms(FRAME_MS);
-
+    /* Animated self-playing demo (restored from the freeze experiments). */
     struct game_state s;
     game_init(&s);
     uart_print("game: playing\n");
@@ -94,11 +90,11 @@ void game_task(void)
     for (;;) {
         game_update(&s);
         render_frame(&s, &s);
-        if ((frame++ & 63) == 0) {         /* periodic heartbeat on the console */
+        if ((frame++ & 63) == 0) {
             uart_print("game: frame score=");
             print_int(s.score);
             uart_print("\n");
         }
-        sched_sleep_ms(FRAME_MS);          /* ~30 fps */
+        sched_sleep_ms(FRAME_MS);
     }
 }

@@ -70,9 +70,13 @@ module tb_frame_timing;
     );
 
     wire [7:0] lcd_data; wire lcd_wr, lcd_dc, lcd_cs;
+    // Hold frame_valid high so the driver renders back-to-back; we measure the
+    // pure per-frame RENDER time (clocks between LCD_CS boundaries), which is
+    // what render-on-demand takes per frame regardless of the trigger cadence.
+    reg lcd_frame_valid = 1;
     // Shrink the one-time Sleep-Out wait so the sim reaches frames quickly.
     lcd_driver #(.SLEEP_OUT_DELAY(23'd50)) u_lcd (
-        .clk(clk), .frame_start(lcd_frame_start),
+        .clk(clk), .frame_valid(lcd_frame_valid), .frame_start(lcd_frame_start),
         .pixel_x(px_x), .pixel_y(px_y), .pixel_req(px_req),
         .pixel_color(px_color), .pixel_valid(px_valid),
         .lcd_data(lcd_data), .lcd_wr(lcd_wr), .lcd_dc(lcd_dc), .lcd_cs(lcd_cs)

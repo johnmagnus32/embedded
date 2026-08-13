@@ -142,6 +142,7 @@ module ppu_top (
     // --- LCD driver (8-bit parallel) ---
     lcd_driver u_lcd (
         .clk(clk),
+        .frame_valid(cmd_frame_valid),      // render on demand: one LCD frame per STM32 frame
         .frame_start(lcd_frame_start),
         .pixel_x(px_x), .pixel_y(px_y), .pixel_req(px_req),
         .pixel_color(px_color), .pixel_valid(px_valid),

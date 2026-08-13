@@ -24,9 +24,16 @@ module lcd_driver #(
     parameter [22:0] SLEEP_OUT_DELAY = 23'd2880000
 ) (
     input         clk,
-    // Pulses high for 1 cycle at each frame boundary, BEFORE the next frame
-    // starts reading pixels. The sprite table applies any pending bank swap on
-    // this pulse so a swap never lands mid-frame (vsync — prevents tearing).
+    // RENDER-ON-DEMAND: after the one-time wake, the driver renders a frame to
+    // the LCD only when the STM32 signals a new frame (frame_valid, = cmd 0x01 /
+    // cmd_frame_valid). Between frames it idles — the ILI9341 holds the last
+    // image from its own GRAM, so re-pushing an unchanged frame is unnecessary.
+    // This makes the STM32 the single frame-rate authority and removes the
+    // free-running-display-vs-STM32 rate mismatch entirely.
+    input         frame_valid,
+    // Pulses high for 1 cycle at the START of each rendered frame, BEFORE any
+    // pixels are read. The sprite table applies its pending bank swap on this
+    // pulse so a swap never lands mid-frame (vsync — prevents tearing).
     output reg    frame_start,
     // Pixel interface (to pixel_gen)
     output reg [8:0] pixel_x,
@@ -44,20 +51,22 @@ module lcd_driver #(
     localparam H = 240;
 
     localparam S_INIT = 0, S_CMD = 1, S_CMD_WR = 2, S_DELAY = 3,
-               S_REQ = 4, S_WAIT = 5, S_HI = 6, S_LO = 7, S_DONE = 8;
+               S_REQ = 4, S_WAIT = 5, S_HI = 6, S_LO = 7, S_DONE = 8,
+               S_IDLE = 9;
     reg [3:0] state = S_INIT;
     reg [15:0] cur_color;
     reg [1:0] wr_phase;
     reg [22:0] delay_cnt = 0;
-    reg        woke = 0;          // set once the wake sequence has run
+    reg        frame_req = 0;     // latched request: a new frame is ready to render
 
     // Init command sequence ROM. Format: {dc, data} — dc=0 command, dc=1 param.
     //   [0..5]  WAKE (one-time):  Sleep Out(+120ms) + COLMOD 16bpp + MADCTL + Display On
     //   [6..16] PER-FRAME:        CASET(0..319) + RASET(0..239) + RAMWR
     reg [8:0] init_rom [0:16];
     reg [4:0] init_idx;
-    localparam [4:0] FRAME_START = 5'd6;   // first per-frame command (CASET)
-    localparam [4:0] INIT_LAST   = 5'd16;  // RAMWR — pixels stream after this
+    localparam [4:0] WAKE_LAST      = 5'd5;   // Display On — last one-time wake command
+    localparam [4:0] PERFRAME_FIRST = 5'd6;   // first per-frame command (CASET)
+    localparam [4:0] INIT_LAST      = 5'd16;  // RAMWR — pixels stream after this
 
     initial begin
         // --- WAKE (run once at power-up) ---
@@ -88,14 +97,33 @@ module lcd_driver #(
         pixel_req <= 0;
         frame_start <= 0;
 
+        // Latch a new-frame request whenever it arrives (even mid-render), so a
+        // frame_valid pulse is never missed; consumed when a render starts.
+        if (frame_valid) frame_req <= 1;
+
         case (state)
         S_INIT: begin
+            // Power-up only: run the one-time wake sequence (Sleep-Out ... Display
+            // On), then park in S_IDLE waiting for the first frame_valid.
             lcd_cs <= 0;
             lcd_dc <= 0;
-            // First boot: run the full ROM from Sleep-Out. Later frames: skip the
-            // one-time wake and re-issue only the per-frame window + RAMWR.
-            init_idx <= woke ? FRAME_START : 5'd0;
+            init_idx <= 5'd0;
             state <= S_CMD;
+        end
+
+        S_IDLE: begin
+            // Between frames: the ILI9341 holds the last image from its own GRAM.
+            // Render a new frame only when the STM32 signals one. Pulse
+            // frame_start as the render begins so the sprite table applies its
+            // pending bank swap before any pixel is read (vsync).
+            lcd_cs <= 1;
+            if (frame_req) begin
+                frame_req <= 0;
+                frame_start <= 1;
+                lcd_cs <= 0;
+                init_idx <= PERFRAME_FIRST;   // per-frame commands (CASET/RASET/RAMWR)
+                state <= S_CMD;
+            end
         end
 
         S_CMD: begin
@@ -117,8 +145,11 @@ module lcd_driver #(
                     // Sleep-Out just issued: wait ~120 ms before any more commands.
                     delay_cnt <= 0;
                     state <= S_DELAY;
+                end else if (init_idx == WAKE_LAST) begin
+                    // One-time wake done (Display On). Park until the first frame.
+                    state <= S_IDLE;
                 end else if (init_idx == INIT_LAST) begin
-                    woke <= 1;
+                    // Per-frame RAMWR done: stream this frame's pixels.
                     pixel_x <= 0;
                     pixel_y <= 0;
                     state <= S_REQ;
@@ -182,15 +213,12 @@ module lcd_driver #(
         end
 
         S_DONE: begin
-            // End of frame: deassert CS and immediately start the next frame.
-            // (Previously idled here for 800000 clocks = 66.7 ms of dead time,
-            // which more than doubled the frame period for no benefit. The panel
-            // accepts back-to-back frames fine, so re-render at full speed.)
-            // Pulse frame_start here (between frames, before S_INIT re-reads any
-            // sprites) so the sprite table applies a pending bank swap now.
+            // End of frame: deassert CS and park in S_IDLE. The panel now holds
+            // this frame from GRAM until the STM32 sends the next one. (frame_start
+            // is pulsed at render START in S_IDLE, not here, so the bank swap
+            // applies just before the new frame's pixels are read.)
             lcd_cs <= 1;
-            frame_start <= 1;
-            state <= S_INIT;
+            state <= S_IDLE;
         end
         endcase
     end
