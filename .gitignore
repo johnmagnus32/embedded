@@ -1,5 +1,8 @@
 build/
 
+# forge: the custom kernel's DTB build copies DTS sources here (generated, not source)
+kernel/dts/
+
 # macOS Finder metadata
 .DS_Store
 
