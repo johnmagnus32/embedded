@@ -106,7 +106,7 @@ PARTS = [
     ("C49851",     "TI INA226AIDGSR — I2C current/power monitor, VSSOP-10"),  # #78
     ("C393072",    "RLP25FEGMR010 — 10mΩ 1% 3W current-sense shunt, 2512"),  # #79
     ("C2864778",   "NXP PCA9555PWR — 16-bit I2C GPIO expander, TSSOP-24"),  # #82
-    ("C49234144",  "HX-3x5-CA-1.6N — Tactile switch, right-angle (volume +/-)"),  # #88
+    ("C127481",    "ALPS SKRTLBE010 — Tactile switch, right-angle side-push, 1.6N 100k cyc (volume/power/bumpers)"),  # #88
     ("C109022",    "ST STM6601CA2BDM6F — Push-button on/off controller, TSOT-23-6"),  # #91
     ("C22843",     "1.5KΩ 1% Resistor, 0603 (I2C pull-ups)"),  # #94
     ("C7519",      "STMicro USBLC6-2SC6 — USB2 D+/D- ESD array, SOT-23-6"),  # #95
