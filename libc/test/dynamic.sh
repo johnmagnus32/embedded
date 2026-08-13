@@ -12,9 +12,10 @@
 #          linked against musl's real libc.so + ld-musl). Proves the HARNESS
 #          itself is correct. Always available. This is the baseline you run
 #          first / whenever you doubt the test bed.
-#   gv3  — OUR dynamic rootfs (make LINK=dynamic) + OUR ld-gv3.so.1 once it exists.
-#          Currently EXPECTED TO FAIL (no real linker yet) — that's the point:
-#          this is the target we develop against. Skipped unless --gv3 is asked.
+#   gv3  — OUR dynamic rootfs (make LINK=dynamic) driven by OUR ld-gv3.so.1. This is
+#          the from-scratch loader under test: it maps /lib/libc.so, relocates, and
+#          hands off to an interactive /bin/sh (the 'gv3$' prompt is the marker).
+#          Skipped unless --gv3 is asked (it builds the dynamic rootfs via make).
 #
 # The mainline reference kernel is a build artifact (reproducible from the kernel
 # source tree via a git worktree); this script builds it once into
@@ -23,22 +24,30 @@
 #
 # Usage:
 #   ./test/dynamic.sh            # run the 'ref' known-good case (validate harness)
-#   ./test/dynamic.sh --gv3      # ALSO run our dynamic rootfs (dev target)
+#   ./test/dynamic.sh --gv3      # ALSO run our dynamic rootfs through ld-gv3.so.1
 #   REBUILD_KERNEL=1 ./test/dynamic.sh   # force-rebuild the reference kernel
 #
 # Exit 0 iff every case that ran PASSED.
 set -u
 
 # ---- locate ourselves + project dirs ----------------------------------------
+# This test lives at libc/test/ (a repo-root PROVIDER). The gv3 case's dynamic rootfs is
+# built by the forge ENGINE proper — `make -C <product> rootfs LIBC=custom LINKAGE=dynamic`
+# walks the graph (libc -> pkg-coreutils -> pack), so this harness no longer
+# hand-runs any engine internals; it just invokes make and boots the result.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RDIR="$(cd "${HERE}/.." && pwd)"                 # projects/gameboy-v3/rootfs
-PROJ="$(cd "${RDIR}/.." && pwd)"                 # projects/gameboy-v3
-BUILD="${RDIR}/build"
-LOGDIR="${BUILD}/test"
+REPO_ROOT="$(cd "${HERE}/../.." && pwd)"          # repo root (libc/ is a top-level provider)
+PROJ="${REPO_ROOT}/projects/gameboy-v3"           # the product
+BUILD="${PROJ}/build/dynbed"                      # this harness's own scratch dir (ref case)
+LOGDIR="${PROJ}/build/test"
 MUSL_BIN="${PROJ}/build/toolchain-musl/bin"
 GLIBC_BIN="${PROJ}/build/toolchain/bin"
 HOSTMAKE_BIN="${PROJ}/build/hostmake/bin"        # GNU Make >=4 (kernel needs it)
-GEN_INIT_CPIO="${PROJ}/build/linux/usr/gen_init_cpio"
+# gen_init_cpio: an engine HOST PACKAGE (forge/hostpackages/gen_init_cpio) — forge fetches +
+# compiles it into build/hosttools/bin/ as part of `make toolchain`. pack_initrd provisions it
+# via `make toolchain` if absent. (This harness still needs build/linux too, but for its
+# REFERENCE KERNEL — see below — not for the cpio writer.)
+GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
 
 # Reference mainline kernel (built here if missing) + the source worktree.
 REFKERNEL="${PROJ}/build/refkernel/virt-zImage"
@@ -60,8 +69,8 @@ mkdir -p "${LOGDIR}"
 # ---- 1. reference kernel: build once if missing -----------------------------
 build_ref_kernel() {
   command -v "${GLIBC_BIN}/${GLIBC_PREFIX}gcc" >/dev/null 2>&1 \
-    || die "glibc cross toolchain missing — run forge/backends/toolchain.sh"
-  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run forge/backends/toolchain.sh"
+    || die "glibc cross toolchain missing — run 'make -C ${PROJ} toolchain'"
+  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run 'make -C ${PROJ} toolchain'"
   [ -d "${KSRC}/.git" ] || die "${KSRC} is not a git checkout (need it for a worktree)"
 
   ylw "building the mainline reference virt kernel (one-time, ~minutes) ..."
@@ -75,8 +84,8 @@ build_ref_kernel() {
     export PATH="${HOSTMAKE_BIN}:${GLIBC_BIN}:${PATH}"
     export ARCH=arm CROSS_COMPILE="${GLIBC_PREFIX}"
     make multi_v7_defconfig >/dev/null 2>&1 || exit 1
-    # same workaround as forge/backends/kernel.sh: gcc plugins need plugin headers we
-    # don't ship — disable them, they aren't needed to boot.
+    # gcc plugins need plugin headers (gmp/mpfr/mpc) — disable them, they aren't needed to boot.
+    # (The engine's mainline kernel recipe instead installs those headers; this harness just skips them.)
     ./scripts/config --disable GCC_PLUGINS
     make olddefconfig >/dev/null 2>&1 || exit 1
     make -j"$(nproc)" zImage >/dev/null 2>&1 || exit 1
@@ -93,11 +102,17 @@ else
 fi
 
 # ---- 2. assemble a dynamic-capable initramfs from a staging tree ------------
-# Walks the tree (dir/file/slink) + appends /dev nodes, exactly like the rootfs
-# Makefile and forge/backends/rootfs.sh. $1 = staging dir, $2 = output cpio.gz.
+# Walks the tree (dir/file/slink) + appends /dev nodes, like the engine's rootfs pack
+# (forge/steps/rootfs/recipe.sh). $1 = staging dir, $2 = output cpio.gz.
 pack_initrd() {
   local stage="$1" out="$2"
-  [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing (run forge/backends/kernel.sh)"
+  # gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it). Provision it
+  # via the product's `make toolchain` if this tree hasn't run it yet — no vendored copy.
+  if [ ! -x "${GEN_INIT_CPIO}" ]; then
+    info "provisioning gen_init_cpio (make toolchain) ..."
+    make -C "${PROJ}" toolchain >/dev/null 2>&1 || true
+    [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing at ${GEN_INIT_CPIO} — run 'make -C ${PROJ} toolchain'"
+  fi
   {
     echo 'dir /dev 0755 0 0'
     echo 'nod /dev/console 0600 0 0 c 5 1'
@@ -119,7 +134,7 @@ build_ref_initrd() {
   local stage="${BUILD}/reftest"
   rm -rf "${stage}"; mkdir -p "${stage}/lib"
   local cc="${MUSL_BIN}/${MUSL_PREFIX}gcc"
-  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run forge/backends/toolchain.sh"
+  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run 'make -C ${PROJ} toolchain'"
   local sysroot; sysroot="$("$cc" -print-sysroot)"
   # a trivial DYNAMIC program (normal link -> PT_INTERP + DT_NEEDED=libc.so)
   cat > "${BUILD}/refdyn.c" <<'EOF'
@@ -165,13 +180,28 @@ run_case ref "${BUILD}/reftest.cpio.gz" "refdyn: dynamic-linked OK"
 
 # ---- case: gv3 (our dynamic rootfs; the dev target) -------------------------
 if [ "${1:-}" = "--gv3" ]; then
-  info "building OUR dynamic rootfs (make LINK=dynamic) ..."
-  ( cd "${RDIR}" && make LINK=dynamic BOARD=virt rootfs >/dev/null 2>&1 ) \
+  info "building OUR dynamic rootfs (make rootfs LIBC=custom LINKAGE=dynamic BOARD=virt) ..."
+  # Drive the forge ENGINE, not its internals: `make rootfs` walks the graph
+  #   libc (builds gv3libc + ld-gv3.so.1 into LIBC_STAGE_DIR)
+  #     -> pkg-coreutils (links against that libc)
+  #     -> rootfs (packs the artifact, named by rootfs-tag+link).
+  # The `rootfs: libc` edge guarantees the libc is built before the packages link,
+  # so we don't sequence it by hand anymore. Knobs:
+  #   LIBC=custom      the gv3libc from-source libc (its recipe's PKG_SOURCE = repo-root libc/;
+  #                    the engine resolves LIBC_SRC/LIBC_STAGE_DIR — nothing to pass here).
+  #   LINKAGE=dynamic  -> PT_INTERP=/lib/ld-gv3.so.1.
+  #   BOARD=virt       the QEMU emulator board (boards/virt/, VFP-free arch) — matches the
+  #                    reference kernel we boot below.
+  # `rootfs` (not `image`) is the minimal target: we boot our own reference kernel, so no
+  # zImage/bootloader/DTB is needed. Build output is shown — a silenced failure here once
+  # booted a stale artifact and looked like a linker bug. The rootfs name is keyed by
+  # (rootfs-tag + link): LIBC=custom PACKAGES=coreutils LINKAGE=dynamic -> the name below.
+  make -C "${PROJ}" rootfs LIBC=custom LINKAGE=dynamic BOARD=virt PACKAGES=coreutils \
     || die "our dynamic rootfs failed to build"
   # our init.sh is a shebang script; the mainline kernel needs /bin/sh to be OUR
-  # dynamic shell, and OUR ld-gv3.so.1 to actually load it. Expected to FAIL until
-  # the linker exists — this is the target we iterate on.
-  run_case gv3 "${BUILD}/rootfs.cpio.gz" "gv3\$"
+  # dynamic shell, loaded by OUR ld-gv3.so.1. PASS = the loader mapped libc.so,
+  # relocated, and reached the interactive shell prompt ('gv3$').
+  run_case gv3 "${PROJ}/build/output/initramfs-custom-coreutils-dynamic.cpio.gz" "gv3\$"
 fi
 
 # ---- summary ----------------------------------------------------------------

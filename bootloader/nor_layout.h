@@ -1,6 +1,6 @@
 /*
  * nor_layout.h — SPI-NOR component layout shared by the bootloader and the flash
- * tooling. Single source of truth; keep in sync with ../NOR-LAYOUT.md.
+ * tooling. Single source of truth; keep in sync with ../projects/gameboy-v3/README.md (SPI-NOR layout).
  *
  * NOR holds boot COMPONENTS only (kernel/DTB/initramfs), never a bootloader:
  * offset 0 is kept blank of any eGON so the BROM always drops to FEL, and the

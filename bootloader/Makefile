@@ -4,7 +4,7 @@
 # at the 8 KiB offset (exactly where our U-Boot goes), replacing U-Boot.
 #
 # Uses the same pinned cross toolchain as the rest of the project (Step 0).
-# Run forge/backends/toolchain.sh (or `make toolchain`) first, or `source forge/backends/lib.sh`.
+# Run forge/core/backends/toolchain.sh (or `make toolchain`) first, or `source forge/core/backends/lib.sh`.
 
 CROSS_COMPILE ?= arm-buildroot-linux-gnueabihf-
 CC      := $(CROSS_COMPILE)gcc

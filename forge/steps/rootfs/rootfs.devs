@@ -1,0 +1,24 @@
+# forge/steps/rootfs/rootfs.devs — the rootfs step's BASE device table, applied to EVERY
+# product's initramfs (the always-present bootstrap nodes). Lives WITH the rootfs step (its
+# only consumer, the rootfs recipe), like a provider's build data lives with the provider.
+#
+# A device table lists the filesystem objects a directory-walk CANNOT produce:
+# device nodes need major/minor numbers (and root to mknod), and the base mount
+# point dirs must exist for /init to mount onto. gen_init_cpio reads these lines
+# when packing the initramfs; everything else is discovered by walking the tree.
+#
+# These five are universal — identical for any board — so they're the step's base rather than
+# being copied into every product. A product may add its OWN board-specific nodes in an OPTIONAL
+# projects/<p>/rootfs.devs, which the rootfs step (recipe.sh) CONCATENATES AFTER this base
+# (Buildroot semantics: system/device_table.txt = base, board/<board>/device_table.txt =
+# augment). On a duplicate path the product's later line wins (gen_init_cpio is
+# last-wins); most products ship no rootfs.devs at all and just get this base.
+#
+# gen_init_cpio format:
+#   dir  <path> <mode> <uid> <gid>
+#   nod  <path> <mode> <uid> <gid> <c|b> <major> <minor>
+dir /proc         0755 0 0
+dir /sys          0755 0 0
+dir /dev          0755 0 0
+nod /dev/console  0600 0 0 c 5 1
+nod /dev/null     0666 0 0 c 1 3

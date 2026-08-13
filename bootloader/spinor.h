@@ -3,7 +3,7 @@
  * Brings up SPI0 (PC2-PC5) and reads raw byte ranges by NOR offset via PIO
  * (standard 0x03 READ command). Read-only: the bootloader only loads the boot
  * components (kernel/DTB/initramfs) that were pre-flashed with `xfel spinor
- * write` per ../NOR-LAYOUT.md.
+ * write` per ../projects/gameboy-v3/README.md (SPI-NOR layout).
  */
 #ifndef GV3_SPINOR_H
 #define GV3_SPINOR_H

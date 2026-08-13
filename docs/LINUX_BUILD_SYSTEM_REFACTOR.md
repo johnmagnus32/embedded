@@ -8,7 +8,7 @@ structure and the phased plan; see the per-phase checkboxes under "Phasing".
 
 The fetch/build backends (formerly the product's `0N-*.sh` scripts + `env.sh`) now
 live in **`forge/backends/*.sh`** — generic recipes owned by the engine, sourcing
-per-product DATA (`versions.env`, `board/<board>/board.env|layout.env|board.mk`).
+per-product DATA (`versions.env`, `board/<board>/board.conf`).
 The `forge/*.mk` orchestrators delegate to them. This is the Buildroot split (a
 generic `package.mk`-style recipe reads per-product config); the product's
 `scripts/` dir is GONE, and `flash.sh`/`t113power.sh` now live in repo-root
@@ -116,7 +116,7 @@ dir" into a **provider / product / engine** model, so that:
       kernel.mk                 generic "build $(KERNEL_SRC) with $(BOARD) config" (was 02-kernel.sh)
       bootloader.mk             generic "build the selected bootloader" (was 01-uboot.sh + custom)
       rootfs.mk                 staging-tree + walk + overlay-merge + device-table assembler (was 03-rootfs.sh)
-      image.mk                  genimage wrapper: $(BOARD)/image.cfg -> .img (was 04-image*.sh)
+      image.mk                  genimage wrapper: $(BOARD)/genimage.cfg -> .img (was 04-image*.sh)
       README.md                 how the engine works + how to add a provider/product
 
     kernel/                   ← PROVIDER: the from-scratch Linux-ABI kernel   (moved from gameboy-v3/kernel)
@@ -143,13 +143,16 @@ dir" into a **provider / product / engine** model, so that:
           lcd-ili9341.dtsi
           nor-spi.dtsi
           uart0-console.dtsi
-          image.cfg               genimage layout (partition table + BROM 8KiB offset)
+          genimage.cfg            genimage layout (partition table + BROM 8KiB offset)
           load-addrs              kernel/DTB/initramfs addresses (LAYOUT choice, not a SoC fact)
           defconfig-fragment      sunxi/T113 bits for the MAINLINE kernel path
         overlay/                SHIPPED into the rootfs, layered on the generic one:
           init.sh                 this product's PID-1 policy
           etc/... boot.cmd
-        rootfs.devs             device nodes for THIS product's image
+        rootfs.devs             OPTIONAL: extra device nodes for THIS product,
+                                augmenting forge/defaults/rootfs.devs (the engine
+                                base: proc/sys/dev + console + null). Most products
+                                ship none. gameboy-v3 has no extras → no file.
         build/                  artifacts (gitignored, as today)
 ```
 
@@ -253,14 +256,14 @@ The current flat `scripts/` splits three ways:
     01-uboot.sh       -> forge/bootloader.mk    (the uboot provider path)
     02-kernel.sh      -> forge/kernel.mk        (parameterized by BOARD)
     03-rootfs.sh      -> forge/rootfs.mk        (merged with rootfs/'s staging pattern)
-    04-image*.sh      -> forge/image.mk + board/*/image.cfg (genimage)
+    04-image*.sh      -> forge/image.mk + board/*/genimage.cfg (genimage)
     build.sh, env.sh  -> forge/rules.mk
 
   BOARD BUILD INPUTS (-> projects/gameboy-v3/board/t113-gameboy/):
     lcd-ili9341.dtsi, nor-spi.dtsi, uart0-console.dtsi
     boot.cmd
     load addresses (kernel/DTB/initramfs — layout choice, not a SoC fact)
-    image layout -> image.cfg
+    image layout -> genimage.cfg
     NB: T113/SoC facts (BROM 8KiB offset, DRAM_BASE, FEL id) also live here FOR
     NOW — no separate soc/ tier until a second board exists. DRAM *timings* stay
     provider-internal (in the bootloader / U-Boot).
@@ -284,8 +287,10 @@ staging/walk/device-table build *pattern*) and product specifics (`init.sh`,
   (`bin/`) → `embedded/coreutils/` (its own provider). Each builds to
   objects/binaries the forge can stage.
 - **Assembly logic → the forge:** the staging-tree walk + `gen_init_cpio`
-  packaging becomes `forge/rootfs.mk` (generic). Its *inputs* (`overlay/`,
-  `rootfs.devs`, which programs ship) stay per-product.
+  packaging becomes `forge/rootfs.mk` (generic). Its *inputs* (`overlay/`, which
+  programs ship) stay per-product. The base device table is an engine DEFAULT
+  (`forge/defaults/rootfs.devs`, always applied); a product's `rootfs.devs` is
+  OPTIONAL and augments it (Buildroot's `system/` + `board/` device_table split).
 - **New step — overlay merge:** the rootfs assembler stages the generic files
   (from the libc/coreutils builds), then copies `projects/X/overlay/*` on top,
   then packs. This is how "generic rootfs + this product's init" compose without
@@ -341,18 +346,17 @@ Run them after each phase; a phase is done only when they pass as before.
 - **Phase 3 — split board/overlay out of the product.** ✅ (d79ba72)
   Move `*.dtsi` / `boot.cmd` / load-addresses to `board/`, `init` to `overlay/`.
   Add the overlay-merge step (scratch rootfs assembler layers `overlay/*` on the
-  generic tree). Load addresses + SD geometry became `board/*/layout.env` (data,
-  sourced by env.sh + the bundle manifest). `image.cfg` is written in genimage's
-  format as the declarative SD layout, but genimage is NOT installed on the host,
-  so `image.mk` keeps shelling `build.sh`'s dd/sfdisk `emit_sd_img` (the doc's
-  sanctioned interim) — swap to genimage when it lands. (SoC facts stay in
-  `board/`/the kernel source — no `soc/` tier yet.)
+  generic tree). NOR/DRAM load addresses became part of `board/*/board.conf` (data,
+  sourced by lib.sh + the bundle manifest); the SD disk geometry lives in
+  `board/*/genimage.cfg`. The MEDIA=sd image is assembled by **genimage** (built
+  from source as a host tool — see the genimage note under "Honest cautions").
+  (SoC facts stay in `board/`/the kernel source — no `soc/` tier yet.)
 
 - **Phase 4 — parameterize the ENGINE on board config.** ✅ (1ab08a5)
   The real T113-hardcoding was in the *engine* (`forge/*.mk` + `build.sh` passed
   `BOARD=t113` literally), not the kernel source — the kernel already had a clean
   `board.h` `t113|virt` seam. Fixed: each provider's build-target now comes from
-  `board/<board>/board.mk` (`KERNEL_TARGET`/`ROOTFS_TARGET`), resolved in
+  `board/<board>/board.conf` (`KERNEL_TARGET`/`ROOTFS_TARGET`), resolved in
   `providers.mk` and passed down; the engine bakes in nothing board-specific. The
   kernel's SoC address sets (GIC/UART/timer) stay in `board.h` — chip-level, not
   board-level — awaiting the deferred `soc/` tier. `INIT_PATH="/init"` stays in
@@ -381,12 +385,17 @@ Run them after each phase; a phase is done only when they pass as before.
 - **Phase 4 is the hard one; don't front-load it.** Moving folders (Phases 1–3) is
   low-risk `git mv` + path edits. Parameterizing providers on board config
   (Phase 4) is real decoupling — defer until reuse is concrete.
-- **Genimage dependency.** Phase 3's `image.cfg` approach adds a host tool
-  (`genimage`); confirm it's available/installable before committing, or keep a
-  thin `image.mk` that shells the current `dd`-based logic in the interim.
-  RESOLVED as built: genimage is NOT installed on the host, so `board/*/image.cfg`
-  is written in genimage format (the declarative layout) but `forge/image.mk`
-  shells `build.sh`'s proven `dd`/`sfdisk` `emit_sd_img`; swap to genimage if it lands.
+- **Genimage dependency — RESOLVED (built from source).** The MEDIA=sd image is
+  assembled by **genimage** (Buildroot's declarative disk-image tool) from
+  `board/<board>/genimage.cfg`, the single source of the disk geometry. genimage
+  isn't packaged for this host (Amazon Linux 2: absent from the AL2 repos + EPEL),
+  so — exactly as Buildroot builds `host-genimage`, and as this repo already builds
+  GNU make from source — `setup_genimage` in `toolchain.sh` builds genimage + its
+  libconfuse dep (pinned + SHA256-verified) into `build/hosttools/`. It is LAZY:
+  only the MEDIA=sd path triggers the build; a NOR-only build never pays for it.
+  `image.sh` stages the inputs (the raw @8KiB loader; the FAT contents as a
+  rootpath dir so an optional boot.scr just works) and runs `genimage --config`.
+  No hand-rolled `dd`/`sfdisk`, no parallel geometry in board.conf.
 - **The engine ORCHESTRATES; backends stay SHELL, but now live in the engine
   (Phase 6, as-built).** Two decisions, both deliberate:
   1. The fetch/build logic is NOT reimplemented in Make — it stays as shell
@@ -398,7 +407,7 @@ Run them after each phase; a phase is done only when they pass as before.
      `projects/gameboy-v3/scripts/{env.sh,00–03,build.sh}` → **`forge/backends/`**
      (`lib.sh` + `toolchain.sh`/`kernel.sh`/`uboot.sh`/`rootfs.sh`/`image.sh`),
      generic recipes that source per-product DATA (`versions.env`,
-     `board/<board>/board.env|layout.env|board.mk`). This is the Buildroot split
+     `board/<board>/board.conf`). This is the Buildroot split
      (a `package.mk`-style generic recipe reads a product's `defconfig`), and it
      is what lets a *second* product reuse the backends without reaching into
      gameboy-v3. The product's `scripts/` dir is now gone.

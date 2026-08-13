@@ -15,8 +15,12 @@
 #   smoke  — the built-in test initramfs (uinit): deterministic, needs NO input,
 #            ALWAYS available. Exercises fs + mem syscalls + fork/exec/wait.
 #   busybox — the real musl BusyBox rootfs, driven with a fixed command script to
-#            an interactive prompt. Only runs if the image is present (it's a
-#            build artifact of the busybox rootfs (make image ... from the product)); otherwise SKIPPED.
+#            an interactive prompt. Runs only if that rootfs is present (built by
+#            `make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox`); its artifact
+#            name is selection-unique, so a not-built-yet case just SKIPs.
+#   dynamic — the same, dynamically linked through musl's ld.so (add LINKAGE=dynamic
+#            to that rootfs build); SKIPs the same way. smoke/fault/orphan/preempt
+#            use built-in initramfs images and always run.
 #
 # Usage:
 #   ./test/golden.sh                 # build (BOARD=virt) + run both cases
@@ -41,8 +45,14 @@ PROJ="${GV3_PRODUCT:-${REPO_ROOT}/projects/gameboy-v3}"
 BUILD="${KDIR}/build/virt"
 LOGDIR="${KDIR}/build/test"
 TOOLCHAIN_BIN="${PROJ}/build/toolchain/bin"
-BUSYBOX_INITRD="${PROJ}/build/output/initramfs.cpio.gz"
-DYNAMIC_INITRD="${PROJ}/build/output/initramfs-dynamic.cpio.gz"
+# gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it into the product's
+# host prefix); the kernel Makefile no longer owns it, so we pass its path into the
+# fixtures build. Provisioned by the product's `make toolchain` (below, if absent).
+GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
+# The rootfs artifact is now named by (rootfs-tag + link) so selections/linkages don't clobber
+# in build/output/ — these are the musl-busybox static/dynamic names (see resolve.mk INITRAMFS_IMAGE).
+BUSYBOX_INITRD="${PROJ}/build/output/initramfs-musl-busybox-static.cpio.gz"
+DYNAMIC_INITRD="${PROJ}/build/output/initramfs-musl-busybox-dynamic.cpio.gz"
 SMOKE_INITRD="${BUILD}/initramfs.cpio.gz"
 FAULT_INITRD="${BUILD}/faultramfs.cpio.gz"
 ORPHAN_INITRD="${BUILD}/orphanramfs.cpio.gz"
@@ -147,6 +157,16 @@ feed_busybox() {
   printf 'uname -a\n';                                  sleep 1
   printf 'echo sub: $(echo hi | tr a-z A-Z)\n';         sleep 1
   printf 'exit\n';                                      sleep 1
+}
+
+# ---- artifact fingerprint ---------------------------------------------------
+# rootfs_has <initrd.cpio.gz> <pattern> — true iff the cpio listing has an entry
+# matching <pattern>. The rootfs artifact name is now keyed by (rootfs-tag + link),
+# so only a musl-busybox build ever writes this path (no cross-selection clobber).
+# The fingerprint is kept as a cheap integrity check — a present-but-wrong-contents
+# artifact SKIPs with a rebuild hint rather than false-failing.
+rootfs_has() {
+  zcat "$1" 2>/dev/null | cpio -t 2>/dev/null | grep -q -- "$2"
 }
 
 # ---- markers for each case --------------------------------------------------
@@ -269,8 +289,16 @@ preempt_case() {
 }
 
 busybox_case() {
+  # The rebuild command that produces this artifact (also the SKIP hint).
+  local mk="make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox (from projects/gameboy-v3)"
   if [ ! -f "$BUSYBOX_INITRD" ]; then
-    ylw "=== case: busybox === SKIPPED (no ${BUSYBOX_INITRD#${PROJ}/}; run: make image KERNEL=mainline LIBC=musl COREUTILS=busybox (from projects/gameboy-v3))"
+    ylw "=== case: busybox === SKIPPED (not built yet — run: ${mk})"
+    return 0
+  fi
+  # Integrity check: a BusyBox rootfs contains bin/busybox. (Selection-unique names mean nothing
+  # else writes this path, but a partial/failed build could leave it malformed — SKIP, don't fail.)
+  if ! rootfs_has "$BUSYBOX_INITRD" 'bin/busybox'; then
+    ylw "=== case: busybox === SKIPPED (${BUSYBOX_INITRD#${PROJ}/} not a valid BusyBox rootfs; rebuild: ${mk})"
     return 0
   fi
   REQ=(
@@ -291,9 +319,16 @@ dynamic_case() {
   # DYNAMICALLY-linked musl BusyBox: proves the kernel's dynamic-linking support
   # (ET_DYN load bias, PT_INTERP -> /lib/ld-musl-armhf.so.1, full auxv, file-backed
   # + MAP_FIXED mmap2). Same shell interactions as busybox, but the whole chain
-  # runs THROUGH ld.so. Build with: LINKAGE=dynamic make (from projects/gameboy-v3/rootfs) — see rootfs/README
+  # runs THROUGH ld.so. Built by the package-model assembler with LINKAGE=dynamic.
+  local mk="make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox LINKAGE=dynamic (from projects/gameboy-v3)"
   if [ ! -f "$DYNAMIC_INITRD" ]; then
-    ylw "=== case: dynamic === SKIPPED (no ${DYNAMIC_INITRD#${PROJ}/}; run LINKAGE=dynamic make (from projects/gameboy-v3/rootfs) — see rootfs/README)"
+    ylw "=== case: dynamic === SKIPPED (not built yet — run: ${mk})"
+    return 0
+  fi
+  # Integrity check: a DYNAMIC musl BusyBox rootfs carries the musl loader (lib/ld-musl-armhf.so.1).
+  # (Selection-unique names mean nothing else writes this path — SKIP on a malformed build.)
+  if ! rootfs_has "$DYNAMIC_INITRD" 'lib/ld-musl-armhf.so.1'; then
+    ylw "=== case: dynamic === SKIPPED (${DYNAMIC_INITRD#${PROJ}/} not a valid dynamic musl BusyBox rootfs; rebuild: ${mk})"
     return 0
   fi
   REQ=(
@@ -321,7 +356,16 @@ main() {
 
   if [ "${NO_BUILD:-0}" != 1 ]; then
     printf '=== building (BOARD=virt) ===\n'
-    if ! make -C "$KDIR" BOARD=virt >"${LOGDIR}/build.log" 2>&1; then
+    # gen_init_cpio is engine-provisioned (fetched + compiled into the product host prefix).
+    # Provision it if missing (the product's `make toolchain` runs the host subsystem), then
+    # pass its path to the fixtures build — the kernel Makefile doesn't build the tool itself.
+    if [ ! -x "${GEN_INIT_CPIO}" ]; then
+      printf '  provisioning gen_init_cpio (make toolchain) ...\n'
+      make -C "${PROJ}" toolchain >>"${LOGDIR}/build.log" 2>&1 || true
+    fi
+    # `all` = the kernel binary; `fixtures` = the four test initramfs images these
+    # cases boot (the kernel Makefile split test scaffolding out of `all`, so name it).
+    if ! make -C "$KDIR" BOARD=virt GEN_INIT_CPIO="${GEN_INIT_CPIO}" all fixtures >>"${LOGDIR}/build.log" 2>&1; then
       red "BUILD FAILED (see ${LOGDIR}/build.log)"; tail -n 20 "${LOGDIR}/build.log"; exit 2
     fi
     grn "  build OK"

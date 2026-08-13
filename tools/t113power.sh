@@ -11,7 +11,7 @@
 # It ALSO verifies a cut actually happened the ONLY reliable way — the FEL USB device
 # (1f3a:efe8) leaving/returning in lsusb — NOT the board LED (the 3.3V-rail bulk caps
 # hold the LED lit for seconds after VBUS drops, so the LED lies) and NOT uhubctl's
-# own "off" readout (that only means the command was accepted). See REMOTE-RIG.md §1.
+# own "off" readout (that only means the command was accepted). See projects/gameboy-v3/README.md (Remote rig section).
 #
 # Runs ON the NUC. From the dev host:  ssh johmagnu-nuc 'bash -s' < tools/t113power.sh <cmd>
 # Or copy it to the NUC and run directly.
