@@ -36,8 +36,9 @@ capacitor** (see Root Cause below). Once a bulk cap is added, the board is stabl
 |---|-----|----------|--------|
 | 1 | **VBUS bulk input capacitor** on +5V near the buck VINs | **REQUIRED** | ✅ root cause confirmed on silicon |
 | 2 | **UART0 TX/RX series resistors** (back-power protection) | **REQUIRED** | ✅ confirmed (killed Rev-A board #1) |
-| 3 | **Retarget USB D+/D- to 90 Ω** differential | recommended | likely-contributor (never confirmed sole) |
+| 3 | **Retarget USB D+/D- to 90 Ω** differential | nice-to-have | NOT needed for FEL/boot (see update in Fix 3); only for USB high-speed |
 | 4 | **Wire the microSD card-detect** (or keep the `broken-cd` SW workaround) | optional | ✅ confirmed; SW-worked-around today |
+| 5 | **Remote boot-media power switches** (independent load switches on NOR VCC *and* SD VDD) → force NOR-boot / SD-boot / FEL at will | **REQUIRED for a remote dev-loop with a breakable bootloader** | ⚠️ confirmed necessary — a valid NOR image strands the board with no auto-FEL, and FEL entry is a hardware decision made before any user code runs |
 
 Details for each below.
 
@@ -128,6 +129,25 @@ this is a quality/robustness fix, not a blocker.
 | Length | ~19 mm (DP 19.248 / DN 19.207) | ✅ short |
 | Stackup | 4-layer 1.6 mm; F.Cu / 0.1mm / In1(GND) / 1.24mm / In2(+3.3V) / 0.1mm / B.Cu | ✅ |
 
+**Update (2026-07) — FEL bulk transfer WORKS after the VBUS cap; the earlier
+"impedance limits FEL" claim was WRONG.** With a bulk cap soldered on C3 (Fix 1
+done), stock upstream `xfel` pushes the **full 5.4 MB zImage in ~7 s (100%, link
+alive)** in a single session. The earlier "FEL caps out at ~64 transfers / it's
+the D+/D- impedance" conclusion was a **false alarm caused by a buggy local xfel
+patch**, not the board: the patch retried a *partial* bulk transfer on error,
+which desynced FEL's stateful framed protocol and wedged the link at a
+deterministic point; the repeated-`write32`-in-a-loop test method (100 separate
+FEL sessions) compounded it. Reverting to **pristine upstream xfel** + a single
+file write → flawless. So: the cap fixed the real (power/brownout) problem, and
+FEL is reliable on Rev-A. The full-speed (12 Mbps) enumeration is just how this
+BROM's FEL comes up and does NOT prevent reliable bulk transfer.
+
+Fix 3 (D+/D- impedance) below is therefore **downgraded to a nice-to-have** (would
+be needed for USB *high-speed* / a future USB use case, but is NOT required for
+FEL flashing or booting). Lesson: don't "fix" a marginal link with retry logic
+in a stateful protocol without re-syncing — and test flashing the way you flash
+(one session), not with a loop of process spawns.
+
 **Fix (Rev-B) — retarget to 90 Ω differential,** best options first:
 1. **Tighten the pair** — reduce the D+/D- gap so it's strongly coupled (aim
    edge-to-edge ≈ trace width); stronger odd-mode coupling raises Zdiff toward 90 Ω.
@@ -167,6 +187,82 @@ U-Boot control DTB and the kernel DTB.
    insert/removal (fine for a boot medium present at power-on). Current state.
 
 Not a defect — a deliberate wiring choice the reused DT disagrees with.
+
+---
+
+### Fix 5 — Remote force-FEL circuit (REQUIRED for a NOR-based remote dev loop)
+
+**Problem (learned the hard way).** For a fully-remote flash/boot/reflash loop you
+want to boot from on-board **SPI-NOR** (closest to how the real product boots —
+no card). But the T113 BROM, once NOR holds a *valid* boot image, boots it every
+power-up and there is **no automatic drop to FEL** — so you lose the remote
+reflash path. Bench-confirmed: after `xfel spinor write` of a valid eGON to NOR,
+40+ power-cycles and aggressive xfel-hammering never re-caught FEL; the board was
+recoverable only by inserting an SD card (SD is tried before NOR).
+
+**What the BROM actually does (from the T113 application notes, §3.4.2):**
+- Boot flow: `CPU0 → read Hotplug Flag (reg 0x070005C0; ==0xFA50392F jumps to Soft
+  Entry 0x070005C4, a resume vector — NOT a FEL trigger) → check FEL_SEL pad →
+  FEL_SEL low = Run_FEL (mandatory upgrade); high = Try Media Boot`.
+- `FEL_SEL_PAD_STA` = **reg 0x03000024 bit[8]** (0=Run_FEL, 1=Try Media Boot).
+- **GPIO boot-select = BOOT-SEL[1:0] on PC4/PC5** (both reset to pull-up = `11`):
+  | PC5:PC4 | priority |
+  | 00 | SPI NOR → SPI NAND |
+  | 01 | SD → SPI NOR → other |
+  | 10 | SD → SPI NAND → other |
+  | 11 | SD → eMMC → other (← our default; NOR falls under "other media") |
+- **Key finding:** the FEL_SEL pad is referenced only by register bit in the docs;
+  it is NOT named as a package pin, and the MangoPi MQ-R reference schematic has
+  **no FEL button / no dedicated FEL net.** On T113/D1 there is effectively no
+  exposed FEL-button pin (unlike older Allwinner). So the practical force-FEL is
+  to make the selected boot media FAIL its BROM probe → fall through to FEL.
+
+**Why hardware is unavoidable here.** FEL entry is decided by the BROM from
+hardware state *before any user code runs* (FEL_SEL pad, or media-probe
+fall-through). When you're testing a **custom bootloader that regularly hangs**
+(bad DDR init, faults before UART), the code in NOR/SD can't software-request its
+own recovery — so no OTA/A-B/self-reflash scheme helps. The recovery must live
+below your code, i.e. in the BROM, reached by making the boot media fail its
+probe. That's a hardware act. There is no software-only force-FEL for a dead
+bootloader.
+
+**Fix (Rev-B) — TWO independent load switches, one on each boot medium's power,
+so you can force NOR-boot, SD-boot, or FEL at will and always recover:**
+
+- **Switch A: NOR VCC** — high-side load-switch / P-FET in series with the
+  W25Q128 VCC (**U3 pin 8**, currently on +3.3V). Gating VCC reliably kills the
+  SPI-NOR (clean; no SPI0-bus contention).
+- **Switch B: SD VDD** — load-switch in series with the microSD socket VDD
+  (**U4 pin 4**, currently on +3.3V). ⚠️ Caveat: an SD card can be parasitically
+  back-fed through CLK/CMD/DAT, so VDD-off may not fully hide it from the BROM —
+  **also gate the SD CLK** (or bench-verify VDD-off alone makes the BROM see "no
+  card"). NOR is the clean one; SD is the one to validate.
+- Each switch: its own control GPIO + a bulk cap downstream of the switch (expect
+  an inrush spike when re-powering a medium).
+- Drive both control GPIOs from something network-reachable (USB-GPIO/relay on the
+  host, a Pi, or a spare MCU) — 2 signals.
+
+**Boot-source matrix this gives you** (with BOOT-SEL=`01` SD→NOR, or `00` NOR-only):
+| NOR pwr | SD pwr | Result |
+| ON  | OFF | boots **NOR** (production-faithful NOR test) |
+| OFF | ON  | boots **SD**  (production-faithful SD test) |
+| OFF | OFF | **FEL** — deterministic recovery, independent of any code in NOR/SD |
+| ON  | ON  | boots SD (higher priority) — also lets you test priority |
+
+Result: `both off → power-cycle → FEL → xfel spinor write (NOR) / write SD → set
+the switches for the medium under test → power-cycle → boots it exactly as the
+BROM would in production`. Remote, repeatable, and **un-brickable** — both-off →
+FEL is a hardware guarantee no matter how broken the flashed code is.
+
+> **Operational rule until these switches exist: do NOT write a bootable image to
+> NOR** — there is no remote way back; recovery requires physically inserting an
+> SD card (SD > NOR in the default `11` strap order). The only safe remote loop
+> today is FEL-into-RAM (needs no NOR/SD, can't strand the board) — but that is
+> NOT production-faithful, so it's a stopgap, not the goal.
+
+**Decision that pins the design:** confirm what the REAL product boots from
+(NOR vs SD/eMMC). Both-switch rig supports testing either; the primary medium
+just determines which path is the "production" one.
 
 ---
 ---
