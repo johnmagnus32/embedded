@@ -1,0 +1,24 @@
+#!/bin/sh
+# /init — the minimal PID-1 (INIT=shell): mount the API filesystems, then hand off to an
+# interactive shell. Kernel-agnostic (runs on the from-scratch kernel too) — the PID-1 for the
+# from-scratch stack and the kernel test harness, where a supervisor isn't needed. The real
+# event-driven supervisor is INIT=custom (init/).
+#
+# TWO hard constraints:
+#  1. PID 1 must NOT return — a PID 1 that exits panics the kernel — so we end in `exec /bin/sh`.
+#  2. Written in the PORTABLE shell subset the gv3 shell (coreutils/sh.c) parses: whitespace-split
+#     only — NO quoting, NO $(...), NO &&/||/if. So the banner is static and we hand off with a bare
+#     `exec /bin/sh` (a failed setsid/cttyhack would panic PID 1 on the gv3 shell).
+
+mount -t proc     none /proc
+mount -t sysfs    none /sys
+mount -t devtmpfs none /dev
+
+echo
+echo ===================================================
+echo   PID 1 is alive.
+echo   handing off to an interactive /bin/sh
+echo ===================================================
+echo
+
+exec /bin/sh

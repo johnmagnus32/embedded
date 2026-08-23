@@ -1,0 +1,9 @@
+#!/bin/sh
+# runit stage 1 — one-time system init (mount the pseudo-filesystems).
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+mount -t proc     none /proc 2>/dev/null
+mount -t sysfs    none /sys  2>/dev/null
+mount -t devtmpfs none /dev  2>/dev/null
+echo
+echo "=== gameboy-v3 -- runit stage 1 (sysinit) ==="

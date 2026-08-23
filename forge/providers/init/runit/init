@@ -1,0 +1,6 @@
+#!/bin/sh
+# /init — PID 1 (INIT=runit). The kernel starts init with no PATH; set one, then hand off to runit,
+# which supervises the services in /etc/service via its stage scripts (/etc/runit/{1,2,3}).
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+exec /sbin/runit

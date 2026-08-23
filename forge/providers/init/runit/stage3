@@ -1,0 +1,3 @@
+#!/bin/sh
+# runit stage 3 — shutdown (reached when stage 2 is told to stop).
+echo "=== gameboy-v3 -- runit stage 3 (shutdown) ==="

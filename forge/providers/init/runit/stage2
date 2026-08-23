@@ -1,0 +1,6 @@
+#!/bin/sh
+# runit stage 2 — the run stage: supervise everything in /etc/service, forever (never returns).
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+export PATH
+echo "=== gameboy-v3 -- runit stage 2 (runsvdir; supervising /etc/service) ==="
+exec runsvdir /etc/service
