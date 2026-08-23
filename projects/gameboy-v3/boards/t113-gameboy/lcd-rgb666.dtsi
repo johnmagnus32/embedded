@@ -1,0 +1,61 @@
+// t113-gameboy — 5" 800x480 RGB666 parallel panel (Zettler ATM0500D27-CT) bench bring-up.
+// Compile-time #include, baked into the kernel DTB via board.conf KERNEL_DTB_OVERLAYS.
+//
+// Parallel RGB is driver-supported on the T113 (sun4i_tcon: allwinner,sun20i-d1-tcon-lcd,
+// has_channel_0 -> sun4i_rgb_init on tcon_lcd0 port@1/endpoint@0). NOTE: this is NEW DT for
+// this SoC (no in-tree D1/T113 RGB example — only DSI), so expect possible iteration.
+//
+// ⚠️ MUTUALLY EXCLUSIVE with lcd-ili9341.dtsi — both use PD10-15. Never list both.
+// Backlight is driven EXTERNALLY on the bench (boost module), so there is NO backlight node.
+// Panel DISP (FFC pin 31) is tied to 3.3 V on the bench, so there is NO enable-gpios.
+// Timings: ATM0500D27-CT datasheet §3.2.4 (25 MHz typ; HS/VS active-low; DE active-high).
+
+&de {
+	status = "okay";
+};
+
+&tcon_lcd0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&lcd_rgb666_pins>;   /* PD0-21 = 18 data + DCLK/DE/HSYNC/VSYNC */
+	status = "okay";
+};
+
+&tcon_lcd0_out {
+	/* Add the parallel-RGB output endpoint (reg 0). The base DTS already declares
+	 * #address-cells/#size-cells here for the DSI endpoint@1, so do NOT redeclare them. */
+	tcon_lcd0_out_rgb: endpoint@0 {
+		reg = <0>;
+		remote-endpoint = <&panel_in_rgb>;
+	};
+};
+
+/ {
+	panel_rgb: panel-rgb {
+		compatible = "panel-dpi";
+		data-mapping = "bgr666";   /* -> MEDIA_BUS_FMT_RGB666_1X18, matches lcd_rgb666_pins */
+		width-mm = <108>;
+		height-mm = <65>;
+
+		panel-timing {
+			clock-frequency = <15000000>;   /* bring-up: lowered 25M->15M for jumper-wire SI headroom (refresh ~37Hz) */
+			hactive = <800>;
+			hfront-porch = <8>;
+			hsync-len = <4>;
+			hback-porch = <4>;
+			vactive = <480>;
+			vfront-porch = <8>;
+			vsync-len = <4>;
+			vback-porch = <4>;
+			hsync-active = <0>;    /* active low  */
+			vsync-active = <0>;    /* active low  */
+			de-active = <1>;       /* active high */
+			pixelclk-active = <0>; /* sample on rising DCLK; flip to <1> if pixels shear */
+		};
+
+		port {
+			panel_in_rgb: endpoint {
+				remote-endpoint = <&tcon_lcd0_out_rgb>;
+			};
+		};
+	};
+};

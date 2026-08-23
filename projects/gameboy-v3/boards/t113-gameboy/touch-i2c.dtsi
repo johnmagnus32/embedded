@@ -1,0 +1,23 @@
+// t113-gameboy — enable i2c1 (TWI1) on PG8/PG9 for the FT7311 touch bring-up probe.
+// Compile-time #include, baked into the kernel DTB via board.conf KERNEL_DTB_OVERLAYS.
+//
+// This is the real gv3 peripheral bus (touch/haptics/expander/gauge/INA all live on i2c1);
+// here we just bring the bus up so a raw i2c-dev tool (/usr/bin/touchtest) can scan for the
+// FT7311 at 0x38 and read touch reports. No child device nodes — the tool talks raw i2c-dev.
+//
+// PG8=SCL, PG9=SDA (mux function "i2c1"). The base DTS defines a uart1 group on PG8/PG9 but
+// it is /omit-if-no-ref/ (unreferenced → dropped), so there is no pinmux conflict.
+
+&pio {
+	i2c1_pg8_pins: i2c1-pg8-pins {
+		pins = "PG8", "PG9";
+		function = "i2c1";
+	};
+};
+
+&i2c1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pg8_pins>;
+	/* default 100 kHz (standard mode) — fine for detection; no clock-frequency set */
+	status = "okay";
+};

@@ -8,3 +8,8 @@
 
 # Custom kernel build output (reproducible from kernel/ sources).
 /kernel/build/
+
+# Compiled bring-up/bench tools — rebuild from tools/*.c on demand (not shipped in the product).
+/overlay/usr/bin/fbtest
+/overlay/usr/bin/touchtest
+/overlay/usr/bin/touchpaint
