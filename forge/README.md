@@ -53,8 +53,9 @@ bug is ours or upstream's.
 
 The rootfs is a **package model**: `LIBC` is the C library everything links; `PACKAGES`
 is the additive install set (our coreutils and BusyBox are both packages under
-`packages/<name>/`). Each package declares the libc surface it needs (`PKG_LIBC`), so
-`LIBC=custom PACKAGES=busybox` is rejected up front (BusyBox needs a complete libc).
+`packages/<name>/`). A package just depends on `libc` (`PKG_DEPENDS`); libc compatibility
+is not pre-checked, so `LIBC=custom PACKAGES=busybox` builds until it hits the real link
+errors on symbols gv3libc does not implement yet (which are the gv3libc port worklist).
 
 Peripherals (an LCD, etc.) are NOT axes — a peripheral is invariant board data (a DT node
 + driver kconfig), applied unconditionally by the board via `board/<board>/` fragments.

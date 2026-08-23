@@ -6,6 +6,7 @@
 #   make                 # build per config.mk (default: full custom stack, MEDIA=nor)
 #   make KERNEL=mainline LIBC=musl PACKAGES=busybox BOOTLOADER=uboot    # all-OSS reference
 #   make KERNEL=mainline # our rootfs on a mainline kernel (bug isolation)
+#   make console         # the canvas console flavor (mainline + musl + the console package)
 #   make flash           # build a NOR bundle + flash + FEL-boot on the rig
 #   make print-config    # show the resolved selection (no build)
 #   make test            # kernel golden QEMU tests
@@ -19,7 +20,13 @@ include $(REPO_ROOT)/forge/core/rules.mk
 
 # --- product-specific targets ------------------------------------------------
 # flash + test deploy/verify on OUR bench, so they live here, not in the generic engine.
-.PHONY: flash test
+.PHONY: flash test console
+# console: the "canvas" console flavor — mainline kernel + musl libc + the product-local
+# `console` package (canvasd/appletd/launcher/…) alongside busybox. A named selection so you
+# don't retype the axes; override MEDIA=sd for an SD image.
+console:
+	@$(MAKE) image KERNEL=mainline LIBC=musl PACKAGES="busybox console"
+
 flash: image
 	@if [ "$(MEDIA)" != nor ]; then \
 	  echo "make flash needs MEDIA=nor (SD is a manual dd of build/output/*-sd.img)"; exit 1; fi

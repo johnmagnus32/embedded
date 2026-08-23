@@ -2,18 +2,22 @@
 # graph nodes (built + staged first); this step only assembles + packs them. (Yocto's do_rootfs.)
 PKG_NAME=rootfs
 
-PKG_DEPENDS=${PACKAGES}
+# Mirrors the Make prerequisites (rules.mk: `rootfs: init pkg-<packages>`) so the declared dep graph
+# matches. The rootfs is a compose step (no PKG_ARTIFACT) so it never caches — this is graph parity,
+# not a cache edge. Quoted: PACKAGES may be several space-separated names, and an unquoted RHS would
+# run all but the first as a command.
+PKG_DEPENDS="init ${PACKAGES}"
 PKG_FETCH=none
 PKG_HOST_DEPENDS=gen_init_cpio          # the newc-cpio writer
 
-# init.sh is renamed to /init (the portable PID-1); every other overlay file lands at its rel path.
+# Overlay files are copied verbatim to their relative paths (Buildroot's BR2_ROOTFS_OVERLAY).
+# /init comes from the selected INIT provider (staged via pkgstage/init), not the overlay.
 _rootfs_overlay_merge() {
   local stage="$1" overlay="$2"
   [ -d "$overlay" ] || return 0
   local f dst
   for f in $(cd "$overlay" && find . -type f | sed 's|^\./||'); do
     dst="$stage/$f"
-    [ "$f" = "init.sh" ] && dst="$stage/init"
     mkdir -p "$(dirname "$dst")"
     install -m 0755 "$overlay/$f" "$dst"
   done
@@ -83,6 +87,11 @@ do_build() {
     [ -d "${PKGSTAGE}/${p}" ] || die "rootfs: package '${p}' staged nothing at ${PKGSTAGE}/${p} (build order / pkg-${p} failed?)"
     cp -a "${PKGSTAGE}/${p}/." "${STAGE}/"
   done
+
+  # The selected INIT provider staged /init (+ its config) into pkgstage/init; merge it in.
+  [ -d "${PKGSTAGE}/init" ] || die "rootfs: init staged nothing at ${PKGSTAGE}/init (init node failed?)"
+  cp -a "${PKGSTAGE}/init/." "${STAGE}/"
+  [ -e "${STAGE}/init" ] || die "rootfs: the INIT provider did not install /init"
 
   _stage_libc_runtime
 

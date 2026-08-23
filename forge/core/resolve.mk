@@ -15,6 +15,7 @@ REPO_ROOT  := $(abspath $(FORGE_ROOT)/..)
 override KERNEL     := $(strip $(KERNEL))
 override BOOTLOADER := $(strip $(BOOTLOADER))
 override LIBC       := $(strip $(LIBC))
+override INIT       := $(strip $(INIT))
 override PACKAGES   := $(strip $(PACKAGES))
 override MEDIA      := $(strip $(MEDIA))
 override BOARD      := $(strip $(BOARD))
@@ -37,7 +38,11 @@ _field = $(strip $(shell awk -F= '/^$(2)=/{sub(/^$(2)=/,""); sub(/[ \t]*$(_hash)
 _recipe           = $(FORGE_ROOT)/providers/$(1)/$(2)/recipe.sh
 _recipe_get       = $(call _field,$(call _recipe,$(1),$(2)),$(3))
 _step_get         = $(call _field,$(FORGE_ROOT)/steps/$(1)/recipe.sh,$(2))
-_pkg_get          = $(call _field,$(FORGE_ROOT)/packages/$(1)/recipe.sh,$(2))
+# Package recipe lookup: PRODUCT-local first ($(PRODUCT_DIR)/packages/), then the shared forge
+# catalog (forge/packages/) — forge's equivalent of Yocto bblayers / Buildroot BR2_EXTERNAL, so a
+# product carries its own packages without polluting the engine catalog.
+_pkg_recipe       = $(firstword $(wildcard $(PRODUCT_DIR)/packages/$(1)/recipe.sh $(FORGE_ROOT)/packages/$(1)/recipe.sh))
+_pkg_get          = $(call _field,$(call _pkg_recipe,$(1)),$(2))
 _hostpkg_get_host = $(call _field,$(FORGE_ROOT)/hostpackages/$(1)/recipe.sh,PKG_HOST_DEPENDS)
 _hostpkg_get      = $(call _field,$(FORGE_ROOT)/hostpackages/$(1)/recipe.sh,$(2))
 
@@ -45,9 +50,11 @@ _hostpkg_get      = $(call _field,$(FORGE_ROOT)/hostpackages/$(1)/recipe.sh,$(2)
 $(if $(wildcard $(call _recipe,kernel,$(KERNEL))),,$(error no kernel recipe for KERNEL=$(KERNEL)))
 $(if $(wildcard $(call _recipe,bootloader,$(BOOTLOADER))),,$(error no bootloader recipe for BOOTLOADER=$(BOOTLOADER)))
 $(if $(wildcard $(call _recipe,libc,$(LIBC))),,$(error no libc recipe for LIBC=$(LIBC)))
+$(if $(wildcard $(call _recipe,init,$(INIT))),,$(error no init recipe for INIT=$(INIT)))
 KERNEL_RECIPE     := $(call _recipe,kernel,$(KERNEL))
 BOOTLOADER_RECIPE := $(call _recipe,bootloader,$(BOOTLOADER))
 LIBC_RECIPE       := $(call _recipe,libc,$(LIBC))
+INIT_RECIPE       := $(call _recipe,init,$(INIT))
 # The selected libc's CC/link contract (PKG_CC/CFLAGS/LDFLAGS + crt/lib), beside its recipe.
 # A compile class sources it directly — the engine has no per-libc CC knowledge (each libc
 # owns its whole contract; a non-musl libc is a new cc-profile.sh, no engine edit).
@@ -71,12 +78,12 @@ LIBC_SRC    := $(strip \
 BUILD_KERNEL := $(if $(filter mainline,$(KERNEL)),linux,custom)
 
 # Package existence pre-check: a mistyped PACKAGES entry (busibox) errors here at parse time with
-# a clear message, rather than failing obscurely at the pkg-<name> graph node. (PKG_LIBC is NOT
-# enforced — it's advisory metadata a package declares about its libc surface; an incompatible
-# LIBC×package just fails at build with the real compiler/link errors, which for a from-scratch
-# libc ARE the port worklist. A libc-selection typo is caught by the recipe wildcard above.)
+# a clear message, rather than failing obscurely at the pkg-<name> graph node. libc compatibility
+# is NOT pre-checked — an incompatible LIBC×package just fails at build with the real compiler/link
+# errors, which for a from-scratch libc ARE the port worklist. (A libc-selection typo is caught by
+# the recipe wildcard above.)
 define _pkg_exists_check
-$(if $(wildcard $(FORGE_ROOT)/packages/$(1)/recipe.sh),,$(error PACKAGES: no package '$(1)' (expected forge/packages/$(1)/recipe.sh)))
+$(if $(call _pkg_recipe,$(1)),,$(error PACKAGES: no package '$(1)' (expected $(PRODUCT_DIR)/packages/$(1)/recipe.sh or forge/packages/$(1)/recipe.sh)))
 endef
 $(foreach p,$(PACKAGES),$(eval $(call _pkg_exists_check,$(p))))
 
@@ -99,9 +106,11 @@ CROSS_COMPILE        := $(strip $(if $(CROSS_COMPILE),$(CROSS_COMPILE),arm-build
 ARCH                 := $(strip $(if $(ARCH),$(ARCH),arm))
 ROOTFS_CROSS_COMPILE := $(strip $(if $(ROOTFS_CROSS_COMPILE),$(ROOTFS_CROSS_COMPILE),arm-buildroot-linux-musleabihf-))
 
-# config string for bundle/image names: <bootloader>-<kernel>-<libc>-<pkg>[+<pkg>...].
+# config string for bundle/image names: <bootloader>-<kernel>-<libc>-<init>-<pkg>[+<pkg>...].
+# INIT is part of the rootfs identity (its /init + init config), so it's in the tag — otherwise
+# INIT=custom and INIT=runit (same libc/pkgs) would clobber the same initramfs/bundle name.
 _space := $(subst ,, )
-ROOTFS_TAG := $(LIBC)-$(subst $(_space),+,$(PACKAGES))
+ROOTFS_TAG := $(LIBC)-$(INIT)-$(subst $(_space),+,$(PACKAGES))
 CFG := $(BOOTLOADER)-$(BUILD_KERNEL)-$(ROOTFS_TAG)
 
 # The rootfs artifact name is keyed by WHAT IT DEPENDS ON — the rootfs tag + link mode — so two
@@ -167,5 +176,7 @@ KERNEL_RECIPE=$(KERNEL_RECIPE)
 BOOTLOADER_RECIPE=$(BOOTLOADER_RECIPE)
 LIBC_RECIPE=$(LIBC_RECIPE)
 LIBC_CC_PROFILE=$(LIBC_CC_PROFILE)
+INIT=$(INIT)
+INIT_RECIPE=$(INIT_RECIPE)
 endef
 export FORGE_CONF_BODY

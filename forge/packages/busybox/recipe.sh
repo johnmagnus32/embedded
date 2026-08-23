@@ -8,11 +8,6 @@ PKG_SOURCE=busybox-1.36.1.tar.bz2
 PKG_SHA256=b8cc24c9574d809e7279c3be349795c5d5ceb6fdf19ca709f80cde50e47de314
 PKG_DEPENDS=libc
 
-# ADVISORY only (not enforced): BusyBox needs a COMPLETE libc (buffered stdio, getopt_long,
-# termios, regex, glob …) beyond what gv3libc implements, so in practice it's built on musl.
-# LIBC=custom proceeds to the real link errors, which double as the gv3libc port worklist.
-PKG_LIBC=musl
-
 # CONFIG_TC uses TCA_CBQ_MAX, removed in kernel headers >=6.8 and unfixed upstream.
 PKG_KCONFIG_DEFCONFIG=defconfig
 PKG_KCONFIG_DISABLE=CONFIG_TC

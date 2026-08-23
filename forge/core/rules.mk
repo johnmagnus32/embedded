@@ -67,7 +67,7 @@ endef
 $(foreach h,$(_BASE_HOSTPKGS),$(eval $(call _base_host_rule,$(h))))
 $(foreach h,$(_LAZY_HOSTPKGS),$(eval $(call _lazy_host_rule,$(h))))
 
-.PHONY: kernel bootloader libc rootfs $(addprefix pkg-,$(PACKAGES))
+.PHONY: kernel bootloader libc init rootfs $(addprefix pkg-,$(PACKAGES))
 
 # toolchain: the base host set every build needs. Pure Make now — the base `host-<name>` nodes
 # are the prerequisites (they have no inter-deps, so order is free); Make builds each once via
@@ -91,6 +91,11 @@ bootloader: toolchain $(call _hostdeps,$(call _recipe_get,bootloader,$(BOOTLOADE
 	$(call _build_recipe,bootloader,$(BOOTLOADER_RECIPE))
 libc: toolchain $(call _hostdeps,$(call _recipe_get,libc,$(LIBC),PKG_HOST_DEPENDS)) $(BUILD)/forge.conf
 	$(call _build_recipe,libc,$(LIBC_RECIPE))
+# init: the PID-1 provider (INIT axis). Like a package, it depends on its declared PKG_DEPENDS
+# (libc, if it links one — runit does, the shell gv3init does not) + host deps, and stages /init
+# (+ its config) into pkgstage/init for the rootfs step to merge.
+init: toolchain $(call _recipe_get,init,$(INIT),PKG_DEPENDS) $(call _hostdeps,$(call _recipe_get,init,$(INIT),PKG_HOST_DEPENDS)) $(BUILD)/forge.conf
+	$(call _build_recipe,init,$(INIT_RECIPE))
 
 # --- packages: each PACKAGE builds into its OWN per-package dir (build/rootfs/pkgstage/<pkg>) -----
 # No shared-tree pre-wipe: a package installs into its own dir — a
@@ -103,12 +108,12 @@ libc: toolchain $(call _hostdeps,$(call _recipe_get,libc,$(LIBC),PKG_HOST_DEPEND
 # rule per package via $(eval) (same reason as the host nodes above).
 define _pkg_rule
 pkg-$(1): toolchain $$(call _pkg_get,$(1),PKG_DEPENDS) $$(call _hostdeps,$$(call _pkg_get,$(1),PKG_HOST_DEPENDS)) $(BUILD)/forge.conf
-	$$(call _build_recipe,$(1),$(FORGE_ROOT)/packages/$(1)/recipe.sh)
+	$$(call _build_recipe,$(1),$(call _pkg_recipe,$(1)))
 endef
 $(foreach p,$(PACKAGES),$(eval $(call _pkg_rule,$(p))))
 
 # --- rootfs (pack the staging tree) + image (compose the built artifacts) -----
-rootfs: $(addprefix pkg-,$(PACKAGES)) $(call _hostdeps,$(call _step_get,rootfs,PKG_HOST_DEPENDS)) $(BUILD)/forge.conf
+rootfs: init $(addprefix pkg-,$(PACKAGES)) $(call _hostdeps,$(call _step_get,rootfs,PKG_HOST_DEPENDS)) $(BUILD)/forge.conf
 	$(call _build_recipe,rootfs,$(FORGE_ROOT)/steps/rootfs/recipe.sh)
 # image host deps: base + the per-MEDIA arm — PKG_HOST_DEPENDS_sd=genimage (nor adds nothing).
 image: kernel bootloader rootfs $(call _hostdeps,$(call _step_get,image,PKG_HOST_DEPENDS) $(call _step_get,image,PKG_HOST_DEPENDS_$(MEDIA))) $(BUILD)/forge.conf
