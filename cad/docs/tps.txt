@@ -1,0 +1,1794 @@
+                                       Product              Order         Technical                      Tools &            Support &
+                                       Folder               Now           Documents                      Software           Community
+
+
+
+                                                                                                                                        TPS63020, TPS63021
+                                                                                                                    ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+                 具有 4A 开关的 TPS6302x 高效率单电感器降压/升
+                                              升压转换器
+1 特性                                                                                               SPACE
+•     输入电压范围：1.8V 至 5.5V
+                                                                                  3 说明
+1
+
+
+
+
+•     可调节输出电压：1.2V 至 5.5V
+•     VIN > 2.5V、VOUT = 3.3V 时，输出电流为 2A                                           TPS6302x 器件可以为由两节或三节碱性电池、镍镉电
+•     在整个负载范围内具有高效率                                                               池或镍氢电池或单节锂离子电池或锂聚合物电池、超级
+                                                                                  电容器或其他电源轨供电的产品提供电源解决方案。支
+      – 静态工作电流：25μA
+                                                                                  持高达 3A 的输出电流。使用电池时，可以放电到 2V
+      – 支持模式选择的省电模式
+                                                                                  以下。该降压/升压转换器基于一个使用同步整流的固
+•     平均电流模式降压/升压架构
+                                                                                  定频率、脉宽调制 (PWM) 控制器来获得最高效率。在
+      – 模式间自动转换
+                                                                                  负载电流较低的情况下，该转换器会进入节能模式，以
+      – 2.4MHz 固定频率工作
+                                                                                  在宽负载电流范围内保持高效率。禁用省电模式则会强
+      – 可同步
+                                                                                  制转换器以固定开关频率运行。开关的最大平均电流为
+•     电源正常状态输出
+                                                                                  4A（典型值）。输出电压可通过外部电阻分频器进行
+•     安全、可靠运行 特性
+                                                                                  编程，或者在内部芯片上固定。转换器可被禁用以最大
+      – 过热和过压保护
+                                                                                  限度地减少电池消耗。在关断期间，负载从电池上断
+      – 关断期间负载断开
+                                                                                  开。
+•     借助以下工具创建定制设计方案：
+      – TPS63020，使用 WEBENCH 电源设计器                                                 TPS6302x 器件在自然通风环境下运行的温度范围为
+      – TPS63021，使用 WEBENCH 电源设计器                                                 –40°C 至 85°C。该器件采用 3mm × 4mm (DSJ) 14
+                                                                                  引脚 VSON 封装。
+2 应用
+                                                                                                                            器件信息(1)
+•     电池供电设备前置稳压器：EPOS（便携式数据终
+                                                                                                    器件型号                    输出电压                       封装
+      端、条形码扫描仪）、电子烟、单板计算机、IP 网
+                                                                                      TPS63020                       可调节
+      络摄像头、可视门铃、陆地移动无线电                                                                                                                            VSON (14)
+                                                                                      TPS63021                       3.3V
+•     稳压器：有线通信、无线通信、PLC、光学模块
+                                                                                      (1) 要了解所有可用封装，请参见数据表末尾的可订购数据表。
+•     超级电容器备用电源：电表、企业级固态硬盘
+      (SSD)
+空白
+                           简化电路原理图
+                                    L1
+                                                                                                                效率与输出电流间的关系
+                                  1.5 µH
+                                                                                                   100
+                                                                                                    90
+                             L1            L2
+     VIN                                                                 VOUT                       80
+1.8 V to 5.5 V                                                           3.3 V
+                           VIN             VOUT                                                     70
+                                                                                  Efficiency (%)
+
+
+
+
+                                 TPS63020            R1                                             60
+                 C1                                  1 0Ÿ     C2
+                 2×10 µF                        FB            3×22 µF                               50
+                                                                        R3
+                                                     R2                 1 0Ÿ                        40
+                           VINA
+                                                     180 NŸ
+                           EN
+                                                                                                    30
+                           PS/SYNC
+                                                                        Power                                                           VIN = 1.8 V, VOUT = 2.5 V
+                                                                        Good
+                                                                                                    20                                  VIN = 3.6 V, VOUT = 2.5 V
+                                            PG
+                 C3                                                                                 10                                  VIN = 2.4 V, VOUT = 4.5 V
+                 100 nF                                                                                Power-save mode enabled          VIN = 3.6 V, VOUT = 4.5 V
+                            GND        PGND                                                         0
+                                                                                                    100P        1m         10m         100m               1
+                                                                                                                        Output Current (A)                          D001
+
+
+
+
+1
+
+
+
+
+          本文档旨在为方便起见，提供有关 TI 产品中文版本的信息，以确认产品的概要。 有关适用的官方英文版本的最新信息，请访问 www.ti.com，其内容始终优先。 TI 不保证翻译的准确
+          性和有效性。 在实际设计之前，请务必参考最新版本的英文版本。
+                                                                                                                                            English Data Sheet: SLVS916
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                                                                 www.ti.com.cn
+
+
+                                                                                                 目录
+    1   特性 ..........................................................................       1               8.1 Application Information............................................ 13
+    2   应用 ..........................................................................       1               8.2 Typical Application .................................................. 13
+    3   说明 ..........................................................................       1               8.3 System Examples ................................................... 21
+    4   修订历史记录 ...........................................................                  2         9 Power Supply Recommendations...................... 23
+    5   Pin Configuration and Functions .........................                           4         10 Layout................................................................... 23
+                                                                                                            10.1 Layout Guidelines ................................................. 23
+    6   Specifications.........................................................             5
+                                                                                                            10.2 Layout Example .................................................... 23
+         6.1    Absolute Maximum Ratings ......................................             5
+                                                                                                            10.3 Thermal Considerations ........................................ 24
+         6.2    ESD Ratings..............................................................   5
+         6.3    Recommended Operating Conditions.......................                     5         11 器件和文档支持 ..................................................... 25
+         6.4    Thermal Information ..................................................      5               11.1    接收文档更新通知 .................................................                   25
+         6.5    Electrical Characteristics...........................................       6               11.2    器件支持................................................................         25
+         6.6    Typical Characteristics ..............................................      7               11.3    文档支持................................................................         25
+                                                                                                            11.4    相关链接................................................................         25
+    7   Detailed Description .............................................. 8
+                                                                                                            11.5    支持资源................................................................         25
+         7.1    Overview ................................................................... 8
+                                                                                                            11.6    商标 .......................................................................   25
+         7.2    Functional Block Diagram ......................................... 8
+                                                                                                            11.7    静电放电警告.........................................................              26
+         7.3    Feature Description................................................... 9
+                                                                                                            11.8    Glossary ................................................................    26
+         7.4    Device Functional Modes........................................ 10
+    8   Application and Implementation ........................ 13                                    12 机械、封装和可订购信息 ....................................... 26
+
+
+
+4 修订历史记录
+Changes from Revision H (August 2019) to Revision I                                                                                                                                      Page
+
+•   Changed ESD numbers to reflect latest test insights ............................................................................................................. 5
+•   Changed Footnotes in order to reflect wording of latest JEP155 and JEP157 specifications ............................................... 5
+•   Changed VFB naming and description for better readability ................................................................................................... 6
+
+
+Changes from Revision G (March 2019) to Revision H                                                                                                                                       Page
+
+•   Changed R3 68 kΩ To: R4 68 kΩ in Figure 28 .................................................................................................................... 21
+
+
+Changes from Revision F (March 2019) to Revision G                                                                                                                                       Page
+
+•   更改了“简化原理图”，删除了从 VINA 到 VIN 的连接.............................................................................................................. 1
+•   Changed Figure 7, removed the connection from VINA to VIN .......................................................................................... 13
+•   Changed Figure 28, removed the connection from VINA to VIN ........................................................................................ 21
+
+
+Changes from Revision E (May 2017) to Revision F                                                                                                                                         Page
+
+•   更新了 特性 和 应用 （第 1 页） ............................................................................................................................................ 1
+•   将器件信息表中的“封装尺寸”列改为“输出电压”....................................................................................................................... 1
+•   Changed the Pin Configuration image .................................................................................................................................. 4
+•   Changed Chapter order in Application Information . ............................................................................................................ 13
+•   Updated output capacitor selection section ......................................................................................................................... 15
+•   Added Table of Typical Characteristics Curves. ................................................................................................................. 17
+•   Changed Figure 24 and Figure 25 ....................................................................................................................................... 19
+•   Added Figure 26 and Figure 27 ........................................................................................................................................... 20
+•   Changed Figure 28 .............................................................................................................................................................. 21
+•   Added system examples Supercapacitor Backup Power Supply With Active Cell Balancing and Low-Power TEC Driver 22
+
+
+2                                                                                                                             版权 © 2010–2019, Texas Instruments Incorporated
+                                                                                                                                      TPS63020, TPS63021
+www.ti.com.cn                                                                                                  ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+
+Changes from Revision D (October 2015) to Revision E                                                                                                           Page
+
+•   Added Voltage AC-spec to Absolute Maximum Ratings table for L1, L2. ............................................................................. 5
+
+
+Changes from Revision C (February 2013) to Revision D                                                                                                          Page
+
+•   已添加 添加了处理额定值 表、特性 说明 部分、器件功能模式、应用和实施 部分、电源相关建议 部分、布局 部分、
+    器件和文档支持 部分以及机械、封装和可订购信息 部分 ....................................................................................................... 1
+
+
+Changes from Revision B (August 2012) to Revision C                                                                                                            Page
+
+•   Changed Figure 7 schematic to show correct component values. ...................................................................................... 13
+•   Changed Figure 28 schematic to show correct component values. .................................................................................... 21
+
+
+Changes from Revision A (December 2011) to Revision B                                                                                                          Page
+
+•   Changed the Duty cycle in step down conversion values, added MIN = 20%, deleted TYP = 30% and MAX = 40% .......... 6
+
+
+Changes from Original (April 2010) to Revision A                                                                                                               Page
+
+•   Updated Figure 31 - PCB Layout Suggestion ...................................................................................................................... 23
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                                                3
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                              www.ti.com.cn
+
+
+5 Pin Configuration and Functions
+
+                                                           DSJ Package
+                                               14-Pin VSON with Exposed Thermal Pad
+                                                             Top View
+
+
+
+
+                                                               PGND
+
+
+                                                                        PGND
+
+                                                                               PGND
+
+
+                                                                                      PGND
+                                        VINA          1                                      14    PG
+
+                                        GND           2                                      13    PS/SYNC
+
+                                          FB          3                                      12    EN
+                                                                      Thermal Pad
+                                       VOUT           4                                      11    VIN
+
+                                       VOUT           5                                      10    VIN
+
+                                          L2          6                                      9     L1
+
+                                          L2          7                                      8     L1
+
+
+
+
+                                               No t to scale
+                                                               PGND
+
+
+                                                                        PGND
+
+                                                                               PGND
+
+
+                                                                                      PGND
+
+
+
+
+                                                                      Pin Functions
+            PIN
+                               I/O                                                            DESCRIPTION
+NAME               NO.
+EN                  12          I    Enable input (1 enabled, 0 disabled), must not be left open
+FB                  3           I    Voltage feedback of adjustable versions, must be connected to VOUT on fixed output voltage
+                                     versions
+GND                 2           –    Control / logic ground
+L1                 8, 9         I    Connection for inductor
+L2                 6, 7         I    Connection for inductor
+PG                  14         O     Output power good (1 good, 0 failure; open-drain), can be left open
+PGND                            –    Power ground
+PS/SYNC             13          I    Enable / disable power save mode (1 disabled, 0 enabled, clock signal for synchronization), must
+                                     not be left open
+VIN               10, 11        I    Supply voltage for power stage
+VINA                1           I    Supply voltage for control stage
+VOUT               4, 5        O     Buck-boost converter output
+Exposed                         –
+                                     The exposed thermal pad is connected to PGND.
+Thermal Pad
+
+
+
+
+4                                                                                                   Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                                 TPS63020, TPS63021
+www.ti.com.cn                                                                                ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+6 Specifications
+6.1 Absolute Maximum Ratings
+over operating free-air temperature range (unless otherwise noted) (1)
+                                                                                                                  MIN            MAX      UNIT
+                                                         VIN, VINA, VOUT, PS/SYNC, EN, FB, PG                     –0.3             7           V
+          (2)
+Voltage                                                  L1, L2 (DC)                                              –0.3             7           V
+                                                         L1, L2 (AC, less than 10 ns) (3)                            –3           10           V
+Operating junction temperature, TJ                                                                                –40             150      °C
+Storage temperature, Tstg                                                                                         –65             150      °C
+
+(1)   Stresses beyond those listed under Absolute Maximum Ratings may cause permanent damage to the device. These are stress ratings
+      only, and functional operation of the device at these or any other conditions beyond those indicated under Recommended Operating
+      Conditions is not implied. Exposure to absolute-maximum-rated conditions for extended periods my affect device reliability.
+(2)   All voltages are with respect to network ground terminal.
+(3)   Normal switching operation
+
+6.2 ESD Ratings
+                                                                                                                       VALUE             UNIT
+                                             Human body model (HBM), per ANSI/ESDA/JEDEC JS-001,                          ±500
+                                             pins VIN, VINA, L1 (1)
+                                             Human body model (HBM), per ANSI/ESDA/JEDEC JS-001,                          ±2000
+V(ESD)          Electrostatic discharge                                                                                                   V
+                                             all other pins (1)
+                                             Charged device model (CDM), per JEDEC specification JESD22-C101,             ±1500
+                                             all pins (2)
+
+(1)   JEDEC document JEP155 states that, with basic ESD control methods applied, 500 V HBM allows a safe manufacturing with proven
+      margin.
+(2)   JEDEC document JEP157 states that, with basic ESD control methods applied, 250 V CDM allows a safe manufacturing.
+
+6.3 Recommended Operating Conditions
+                                                                                                      MIN         NOM         MAX        UNIT
+Supply voltage at VIN, VINA                                                                            1.8                        5.5      V
+Operating free air temperature, TA                                                                     –40                         85     °C
+Operating junction temperature, TJ                                                                     –40                        125     °C
+
+
+6.4 Thermal Information
+                                                                                                          TPS6302x
+                                             THERMAL METRIC (1)                                          DSJ (VSON)                     UNIT
+                                                                                                             14 PINS
+RθJA                  Junction-to-ambient thermal resistance                                                    41.8                    °C/W
+RθJC(top)             Junction-to-case (top) thermal resistance                                                 47                      °C/W
+RθJB                  Junction-to-board thermal resistance                                                      17                      °C/W
+ψJT                   Junction-to-top characterization parameter                                                0.9                     °C/W
+ψJB                   Junction-to-board characterization parameter                                              16.8                    °C/W
+RθJC(bot)             Junction-to-case (bottom) thermal resistance                                              3.6                     °C/W
+
+(1)   For more information about traditional and new thermal metrics, see the Semiconductor and IC Package Thermal Metrics application
+      report.
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                              5
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                www.ti.com.cn
+
+
+6.5 Electrical Characteristics
+over recommended free-air temperature range and over recommended input voltage range (typical at an ambient temperature
+range of 25°C) (unless otherwise noted)
+                       PARAMETER                                 TEST CONDITIONS                       MIN      TYP     MAX       UNIT
+DC/DC STAGE
+           Input voltage                                                                                1.8               5.5       V
+VIN        Minimum input voltage for start-up            0°C ≤ TA ≤ 85°C                                1.5      1.8      1.9       V
+           Minimum input voltage for start-up                                                           1.5      1.8      2.0       V
+           TPS63020 output voltage                                                                      1.2               5.5       V
+VOUT
+           Duty cycle in step down conversion                                                         20%
+           TPS63020 feedback voltage                                                                   495      500       505      mV
+VFB_PWM                                                  PS/SYNC = VIN
+           TPS63021 output voltage                                                                   3.267       3.3    3.333       V
+           TPS63020 feedback voltage / TPS63021 output   PS/SYNC = GND; referenced to
+VFB_PS                                                                                                0.6%                5%
+           voltage regulation in PS mode                 VFB_PWM
+           Maximum line regulation                                                                             0.5%
+           Maximum load regulation                                                                             0.5%
+f          Oscillator frequency                                                                       2200     2400     2600      kHz
+           Frequency range for synchronization                                                        2200     2400     2600      kHz
+ISW        Average switch current limit                  VIN = VINA = 3.6 V, TA = 25°C                3500     4000     4500       mA
+           High side switch on resistance                VIN = VINA = 3.6 V                                       50               mΩ
+           Low side switch on resistance                 VIN = VINA = 3.6 V                                       50               mΩ
+                           VIN and VINA                  IOUT = 0 mA, VEN = VIN = VINA = 3.6                      25       50      μA
+           Quiescent
+Iq                                                       V,
+           current         VOUT                                                                                    5       10      μA
+                                                         VOUT = 3.3 V
+           TPS63021 FB input impedance                   VEN = HIGH                                                1               MΩ
+IS         Shutdown current                              VEN = 0 V, VIN = VINA = 3.6 V                           0.1        1      μA
+CONTROL STAGE
+           Under voltage lockout threshold               VINA voltage decreasing                        1.4      1.5      1.6       V
+UVLO
+           Under voltage lockout hysteresis                                                                     200                mV
+VIL        EN, PS/SYNC input low voltage                                                                                  0.4       V
+VIH        EN, PS/SYNC input high voltage                                                               1.2                         V
+           EN, PS/SYNC input current                     Clamped to GND or VINA                                 0.01      0.1      μA
+           PG output low voltage                         VOUT = 3.3 V, IPGL = 10 μA                             0.04      0.4       V
+           PG output leakage current                                                                            0.01      0.1      μA
+           Output overvoltage protection                                                                5.5                 7       V
+           Overtemperature protection                                                                           140                °C
+           Overtemperature hysteresis                                                                             20               °C
+
+
+
+
+6                                                                                     Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                                                                                               TPS63020, TPS63021
+www.ti.com.cn                                                                                                                                           ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+6.6 Typical Characteristics
+
+                                      4                                                                                                 4
+                                           TPS63020                                                                                          TPS63021
+
+                                     3.5                                                                                               3.5
+
+
+                                      3                                                                                                 3
+        Maximum Output Current (A)
+
+
+
+
+                                                                                                          Maximum Output Current (A)
+                                     2.5                                                                                               2.5
+
+
+                                      2                                                                                                 2
+
+
+                                     1.5                                                                                               1.5
+
+
+                                      1                                                                                                 1
+
+
+                                     0.5                                                                                               0.5
+                                                                                            VOUT = 2.5V
+                                                                                            VOUT = 4.5V                                                                                       VOUT = 3.3V
+                                      0                                                                                                 0
+                                       1.8    2.2     2.6   3      3.4    3.8   4.2   4.6      5    5.4                                  1.8    2.2     2.6   3      3.4    3.8   4.2   4.6      5    5.4
+                                                                Input Voltage (V)                                                                                 Input Voltage (V)
+        Figure 1. Maximum Output Current Versus Input Voltage,                                            Figure 2. Maximum Output Current Versus Input Voltage,
+                      TPS63020, VOUT = 2.5 V/4.5 V                                                                        TPS63021, VOUT = 3.3V
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                                                                                       7
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                       www.ti.com.cn
+
+
+7 Detailed Description
+
+7.1 Overview
+The control circuit of the device is based on an average current mode topology. The controller also uses input
+and output voltage feed forward. Changes of input and output voltage are monitored and can immediately
+change the duty cycle in the modulator to achieve a fast response to those errors. The voltage error amplifier
+gets its feedback input from the FB pin. At adjustable output voltages, a resistive voltage divider must be
+connected to that pin. At fixed output voltages, FB must be connected to the output voltage to directly sense the
+voltage. Fixed output voltage versions use a trimmed internal resistive divider. The feedback voltage will be
+compared with the internal reference voltage to generate a stable and accurate output voltage.
+The device uses four internal N-channel MOSFETs to maintain synchronous power conversion at all possible
+operating conditions. This enables the device to keep high efficiency over a wide input voltage and output power
+range.
+To avoid ground shift problems due to the high currents in the switches, two separate ground pins GND and
+PGND are used. The reference for all control functions is the GND pin. The power switches are connected to
+PGND. Both grounds must be connected on the PCB at only one point, ideally close to the GND pin. Due to the
+4-switch topology, the load is always disconnected from the input during shutdown of the converter. To protect
+the device from overheating an internal temperature sensor is implemented.
+
+7.2 Functional Block Diagram
+
+                                                                 L1           L2
+
+                       VIN                                                                            VOUT
+
+                                       Current
+                                       Sensor
+
+                     VINA
+                                                                      PGND      PGND
+                                            VIN
+                                                     Gate
+                                            VOUT
+                                                    Control
+
+
+                                                                        _
+                             VINA
+                                                   Modulator                       +                  FB
+                                                                        +          _
+
+                       PG                          Oscillator                           +     VREF
+                                                                                        -
+                                  Device
+                 PS/SYNC          Control
+
+                        EN                         Temperature
+                                                     Control                                          PGND
+                      GND
+                                                                                       PGND
+
+                                    Figure 3. Functional Block Diagram (TPS63020)
+
+
+
+
+8                                                                            Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                       TPS63020, TPS63021
+www.ti.com.cn                                                                      ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+Functional Block Diagram (continued)
+
+                                                                      L1          L2
+
+                           VIN                                                                         VOUT
+
+                                             Current
+                                             Sensor
+
+                         VINA
+                                                                           PGND    PGND
+                                                 VIN
+                                                          Gate
+                                                 VOUT                                                  FB
+                                                         Control
+
+
+                                                                             _
+                                  VINA
+                                                        Modulator                      +
+                                                                             +         _
+
+                           PG                           Oscillator                          +
+                                                                                            -
+                                       Device                                                   VREF
+                    PS/SYNC            Control
+
+                           EN                           Temperature
+                                                          Control                                      PGND
+                         GND
+                                                                                           PGND
+
+                                         Figure 4. Functional Block Diagram (TPS63021)
+
+
+7.3 Feature Description
+7.3.1 Dynamic Voltage Positioning
+As detailed in Figure 6, the output voltage is typically 3% above the nominal output voltage at light load currents,
+as the device is in power save mode. This gives additional headroom for the voltage drop during a load transient
+from light load to full load. This allows the converter to operate with a small output capacitor and still have a low
+absolute voltage drop during heavy load transient changes.
+
+7.3.2 Dynamic Current Limit
+To protect the device and the application, the average inductor current is limited internally on the IC. At nominal
+operating conditions, this current limit is constant. The current limit value can be found in the electrical
+characteristics table. If the supply voltage at VIN drops below 2.3 V, the current limit is reduced. This can happen
+when the input power source becomes weak. Increasing output impedance, when the batteries are almost
+discharged, or an additional heavy pulse load is connected to the battery, can cause the VIN voltage to drop. The
+dynamic current limit has its lowest value when reaching the minimum recommended supply voltage at VIN. At
+this voltage, the device is forced into burst mode operation, trying to stay active as long as possible even with a
+weak input power source.
+If the die temperature increases above the recommended maximum temperature, the dynamic current limit
+becomes active. Similar to the behavior when the input voltage at VIN drops, the current limit is reduced with
+temperature increasing.
+
+7.3.3 Device Enable
+The device is put into operation when EN is set high. It is put into a shutdown mode when EN is set to GND. In
+shutdown mode, the regulator stops switching, all internal control circuitry is switched off, and the load is
+disconnected from the input. This means that the output voltage can drop below the input voltage during
+shutdown. During start-up of the converter, the duty cycle and the peak current are limited in order to avoid high
+peak currents flowing from the input.
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                       9
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                        www.ti.com.cn
+
+
+Feature Description (continued)
+7.3.4 Power Good
+The device has a built-in power-good function to indicate whether the output voltage is regulated properly. As
+soon as the average inductor current limit is reached, the power-good output gets low impedance. The output is
+open-drain and can be left open if not needed. By connecting a pullup resistor to the supply voltage of the
+externally connected logic, it is possible to adjust the voltage level within the absolute maximum ratings.
+Because it is monitoring the status of the current control loop, the power-good output provides the earliest
+indication possible for an output voltage break down and leaves the connected application a maximum time to
+safely react.
+
+7.3.5 Overvoltage Protection
+If, for any reason, the output voltage is not fed back properly to the input of the voltage amplifier, control of the
+output voltage will not work anymore. Therefore, overvoltage protection is implemented to avoid the output
+voltage exceeding critical values for the device and possibly for the system it is supplying. The implemented
+overvoltage protection circuit monitors the output voltage internally as well. In case it reaches the overvoltage
+threshold, the voltage amplifier regulates the output voltage to this value.
+
+7.3.6 Undervoltage Lockout
+An undervoltage lockout function prevents device start-up if the supply voltage on VINA is lower than
+approximately its threshold (see Electrical Characteristics). When in operation, the device automatically enters
+the shutdown mode if the voltage at VINA drops below the undervoltage lockout threshold. The device
+automatically restarts if the input voltage recovers to the minimum operating input voltage.
+
+7.3.7 Overtemperature Protection
+The device has a built-in temperature sensor which monitors the internal IC temperature. If the temperature
+exceeds the programmed threshold (see Electrical Characteristics), the device stops operating. As soon as the
+IC temperature has decreased below the programmed threshold, it starts operating again. There is a built-in
+hysteresis to avoid unstable operation at IC temperatures at the overtemperature threshold.
+
+7.4 Device Functional Modes
+7.4.1 Soft-start and Short Circuit Protection
+After being enabled, the device starts operating. The average current limit ramps up from an initial 400 mA
+following the output voltage increasing. At an output voltage of about 1.2 V, the current limit is at its nominal
+value. If the output voltage does not increase, the current limit does not increase. There is no timer implemented.
+Thus, the output voltage overshoot at start-up, as well as the inrush current, is kept at a minimum. The device
+ramps up the output voltage in a controlled manner even if a large capacitor is connected at the output. When
+the output voltage does not increase above 1.2 V, the device assumes a short circuit at the output, and keeps
+the current limit low to protect itself and the application. At a short on the output during operation, the current limit
+also is decreased accordingly.
+
+7.4.2 Buck-Boost Operation
+To regulate the output voltage at all possible input voltage conditions, the device automatically switches from
+step-down operation to boost operation and back as required by the configuration. It always uses one active
+switch, one rectifying switch, one switch permanently on, and one switch permanently off. Therefore, it operates
+as a step-down converter (buck) when the input voltage is higher than the output voltage, and as a boost
+converter when the input voltage is lower than the output voltage. There is no mode of operation in which all four
+switches are permanently switching. Controlling the switches this way allows the converter to maintain high
+efficiency at the most important point of operation when input voltage is close to the output voltage. The RMS
+current through the switches and the inductor is kept at a minimum to minimize switching and conduction losses.
+For the remaining two switches, one is kept permanently on and the other is kept permanently off, thus causing
+no switching losses.
+
+
+
+
+10                                                                            Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                  TPS63020, TPS63021
+www.ti.com.cn                                                                    ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+Device Functional Modes (continued)
+7.4.3     Control Loop
+The controller circuit of the device is based on an average current mode topology. The average inductor current
+is regulated by a fast current regulator loop which is controlled by a voltage control loop. Figure 5 shows the
+control loop.
+The non-inverting input of the transconductance amplifier, gmv, is assumed to be constant. The output of gmv
+defines the average inductor current. The inductor current is reconstructed by measuring the current through the
+high-side buck MOSFET. This current corresponds exactly to the inductor current in boost mode. In buck mode,
+the current is measured during the on-time of the same MOSFET. During the off-time, the current is
+reconstructed internally starting from the peak value at the end of the on-time cycle. The average current and the
+feedback from the error amplifier gmv forms the correction signal gmc. This correction signal is compared to the
+buck and the boost sawtooth ramp giving the PWM signal. Depending on which of the two ramps, the gmc output
+crosses either the buck or the boost stage is initiated. When the input voltage is close to the output voltage, one
+buck cycle is always followed by a boost cycle. In this condition, no more than three cycles in a row of the same
+mode are allowed. This control method in the buck-boost region ensures a robust control and the highest
+efficiency.
+The buck-boost overlap control makes sure that the classical buck-boost function, which would cause two
+switches to be on every half a cycle, is avoided. Thanks to this block, whenever all switches becomes active
+during one clock cycle, the two ramps are shifted away from each other. On the other hand, when there is no
+switching activities because there is a gap between the ramps, the ramps are moved closer together. As a result,
+the number of classical buck-boost cycles or no switching is reduced to a minimum and high efficiency values
+has been achieved.
+
+
+
+
+                                                        TM
+
+
+
+
+                                              Figure 5. Average Current Mode Control
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                    11
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                    www.ti.com.cn
+
+
+Device Functional Modes (continued)
+7.4.4 Power Save Mode and Synchronization
+The PS/SYNC pin can be used to select different operation modes. Power save mode is used to improve
+efficiency at light load. To enable power save mode, PS/SYNC must be set low. If PS/SYNC is set low, then
+power save mode is entered when the average inductor current gets lower than about 100 mA. At this point, the
+converter operates with reduced switching frequency and with a minimum quiescent current to maintain high
+efficiency. See Figure 6 for detailed operation of the power save mode.
+During the power save mode, the output voltage is monitored with a comparator by the threshold comp low and
+comp high. When the device enters power save mode, the converter stops operating and the output voltage
+drops. The slope of the output voltage depends on the load and the value of output capacitance. As the output
+voltage falls below the comp low threshold set to 2.5% typical above VOUT, the device ramps up the output
+voltage again, by starting operation using a programmed average inductor current higher than required by the
+current load condition. Operation can last one or several pulses. The converter continues these pulses until the
+comp high threshold, set to typically 3.5% above VOUT nominal, is reached and the average inductance current
+gets lower than about 100 mA. When the load increases above the minimum forced inductor current of about 100
+mA, the device automatically switches to pulse width modulation (PWM) mode.
+The power save mode can be disabled by programming high at the PS/SYNC. Connecting a clock signal at
+PS/SYNC forces the device to synchronize to the connected clock frequency.
+Synchronization is done by a phase-locked loop (PLL), so synchronizing to lower and higher frequencies
+compared to the internal clock works without any issues. The PLL can also tolerate missing clock pulses without
+the converter malfunctioning. The PS/SYNC input supports standard logic thresholds.
+
+                                              Heavy Load transient step
+             Power save mode at light load
+             current
+ 3.5%                                                                                   Comparator High
+ 3%
+ 2.5%                                                                                   Comparator low
+     Vo                                                                                     PWM mode
+
+                                                                                         Absolute Voltage drop
+                                                                                         with positioning
+
+
+
+
+                   Figure 6. Power Save Mode Thresholds and Dynamic Voltage Positioning
+
+
+
+
+12                                                                        Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                                   TPS63020, TPS63021
+www.ti.com.cn                                                                                  ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+8 Application and Implementation
+
+                                                             NOTE
+                 Information in the following applications sections is not part of the TI component
+                 specification, and TI does not warrant its accuracy or completeness. TI’s customers are
+                 responsible for determining suitability of components for their purposes. Customers should
+                 validate and test their design implementation to confirm system functionality.
+
+
+8.1 Application Information
+The TPS6302x are high efficiency, low quiescent current, non-inverting buck-boost converters suitable for
+applications that need a regulated output voltage from an input supply that can be higher, lower, or equal to the
+output voltage. Output currents can go as high as 2 A in boost mode and as high as 4 A in buck mode. The
+average current in the switches is limited to a typical value of 4 A.
+
+8.2 Typical Application
+                                                                     L1
+                                                                   1.5 µH
+
+
+
+                                                              L1            L2
+                              VIN                                                                              VOUT
+                         2.5 V to 5.5 V                                                                   3.3 V at 1.5 A
+                                                           VIN              VOUT
+
+                                                                 TPS630 20            R1
+                                                 C1                                   1 MŸ      C2
+                                                 2×10 µF                                        3×22 µF
+                                                                                 FB
+                                                                                                            R3
+                                                                                      R2                    1 MŸ
+                                                           VINA
+                                                                                      180 kŸ
+                                                           EN
+                                                           PS/SYNC
+                                                                                                             Power
+                                                                                                             Goo d
+                                                                                 PG
+                                                 C3
+                                                 100 nF
+                                                             GND        PGND
+
+
+
+
+                                                        Figure 7. Application Circuit
+
+8.2.1 Design Requirements
+The design guideline provides a component selection to operate the device within the recommended operating
+conditions. See Table 1 for possible inductor and capacitor combinations.
+For the fixed output voltage option, the feedback pin needs to be connected to the VOUT pin.
+
+                               Table 1. Matrix of Output Capacitor and Inductor Combinations
+      NOMINAL                                               NOMINAL OUTPUT CAPACITOR VALUE [µF] (2)
+  INDUCTOR VALUE
+       [µH] (1)                           2×22                              3×22               4×22                        ≥ 100
+           1.0                                                               +                  +                           +
+                                                                                (3)
+           1.5                             +                                +                   +                           +
+           2.2                                                                                  +                           +
+
+(1)   Inductor tolerance and current derating is anticipated. The effective inductance can vary by 20% and –30%.
+(2)   Capacitance tolerance and DC bias voltage derating is anticipated. The effective capacitance can vary by 20% and –50%.
+(3)   Typical application. Other check marks indicate possible filter combinations.
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                  13
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                            www.ti.com.cn
+
+
+8.2.2 Detailed Design Procedure
+The TPS6302x series of buck-boost converter has internal loop compensation. Therefore, the external inductor
+and output capacitors have to be selected to work with the internal compensation. When selecting the external
+components, a low limit for the inductor value exists to avoid subharmonic oscillation which can be caused by a
+far too fast ramp up of the inductor current. For the TPS6302x series, the inductor value must be kept at or
+above 1 µH.
+In particular, either 1 µH or 1.5 µH is recommended working at an output current between 1.5 A and 2 A. If
+operating with a lower load current, it is also possible to use 2.2 µH.
+Selecting a larger output capacitor value is less critical because the corner frequency moves to lower
+frequencies.
+
+8.2.2.1 Custom Design with WEBENCH Tools
+Click here to create a custom design using the TPS63020 device with the WEBENCH® Power Designer.
+1. Start by entering your VIN, VOUT and IOUT requirements.
+2. Optimize your design for key parameters like efficiency, footprint or cost using the optimizer dial and
+    compare this design with other possible solutions from Texas Instruments.
+3. WEBENCH Power Designer provides you with a customized schematic along with a list of materials with real
+    time pricing and component availability.
+4. In most cases, you will also be able to:
+    – Run electrical simulations to see important waveforms and circuit performance,
+    – Run thermal simulations to understand the thermal performance of your board,
+    – Export your customized schematic and layout into popular CAD formats,
+    – Print PDF reports for the design, and share your design with colleagues.
+5. Get more information about WEBENCH tools at www.ti.com/webench.
+
+8.2.2.2 Inductor Selection
+The inductor selection is affected by several parameters such as the following:
+• Inductor ripple current
+• Output voltage ripple
+• Transition point into Power Save Mode
+• Efficiency
+See Table 2 for a list of typical inductors.
+For high efficiencies, the inductor must have a low DC resistance to minimize conduction losses. Especially at
+high-switching frequencies, the core material has a high impact on efficiency. When using small chip inductors,
+the efficiency is reduced mainly due to higher inductor core losses. This needs to be considered when selecting
+the appropriate inductor. The inductor value determines the inductor ripple current. The larger the inductor value,
+the smaller the inductor ripple current and the lower the conduction losses of the converter. Conversely, larger
+inductor values cause a slower load transient response. Use Equation 2 to avoid saturation of the inductor when
+calculating the peak current for the inductor in steady state operation. Only the equation which defines the switch
+current in boost mode is shown because this provides the highest value of current and represents the critical
+current value for selecting the right inductor.
+                                 V    -V
+      Duty Cycle Boost      D=    OUT   IN
+                                   V
+                                    OUT                                                                                            (1)
+                     Iout       Vin ´ D
+      IPEAK    =             +
+                 η ´ (1 - D)   2 ´ f ´ L
+      where
+           •    D = duty cycle in boost mode
+           •    f = converter switching frequency (typical 2.5 MHz)
+           •    L = inductor value
+           •    η = estimated converter efficiency (use the number from the efficiency curves or 0.9 as an assumption)             (2)
+
+14                                                                                Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                            TPS63020, TPS63021
+www.ti.com.cn                                                                            ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+
+                                                          NOTE
+                 The calculation must be done for the minimum input voltage in boost mode.
+
+Calculating the maximum inductor current using the actual operating conditions gives the minimum saturation
+current of the inductor needed. It is recommended to choose an inductor with a saturation current 20% higher
+than the value calculated using Equation 2. Table 2 lists the possible inductors.
+                                                                                              (1)
+                                             Table 2. List of Recommended Inductors
+  INDUCTOR              SATURATION                      DCR [mΩ]             PART NUMBER            MANUFACTURER      SIZE (LxWxH
+  VALUE [µH]            CURRENT [A]                                                                                       mm)
+       1.5                     5.1                         15                XFL4020-152ME             Coilcraft       4 x 4 x 2.1
+       1.5                     5.4                         24               FDV0530S-H-1R5M            muRata           5x5x3
+
+(1)   See Third-party Products Disclaimer.
+
+8.2.2.3      Output Capacitor Selection
+For the output capacitor, it is recommended to use of small ceramic capacitors placed as close as possible to the
+VOUT and PGND pins of the IC. The recommended nominal output capacitors are three times 22 µF. If, for any
+reason, the application requires the use of large capacitors that cannot be placed close to the IC, use a smaller
+ceramic capacitor in parallel to the large capacitor. Place the small capacitor as close as possible to the VOUT
+and PGND pins of the IC.
+There are no additional requirements regarding minimum ESR. There is also no upper limit for the output
+capacitance value. Larger capacitors cause lower output voltage ripple as well as lower output voltage drop
+during load transients.
+
+8.2.2.4      Input Capacitor Selection
+A 10 µF input capacitor is recommended to improve line transient behavior of the regulator and EMI behavior of
+the total power supply circuit. An X5R or X7R ceramic capacitor placed as close as possible to the VIN and
+PGND pins of the IC is recommended. This capacitance can be increased without limit. If the input supply is
+located more than a few inches from the TPS6302x converter, additional bulk capacitance can be required in
+addition to the ceramic bypass capacitors. An electrolytic or tantalum capacitor with a value of 47 µF is a typical
+choice.
+
+8.2.2.5      Bypass Capacitor
+To make sure that the internal control circuits are supplied with a stable low noise supply voltage, a capacitor can
+be connected between VINA and GND. Using a ceramic capacitor with a value of 0.1 µF is recommended. The
+value of this capacitor must not be higher than 0.22 µF.
+
+8.2.3 Setting The Output Voltage
+When the adjustable output voltage version TPS63020 is used, the output voltage is set by an external resistor
+divider. The resistor divider must be connected between VOUT, FB, and GND. The feedback voltage is 500 mV
+nominal. The low-side resistor R2 (between FB and GND) must be kept in the range of 200 kΩ. Use Equation 3
+to calculate the high-side resistor R1 (between VOUT and FB).
+                 æV       ö
+       R1 = R2 × ç OUT - 1÷
+                   V
+                 è FB     ø
+       where
+             •     VFB= 500 mV                                                                                                   (3)
+
+                                     Table 3. Resistor Selection For Typical Output Voltages
+                      VOUT                                          R1                                         R2
+                      2.5 V                                        750 kΩ                                    180 kΩ
+                      3.3 V                                        1 MΩ                                      180 kΩ
+                      3.6 V                                        1.1 MΩ                                    180 kΩ
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                15
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                 www.ti.com.cn
+
+
+                           Table 3. Resistor Selection For Typical Output Voltages (continued)
+                       VOUT                                                R1                                    R2
+                       4.5 V                                             1.43 MΩ                               180 kΩ
+                       5V                                                1.6 MΩ                                180 kΩ
+
+
+8.2.4 Application Curves
+
+                    Table 4. Components for Application Characteristic Curves for VOUT = 3.3 V (1) (2)
+REFERENCE       DESCRIPTION                                     PART NUMBER                      MANUFACTURER
+U1              High Efficiency Single Inductor Buck-Boost      TPS63020 or TPS63021             Texas Instruments
+                Converter With 4-A Switches
+L1              1.5 μH, 4 mm x 4 mm x 2 mm                      XFL4020-152ML                    Coilcraft
+C1              2 × 10 μF 6.3 V, 0603, X5R ceramic              GRM188R60J106ME84D               muRata
+C2              3 × 22 μF 6.3 V, 0603, X5R ceramic              GRM188R60J226MEAOL               muRata
+C3              0.1 μF, X5R or X7R ceramic                      Standard                         Standard
+R1              1 MΩ at TPS63020, 0 Ω at TPS63021               Standard                         Standard
+R2              180 kΩ at TPS63020, not used at TPS63021        Standard                         Standard
+R3              1 MΩ                                            Standard                         Standard
+
+(1)   See Third-Party Products Discalimer.
+(2)   For other output voltages, refer to Table 3 for resistor values.
+
+
+
+
+16                                                                                     Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                                  TPS63020, TPS63021
+www.ti.com.cn                                                                               ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+                                                Table 5. Typical Characteristics Curves
+                           PARAMETER                                              CONDITIONS                             FIGURE
+EFFICIENCY
+Efficiency vs Output Current, TPS63020 (Power save mode         VIN = 1.8 V, 2.4 V, 3.6 V, VOUT = 2.5 V, 4.5 V,
+                                                                                                                         Figure 8
+enabled)                                                        PS/SYNC = Low
+                                                                VIN = 1.8 V, 2.4 V, 3.6 V, VOUT = 2.5 V, 4.5 V,
+Efficiency vs Output Current, TPS63020 (PWM only)                                                                        Figure 9
+                                                                PS/SYNC = High
+Efficiency vs Output Current, TPS63021 (Power save mode         VIN = 2.4 V, 3.6 V, VOUT = 3.3 V, PS/SYNC =
+                                                                                                                         Figure 10
+enabled)                                                        Low
+                                                                VIN = 2.4 V, 3.6 V, VOUT = 3.3 V, PS/SYNC =
+Efficiency vs Output Current, TPS63021 (PWM only)                                                                        Figure 11
+                                                                High
+Efficiency vs Input Voltage, TPS63020 (Power save mode          VOUT = 2.5 V, Load = 10 mA, 500 mA, 1 A, 2 A,
+                                                                                                                         Figure 12
+enabled)                                                        PS/SYNC = Low
+Efficiency vs Input Voltage, TPS63020 (Power save mode          VOUT = 4.5 V, Load = 10 mA, 500 mA, 1 A, 2 A,
+                                                                                                                         Figure 13
+enabled)                                                        PS/SYNC = Low
+                                                                VOUT = 2.5 V, Load = 10 mA, 500 mA, 1 A, 2 A,
+Efficiency vs Input Voltage, TPS63020 (PWM only)                                                                         Figure 14
+                                                                PS/SYNC = Low
+                                                                VOUT = 2.5 V, Load = 10 mA, 500 mA, 1 A, 2 A,
+Efficiency vs Input Voltage, TPS63020 (PWM only)                                                                         Figure 15
+                                                                PS/SYNC = Low
+Efficiency vs Input Voltage, TPS63021 (Power save mode          VOUT = 3.3 V, Load = 10 mA, 500 mA, 1 A, 2 A,
+                                                                                                                         Figure 16
+enabled)                                                        PS/SYNC = Low
+                                                                VOUT = 3.3 V, Load = 10 mA, 500 mA, 1 A, 2 A,
+Efficiency vs Input Voltage, TPS63021 (PWM only)                                                                         Figure 17
+                                                                PS/SYNC = Low
+REGULATION ACCURACY
+Load Regulation, PWM Boost Operation, TPS63020                  VIN = 3.6 V , VOUT = 4.5 V, PS/SYNC = High               Figure 18
+Load Regulation, PWM Buck Operation, TPS63020                   VIN = 3.6 V, VOUT = 2.5 V, PS/SYNC = High                Figure 19
+Load Regulation, PWM Operation, TPS63021                        VIN = 3.6 V, VOUT = 3.3 V, PS/SYNC = High                Figure 20
+                                                                VIN = 2.4 V, VOUT = 3.3 V, Load = 500 mA to
+Load Transient, TPS63021                                                                                                 Figure 21
+                                                                1.5 A
+                                                                VIN = 4.2 V, VOUT = 3.3 V, Load = 500 mA to 1.5
+Load Transient, TPS63021                                                                                                 Figure 22
+                                                                A
+Line Transient, TPS63021                                        VIN = 3.0 V to 3.7 V, VOUT = 3.3 V, Load = 1.5 A         Figure 23
+START-UP
+Start-up Behavior from Rising Enable, TPS63021                  VIN = 2.4 V, VOUT = 3.3 V, Load = 2.2 Ω                  Figure 24
+Start-up Behavior from Rising Enable, TPS63021                  VIN = 4.2 V, VOUT = 3.3 V, Load = 2.2 Ω                  Figure 25
+Start-up Behavior from Rising Enable, TPS63021                  VIN = 2.4 V, VOUT = 3.3 V, Load = 2.2 Ω                  Figure 26
+Start-up Behavior from Rising Enable, TPS63021                  VIN = 4.2 V, VOUT = 3.3 V, Load = 2.2 Ω                  Figure 27
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                17
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                                                                      www.ti.com.cn
+
+
+
+                            100                                                                                       100
+
+                            90                                                                                        90
+
+                            80                                                                                        80
+
+                            70                                                                                        70
+
+                            60                                                                                        60
+          Efficiency (%)
+
+
+
+
+                                                                                                    Efficiency (%)
+                            50                                                                                        50
+
+                            40                                                                                        40
+
+                            30                                                                                        30
+                                                                   VIN = 1.8V, VOUT = 2.5V                                                                   VIN = 1.8V, VOUT = 2.5V
+                            20                                     VIN = 3.6V, VOUT = 2.5V                            20                                     VIN = 3.6V, VOUT = 2.5V
+                                                                   VIN = 2.4V, VOUT = 4.5V                                                                   VIN = 2.4V, VOUT = 4.5V
+                                                                   VIN = 3.6V, VOUT = 4.5V                                                                   VIN = 3.6V, VOUT = 4.5V
+                            10                                                                                        10
+                                                          TPS63020, Power Save Enabled                                                              TPS63020, Power Save Disabled
+                             0                                                                                         0
+                             100µ          1m          10m          100m           1          4                        100µ          1m          10m          100m           1          4
+                                                     Output Current (A)                                                                        Output Current (A)
+
+        Figure 8. Efficiency Versus Output Current, TPS63020,                                     Figure 9. Efficiency Versus Output Current, TPS63020,
+                          Power Save Enabled                                                                        Power Save Disabled
+                            100                                                                                       100
+
+                            90                                                                                        90
+
+                            80                                                                                        80
+
+                            70                                                                                        70
+
+                            60                                                                                        60
+          Efficiency (%)
+
+
+
+
+                                                                                                    Efficiency (%)
+
+
+
+                            50                                                                                        50
+
+                            40                                                                                        40
+
+                            30                                                                                        30
+
+                            20                                                                                        20
+                                                                                 VIN = 2.4V                                                                                VIN = 2.4V
+                                                                                 VIN = 3.6V                                                                                VIN = 3.6V
+                            10                                                                                        10
+                                                          TPS63021, Power Save Enabled                                                              TPS63021, Power Save Disabled
+                             0                                                                                         0
+                             100µ          1m          10m          100m           1          4                        100µ          1m          10m          100m           1          4
+                                                     Output Current (A)                                                                        Output Current (A)
+
+       Figure 10. Efficiency Versus Output Current, TPS63021,                                     Figure 11. Efficiency Versus Output Current, TPS63021,
+                         Power Save Enabled                                                                         Power Save Disabled
+                            100                                                                                       100
+
+                             90                                                                                        90
+
+                             80                                                                                        80
+
+                             70                                                                                        70
+
+                             60                                                                                        60
+           Efficiency (%)
+
+
+
+
+                                                                                                     Efficiency (%)
+
+
+
+
+                             50                                                                                        50
+
+                             40                                                                                        40
+
+                             30                                                                                        30
+                                                                            IOUT = 10mA                                                                               IOUT = 10mA
+                             20                                             IOUT = 500mA                               20                                             IOUT = 500mA
+                                                                            IOUT = 1A                                                                                 IOUT = 1A
+                                                                            IOUT = 2A                                                                                 IOUT = 2A
+                             10                                                                                        10
+                                             TPS63020, VOUT = 2.5V, Power Save Enabled                                                 TPS63020, VOUT = 4.5V, Power Save Enabled
+                              0                                                                                         0
+                               1.8   2.2   2.6   3      3.4    3.8   4.2   4.6     5     5.4                             1.8   2.2   2.6   3      3.4    3.8   4.2   4.6     5     5.4
+                                                     Input Voltage (V)                                                                         Input Voltage (V)
+
+        Figure 12. Efficiency Versus Input Voltage, TPS63020,                                     Figure 13. Efficiency Versus Input Voltage, TPS63020,
+                  VOUT = 2.5 V, Power Save Enabled                                                          VOUT = 4.5 V, Power Save Enabled
+
+
+
+
+18                                                                                                                             Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                                                                                    TPS63020, TPS63021
+www.ti.com.cn                                                                                                                               ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+                                100                                                                                          100
+
+                                 90                                                                                           90
+
+                                 80                                                                                           80
+
+                                 70                                                                                           70
+
+                                 60                                                                                           60
+               Efficiency (%)
+
+
+
+
+                                                                                                            Efficiency (%)
+                                 50                                                                                           50
+
+                                 40                                                                                           40
+
+                                 30                                                                                           30
+                                           IOUT = 10mA                                                                                                                       IOUT = 10mA
+                                 20        IOUT = 500mA                                                                       20                                             IOUT = 500mA
+                                           IOUT = 1A                                                                                                                         IOUT = 1A
+                                           IOUT = 2A                                                                                                                         IOUT = 2A
+                                 10                                                                                           10
+                                      TPS63020, VOUT = 2.5V, Power Save Disabled                                                              TPS63020, VOUT = 4.5V, Power Save Disabled
+                                  0                                                                                            0
+                                   1.8   2.2  2.6     3     3.4    3.8   4.2  4.6       5    5.4                                1.8   2.2   2.6   3      3.4    3.8   4.2   4.6     5    5.4
+                                                         Input Voltage (V)                                                                            Input Voltage (V)
+
+          Figure 14. Efficiency Versus Input Voltage, TPS63020,                                        Figure 15. Efficiency Versus Input Voltage, TPS63020,
+                   VOUT = 2.5 V, Power Save Disabled                                                            VOUT = 4.5 V, Power Save Disabled
+                                100                                                                                          100
+
+                                 90                                                                                           90
+
+                                 80                                                                                           80
+
+                                 70                                                                                           70
+
+                                 60                                                                                           60
+               Efficiency (%)
+
+
+
+
+                                                                                                            Efficiency (%)
+                                 50                                                                                           50
+
+                                 40                                                                                           40
+
+                                 30                                                                                           30
+                                                                                 IOUT = 10mA                                                                                 IOUT = 10mA
+                                 20                                              IOUT = 500mA                                 20                                             IOUT = 500mA
+                                                                                 IOUT = 1A                                                                                   IOUT = 1A
+                                                                                 IOUT = 2A                                                                                   IOUT = 2A
+                                 10                                                                                           10
+                                                               TPS63021, Power Save Enabled                                                               TPS63021, Power Save Disabled
+                                  0                                                                                            0
+                                   1.8   2.2   2.6    3      3.4    3.8   4.2   4.6     5    5.4                                1.8   2.2   2.6   3      3.4    3.8   4.2   4.6     5    5.4
+                                                          Input Voltage (V)                                                                           Input Voltage (V)
+
+          Figure 16. Efficiency Versus Input Voltage, TPS63021,                                        Figure 17. Efficiency Versus Input Voltage, TPS63021,
+                            Power Save Enabled                                                                           Power Save Disabled
+                                 4.6                                                                                          2.6
+                                                                                      VIN = 3.6V                                                                                  VIN = 3.6V
+
+
+
+
+                                4.55                                                                                         2.55
+           Output Voltage (V)
+
+
+
+
+                                                                                                        Output Voltage (V)
+
+
+
+
+                                 4.5                                                                                          2.5
+
+
+
+
+                                4.45                                                                                         2.45
+
+
+
+
+                                      TPS63020, Power Save Disabled                                                                TPS63020, Power Save Disabled
+                                 4.4                                                                                          2.4
+                                   100µ       1m         10m         100m              1           5                            100µ       1m         10m         100m             1           5
+                                                       Output Current (A)                                                                           Output Current (A)
+
+                       Figure 18. Output Voltage Versus Output Current,                                             Figure 19. Output Voltage Versus Output Current,
+                               TPS63020, Power Save Disabled                                                                 TPS63020, Power Save Enabled
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                                                                              19
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                                               www.ti.com.cn
+
+                                3.4
+                                                                                VIN = 3.6V
+
+
+
+                                                                                                 Output Voltage
+                               3.35                                                              50 mV/div, AC
+         Output Voltage (V)
+
+
+
+
+                                3.3
+
+
+
+                                                                                                 Output Current
+                                                                                                 500 mA/div, DC
+                               3.25
+
+
+
+
+                                     TPS63021, Power Save Disabled                                TPS63021              VIN = 2.4 V, IOUT = 500 mA to 1500 mA
+                                3.2
+                                  100µ       1m         10m         100m         1           5                        Time 2 ms/div
+                                                      Output Current (A)
+                                                                                                   Figure 21. Load Transient Response, TPS63021
+                     Figure 20. Output Voltage Versus Output Current,
+                             TPS63021, Power Save Disabled
+
+
+
+
+              Output Voltage
+              50 mV/div, AC
+
+                                                                                                 Output Voltage
+                                                                                                 50 mV/div, AC
+
+
+
+
+             Output Current
+             500 mA/div, DC
+
+
+                                                                                                 Input Voltage
+                                                                                                 500 mV/div, AC
+
+               TPS63021                           VIN = 4.2 V, IOUT = 500 mA to 1500 mA          TPS63021               VIN = 3.0 V to 3.7 V, IOUT = 1500 mA
+
+                                                Time 2 ms/div                                                         Time 2 ms/div
+                              Figure 22. Load Transient Response, TPS63021                          Figure 23. Line Transient Response, TPS63021
+
+
+                                   Enable                                                               Enable
+                                                                                                                           Output Voltage
+                               2 V/div, DC     Output Voltage                                           2 V/div, DC
+                                                                                                                           1 V/div, DC
+                                               1 V/div, DC
+
+
+
+
+                                                    Inductor Current
+                                                                                                                                Inductor Current
+                                                    1 A/div, DC                                                                 1 A/div, DC
+
+
+
+                                              Voltage at L1                                                                Voltage at L2
+                                              5 V/div, DC                                                                  5 V/div, DC
+
+
+
+
+                                                                                                 TPS63020               VIN = 4.2 V, VOUT = 3.3 V, RL = 2.2 W
+                     TPS63020                       VIN = 2.4 V, VOUT = 3.3 V, RL = 2.2 W
+
+                                                 Time 100 ms/div                                                      Time 100 ms/div
+
+                              Figure 24. Start-up Behavior from Rising Enable,                    Figure 25. Start-up Behavior from Rising Enable,
+                                                  TPS63020                                                            TPS63020
+
+
+
+
+20                                                                                                           Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                                                    TPS63020, TPS63021
+www.ti.com.cn                                                                                                 ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+
+                                                                                                   Enable
+                   Enable
+                                      Output Voltage                                            2 V/div, DC           Output Voltage
+                   2 V/div, DC
+                                      1 V/div, DC                                                                     1 V/div, DC
+
+
+
+
+                                                                                                                          Inductor Current
+                                          Inductor Current                                                                1 A/div, DC
+                                          1 A/div, DC
+
+
+
+                                                                                                                           Voltage at L2
+                                          Voltage at L2
+                                                                                                                           2 V/div, DC
+                                          2 V/div, DC
+
+
+                                                                                           TPS63020                VIN = 4.2 V, VOUT = 3.3 V, RL = 2.2 W
+            TPS63020               VIN = 2.4 V, VOUT = 3.3 V, RL = 2.2 W
+
+                                 Time 400 ms/div                                                                 Time 100 ms/div
+
+             Figure 26. Start-up Behavior from Rising Enable,                               Figure 27. Start-up Behavior from Rising Enable,
+                                 TPS63020                                                                       TPS63020
+
+
+
+8.3 System Examples
+8.3.1 Improved Transient Response for 2 A Load Current
+Capacitor C4 and resistor R4 are added for improved load transient performance.
+                                                                        L1
+                                                                       1 µH
+
+
+
+                                                                  L1           L2
+                        VIN                                                                                                         VOUT
+                   2.5 V to 5.5 V                                                                                               3.3 V at 2 A
+                                                             VIN              VOUT
+                                                                                                  R4
+                                                                    TPS630 20            R1       68 kŸ
+                                              C1                                         1 MŸ                      C2
+                                              2×10 µF                                                              4×22 µF
+                                                                                                  C4                              R3
+                                                                                    FB
+                                                                                                  4.7 pF                          1 MŸ
+                                                             VINA
+                                                                                         R2
+                                                             EN
+                                                                                         180 kŸ
+                                                             PS/SYNC
+                                                                                                                                   Power
+                                                                                                                                   Goo d
+                                              C3                                    PG
+                                              100 nF
+                                                                GND           PGND
+
+
+
+
+                                          Figure 28. Application Circuit for 2 A Load Current
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                                                      21
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                                                 www.ti.com.cn
+
+
+System Examples (continued)
+8.3.2 Supercapacitor Backup Power Supply With Active Cell Balancing
+The TPS63020 can be used to charge backup capacitors to a user-defined voltage level while the main power
+supply is supplying a system, and discharges these capacitors into the system when the main power supply is
+interrupted. With this design, the system voltage during backup operation keeps constant independent of the
+voltage reduction on the backup capacitors. Refer to the PMP9766 Test Results Application Report for more
+details.
+                                                               Normal operation
+
+                                                                      Reverse
+                    Main power                                                                            System
+                                                                      blocking
+
+
+
+
+                                 Pre-charge                     Charge operation
+                                 operation
+                                                                    TPS63020
+
+
+                                                    +               Backup operation
+                             Active Cell                Backup
+                             Balancing              +   Capacitor
+
+
+
+
+                         Figure 29. Simplified Block Diagram of a Backup Power System
+
+8.3.3 Low-Power TEC Driver
+Controlling the operating temperature of electronic circuits helps attain the best system performance. For passive
+control, that is, when heat sinks is not giving the right performance, active cooling using a thermoelectric cooler
+(TEC) might be able to solve the thermal issue. Figure 30 shows an example driving such a TEC element with
+the TPS63020. Refer to the Low-power TEC Driver Application Report.
+
+                                                                    TEC
+
+
+
+
+                                              VIN
+
+
+
+
+                                                             TPS63020                  VCTRL
+
+
+                                       Figure 30. Low-Power TEC Driver Schematic
+
+
+
+
+22                                                                                     Copyright © 2010–2019, Texas Instruments Incorporated
+                                                                                                      TPS63020, TPS63021
+www.ti.com.cn                                                                        ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+9 Power Supply Recommendations
+The TPS6302x devices have no special requirements for its input power supply. The output current of the input
+power supply needs to be rated according to the supply voltage, output voltage, and output current of the
+TPS6302x.
+
+10 Layout
+
+10.1 Layout Guidelines
+For all switching power supplies, the layout is an important step in the design, especially at high peak currents
+and high switching frequencies. If the layout is not carefully done, the regulator can show stability problems as
+well as EMI problems. Therefore, use wide and short traces for the main current path and for the power ground
+tracks. Place the input capacitor, output capacitor, and the inductor as close as possible to the IC. Use a
+common ground node for power ground and a different one for control ground to minimize the effects of ground
+noise. Connect these ground nodes at any place close to one of the ground pins of the IC.
+The feedback divider must be placed as close as possible to the control ground pin of the IC. To lay out the
+control ground, short traces are recommended as well, separation from the power ground traces. This avoids
+ground shift problems, which can occur due to superimposition of power ground current and control ground
+current.
+
+10.2 Layout Example
+
+
+
+                                                                L1
+
+
+
+                             GND                                                              GND
+                                                         C1               C2
+
+                                                                U1
+
+                             VIN                                                            VOUT
+                                                                               R2   R1
+
+                                                              GND    C3
+                                                    EN
+                                               PS/SYNC
+                                                    PG
+
+
+
+
+                                                  Figure 31. PCB Layout Suggestion
+
+
+
+
+Copyright © 2010–2019, Texas Instruments Incorporated                                                                        23
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                             www.ti.com.cn
+
+
+10.3 Thermal Considerations
+Implementation of integrated circuits in low-profile and fine-pitch surface-mount packages typically requires
+special attention to power dissipation. Many system-dependent issues such as thermal coupling, airflow, added
+heat sinks and convection surfaces, and the presence of other heat-generating components affect the power-
+dissipation limits of a given component.
+Three basic approaches for enhancing thermal performance are listed below:
+• Improving the power dissipation capability of the PCB design
+• Improving the thermal coupling of the component to the PCB by soldering the exposed thermal pad
+• Introducing airflow in the system
+Refer to the Thermal Characteristics Application Note and the Semiconductor and IC Package Thermal Metrics
+Application Note for more details on how to use the thermal parameters.
+
+
+
+
+24                                                                        版权 © 2010–2019, Texas Instruments Incorporated
+                                                                                             TPS63020, TPS63021
+www.ti.com.cn                                                               ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019
+
+
+11 器件和文档支持
+
+11.1 接收文档更新通知
+要接收文档更新通知，请导航至 ti.com. 上的器件产品文件夹。单击右上角的通知我进行注册，即可每周接收产品
+信息更改摘要。有关更改的详细信息，请查看任何已修订文档中包含的修订历史记录。
+
+11.2 器件支持
+11.2.1 使用 WEBENCH 工具创建定制设计方案
+单击此处，使用 TPS63021 器件并借助 WEBENCH®电源设计器创建定制设计。
+1. 首先，输入您的输入电压、输出电压和输出电流要求。
+2. 使用优化器拨盘优化效率、封装和成本等关键设计参数并将您的设计与德州仪器 (TI) 的其它可行解决方案进行
+   比较。
+3. WEBENCH 电源设计器提供一份定制原理图以及罗列实时价格和组件供货情况的物料清单。
+4. 在大多数情况下，您还可以：
+   – 运行电气仿真，观察重要波形以及电路性能；
+   – 运行热性能仿真，了解电路板热性能；
+   – 将定制原理图和布局方案导出至常用 CAD 格式,
+   – 打印设计方案的 PDF 报告并与同事共享。
+5. 请访问 www.ti.com.cn/webench，获取有关 WEBENCH 工具的详细信息。
+
+11.2.2 第三方产品免责声明
+TI 发布的与第三方产品或服务有关的信息，不能构成与此类产品或服务或保修的适用性有关的认可，不能构成此类
+产品或服务单独或与任何 TI 产品或服务一起的表示或认可。
+
+11.3 文档支持
+11.3.1 相关文档
+请参阅如下相关文档：
+• 德州仪器 (TI)，《热工特性》 应用手册
+• 德州仪器 (TI)，《IC 封装热指标》 应用手册
+
+11.4 相关链接
+下表列出了快速访问链接。类别包括技术文档、支持与社区资源、工具和软件，以及申请样片或购买产品的快速链
+接。
+
+                                                     表 6. 相关链接
+         器件                   产品文件夹              样片与购买         技术文档              工具与软件                支持和社区
+      TPS63020                 单击此处              单击此处          单击此处               单击此处                  单击此处
+      TPS63021                 单击此处              单击此处          单击此处               单击此处                  单击此处
+
+
+11.5 支持资源
+TI E2E™ support forums are an engineer's go-to source for fast, verified answers and design help — straight
+from the experts. Search existing answers or ask your own question to get the quick design help you need.
+Linked content is provided "AS IS" by the respective contributors. They do not constitute TI specifications and do
+not necessarily reflect TI's views; see TI's Terms of Use.
+
+11.6 商标
+E2E is a trademark of Texas Instruments.
+WEBENCH is a registered trademark of Texas Instruments.
+All other trademarks are the property of their respective owners.
+版权 © 2010–2019, Texas Instruments Incorporated                                                                      25
+TPS63020, TPS63021
+ZHCSJG8I – JULY 2010 – REVISED OCTOBER 2019                                                           www.ti.com.cn
+
+
+11.7 静电放电警告
+         这些装置包含有限的内置 ESD 保护。 存储或装卸时，应将导线一起截短或将装置放置于导电泡棉中，以防止 MOS 门极遭受静电损
+         伤。
+
+
+11.8 Glossary
+SLYZ022 — TI Glossary.
+   This glossary lists and explains terms, acronyms, and definitions.
+
+12 机械、封装和可订购信息
+以下页面包含机械、封装和可订购信息。这些信息是指定器件的最新可用数据。数据如有变更，恕不另行通知，且
+不会对此文档进行修订。如需获取此数据表的浏览器版本，请查阅左侧的导航栏。
+
+
+
+
+26                                                                      版权 © 2010–2019, Texas Instruments Incorporated
+                                                                                                                                                                    PACKAGE OPTION ADDENDUM
+
+       www.ti.com                                                                                                                                                                                                   10-Nov-2025
+
+
+
+
+PACKAGING INFORMATION
+
+       Orderable part number          Status     Material type      Package | Pins     Package qty | Carrier       RoHS             Lead finish/             MSL rating/             Op temp (°C)               Part marking
+                                        (1)            (2)                                                            (3)           Ball material            Peak reflow                                              (6)
+                                                                                                                                          (4)                      (5)
+
+           TPS63020DSJR               Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+          TPS63020DSJR.A              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+          TPS63020DSJR.B              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+         TPS63020DSJRG4               Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+        TPS63020DSJRG4.A              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+        TPS63020DSJRG4.B              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+           TPS63020DSJT               Active      Production       VSON (DSJ) | 14       250 | SMALL T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+          TPS63020DSJT.A              Active      Production       VSON (DSJ) | 14       250 | SMALL T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+          TPS63020DSJT.B              Active      Production       VSON (DSJ) | 14       250 | SMALL T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63020
+           TPS63021DSJR               Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+          TPS63021DSJR.A              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+          TPS63021DSJR.B              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+         TPS63021DSJRG4               Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+        TPS63021DSJRG4.A              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+        TPS63021DSJRG4.B              Active      Production       VSON (DSJ) | 14      3000 | LARGE T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+           TPS63021DSJT               Active      Production       VSON (DSJ) | 14       250 | SMALL T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+          TPS63021DSJT.A              Active      Production       VSON (DSJ) | 14       250 | SMALL T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+          TPS63021DSJT.B              Active      Production       VSON (DSJ) | 14       250 | SMALL T&R             Yes               NIPDAU            Level-1-260C-UNLIM            -40 to 125                 PS63021
+
+(1)
+      Status: For more details on status, see our product life cycle.
+
+(2)
+   Material type: When designated, preproduction parts are prototypes/experimental devices, and are not yet approved or released for full production. Testing and final process, including without limitation quality assurance,
+reliability performance testing, and/or process qualification, may not yet be complete, and this item is subject to further changes or possible discontinuation. If available for ordering, purchases will be subject to an additional
+waiver at checkout, and are intended for early internal evaluation purposes only. These items are sold without warranties of any kind.
+
+(3)
+      RoHS values: Yes, No, RoHS Exempt. See the TI RoHS Statement for additional information and value definition.
+
+(4)
+   Lead finish/Ball material: Parts may have multiple material finish options. Finish options are separated by a vertical ruled line. Lead finish/Ball material values may wrap to two lines if the finish value exceeds the maximum
+column width.
+
+
+
+
+                                                                                                         Addendum-Page 1
+                                                                                                                                                                      PACKAGE OPTION ADDENDUM
+
+       www.ti.com                                                                                                                                                                                                10-Nov-2025
+
+
+
+
+(5)
+  MSL rating/Peak reflow: The moisture sensitivity level ratings and peak solder (reflow) temperatures. In the event that a part has multiple moisture sensitivity ratings, only the lowest level per JEDEC standards is shown.
+Refer to the shipping label for the actual reflow temperature that will be used to mount the part to the printed circuit board.
+
+(6)
+      Part marking: There may be an additional marking, which relates to the logo, the lot trace code information, or the environmental category of the part.
+
+Multiple part markings will be inside parentheses. Only one part marking contained in parentheses and separated by a "~" will appear on a part. If a line is indented then it is a continuation of the previous line and the two
+combined represent the entire part marking for that device.
+
+Important Information and Disclaimer:The information provided on this page represents TI's knowledge and belief as of the date that it is provided. TI bases its knowledge and belief on information provided by third parties, and
+makes no representation or warranty as to the accuracy of such information. Efforts are underway to better integrate information from third parties. TI has taken and continues to take reasonable steps to provide representative
+and accurate information but may not have conducted destructive testing or chemical analysis on incoming materials and chemicals. TI and TI suppliers consider certain information to be proprietary, and thus CAS numbers
+and other limited information may not be available for release.
+
+In no event shall TI's liability arising out of such information exceed the total purchase price of the TI part(s) at issue in this document sold by TI to Customer on an annual basis.
+
+OTHER QUALIFIED VERSIONS OF TPS63020 :
+
+• Automotive : TPS63020-Q1
+
+NOTE: Qualified Version Definitions:
+
+           • Automotive - Q100 devices qualified for high-reliability automotive applications targeting zero defects
+
+
+
+
+                                                                                                            Addendum-Page 2
+                                                                               PACKAGE MATERIALS INFORMATION
+
+www.ti.com                                                                                                                                       11-Apr-2026
+
+
+
+TAPE AND REEL INFORMATION
+
+       REEL DIMENSIONS                                                                      TAPE DIMENSIONS
+                                                                                       K0       P1
+
+
+
+                                                                                                                      B0 W
+                                        Reel
+                                      Diameter
+                                                                                    Cavity           A0
+                                                                A0   Dimension designed to accommodate the component width
+                                                                B0   Dimension designed to accommodate the component length
+                                                                K0   Dimension designed to accommodate the component thickness
+                                                                W    Overall width of the carrier tape
+                                                                P1   Pitch between successive cavity centers
+
+
+                                       Reel Width (W1)
+                              QUADRANT ASSIGNMENTS FOR PIN 1 ORIENTATION IN TAPE
+
+                                                                                                     Sprocket Holes
+
+
+                                                 Q1        Q2          Q1    Q2
+
+                                                 Q3        Q4          Q3    Q4                  User Direction of Feed
+
+
+
+                                                            Pocket Quadrants
+
+
+*All dimensions are nominal
+             Device           Package Package Pins              SPQ        Reel   Reel   A0                 B0         K0     P1     W     Pin1
+                               Type Drawing                              Diameter Width (mm)               (mm)       (mm)   (mm)   (mm) Quadrant
+                                                                           (mm) W1 (mm)
+     TPS63020DSJR              VSON      DSJ          14        3000        330.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+     TPS63020DSJR              VSON      DSJ          14        3000        330.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+    TPS63020DSJRG4             VSON      DSJ          14        3000        330.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+     TPS63020DSJT              VSON      DSJ          14         250        180.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+     TPS63020DSJT              VSON      DSJ          14         250        180.0        12.5        3.3    4.3       1.1    8.0    12.0    Q1
+     TPS63021DSJR              VSON      DSJ          14        3000        330.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+     TPS63021DSJR              VSON      DSJ          14        3000        330.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+    TPS63021DSJRG4             VSON      DSJ          14        3000        330.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+     TPS63021DSJT              VSON      DSJ          14         250        180.0        12.4        3.3    4.3       1.1    8.0    12.0    Q1
+
+
+
+
+                                                                       Pack Materials-Page 1
+                                                                PACKAGE MATERIALS INFORMATION
+
+www.ti.com                                                                                                              11-Apr-2026
+
+
+
+ TAPE AND REEL BOX DIMENSIONS
+
+
+
+
+                                                               Width (mm)
+                                                                              H
+                      W
+
+
+
+
+                                                          L
+
+
+
+
+*All dimensions are nominal
+             Device           Package Type   Package Drawing   Pins         SPQ    Length (mm)   Width (mm)   Height (mm)
+      TPS63020DSJR               VSON             DSJ           14          3000      338.0        355.0         35.0
+      TPS63020DSJR               VSON             DSJ           14          3000      353.0        353.0         32.0
+    TPS63020DSJRG4               VSON             DSJ           14          3000      353.0        353.0         32.0
+      TPS63020DSJT               VSON             DSJ           14          250       213.0        191.0         35.0
+      TPS63020DSJT               VSON             DSJ           14          250       205.0        200.0         33.0
+      TPS63021DSJR               VSON             DSJ           14          3000      353.0        353.0         32.0
+      TPS63021DSJR               VSON             DSJ           14          3000      338.0        355.0         35.0
+    TPS63021DSJRG4               VSON             DSJ           14          3000      353.0        353.0         32.0
+      TPS63021DSJT               VSON             DSJ           14          250       213.0        191.0         35.0
+
+
+
+
+                                                        Pack Materials-Page 2
+www.ti.com
+                              重要通知和免责声明
+TI“按原样”提供技术和可靠性数据（包括数据表）、设计资源（包括参考设计）、应用或其他设计建议、网络工具、安全信息和其他资源，不
+保证没有瑕疵且不做出任何明示或暗示的担保，包括但不限于对适销性、与某特定用途的适用性或不侵犯任何第三方知识产权的暗示担保。
+这些资源可供使用 TI 产品进行设计的熟练开发人员使用。您将自行承担以下全部责任：(1) 针对您的应用选择合适的 TI 产品，(2) 设计、验
+证并测试您的应用，(3) 确保您的应用满足相应标准以及任何其他安全、安保法规或其他要求。
+这些资源如有变更，恕不另行通知。TI 授权您仅可将这些资源用于研发本资源所述的 TI 产品的相关应用。严禁以其他方式对这些资源进行复
+制或展示。您无权使用任何其他 TI 知识产权或任何第三方知识产权。对于因您对这些资源的使用而对 TI 及其代表造成的任何索赔、损害、
+成本、损失和债务，您将全额赔偿，TI 对此概不负责。
+TI 提供的产品受 TI 销售条款)、TI 通用质量指南 或 ti.com 上其他适用条款或 TI 产品随附的其他适用条款的约束。TI 提供这些资源并不会扩
+展或以其他方式更改 TI 针对 TI 产品发布的适用的担保或担保免责声明。 除非德州仪器 (TI) 明确将某产品指定为定制产品或客户特定产品，
+否则其产品均为按确定价格收入目录的标准通用器件。
+TI 反对并拒绝您可能提出的任何其他或不同的条款。
+IMPORTANT NOTICE
+
+                            版权所有 © 2026，德州仪器 (TI) 公司
+                              最后更新日期：2025 年 10 月
+
