@@ -1,0 +1,3 @@
+#!/bin/sh
+# powerd — battery/power daemon. Foreground; independent of the compositor (no ordering wait).
+exec /usr/bin/powerd

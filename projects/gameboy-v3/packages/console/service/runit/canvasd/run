@@ -1,0 +1,3 @@
+#!/bin/sh
+# canvasd — the canvas compositor (owns DRM/KMS + input). Foreground: runsv restarts it if it exits.
+exec /usr/bin/canvasd

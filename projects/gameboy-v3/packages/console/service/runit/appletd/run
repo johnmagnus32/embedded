@@ -1,0 +1,9 @@
+#!/bin/sh
+# appletd — the app/applet manager. Start once canvasd's socket exists (bounded ~5s). runit would
+# respawn us if we lost the race, but waiting here avoids the noisy restart cycles; we exec anyway
+# after the timeout and let appletd's own connect handle a still-absent compositor.
+i=0
+while [ ! -S /run/canvas/session.sock ] && [ "$i" -lt 50 ]; do
+	i=$((i + 1)); sleep 0.1
+done
+exec /usr/bin/appletd
