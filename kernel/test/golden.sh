@@ -16,8 +16,10 @@
 #            ALWAYS available. Exercises fs + mem syscalls + fork/exec/wait.
 #   busybox — the real musl BusyBox rootfs, driven with a fixed command script to
 #            an interactive prompt. Runs only if that rootfs is present (built by
-#            `make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox`); its artifact
-#            name is selection-unique, so a not-built-yet case just SKIPs.
+#            `make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox`); its
+#            name is selection-unique, so a not-built-yet case just SKIPs. INIT=shell = the
+#            minimal /bin/sh PID-1 (the kernel test uses it, NOT the C supervisor INIT=custom,
+#            which is mainline-only — see forge/providers/init/).
 #   dynamic — the same, dynamically linked through musl's ld.so (add LINKAGE=dynamic
 #            to that rootfs build); SKIPs the same way. smoke/fault/orphan/preempt
 #            use built-in initramfs images and always run.
@@ -51,8 +53,8 @@ TOOLCHAIN_BIN="${PROJ}/build/toolchain/bin"
 GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
 # The rootfs artifact is now named by (rootfs-tag + link) so selections/linkages don't clobber
 # in build/output/ — these are the musl-busybox static/dynamic names (see resolve.mk INITRAMFS_IMAGE).
-BUSYBOX_INITRD="${PROJ}/build/output/initramfs-musl-busybox-static.cpio.gz"
-DYNAMIC_INITRD="${PROJ}/build/output/initramfs-musl-busybox-dynamic.cpio.gz"
+BUSYBOX_INITRD="${PROJ}/build/output/initramfs-musl-shell-busybox-static.cpio.gz"
+DYNAMIC_INITRD="${PROJ}/build/output/initramfs-musl-shell-busybox-dynamic.cpio.gz"
 SMOKE_INITRD="${BUILD}/initramfs.cpio.gz"
 FAULT_INITRD="${BUILD}/faultramfs.cpio.gz"
 ORPHAN_INITRD="${BUILD}/orphanramfs.cpio.gz"
@@ -290,7 +292,7 @@ preempt_case() {
 
 busybox_case() {
   # The rebuild command that produces this artifact (also the SKIP hint).
-  local mk="make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox (from projects/gameboy-v3)"
+  local mk="make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox (from projects/gameboy-v3)"
   if [ ! -f "$BUSYBOX_INITRD" ]; then
     ylw "=== case: busybox === SKIPPED (not built yet — run: ${mk})"
     return 0
@@ -320,7 +322,7 @@ dynamic_case() {
   # (ET_DYN load bias, PT_INTERP -> /lib/ld-musl-armhf.so.1, full auxv, file-backed
   # + MAP_FIXED mmap2). Same shell interactions as busybox, but the whole chain
   # runs THROUGH ld.so. Built by the package-model assembler with LINKAGE=dynamic.
-  local mk="make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox LINKAGE=dynamic (from projects/gameboy-v3)"
+  local mk="make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox LINKAGE=dynamic (from projects/gameboy-v3)"
   if [ ! -f "$DYNAMIC_INITRD" ]; then
     ylw "=== case: dynamic === SKIPPED (not built yet — run: ${mk})"
     return 0
