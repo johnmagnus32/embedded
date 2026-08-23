@@ -6,13 +6,25 @@
             compatible = "fixed-clock";
             clock-frequency = <16000000>;
         };
+
+        /* HSE = 8 MHz crystal on PH0 (OSC_IN) / PH1 (OSC_OUT) + 2x 15 pF loads
+         * (see pcb/BOM.md §9). Added so the BT830 HCI UART doesn't ride the HSI's
+         * +/-4%-over-temp error (framing gets marginal hot). The RTOS clock init
+         * must switch the PLL source HSI -> HSE; this node is just the pin map. */
+        hse: hse {
+            compatible = "fixed-clock";
+            clock-frequency = <8000000>;
+        };
     };
 
     chosen {
-        /* TODO: revert console to <&usart1> (PA9/PA10) — the product uses USART1.
-         * Temporarily on USART2 (PA2/PA3) for bring-up because that is the pair
-         * wired to the Nucleo ST-Link virtual COM port (/dev/ttyACM0); USART1's
-         * PA9/PA10 are not bridged to USB, so its logs are invisible on the bench. */
+        /* Console is on USART2 (PA2/PA3) — PERMANENT, not a bring-up temporary.
+         * Do NOT move it to USART1: USART1 (PA9/PA10 + CTS/RTS PA11/PA12) is now
+         * RESERVED for the BT830 Bluetooth HCI link — it is the only STM32F411 USART
+         * with hardware flow control whose pins are free (USART2_CTS is on PA0 = the
+         * battery-sense ADC; USART6 has no flow control). Reverting the console to
+         * USART1 would collide with the BT modem and break both. USART2 is also the
+         * pair wired to the Nucleo ST-Link VCP (/dev/ttyACM0). See pcb/BOM.md V-H1. */
         console = <&usart2>;
     };
 
@@ -44,6 +56,11 @@
             status = "okay";
         };
 
+        /* USART1 (PA9=TX, PA10=RX) — RESERVED for the BT830 Bluetooth HCI link.
+         * BT HCI needs hardware flow control: when Bluetooth is brought up, add
+         * CTS=PA11 / RTS=PA12 (AF7) here + a BLE host stack (NimBLE/BTstack) in the
+         * RTOS. This is NOT the console (that is permanently USART2). The 115200
+         * baud below is a placeholder — the BT link runs faster. See pcb/BOM.md §7. */
         usart1: serial@40011000 {
             compatible = "st,stm32-usart";
             reg = <0x40011000>;
