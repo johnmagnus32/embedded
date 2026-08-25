@@ -113,6 +113,22 @@ PARTS = [
     ("C107671",    "TI PCM5102APWR — Stereo I2S DAC (headphone out), TSSOP-20"),  # #100
     ("C69901",     "TI TPA6132A2RTER — Stereo headphone amp, QFN-16"),  # #105
     ("C145813",    "PJ-327C-4A — 3.5mm TRS headphone jack, SMD"),  # #110
+    ("C2481",      "MDD SS16 — Schottky diode 60V 1A, SMA (backlight boost)"),  # #30
+    ("C23179",     "UNI-ROYAL 0603WAF4700T5E — 470Ω 1% 0603 (PCM5102A anti-imaging R)"),  # #108
+    ("C33353",     "Samsung CL10C222JB8NNNC — 2.2nF C0G 0603 (PCM5102A anti-imaging C)"),  # #109
+    # --- gameboy-v2 (projects/gameboy-v2/pcb/BOM.md) — net-new parts only ---
+    # (reuses many parts from the sections above: STM32 C94355, iCE40 C2678152, TPS63021
+    #  C202140, DRV C527464, IMU C481766, PCA9555 C2864778, ALPS switch C127481, etc.)
+    ("C84817",     "Aerosemi MT3608 — 5V step-up boost regulator, SOT-23-6 (LCD boost)"),
+    ("C57269",     "Sunlord SWPA4030S4R7MT — 4.7uH boost inductor, 4x4mm"),
+    ("C8678",      "MDD SS34 — Schottky rectifier 40V 3A, SMA/DO-214AC (5V boost)"),
+    ("C57131",     "KDS DSX321G 8MHz crystal, CL=12pF, SMD3225-4P (BT HSE clock)"),
+    ("C106997",    "YAGEO CC0402JRNPO9BN150 — 15pF NP0 0402 (8MHz crystal load caps)"),
+    ("C319012",    "XKB SS-12D10L5 — SPDT THT slide switch, 3A 125V (SYS power switch)"),
+    ("C14890",     "0603WAF7322T5E — 73.2KΩ 1% 0603 (boost FB divider R1)"),
+    ("C22978",     "0603WAF3301T5E — 3.3KΩ 1% 0603 (BQ24074 ILIM input-limit resistor)"),
+    ("C23219",     "0603WAF6203T5E — 620KΩ 1% 0603 (MAX98357A SD/MODE mono strap)"),
+    ("C125031",    "ALPS SKHHLNA010 — Tactile switch 500k-cycle (future L/R bumper upgrade alt)"),
 ]
 
 
