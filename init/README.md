@@ -23,7 +23,7 @@ control tool (`/run/initctl.sock`) with `poweroff|reboot|halt|status|start|stop|
 orderly shutdown (SIGTERM→grace→SIGKILL→`sync`→`reboot()`, or `_exit(0)` where there's no reboot syscall).
 
 ## Tests
-- `make` (host) then a temp `INIT_CONFDIR` — fast logic loop.
+- `make` (host) — compile check (host build is dynamic; `make CC=<cross> LDFLAGS=-static` = shipped form).
 - `init/test/boot.sh` — boots this as REAL PID 1 on a mainline kernel under QEMU `-M virt`
   (`KVIRT_ZIMAGE` selects the kernel) with the `init/test/conf/*.conf` fixtures (spliced into /etc/init
   via a concatenated cpio — they live with the test, not in the product package catalog); asserts oneshot / respawn
