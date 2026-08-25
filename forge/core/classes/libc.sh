@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # classes/libc.sh — the "libc" CLASS: build the SELECTED C library into its staging dir. libc
 # recipes `inherit libc`. Dispatches on a PROPERTY, not a libc name:
-#   * FROM-SOURCE libc (gv3libc): ships build.sh beside its source (LIBC_SRC) — we run it.
+#   * FROM-SOURCE libc (LIBC=custom): ships build.sh beside its source (LIBC_SRC) — we run it.
 #   * PREBUILT complete libc (musl): no build.sh — nothing to build (sysroot is complete).
 # do_install is a no-op: from-source artifacts already land in LIBC_STAGE_DIR, which the
 # rootfs recipe + cc-profile read directly.

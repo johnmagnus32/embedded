@@ -158,10 +158,10 @@ until a second init exists — see the taxonomy above; today PID 1 is `overlay/i
 - **`LIBC` (substrate)** — every package is built *against the selected libc*, not
   shipped as a fixed pairing (`LIBC=musl` means "build the set against musl"). A
   package builds only if the chosen libc covers its *surface*: musl covers anything;
-  the custom libc (gv3libc) covers what we've implemented so far, and grows
+  the custom libc covers what we've implemented so far, and grows
   demand-driven (see "`PKG_DEPENDS := libc` is a SURFACE requirement" below). So
-  `LIBC=custom` + `PACKAGES=busybox` ("build BusyBox against gv3libc") builds only
-  once gv3libc covers BusyBox's surface — a worklist, not a given (and a large one:
+  `LIBC=custom` + `PACKAGES=busybox` ("build BusyBox against libc") builds only
+  once libc covers BusyBox's surface — a worklist, not a given (and a large one:
   BusyBox needs buffered stdio/getopt_long/termios/regex, so in practice BusyBox
   runs on `LIBC=musl` — the demand-driven loop's realistic targets are smaller
   packages). Today's custom rootfs is `LIBC=custom` + `PACKAGES=coreutils`.
@@ -240,7 +240,7 @@ dispatch): for each pkg in `$(PACKAGES)` → build its source against `$(LIBC_SR
   instead of built against the *selected* one. "Build me against whatever libc is
   selected" makes every `LIBC × package` combination *expressible* — the engine
   stops FORBIDDING mixes. Whether a given mix *links* is then a separate question
-  answered by the libc's surface (below): musl covers anything; gv3libc covers a
+  answered by the libc's surface (below): musl covers anything; libc covers a
   package only once we've grown its surface to meet it. So the guard isn't removed,
   it's REFINED — from "these two combos only" to "build it, and if the selected libc
   can't satisfy the package's surface, fail with a clear surface-gap message" (a
@@ -252,7 +252,7 @@ that gets built + installed, i.e. a package missing only its `package.mk`
 declaration. The work is adding that thin declarative wrapper + the generic
 build-install loop, not inventing a package system from nothing.
 
-### `PKG_DEPENDS := libc` is a SURFACE requirement — and gv3libc grows to meet it
+### `PKG_DEPENDS := libc` is a SURFACE requirement — and libc grows to meet it
 
 The `libc` dependency isn't binary ("has a libc / doesn't"). A package needs a
 particular *surface* of the C library — the specific functions and headers it
@@ -262,7 +262,7 @@ references. Two libcs satisfy surfaces very differently:
   surface out of the box. This is why real OSS packages (`mtd-utils`, `dropbear`,
   …) "just work" on the musl axis, exactly as they do in Buildroot/Yocto (which
   only ever pair packages with complete libcs).
-- **`LIBC=custom`** (gv3libc) — our from-scratch teaching libc, deliberately
+- **`LIBC=custom`** (libc) — our from-scratch teaching libc, deliberately
   minimal (today: `stdio` [UNBUFFERED — no `FILE*`, a small `printf` conversion
   set], `stdlib` [incl. a working `malloc`/`free`/`calloc`/`realloc` over `sbrk`],
   `string`, `unistd`, `fcntl`, `dirent`, `sys/{stat,wait,mount}`, `tty`, `errno`
@@ -270,7 +270,7 @@ references. Two libcs satisfy surfaces very differently:
   are less "no allocator" (we have one) and more buffered stdio / `getopt_long` /
   locales / the long tail of string+stdlib helpers.
 
-The key point: **a package that won't build against gv3libc is not a dead end — it
+The key point: **a package that won't build against libc is not a dead end — it
 is a WORKLIST.** This is the same demand-driven loop the project already ran twice:
 
 ```
@@ -283,7 +283,7 @@ The *unmodified package is the specification*: the compiler/linker errors
 precise, finite TODO list of exactly the surface that package needs — you don't
 guess or implement all of POSIX speculatively. Each function you add has a proven
 consumer (the same "don't build the abstraction until a real consumer defines it"
-discipline applied to libc symbols). Grow gv3libc package-by-package.
+discipline applied to libc symbols). Grow libc package-by-package.
 
 **But the gaps are not uniform — and knowing which to fill is the real skill:**
 
@@ -300,7 +300,7 @@ discipline applied to libc symbols). Grow gv3libc package-by-package.
   (`mtd-utils` needs **zlib** — a whole separate library). When a package demands a
   deep subsystem, that's a decision point, not an automatic "implement the gap."
 
-**The graduation point (be honest about it):** gv3libc exists to *learn*, not to
+**The graduation point (be honest about it):** libc exists to *learn*, not to
 be a production libc. Grow it for the functions that are *instructive* (the core
 C/POSIX surface: more `string`/`stdlib` helpers, `getopt`, buffered stdio, the
 `ioctl`/`mmap` glue — note the allocator already exists, so it's stdio and the
@@ -309,7 +309,7 @@ surface exceeds what's worth hand-implementing
 (locales, threads, a bundled zlib), that's the signal to either skip that package
 on the `LIBC=custom` axis or run it on **`LIBC=musl`** instead. The dual
 `LIBC=custom|musl` axis exists precisely to let you make that call *per package*:
-custom (gv3libc) for the ones whose gaps teach you something, musl as the escape
+custom (libc) for the ones whose gaps teach you something, musl as the escape
 hatch for the rest. The engine can
 even make this explicit — a package may declare a minimum libc surface and the
 resolver refuses `LIBC=custom` with a clear message (same spirit as the MIXED-rootfs
@@ -406,7 +406,7 @@ edit — it rebuilds against whichever libc is selected.
 SCOPE OF "transparent" (read with the caveat below): this holds cleanly for the
 **compile-c** style (our coreutils — just `$(CC) *.c`). It does NOT make a package
 *link successfully* on any libc: the `custom` profile is `-nostdlib`/`user.ld`,
-which is incompatible with autotools feature-probing and only exposes gv3libc's
+which is incompatible with autotools feature-probing and only exposes libc's
 (small, growing) surface — so `PKG_TYPE=autotools`/`kconfig` packages in practice
 run on `LIBC=musl`, and the resolver rejects `custom` for them (C4/surface check).
 "Transparent" = the recipe doesn't hardcode libc flags; it does NOT = "every
@@ -421,7 +421,7 @@ Two profiles (the engine selects one from `LIBC`), grounded in today's code:
     LDFLAGS = (normal; musl crt + libc via the sysroot)
     → autotools ./configure works; standard startup.
 
-  LIBC=custom  (gv3libc: -nostdlib + our crt0 + our linker script):
+  LIBC=custom  (libc: -nostdlib + our crt0 + our linker script):
     CC      = arm-buildroot-linux-musleabihf-gcc   (driver only — links NONE of musl)
     CFLAGS  = -ffreestanding -nostdlib -nostartfiles -fno-builtin -fno-stack-protector \
               $(ARCH_FLAGS) -I<libc>/include -I<staged UAPI>
@@ -434,7 +434,7 @@ Two profiles (the engine selects one from `LIBC`), grounded in today's code:
 
 A build-style backend (C1) uses `$(CC)`/`$(CFLAGS)`/`$(LDFLAGS)` and is thus
 libc-agnostic. IMPORTANT: the `custom` profile's `-nostdlib`/`user.ld` model is
-incompatible with autotools' feature-probing (and gv3libc's surface is too small
+incompatible with autotools' feature-probing (and libc's surface is too small
 anyway — see the SURFACE section). So in practice `PKG_TYPE=autotools` packages
 run on `LIBC=musl`; the resolver should reject `custom` for them (C4/surface check).
 

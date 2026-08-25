@@ -1,5 +1,5 @@
 /*
- * sys/syscall.h — the ARM EABI syscall numbers, for gv3libc.
+ * sys/syscall.h — the ARM EABI syscall numbers, for libc.
  *
  * We do NOT hand-maintain the numbers here anymore. They are the KERNEL's UAPI
  * (the single source of truth); the rootfs build installs a copy of the kernel

@@ -36,7 +36,7 @@ do_build() {
     name="$(basename "${c}" .c)"
     out="${PKG_BUILD_DIR}/${name}"
     # LIBC_CRT/LIBC_LIB are empty on musl (it supplies crt+libc); on custom they
-    # are gv3libc's crt0 + libc.a/.so. Word-split intentional.
+    # are libc's crt0 + libc.a/.so. Word-split intentional.
     # shellcheck disable=SC2086
     "${PKG_CC}" ${PKG_CFLAGS} ${PKG_LDFLAGS} ${LIBC_CRT} "${c}" ${LIBC_LIB} -o "${out}"
   done

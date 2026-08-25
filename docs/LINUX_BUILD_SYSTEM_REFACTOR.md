@@ -122,8 +122,8 @@ dir" into a **provider / product / engine** model, so that:
     kernel/                   ← PROVIDER: the from-scratch Linux-ABI kernel   (moved from gameboy-v3/kernel)
     bootloader/               ← PROVIDER: the from-scratch T113 bootloader     (moved from gameboy-v3/bootloader)
     libc/                     ← PROVIDER: the C library + dynamic linker       (moved from gameboy-v3/rootfs/{libc,ld})
-      include/ src/ user.ld     the C library (gv3libc)
-      ld/                       the dynamic linker (ld-gv3) — rides WITH libc, like musl
+      include/ src/ user.ld     the C library (libc)
+      ld/                       the dynamic linker (ld.so) — rides WITH libc, like musl
       test/                     libc + linker host unit tests
     coreutils/                ← PROVIDER: the userland utility suite (like sbase/busybox)  (moved from gameboy-v3/rootfs/bin)
       sh.c echo.c cat.c ls.c pwd.c wc.c ...   depends on (links against) a libc provider

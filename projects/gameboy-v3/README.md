@@ -468,7 +468,7 @@ zImage), for every combination.
 ```
 BOOTLOADER = uboot | custom     mainline U-Boot            | our bootloader/
 KERNEL     = linux | custom     mainline Linux (zImage)    | our kernel/ (zImage-headed)
-ROOTFS     = busybox | scratch  musl BusyBox initramfs     | our rootfs/ (gv3libc)
+ROOTFS     = busybox | scratch  musl BusyBox initramfs     | our rootfs/ (libc)
 MEDIA      = sd | nor           full-disk SD .img          | SPI-NOR component set
 ```
 
@@ -558,7 +558,7 @@ loader. DTB is shared across all.
 | Set | KERNEL artifact | ROOTFS artifact |
 |---|---|---|
 | A | linux zImage (~5.4 MB) | busybox initramfs (~776 KB) |
-| B | linux zImage | scratch initramfs (gv3libc) |
+| B | linux zImage | scratch initramfs (libc) |
 | C | custom zImage (~32 KB) | busybox initramfs |
 | D | custom zImage | scratch initramfs |
 
@@ -599,7 +599,7 @@ accepts the zImage). Three kernel cache/TLB hardening fixes landed along the way
 | A (U-Boot loader) | **uboot** / linux / busybox | 2026-07-29 | ✅ interactive `~ #` | sf-capable U-Boot (FEL-delivered) `sf probe`→`w25q128 16 MiB`, `sf read`, `bootz`→`Linux 6.12.95`, **`cores online: 2`** (U-Boot PSCI), `~ #`, echoed input. Reproducible sf build (below). |
 | C (U-Boot loader) | **uboot** / **custom** / busybox | 2026-07-29 | ✅ bootz + interactive | **bootz ACCEPTED the custom kernel's zImage** — `Kernel image @ 0x41000000 [0x000000 - 0x007f1c]` (exactly our zi_start=0/zi_end), no "Bad magic". Same downstream as combo C above (loader-independent) → reaches `/ #`. (During diagnosis this path showed a `mmu selftest: MISMATCH` under U-Boot's handoff — see below; it was a SELFTEST artifact, not an MMU fault: the kernel ran fine translated.) |
 | #8 | **uboot** / **custom** / **scratch** | 2026-07-30 | ✅ boots (interactive by equiv.) | bootz → custom kernel (`Stage 10`, caches on, mmu selftest MATCH) → unpacks the 9 KB scratch initramfs. Downstream is **byte-identical to combo D** (same custom kernel + same scratch rootfs, same 0x41000000 entry — the loader can't affect userspace), which is proven interactive `gv3$`. Confirmed booting to the unpack; the `gv3$` round-trip is inherited from D. |
-| #2 | custom / linux / **scratch** | 2026-07-30 | ✅ **interactive `gv3$`** | **From-scratch rootfs on MAINLINE Linux 6.12** (custom bootloader). `/init` runs (`-- from scratch, gv3libc`), reaches `gv3$`, and cleanly echoed `CLEAN_42` + ran `pwd`/`ls`. (An earlier "input doesn't round-trip" reading was a RIG capture artifact — multiple leftover `cat` readers splitting bytes — not a rootfs/tty bug; see below.) |
+| #2 | custom / linux / **scratch** | 2026-07-30 | ✅ **interactive `gv3$`** | **From-scratch rootfs on MAINLINE Linux 6.12** (custom bootloader). `/init` runs (`-- from scratch, libc`), reaches `gv3$`, and cleanly echoed `CLEAN_42` + ran `pwd`/`ls`. (An earlier "input doesn't round-trip" reading was a RIG capture artifact — multiple leftover `cat` readers splitting bytes — not a rootfs/tty bug; see below.) |
 | #6 | **uboot** / linux / **scratch** | 2026-07-30 | ✅ (interactive by equiv.) | Same scratch-on-mainline as #2; loader is upstream of userspace. Interactive by equivalence to #2 (and QEMU-clean). |
 
 #### The "scratch-on-mainline input" scare was a rig capture bug, NOT a rootfs bug

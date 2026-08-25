@@ -55,7 +55,7 @@ The rootfs is a **package model**: `LIBC` is the C library everything links; `PA
 is the additive install set (our coreutils and BusyBox are both packages under
 `packages/<name>/`). A package just depends on `libc` (`PKG_DEPENDS`); libc compatibility
 is not pre-checked, so `LIBC=custom PACKAGES=busybox` builds until it hits the real link
-errors on symbols gv3libc does not implement yet (which are the gv3libc port worklist).
+errors on symbols libc does not implement yet (which are the libc port worklist).
 
 Peripherals (an LCD, etc.) are NOT axes — a peripheral is invariant board data (a DT node
 + driver kconfig), applied unconditionally by the board via `board/<board>/` fragments.

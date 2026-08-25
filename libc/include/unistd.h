@@ -1,5 +1,5 @@
 /*
- * unistd.h — core POSIX process/file calls (subset gv3libc implements).
+ * unistd.h — core POSIX process/file calls (subset libc implements).
  * Signatures match POSIX so the same source can also build against musl.
  */
 #ifndef _GV3_UNISTD_H

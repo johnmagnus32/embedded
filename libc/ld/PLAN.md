@@ -1,8 +1,8 @@
-# ld-gv3 — a from-scratch dynamic linker (design + staged plan)
+# ld.so — a from-scratch dynamic linker (design + staged plan)
 
 The runtime component that makes `make LINK=dynamic` binaries actually load: it
 maps the shared `libc.so`, resolves symbols, and fills the GOT/PLT so calls like
-`printf` reach their real addresses. Named `/lib/ld-gv3.so.1` (the PT_INTERP the
+`printf` reach their real addresses. Named `/lib/ld.so.1` (the PT_INTERP the
 programs record).
 
 ## The contract (measured from our own dynamic binaries)
@@ -22,7 +22,7 @@ programs record).
   STATIC:  kernel -> _start(crt0) -> __libc_start_main -> main
   DYNAMIC: kernel loads the program AND the interpreter (PT_INTERP),
            jumps to the INTERPRETER's entry, NOT the program's.
-           ld-gv3 then: maps libc.so, applies relocations, and finally
+           ld.so then: maps libc.so, applies relocations, and finally
            jumps to the PROGRAM's real entry (_start), which proceeds as before.
 ```
 
@@ -34,7 +34,7 @@ to jump when done), `AT_BASE` (the linker's own load address).
 
 ## The self-reference problem (the hard part)
 
-`ld-gv3` may itself be PIC, so its OWN globals/calls need relocating before it can
+`ld.so` may itself be PIC, so its OWN globals/calls need relocating before it can
 run — but it can't call through an unrelocated GOT to do that. So its bootstrap
 (`_dl_start`) must be written **self-contained**: no PLT calls, no unrelocated
 global reads, until it has applied its own `R_ARM_RELATIVE` relocs. Only then can

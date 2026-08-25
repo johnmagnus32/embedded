@@ -136,7 +136,7 @@ skip_if_built() {
 
 # resolve_output — set _output: the durable artifact this recipe declares (host: PKG_HOST_BIN |
 # PKG_HOST_DEST[/bin/PKG_HOST_VERIFY_BIN]; else PKG_ARTIFACT out:/src:/stage:/libcstage:). Cacheable
-# examples: host tools, kernel/U-Boot, packages (stage:), gv3libc (libcstage:). Empty => no standalone
+# examples: host tools, kernel/U-Boot, packages (stage:), libc (libcstage:). Empty => no standalone
 # artifact (the rootfs/image compose steps, the prebuilt-musl marker) => never cacheable, always
 # rebuilds. Whether a recipe is cacheable is a PROPERTY it declares, not a type the engine branches on.
 resolve_output() {

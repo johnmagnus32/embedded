@@ -1,6 +1,6 @@
-# libc/ — gv3libc: a from-scratch C library + dynamic linker (the userspace C library)
+# libc/ — a from-scratch C library + dynamic linker (the userspace C library)
 
-`gv3libc` is our own C library, written **entirely from scratch** — no external
+This is our own C library, written **entirely from scratch** — no external
 libc — plus a from-scratch dynamic linker ([`ld/`](ld/)). It's the C library
 the from-scratch userland links against: with the sibling
 [`coreutils/`](../coreutils/) provider (our `sh`, `cat`, `ls`, …) it forms a
@@ -13,7 +13,7 @@ a rootfs image are made of, by writing each one against a known syscall ABI.
 
 > **How it's built into a rootfs (the package model).** libc + coreutils are repo-root
 > PROVIDERS; the ENGINE builds them as graph nodes. `make rootfs` walks the dependency
-> graph: the selected libc (gv3libc here, via the `libc` class) builds first, then each
+> graph: the selected libc (libc here, via the `libc` class) builds first, then each
 > package in `PACKAGES` links against it (coreutils via the `compile-c` class), installing
 > into a shared staging tree; the `rootfs` step (`forge/steps/rootfs/`) then overlay-merges
 > the product's `overlay/` (the PID-1 `init.sh`) + device table and packs the cpio — the
@@ -22,10 +22,10 @@ a rootfs image are made of, by writing each one against a known syscall ABI.
 
 ## Status
 
-- **Static (`make`) — working.** `gv3libc` is a static archive (`libc.a`); the
+- **Static (`make`) — working.** `libc` is a static archive (`libc.a`); the
   programs link it in and run on our custom `kernel/` (verified in QEMU `-M virt`).
 - **Dynamic (`make LINK=dynamic`) — working.** PIC programs + a shared `libc.so`,
-  loaded at runtime by our own from-scratch dynamic linker **`ld-gv3.so.1`** (see
+  loaded at runtime by our own from-scratch dynamic linker **`ld.so.1`** (see
   [`libc/ld/`](ld/)). Verified end-to-end on BOTH a mainline reference kernel AND our
   own `kernel/` (which now does `PT_INTERP` loading + file-backed `mmap`). The
   interactive shell + all coreutils run dynamically linked.
@@ -42,7 +42,7 @@ headers and *consumed* by the libc — never re-typed:
   kernel/include/uapi/gv3_abi.h        structs + constants  ┘
         │  `make headers` copies a SNAPSHOT into build/include/ (headers_install model)
         ▼
-  gv3libc  wraps them in POSIX functions (open/read/malloc/…) that programs call
+  libc  wraps them in POSIX functions (open/read/malloc/…) that programs call
 ```
 
 **Constraint that shapes everything:** the libc only issues syscalls the kernel
@@ -66,7 +66,7 @@ This dir is the **libc provider**; `coreutils/` is a sibling provider; the ENGIN
       sbrk.c malloc.c     heap: sbrk over brk(2), free-list malloc on top
       stat.c dirent.c wait.c tty.c              syscall wrappers
     user.ld               static link script (link low at 0x10000)
-    ld/                   the from-scratch dynamic linker (ld-gv3.so.1)
+    ld/                   the from-scratch dynamic linker (ld.so.1)
     test/                 libc + linker host unit tests (dynamic.sh)
   ../coreutils/           ← SIBLING PROVIDER: one .c per program — sh, echo,
                             cat, pwd, ls, wc, mount
@@ -74,7 +74,7 @@ This dir is the **libc provider**; `coreutils/` is a sibling provider; the ENGIN
     build.sh              the ENGINE's rootfs pack step: overlay-merge + device table +
                           walk + pack (runs after the package nodes populate the staging tree)
   ../forge/core/classes/
-    libc.sh               the `libc` class: builds gv3libc (libc.a/.so + crt0) for LIBC=custom
+    libc.sh               the `libc` class: builds libc (libc.a/.so + crt0) for LIBC=custom
     compile-c.sh          the `compile-c` class (one .c -> one ELF); our coreutils
   ../forge/core/defaults/rootfs.devs  the ENGINE base device table (proc/sys/dev + console/null)
   ../projects/gameboy-v3/ ← the PRODUCT (data): overlay/init.sh (rootfs.devs is
@@ -97,14 +97,14 @@ on a reference kernel. Under the hood it just runs `make rootfs` with the dynami
 emulator-board selectors:
 
 ```bash
-# builds the VFP-free dynamic rootfs (ships ld-gv3.so.1) via the forge graph
+# builds the VFP-free dynamic rootfs (ships ld.so.1) via the forge graph
 make -C projects/gameboy-v3 rootfs LIBC=custom PACKAGES=coreutils LINKAGE=dynamic BOARD=virt
 ```
 
 - **`BOARD`** — `t113-gameboy` (default) or `virt`. `virt` adds `-mgeneral-regs-only`
   (no VFP) to match the kernel's own user programs and the `-M virt` test harness.
 - **`LINKAGE`** — `static` (default) or `dynamic` (PIC programs + shared `libc.so`,
-  loaded by `ld-gv3.so.1`).
+  loaded by `ld.so.1`).
 - Boots to an interactive `gv3$` shell: `cd`/`pwd`/`exit`/`exec` builtins plus
   fork+exec of the coreutils. `/init` is the product's
   `../projects/gameboy-v3/overlay/init.sh`, launched via the kernel's `#!`-shebang
@@ -140,14 +140,14 @@ graph (libc → packages → `rootfs` step) and its shared pack tail:
 ```
 
 Dynamic adds a layer: the kernel loads BOTH the program and the interpreter, and
-jumps to the interpreter (ld-gv3) first, which stitches in libc before the program runs:
+jumps to the interpreter (ld.so) first, which stitches in libc before the program runs:
 
 ```
-  dynamic program (PT_INTERP=/lib/ld-gv3.so.1, DT_NEEDED=libc.so)
-        │  kernel maps program + maps ld-gv3 at INTERP_BASE, builds full auxv,
-        │  jumps to ld-gv3._start (NOT the program)
+  dynamic program (PT_INTERP=/lib/ld.so.1, DT_NEEDED=libc.so)
+        │  kernel maps program + maps ld.so at INTERP_BASE, builds full auxv,
+        │  jumps to ld.so._start (NOT the program)
         ▼
-  ld-gv3._start → _dl_main:  read auxv → map libc.so (per DT_NEEDED) →
+  ld.so._start → _dl_main:  read auxv → map libc.so (per DT_NEEDED) →
         │                    resolve JUMP_SLOT/GLOB_DAT/RELATIVE → jump to AT_ENTRY
         ▼
   program _start (crt0) → main …  library calls resolve through the filled GOT
@@ -163,12 +163,12 @@ jumps to the interpreter (ld-gv3) first, which stitches in libc before the progr
 
 `make LINK=dynamic` (do `make clean` when toggling) builds:
 - `libc.so` — a **PIC** shared library exporting our libc symbols.
-- programs linked against it: `ET_EXEC` with `PT_INTERP=/lib/ld-gv3.so.1`,
+- programs linked against it: `ET_EXEC` with `PT_INTERP=/lib/ld.so.1`,
   `DT_NEEDED=libc.so`, a GOT/PLT, and ~40% smaller (libc no longer copied in).
-- the image gains `/lib/libc.so` + `/lib/ld-gv3.so.1` (our dynamic linker).
+- the image gains `/lib/libc.so` + `/lib/ld.so.1` (our dynamic linker).
 
 At boot the kernel sees the program's `PT_INTERP`, maps **our** linker
-`ld-gv3.so.1` (from [`libc/ld/`](ld/)) at `INTERP_BASE` and jumps to *it* first; the
+`ld.so.1` (from [`libc/ld/`](ld/)) at `INTERP_BASE` and jumps to *it* first; the
 linker maps `libc.so` (read from the program's `DT_NEEDED`), resolves every
 `JUMP_SLOT`/`GLOB_DAT`/`RELATIVE` relocation, then jumps to the program's entry.
 See [`libc/ld/PLAN.md`](ld/PLAN.md) for the staged design and [`libc/ld/src/dl_main.c`](ld/src/dl_main.c)

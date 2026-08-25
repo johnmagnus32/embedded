@@ -1,11 +1,11 @@
-# Makefile — build ld-gv3.so.1, the from-scratch dynamic linker.
+# Makefile — build ld.so.1, the from-scratch dynamic linker.
 #
 # A PIC shared object with an entry point (_start); the kernel loads it when it
-# sees a program's PT_INTERP = /lib/ld-gv3.so.1, jumps to our _start, and we
+# sees a program's PT_INTERP = /lib/ld.so.1, jumps to our _start, and we
 # resolve everything and hand off to the real program. No libc dependency —
 # dl_main.c uses raw syscalls.
 #
-#   make              # build ld-gv3.so.1 for the default board (t113)
+#   make              # build ld.so.1 for the default board (t113)
 #   make BOARD=virt   # VFP-free for QEMU
 #   make test         # run the L2+S1 host unit tests
 
@@ -29,7 +29,7 @@ CFLAGS := $(ARCH_FLAGS) -fPIC -ffreestanding -nostdlib -nostartfiles \
 OBJS := $(BUILD)/ld/dl_entry.o $(BUILD)/ld/dl_main.o
 
 .PHONY: all clean test
-all: $(BUILD)/ld-gv3.so.1
+all: $(BUILD)/ld.so.1
 
 $(BUILD)/ld:
 	mkdir -p $(BUILD)/ld
@@ -40,9 +40,9 @@ $(BUILD)/ld/%.o: $(SRC)/%.S | $(BUILD)/ld
 $(BUILD)/ld/%.o: $(SRC)/%.c | $(BUILD)/ld
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/ld-gv3.so.1: $(OBJS)
+$(BUILD)/ld.so.1: $(OBJS)
 	$(CC) $(CFLAGS) -shared -nostdlib -Wl,-e,_start \
-	  -Wl,--build-id=none -Wl,-soname,ld-gv3.so.1 \
+	  -Wl,--build-id=none -Wl,-soname,ld.so.1 \
 	  $(OBJS) -o $@
 	@echo "  LD  $@ ($$($(CROSS_COMPILE)size $@ | tail -1 | awk '{print $$4}') bytes)"
 
@@ -50,4 +50,4 @@ test:
 	./test/run.sh
 
 clean:
-	rm -rf $(BUILD)/ld $(BUILD)/ld-gv3.so.1
+	rm -rf $(BUILD)/ld $(BUILD)/ld.so.1

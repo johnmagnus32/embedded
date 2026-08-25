@@ -1,21 +1,21 @@
-# Graduating gv3libc into its own toolchain (future work)
+# Graduating libc into its own toolchain (future work)
 
 **Status:** NOT STARTED — design/scoping only. Captured so it can be picked up later.
 
-**One-line goal:** make `<triple>-gcc hello.c` produce a correct gv3libc binary with NO special
-flags — i.e. gv3libc becomes the *default* libc of a real toolchain, the way musl is for the
+**One-line goal:** make `<triple>-gcc hello.c` produce a correct libc binary with NO special
+flags — i.e. libc becomes the *default* libc of a real toolchain, the way musl is for the
 Bootlin `arm-buildroot-linux-musleabihf-` toolchain we borrow today.
 
 ## 0. Why this is even a question
 
-gv3libc today is a **from-scratch libc riding a foreign toolchain**. We use the Bootlin *musl*
+libc today is a **from-scratch libc riding a foreign toolchain**. We use the Bootlin *musl*
 gcc/as/ld purely as a bare driver via `-nostdlib`, and hand-feed everything gcc would normally
 supply automatically — see `libc/libc-profile.sh`:
 - `-nostdlib -nostartfiles -ffreestanding -fno-builtin` — switch OFF gcc's automatic crt + libc.
 - inject our own `crt0.S.o` as the startup object.
 - `-I libc/include -I <staged UAPI> -I libc/src` — point at our headers by hand.
 - `libc.a` / `-L<dir> -lc` — point at our libc by hand.
-- static: `-T user.ld` (ET_EXEC @ 0x10000). dynamic: `-Wl,--dynamic-linker=/lib/ld-gv3.so.1`.
+- static: `-T user.ld` (ET_EXEC @ 0x10000). dynamic: `-Wl,--dynamic-linker=/lib/ld.so.1`.
 
 That `-nostdlib` bare-driver model is *the* non-conformance. It's why:
 - `forge/core/lib/ccprofile.sh` has a per-libc branch (musl needs none of the above; gv3 needs
@@ -29,11 +29,11 @@ The ONLY way to make gv3's static/dynamic "just a `-static` toggle" like musl �
 ccprofile's branch honestly — is for gv3 to be its OWN toolchain: a gcc whose *baked-in specs*
 default to gv3's crt, libc, headers, and interpreter, so `-nostdlib` is unnecessary.
 
-**Important caveat before doing any of this:** gv3libc exists to be a from-scratch libc you can
+**Important caveat before doing any of this:** libc exists to be a from-scratch libc you can
 read end-to-end. A from-source gcc/binutils bootstrap is a large artifact that dwarfs the libc
 and is its own discipline (crosstool-NG exists precisely because this is hard). This graduation
 buys ABI-conformance + a one-branch cleanup at the cost of a compiler build. Nothing outside the
-gameboy-v3 rootfs consumes gv3libc, so the conformance has no external customer. Do this because
+gameboy-v3 rootfs consumes libc, so the conformance has no external customer. Do this because
 you *want* gv3 to be a real toolchain (a legitimate learning goal), not as a build-system cleanup
 — the cleanup alternative (a `gv3-cc` wrapper hiding the flags behind a conforming `cc`
 interface) gets the engine 100% uniform for a tiny fraction of the effort and risk.
@@ -88,7 +88,7 @@ A real toolchain MUST provide libgcc:
 ```
 <sysroot>/usr/include/   ← libc/include/* + staged UAPI (gv3_syscalls.h, gv3_abi.h) ONLY
                             (NOT libc/src — those are build-time-private headers)
-<sysroot>/usr/lib/       ← libc.a, libc.so, crt1.o crti.o crtn.o, libgcc.a, ld-gv3.so.1
+<sysroot>/usr/lib/       ← libc.a, libc.so, crt1.o crti.o crtn.o, libgcc.a, ld.so.1
 ```
 
 ## 3. Tier 3 — building gcc + binutils for an `arm-gv3-linux-gnueabihf` triple
@@ -106,24 +106,24 @@ strings are fine; `*-linux-gnueabihf` keeps the ARM hard-float Linux conventions
 ### 3.2 binutils first
 Build `binutils` (`as`, `ld`, `ar`, …) `--target=arm-gv3-linux-gnueabihf --prefix=<toolchain>`.
 binutils is libc-independent, so this is the easy part. Bake gv3's defaults here where possible:
-ld's default linker script / `--dynamic-linker=/lib/ld-gv3.so.1` can be set via an emulation
+ld's default linker script / `--dynamic-linker=/lib/ld.so.1` can be set via an emulation
 tweak or left to gcc specs (§3.5).
 
 ### 3.3 Bootstrap gcc (stage 1 — "gcc-first", C-only, no libc)
 Build a minimal C compiler `--target=<triple> --without-headers --with-newlib --disable-shared
---enable-languages=c`. This stage-1 gcc can compile freestanding code (enough to build gv3libc)
+--enable-languages=c`. This stage-1 gcc can compile freestanding code (enough to build libc)
 but has no libc knowledge yet. This is the classic chicken-egg break: you need a compiler to
 build the libc, but the final compiler needs the libc.
 
-### 3.4 Build gv3libc (Tier 2 artifacts) with stage-1 gcc
+### 3.4 Build libc (Tier 2 artifacts) with stage-1 gcc
 Use stage-1 gcc to build the full Tier 2 sysroot (§2): crt suite, libc.a/.so, libgcc, headers,
-ld-gv3.so.1. Install into `<sysroot>`.
+ld.so.1. Install into `<sysroot>`.
 
 ### 3.5 Rebuild gcc (stage 2 — the real compiler, `--with-sysroot`)
 Rebuild gcc `--with-sysroot=<sysroot> --enable-shared --enable-languages=c` now that the libc
 exists. This stage-2 gcc has gv3 baked in as the default libc. The libc-specific defaults live
 in gcc's **config** for the `gv3` vendor (a `gcc/config/arm/linux-gv3.h` or a `.specs` compiled
-in): default crt names, default `--dynamic-linker=/lib/ld-gv3.so.1`, default include/lib search
+in): default crt names, default `--dynamic-linker=/lib/ld.so.1`, default include/lib search
 under the sysroot. After this, `arm-gv3-linux-gnueabihf-gcc hello.c -o hello` Just Works.
 
 ### 3.6 The static-load-address question
@@ -145,7 +145,7 @@ Once gv3 is a real toolchain, the forge side gets genuinely simpler:
 - **`libc/libc-profile.sh` DELETES** — its contents became gcc's compiled-in specs.
 - `run-recipe.sh` loses the `SUBSTRATE_DIR`/`STAGE_INC`/`SUBSTRATE_CRT`/`SUBSTRATE_LIB` env
   plumbing (that existed only to hand-feed the blob).
-- The rootfs runtime-`.so` staging (`ld-gv3.so.1` + `libc.so` into `/lib`) STILL exists — that's
+- The rootfs runtime-`.so` staging (`ld.so.1` + `libc.so` into `/lib`) STILL exists — that's
   a runtime concern the toolchain doesn't touch. Unchanged.
 
 So the payoff on the forge side is real (delete ccprofile branch + libc-profile.sh + substrate
@@ -157,7 +157,7 @@ env plumbing) — but it's *bought* by owning a gcc/binutils build, which is the
   `main` args, crashes at first arg use.
 - **static load addr**: confirm ET_EXEC entry stays 0x00010000 with NO PT_INTERP (readelf -h/-l);
   a wrong load addr collides with the kernel map — links clean, faults on silicon.
-- **dynamic interp**: confirm PT_INTERP == /lib/ld-gv3.so.1 and it's staged as a real file.
+- **dynamic interp**: confirm PT_INTERP == /lib/ld.so.1 and it's staged as a real file.
 - **VFP / virt variant**: the toolchain must still support BOTH the t113 (VFP) and virt
   (`-mgeneral-regs-only`) arch tunes — a single prebuilt toolchain must not freeze one ISA.
   (This intersects the "virt as a board" work; a toolchain is arch-flag-parameterized at compile
@@ -169,7 +169,7 @@ env plumbing) — but it's *bought* by owning a gcc/binutils build, which is the
 - If the goal is a **cleaner forge engine**: DON'T do this — use a `gv3-cc` wrapper instead
   (hides the irreducible flags behind a conforming `cc`; engine becomes uniform; ~1 day; no
   silicon risk). The toolchain graduation is disproportionate for that goal.
-- If the goal is **"gv3libc should be a real, standalone libc port"** (a legitimate learning
+- If the goal is **"libc should be a real, standalone libc port"** (a legitimate learning
   milestone in its own right): do **Tier 2 first** (crt suite + libgcc + 5-arg entry — this is
   the real libc-completeness work and is valuable independent of gcc), validate on hardware, THEN
   Tier 3 (the gcc/binutils bootstrap, ideally via crosstool-NG). Budget weeks and a hardware

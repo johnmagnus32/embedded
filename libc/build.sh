@@ -1,9 +1,9 @@
-# libc/build.sh — gv3libc's BUILD PROCEDURE (how to BUILD this libc).
+# libc/build.sh — libc's BUILD PROCEDURE (how to BUILD this libc).
 #
 # The libc-provider analogue of the kernel/u-boot providers' build.sh: the engine
 # (forge/core/classes/libc.sh) stays libc-agnostic and runs this when the selected
-# libc is this from-source provider. All gv3libc build knowledge — compile crt0 +
-# every unit, archive (static) or shared-lib + the ld-gv3.so.1 dynamic linker
+# libc is this from-source provider. All libc build knowledge — compile crt0 +
+# every unit, archive (static) or shared-lib + the ld.so.1 dynamic linker
 # (dynamic), and stage the kernel UAPI snapshot — lives HERE, with the libc. A
 # prebuilt libc (musl) ships no build.sh, so the engine no-ops for it (its sysroot is
 # already complete — the standard Buildroot non-custom path).
@@ -14,7 +14,7 @@
 # Contract (env in):
 #   PKG_CC PKG_CFLAGS   the compile profile (from libc-profile.sh via cc-profile.sh)
 #   PKG_LINK            static | dynamic
-#   LIBC_STAGE_DIR      output dir (crt0.S.o / libc.a / libc.so / ld-gv3.so.1)
+#   LIBC_STAGE_DIR      output dir (crt0.S.o / libc.a / libc.so / ld.so.1)
 #   STAGE_INC           where to stage the kernel UAPI headers
 #   ROOTFS_TARGET       t113 | virt (the arch/board target, passed to the ld/ sub-make as BOARD=)
 #   REPO_ROOT ROOTFS_CROSS_COMPILE   (from the build env)
@@ -52,12 +52,12 @@ if [ "${PKG_LINK}" = dynamic ]; then
   # the from-scratch dynamic linker rides WITH the libc (ld/ Makefile), built into
   # the libc staging dir.
   make -C "${LIBC_PROVIDER_DIR}/ld" BUILD="${LIBC_STAGE_DIR}/ld-build" BOARD="${ROOTFS_TARGET}" >/dev/null 2>&1
-  cp -f "${LIBC_STAGE_DIR}/ld-build/ld-gv3.so.1" "${LIBC_STAGE_DIR}/ld-gv3.so.1"
-  echo "  [libc] gv3libc.so + ld-gv3.so.1 -> ${LIBC_STAGE_DIR}"
-  # PRODUCE-ONLY: libc.so + ld-gv3.so.1 land in LIBC_STAGE_DIR, a self-contained artifact.
+  cp -f "${LIBC_STAGE_DIR}/ld-build/ld.so.1" "${LIBC_STAGE_DIR}/ld.so.1"
+  echo "  [libc] libc.so + ld.so.1 -> ${LIBC_STAGE_DIR}"
+  # PRODUCE-ONLY: libc.so + ld.so.1 land in LIBC_STAGE_DIR, a self-contained artifact.
   # INSTALLING them into the image's /lib is the ROOTFS assembler's job (§3f) — a producer
   # never writes $STAGE. The assembler reads these from LIBC_STAGE_DIR for a dynamic build.
 else
   "${ROOTFS_CROSS_COMPILE}ar" rcs "${LIBC_STAGE_DIR}/libc.a" "${OBJS[@]}"
-  echo "  [libc] gv3libc.a -> ${LIBC_STAGE_DIR}"
+  echo "  [libc] libc.a -> ${LIBC_STAGE_DIR}"
 fi

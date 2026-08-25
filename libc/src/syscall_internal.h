@@ -1,5 +1,5 @@
 /*
- * syscall_internal.h — private to gv3libc: the raw svc entry + errno plumbing.
+ * syscall_internal.h — private to libc: the raw svc entry + errno plumbing.
  * Not installed as a public header (programs use unistd.h/fcntl.h/etc).
  */
 #ifndef _GV3_SYSCALL_INTERNAL_H

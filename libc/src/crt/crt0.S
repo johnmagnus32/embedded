@@ -1,5 +1,5 @@
 /*
- * crt0.S — C runtime startup for gv3libc (ARM, EABI).
+ * crt0.S — C runtime startup for libc (ARM, EABI).
  *
  * The kernel's ELF loader (kernel/elf.c) enters a fresh process with the stack
  * pointer aimed at the initial stack frame it built (kernel/proc.c

@@ -1,5 +1,5 @@
 /*
- * sys/mount.h — mount(2) / umount2(2) for gv3libc.
+ * sys/mount.h — mount(2) / umount2(2) for libc.
  *
  * Thin wrappers over SYS_mount / SYS_umount2 (the kernel accepts these; on the
  * custom kernel they currently succeed as no-ops — there is no procfs/sysfs/

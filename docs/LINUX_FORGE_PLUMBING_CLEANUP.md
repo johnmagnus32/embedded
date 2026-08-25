@@ -379,7 +379,7 @@ Then in providers.mk:
   toolchain sysroot. So replacing the hardcoded line-102 map means a THREE-arm resolver:
   ```make
   # LIBC_SRC by the recipe's PKG_FETCH (local | git | prebuilt):
-  #   local    -> $(REPO_ROOT)/$(PKG_SOURCE)     (gv3libc: repo-root libc/)
+  #   local    -> $(REPO_ROOT)/$(PKG_SOURCE)     (libc: repo-root libc/)
   #   git      -> $(BUILD)/<checkout>            (a hypothetical fetched-source libc)
   #   prebuilt -> the toolchain sysroot dir      (musl: baked into the cross toolchain)
   ```
@@ -402,7 +402,7 @@ dispatch on a PROPERTY (does `LIBC_SRC/libc-profile.sh` / `LIBC_SRC/build.sh` ex
 NOT on the libc name — so they need NO change as long as `LIBC_SRC` still points at the
 right dir. `rootfs-assemble.sh` requires `LIBC_SRC` (already a require-guard). The
 `_pkg_surface_check` PKG_LIBC logic (musl vs custom) is unaffected. Verify the custom
-(gv3libc) substrate still builds and the musl path still no-ops correctly.
+(libc) substrate still builds and the musl path still no-ops correctly.
 
 **Risk.** Low-medium, contained to providers.mk resolution + two new recipe files.
 Independent of #1/#2 in logic, but shares providers.mk with #1 — sequence after #1.
@@ -624,7 +624,7 @@ golden 6/6; `libc/test/dynamic.sh` (a standalone caller of the rootfs build.sh �
 wrong owner.** For a DYNAMIC rootfs, the libc's runtime files (the loader + `libc.so`)
 must land in the image's `/lib`. Today WHO installs them depends on the libc, and
 neither owner is the rootfs:
-- **custom (gv3libc):** `libc/build.sh` itself installs `ld-gv3.so.1` + `libc.so` into
+- **custom (libc):** `libc/build.sh` itself installs `ld.so.1` + `libc.so` into
   `$STAGE/lib` — a PROVIDER reaching into the rootfs image (the libc equivalent of the
   old inline `host_provision` grabs).
 - **musl:** the staging lives in `styles/kconfig.sh` — i.e. the **BusyBox package's build
@@ -638,20 +638,20 @@ the final rootfs. Buildroot separates `INSTALL_STAGING` (produce, into the sysro
 `do_rootfs` (copy packaged files into the image). The PRODUCER never writes the image.
 
 **Key realization (why libc is NOT specially entangled).** libc/build.sh's real output
-(crt0.o, libc.a, libc.so, ld-gv3.so.1, staged UAPI) already goes to `SUBSTRATE_DIR` —
+(crt0.o, libc.a, libc.so, ld.so.1, staged UAPI) already goes to `SUBSTRATE_DIR` —
 a self-contained artifact. The ONLY thing making it look non-self-contained is that one
 `$STAGE/lib` install block. Move that out and libc is as self-contained as a zImage.
 
 **Fix — the rootfs assembler owns runtime-`.so` install into `/lib`, for WHICHEVER libc.**
 - `libc/build.sh`: DELETE the `$STAGE/lib` install (lines ~56-66). It now produces
-  `libc.so` + `ld-gv3.so.1` into `SUBSTRATE_DIR` and stops. Produce-only.
+  `libc.so` + `ld.so.1` into `SUBSTRATE_DIR` and stops. Produce-only.
 - `styles/kconfig.sh` (BusyBox style): DELETE the musl-loader `$STAGE/lib` staging
   (the `-print-file-name=libc.so` + `ln -sf … ld-musl` block). A package build style
   no longer installs a libc.
 - **rootfs assembler** gains one step, run after the substrate build + package loop,
   only when `PKG_LINK=dynamic`, that installs the substrate's runtime files into
   `$STAGE/lib` by libc — reading from the right SOURCE per libc:
-  - **custom:** from `SUBSTRATE_DIR` → `/lib/ld-gv3.so.1` + `/lib/libc.so`.
+  - **custom:** from `SUBSTRATE_DIR` → `/lib/ld.so.1` + `/lib/libc.so`.
   - **musl:** from the toolchain sysroot (`${ROOTFS_CROSS_COMPILE}gcc -print-file-name=libc.so`)
     → `/lib/libc.so` + the `ld-musl-armhf.so.1 -> libc.so` symlink.
   The "which files, from where" table is the ONE libc-specific bit; keep it a small
@@ -665,7 +665,7 @@ This also makes libc a clean, self-contained artifact — the prerequisite for
 promoting it to its own sequenced layer, which #9 (below) then did.
 
 **Verify:** custom static (no loader staged — static needs none) + custom dynamic
-(`/lib/{ld-gv3.so.1,libc.so}` present); musl static + musl dynamic (`/lib/{libc.so,
+(`/lib/{ld.so.1,libc.so}` present); musl static + musl dynamic (`/lib/{libc.so,
 ld-musl-armhf.so.1}` present); golden 6/6 (busybox + dynamic cases exercise musl-dynamic
 staging — now done by the assembler, not the busybox style); `libc/test/dynamic.sh`
 (custom-dynamic loader staged); byte-compare a dynamic initramfs pre/post (identical —
@@ -681,7 +681,7 @@ self-contained artifact first — #8 removed the `$STAGE/lib` install; #9 remove
 
 **Problem — the rootfs assembler still BUILT the substrate as a side effect.** After #8,
 `layers/rootfs/build.sh` still opened with `build_substrate()` → `styles/substrate.sh`,
-i.e. the rootfs layer compiled gv3libc (or no-op'd musl) before its package loop. That's
+i.e. the rootfs layer compiled libc (or no-op'd musl) before its package loop. That's
 the genuine smell the whole thread kept circling: the libc is a distinct build product —
 the analogue of the kernel and the bootloader — yet it was produced inside another layer's
 script instead of being its own graph node. kernel/bootloader are sequenced layers
@@ -713,7 +713,7 @@ script instead of being its own graph node. kernel/bootloader are sequenced laye
   rootfs layers it composes. `rootfs: libc` is a NORMAL prerequisite, so Make builds libc
   to successful completion before this recipe runs and a libc failure aborts the graph
   before us (holds under `-j` and `-k`); a check would only re-assert that. A *missing*
-  substrate can't slip through silently either — cc-profile links gv3libc's `crt0.S.o`
+  substrate can't slip through silently either — cc-profile links libc's `crt0.S.o`
   (and static `libc.a`) by FULL PATH, so the first package build fails loudly regardless
   (and an existence-check couldn't catch the one real silent-wrong, a stale-but-present
   artifact, so it earns nothing). A brief `require_substrate()` guard existed transiently
@@ -732,7 +732,7 @@ assembler (build packages against the substrate + pack), matching image.sh (comp
 already-built components). `build_substrate()` is gone from the rootfs layer.
 
 **Verify:** all four (libc × link) profiles through the real graph — custom static
-(`libc.a`), custom dynamic (`libc.so`+`ld-gv3.so.1`, staged to `/lib`), musl static
+(`libc.a`), custom dynamic (`libc.so`+`ld.so.1`, staged to `/lib`), musl static
 (no-op layer), musl dynamic (`/lib/{libc.so,ld-musl-armhf.so.1}`); cold `make rootfs`
 auto-runs the libc layer first (the graph edge, no in-assembler check);
 golden 6/6; `libc/test/dynamic.sh --gv3` (ref + gv3, exercises the substrate→assemble
@@ -803,7 +803,7 @@ burden) — and #2 can be reduced to a one-line README note at no risk.
   still dispatches (`host-styles/${PKG_TYPE}.sh`); golden + a real host_provision pass.
   If #2 was skipped, just confirm the README classification note landed.
 - **#3-specific:** a bad `LIBC=bogus` fails via recipe-existence (not the deleted
-  enum); the custom gv3libc substrate builds; the musl path no-ops. `providers/libc/`
+  enum); the custom libc substrate builds; the musl path no-ops. `providers/libc/`
   recipes parse.
 - **The gold standard (do at the end):** a clean rebuild + flash-and-boot BOTH stacks
   on the T113 rig — the same validation done for the reorg (custom → `gv3$`, all-OSS →

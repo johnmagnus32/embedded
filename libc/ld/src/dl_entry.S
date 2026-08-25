@@ -1,5 +1,5 @@
 /*
- * dl_entry.S — the entry point of ld-gv3.so.1 (the dynamic linker).
+ * dl_entry.S — the entry point of ld.so.1 (the dynamic linker).
  *
  * The kernel loads us as the PT_INTERP of a dynamic binary and jumps to our
  * e_entry with the same initial stack as a normal program:

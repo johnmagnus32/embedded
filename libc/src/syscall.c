@@ -1,5 +1,5 @@
 /*
- * syscall.c — the raw kernel-entry primitives for gv3libc.
+ * syscall.c — the raw kernel-entry primitives for libc.
  *
  * ARM Linux EABI: syscall number in r7, args in r0..r6, `svc 0`, return in r0.
  * A negative return in the range [-4095, -1] is a negated errno (Linux

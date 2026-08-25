@@ -1,5 +1,5 @@
 /*
- * dl_main.c — the heart of ld-gv3: parse the startup stack, map libc.so, resolve
+ * dl_main.c — the heart of ld.so: parse the startup stack, map libc.so, resolve
  * every relocation, and jump to the real program.
  *
  * Called by _start (dl_entry.S) with `sp` pointing at the kernel's initial stack
@@ -63,7 +63,7 @@ static void dl_puts(const char *s)
 __attribute__((noreturn))
 static void dl_die(const char *msg)
 {
-	dl_puts("ld-gv3: "); dl_puts(msg); dl_puts("\n");
+	dl_puts("ld.so: "); dl_puts(msg); dl_puts("\n");
 	raw_syscall3(SYS_exit, 127, 0, 0);
 	__builtin_unreachable();
 }
@@ -99,7 +99,7 @@ static void *dl_mmap(uint32_t addr, uint32_t len, int prot, int flags, int fd, u
 static Elf32_Addr dl_map_so(const char *path, dso_t *d)
 {
 	long fd = raw_syscall3(SYS_open, (long)path, 0 /*O_RDONLY*/, 0);
-	if (fd < 0) { dl_puts("ld-gv3: cannot open "); dl_die(path); }
+	if (fd < 0) { dl_puts("ld.so: cannot open "); dl_die(path); }
 
 	/* Read the ELF header (small fixed read, reuse the stack). */
 	unsigned char ehdr_buf[52 + 8*32];       /* ELF header + up to 8 phdrs */
@@ -203,7 +203,7 @@ void _dl_main(long *sp)
 	if (!prog_phdr || !prog_entry)
 		dl_die("missing AT_PHDR or AT_ENTRY");
 
-	dl_puts("ld-gv3: entry, argc=");
+	dl_puts("ld.so: entry, argc=");
 	char nbuf[4] = { '0'+(char)(argc%10), '\n', 0, 0 }; dl_puts(nbuf);
 
 	/* 2. Compute the program's load bias, then parse its .dynamic.
@@ -243,7 +243,7 @@ void _dl_main(long *sp)
 	if (prog.nneeded < 1)
 		dl_die("program has no DT_NEEDED (nothing to link against)");
 	if (prog.nneeded > 1)
-		dl_puts("ld-gv3: warning: >1 DT_NEEDED, only the first is mapped\n");
+		dl_puts("ld.so: warning: >1 DT_NEEDED, only the first is mapped\n");
 
 	char lib_path[128];
 	{
@@ -256,7 +256,7 @@ void _dl_main(long *sp)
 	}
 	dso_t libc;
 	dl_map_so(lib_path, &libc);
-	dl_puts("ld-gv3: mapped "); dl_puts(lib_path); dl_puts("\n");
+	dl_puts("ld.so: mapped "); dl_puts(lib_path); dl_puts("\n");
 
 	/* 4. Resolve libc.so's own REL (GLOB_DAT for errno/environ — against the
 	 * program, which provides them as global BSS symbols from crt/libc_start). */
@@ -300,7 +300,7 @@ void _dl_main(long *sp)
 			reloc_apply(&prog, &libc, &prog.rel[i]);
 	}
 
-	dl_puts("ld-gv3: relocations done, jumping to program\n");
+	dl_puts("ld.so: relocations done, jumping to program\n");
 
 	/* 8. Jump to the program's entry (AT_ENTRY = its crt0._start). The stack is
 	 * still the original kernel-provided one (sp -> argc/argv/envp/auxv). We must

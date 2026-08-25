@@ -1,7 +1,7 @@
 # providers/libc/musl/cc-profile.sh — musl's CC/link contract (sourced by a compile class).
 #
 # musl is a PREBUILT complete libc: the Bootlin musl cross toolchain's sysroot supplies crt +
-# libc + headers, so a NORMAL cross-link works — no -nostdlib, no linker script, no gv3libc
+# libc + headers, so a NORMAL cross-link works — no -nostdlib, no linker script, no libc
 # artifacts. (This is what a conforming libc looks like; contrast providers/libc/custom.)
 #
 # In:  ROOTFS_ARCH_FLAGS (board arch tune), PKG_LINK (static|dynamic),

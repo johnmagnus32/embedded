@@ -1,6 +1,6 @@
 /*
  * elf32.h — the ELF32 structures + ARM relocation/dynamic constants the linker
- * needs. Kept minimal (only what ld-gv3 actually touches) and dependency-free so
+ * needs. Kept minimal (only what ld.so actually touches) and dependency-free so
  * it compiles for BOTH the ARM target and the x86 host unit tests.
  *
  * Verified against the ELF spec + arch/arm ABI (readelf on our own libc.so).

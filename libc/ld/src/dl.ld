@@ -1,5 +1,5 @@
 /*
- * dl.ld — link the dynamic linker (ld-gv3.so.1) as a PIC shared object with a
+ * dl.ld — link the dynamic linker (ld.so.1) as a PIC shared object with a
  * real e_entry. ENTRY(_start) so the kernel knows where to jump after mapping it;
  * the .interp request in the user program names this file as the PT_INTERP target.
  *

@@ -102,7 +102,7 @@ top makefile. There are already THREE component models:
   `PKG_CLASS=provider`. A kconfig provider (mainline kernel, uboot) ships its own
   `build.sh` beside the recipe; a make-c provider (custom kernel/bootloader) is
   `make -C`'d by `build-make-c.sh`.
-- **`libc/`** — the substrate provider (from-source gv3libc) or musl (prebuilt).
+- **`libc/`** — the substrate provider (from-source libc) or musl (prebuilt).
   Selected by the `LIBC` axis, NOT a package. Ships `libc/build.sh` +
   `libc/libc-profile.sh` (its compile/link contract). This is the "libc is special —
   an axis, not a graph node" pattern (see §7).

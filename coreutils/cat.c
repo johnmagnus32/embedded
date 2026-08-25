@@ -1,6 +1,6 @@
 /*
  * cat — copy files (or stdin) to stdout. With no args, reads stdin.
- * Exercises open/read/write/close through gv3libc.
+ * Exercises open/read/write/close through libc.
  */
 #include <unistd.h>
 #include <fcntl.h>
