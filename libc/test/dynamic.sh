@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dynamic.sh — the KNOWN-GOOD reference-loader test bed for dynamic linking.
 #
-# WHY THIS EXISTS: our from-scratch dynamic linker (ld-gv3.so.1) is the most
+# WHY THIS EXISTS: our from-scratch dynamic linker (ld.so.1) is the most
 # error-prone thing in the project. To develop it we need a loader we already
 # TRUST — so a failure is unambiguously OUR code, not the runner. This harness
 # boots a MAINLINE ARM Linux kernel (full dynamic-linking support) under QEMU
@@ -12,7 +12,7 @@
 #          linked against musl's real libc.so + ld-musl). Proves the HARNESS
 #          itself is correct. Always available. This is the baseline you run
 #          first / whenever you doubt the test bed.
-#   gv3  — OUR dynamic rootfs (make LINK=dynamic) driven by OUR ld-gv3.so.1. This is
+#   gv3  — OUR dynamic rootfs (make LINK=dynamic) driven by OUR ld.so.1. This is
 #          the from-scratch loader under test: it maps /lib/libc.so, relocates, and
 #          hands off to an interactive /bin/sh (the 'gv3$' prompt is the marker).
 #          Skipped unless --gv3 is asked (it builds the dynamic rootfs via make).
@@ -24,7 +24,7 @@
 #
 # Usage:
 #   ./test/dynamic.sh            # run the 'ref' known-good case (validate harness)
-#   ./test/dynamic.sh --gv3      # ALSO run our dynamic rootfs through ld-gv3.so.1
+#   ./test/dynamic.sh --gv3      # ALSO run our dynamic rootfs through ld.so.1
 #   REBUILD_KERNEL=1 ./test/dynamic.sh   # force-rebuild the reference kernel
 #
 # Exit 0 iff every case that ran PASSED.
@@ -180,28 +180,32 @@ run_case ref "${BUILD}/reftest.cpio.gz" "refdyn: dynamic-linked OK"
 
 # ---- case: gv3 (our dynamic rootfs; the dev target) -------------------------
 if [ "${1:-}" = "--gv3" ]; then
-  info "building OUR dynamic rootfs (make rootfs LIBC=custom LINKAGE=dynamic BOARD=virt) ..."
+  info "building OUR dynamic rootfs (make rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt) ..."
   # Drive the forge ENGINE, not its internals: `make rootfs` walks the graph
-  #   libc (builds gv3libc + ld-gv3.so.1 into LIBC_STAGE_DIR)
+  #   libc (builds libc + ld.so.1 into LIBC_STAGE_DIR)
   #     -> pkg-coreutils (links against that libc)
-  #     -> rootfs (packs the artifact, named by rootfs-tag+link).
+  #     -> rootfs (packs the artifact, named by libc-init-packages-link).
   # The `rootfs: libc` edge guarantees the libc is built before the packages link,
   # so we don't sequence it by hand anymore. Knobs:
-  #   LIBC=custom      the gv3libc from-source libc (its recipe's PKG_SOURCE = repo-root libc/;
+  #   LIBC=custom      the from-source libc (its recipe's PKG_SOURCE = repo-root libc/;
   #                    the engine resolves LIBC_SRC/LIBC_STAGE_DIR — nothing to pass here).
-  #   LINKAGE=dynamic  -> PT_INTERP=/lib/ld-gv3.so.1.
+  #   INIT=shell       the minimal /bin/sh PID-1. NOT the default INIT=custom: that C supervisor
+  #                    is mainline-only (needs signalfd/timerfd/epoll/sockets/WNOHANG) and won't
+  #                    build against this libc — and PID 1 is orthogonal to the linker under test.
+  #   LINKAGE=dynamic  -> PT_INTERP=/lib/ld.so.1.
   #   BOARD=virt       the QEMU emulator board (boards/virt/, VFP-free arch) — matches the
   #                    reference kernel we boot below.
   # `rootfs` (not `image`) is the minimal target: we boot our own reference kernel, so no
-  # zImage/bootloader/DTB is needed. Build output is shown — a silenced failure here once
-  # booted a stale artifact and looked like a linker bug. The rootfs name is keyed by
-  # (rootfs-tag + link): LIBC=custom PACKAGES=coreutils LINKAGE=dynamic -> the name below.
-  make -C "${PROJ}" rootfs LIBC=custom LINKAGE=dynamic BOARD=virt PACKAGES=coreutils \
+  # zImage/bootloader/DTB is needed. rm the target first so a stale same-named artifact can't
+  # boot as a false pass (the earlier hardcoded name silently booted a stale image).
+  gv3_rootfs="${PROJ}/build/output/initramfs-custom-shell-coreutils-dynamic.cpio.gz"
+  rm -f "${gv3_rootfs}"
+  make -C "${PROJ}" rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt PACKAGES=coreutils \
     || die "our dynamic rootfs failed to build"
   # our init.sh is a shebang script; the mainline kernel needs /bin/sh to be OUR
-  # dynamic shell, loaded by OUR ld-gv3.so.1. PASS = the loader mapped libc.so,
+  # dynamic shell, loaded by OUR ld.so.1. PASS = the loader mapped libc.so,
   # relocated, and reached the interactive shell prompt ('gv3$').
-  run_case gv3 "${PROJ}/build/output/initramfs-custom-coreutils-dynamic.cpio.gz" "gv3\$"
+  run_case gv3 "${gv3_rootfs}" "gv3\$"
 fi
 
 # ---- summary ----------------------------------------------------------------
