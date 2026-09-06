@@ -1,800 +1,800 @@
 refdes,pin,pin_name,net,note
-U1,1,PG6,TODO_U1_PG6,
-U1,2,PG7,TODO_U1_PG7,
-U1,3,PG8,TODO_U1_PG8,
-U1,4,PG9,TODO_U1_PG9,
-U1,5,PG10,TODO_U1_PG10,
-U1,6,PG11,TODO_U1_PG11,
-U1,7,PF0,TODO_U1_PF0,
-U1,8,PF1,TODO_U1_PF1,
-U1,9,PF2,TODO_U1_PF2,
-U1,10,PF3,TODO_U1_PF3,
-U1,11,PF4,TODO_U1_PF4,
-U1,12,PF5,TODO_U1_PF5,
-U1,13,PF6,TODO_U1_PF6,
-U1,14,PC7,TODO_U1_PC7,
-U1,15,PC6,TODO_U1_PC6,
-U1,16,PC5,TODO_U1_PC5,
-U1,17,PC4,TODO_U1_PC4,
-U1,18,PC3,TODO_U1_PC3,
-U1,19,PC2,TODO_U1_PC2,
-U1,20,VCC-PLL,TODO_U1_VCC-PLL,
-U1,21,REFCLK-OUT,TODO_U1_REFCLK-OUT,
-U1,22,DXOUT,TODO_U1_DXOUT,
-U1,23,DXIN,TODO_U1_DXIN,
-U1,24,X32KOUT,TODO_U1_X32KOUT,
-U1,25,X32KIN,TODO_U1_X32KIN,
-U1,26,VCC-RTC,TODO_U1_VCC-RTC,
-U1,27,RESET,TODO_U1_RESET,
-U1,28,LDOA-OUT,TODO_U1_LDOA-OUT,
-U1,29,LDO-IN,TODO_U1_LDO-IN,
-U1,30,LDOB-OUT,TODO_U1_LDOB-OUT,
-U1,31,PE13,TODO_U1_PE13,
-U1,32,PE12,TODO_U1_PE12,
-U1,33,PE3,TODO_U1_PE3,
-U1,34,VCC-PE,TODO_U1_VCC-PE,
-U1,35,PE2,TODO_U1_PE2,
-U1,36,PE11,TODO_U1_PE11,
-U1,37,PE10,TODO_U1_PE10,
-U1,38,PE9,TODO_U1_PE9,
-U1,39,PE8,TODO_U1_PE8,
-U1,40,PE7,TODO_U1_PE7,
-U1,41,PE6,TODO_U1_PE6,
-U1,42,PE5,TODO_U1_PE5,
-U1,43,PE4,TODO_U1_PE4,
-U1,44,PE0,TODO_U1_PE0,
-U1,45,PE1,TODO_U1_PE1,
-U1,46,VDD-SYS0,TODO_U1_VDD-SYS0,
-U1,47,DZQ,TODO_U1_DZQ,
-U1,48,VCC-DRAM0,TODO_U1_VCC-DRAM0,
-U1,49,VCC-DRAM1,TODO_U1_VCC-DRAM1,
-U1,50,VDD18-DRAM,TODO_U1_VDD18-DRAM,
-U1,51,VDD-SYS1,TODO_U1_VDD-SYS1,
-U1,52,PD22,TODO_U1_PD22,
-U1,53,PD21,TODO_U1_PD21,
-U1,54,PD20,TODO_U1_PD20,
-U1,55,PD0,TODO_U1_PD0,
-U1,56,PD1,TODO_U1_PD1,
-U1,57,PD2,TODO_U1_PD2,
-U1,58,PD3,TODO_U1_PD3,
-U1,59,PD4,TODO_U1_PD4,
-U1,60,PD5,TODO_U1_PD5,
-U1,61,PD6,TODO_U1_PD6,
-U1,62,PD7,TODO_U1_PD7,
-U1,63,PD8,TODO_U1_PD8,
-U1,64,PD9,TODO_U1_PD9,
-U1,65,VCC-LVDS,TODO_U1_VCC-LVDS,
-U1,66,VCC-PD,TODO_U1_VCC-PD,
-U1,67,PD10,TODO_U1_PD10,
-U1,68,PD11,TODO_U1_PD11,
-U1,69,PD13,TODO_U1_PD13,
-U1,70,PD12,TODO_U1_PD12,
-U1,71,PD14,TODO_U1_PD14,
-U1,72,PD15,TODO_U1_PD15,
-U1,73,PD16,TODO_U1_PD16,
-U1,74,PD17,TODO_U1_PD17,
-U1,75,PD18,TODO_U1_PD18,
-U1,76,PD19,TODO_U1_PD19,
-U1,77,VCC-TVOUT,TODO_U1_VCC-TVOUT,
-U1,78,TVOUT0,TODO_U1_TVOUT0,
-U1,79,PB7,TODO_U1_PB7,
-U1,80,PB6,TODO_U1_PB6,
-U1,81,VDD-SYS2,TODO_U1_VDD-SYS2,
-U1,82,PB5,TODO_U1_PB5,
-U1,83,VCC-IO,TODO_U1_VCC-IO,
-U1,84,PB4,TODO_U1_PB4,
-U1,85,PB3,TODO_U1_PB3,
-U1,86,PB2,TODO_U1_PB2,
-U1,87,MICIN3P,TODO_U1_MICIN3P,
-U1,88,MICIN3N,TODO_U1_MICIN3N,
-U1,89,AVCC,TODO_U1_AVCC,
-U1,90,VRA2,TODO_U1_VRA2,
+U1,1,PG6,,spare/NC — PG6 free GPIO (per PINOUT)
+U1,2,PG7,,spare/NC — PG7 free GPIO
+U1,3,PG8,I2C1_SCL,PG8 TWI1-SCK joins the shared i2c1 bus + pull-up
+U1,4,PG9,I2C1_SDA,PG9 TWI1-SDA joins the shared i2c1 bus + pull-up
+U1,5,PG10,,spare/NC — PG10 free GPIO
+U1,6,PG11,I2S1_MCLK,PG11 I2S1-MCLK; per task guidance kept as I2S1_MCLK though MAX98357A/PCM5102A need no MCLK — effectively single-pin/static; confirm route vs static GPIO
+U1,7,PF0,SD_D1,PF0 MMC0-D1
+U1,8,PF1,SD_D0,PF1 MMC0-D0
+U1,9,PF2,SD_CLK,PF2 MMC0-CLK
+U1,10,PF3,SD_CMD,PF3 MMC0-CMD
+U1,11,PF4,SD_D3,PF4 MMC0-D3
+U1,12,PF5,SD_D2,PF5 MMC0-D2
+U1,13,PF6,,spare/NC — PF6 free GPIO
+U1,14,PC7,NOR_IO3,PC7 SPI0-HOLD/IO3 → W25Q128 U3
+U1,15,PC6,NOR_IO2,PC6 SPI0-WP/IO2 → W25Q128 U3
+U1,16,PC5,NOR_IO1,PC5 SPI0-MISO/IO1 → W25Q128 U3; also BOOT-SEL1 strap at reset
+U1,17,PC4,NOR_IO0,PC4 SPI0-MOSI/IO0 → W25Q128 U3; also BOOT-SEL0 strap at reset
+U1,18,PC3,NOR_CS,PC3 SPI0-CS0 → W25Q128 U3
+U1,19,PC2,NOR_CLK,PC2 SPI0-CLK → W25Q128 U3
+U1,20,VCC-PLL,LDOA,VCC-PLL is 1.8V (datasheet Table 5-2: 1.62/1.8/1.98) — dictionary's +3V3 would overvoltage; fed from internal LDOA 1.8V rail. VERIFY vs t113-breakout
+U1,21,REFCLK-OUT,,spare/NC — REFCLK-OUT (WiFi clock fanout; no WiFi)
+U1,22,DXOUT,HOSC_OUT,DXOUT → 24MHz crystal X1 + load cap C4
+U1,23,DXIN,HOSC_IN,DXIN → 24MHz crystal X1 + load cap C3
+U1,24,X32KOUT,RTC_OUT,X32KOUT → 32.768kHz crystal X2 + load cap C6
+U1,25,X32KIN,RTC_IN,X32KIN → 32.768kHz crystal X2 + load cap C5
+U1,26,VCC-RTC,VCC_RTC,VCC-RTC 1.8V (datasheet Table 5-2); RESET pull-up lands here (NOT +3V3). On breakout grouped with LDOA rail — VCC_RTC and LDOA may be same 1.8V copper. VERIFY vs t113-breakout
+U1,27,RESET,RESET,RESET (low-active) → reset btn R22? + 100nF + 10K pull-up to VCC_RTC(1.8V)
+U1,28,LDOA-OUT,LDOA,LDOA-OUT internal 1.8V regulator output (1.764/1.8/1.836) + bypass cap→GND; source of the 1.8V rail feeding VCC-PLL/VCC-LVDS/VDD18-DRAM/VCC-TVIN. VERIFY vs t113-breakout
+U1,29,LDO-IN,+3V3,"LDO-IN internal LDOA/B input, 2.4/3.3/3.6V → 3.3V rail"
+U1,30,LDOB-OUT,LDOB,LDOB-OUT internal regulator output (default 1.35V; firmware sets 1.5V for DDR3) + bypass cap→GND; feeds VCC-DRAM0/1. VERIFY vs t113-breakout
+U1,31,PE13,SPK_SD,PE13 → MAX98357A SD/MODE (shares mono-strap net)
+U1,32,PE12,JACK_DET,PE12 → headphone jack detect switch
+U1,33,PE3,UART0_RX,PE3 UART0-RX (console)
+U1,34,VCC-PE,+3V3,"VCC-PE — PE-bank I/O supply, 3.3V"
+U1,35,PE2,UART0_TX,PE2 UART0-TX (console)
+U1,36,PE11,PSHOLD,PE11 → STM6601 PSHOLD (gpio-poweroff handshake)
+U1,37,PE10,PWR_BTN,PE10 → power button / STM6601 PB; must be wakeup-capable EINT (verify)
+U1,38,PE9,TOUCH_RST,PE9 → touch FFC → FT7311 reset
+U1,39,PE8,TOUCH_INT,PE8 → touch FFC → FT7311 INT
+U1,40,PE7,EXP_INT,PE7 → PCA9555 INT + pull-up
+U1,41,PE6,BL_CTRL,PE6 → TPS61165 backlight control (PWM/EasyScale)
+U1,42,PE5,I2C2_SDA,PE5 TWI2-SDA joins dedicated i2c2 (IMU) bus
+U1,43,PE4,I2C2_SCL,PE4 TWI2-SCK joins dedicated i2c2 (IMU) bus
+U1,44,PE0,IMU_INT1,"PE0 → LSM6DSOX INT1 (+ 10K pulldown, also sets I2C-not-I3C at POR)"
+U1,45,PE1,IMU_INT2,PE1 → LSM6DSOX INT2
+U1,46,VDD-SYS0,+0V9,"VDD-SYS0 = 0.9V (datasheet: 0.85/0.95/0.99, shares CPU/core rail) — dictionary default +3V3 overridden. VERIFY vs t113-breakout + FP6161 budget (VDD-CPU+VDD-SYS ≤800mA)"
+U1,47,DZQ,DDR_ZQ,DZQ DRAM ZQ-cal → 240Ω R5 → GND (section-local net)
+U1,48,VCC-DRAM0,LDOB,"VCC-DRAM0 = 1.5V DDR3 supply (datasheet 1.425/1.5/1.575), fed from LDOB. VERIFY vs t113-breakout SiP DDR"
+U1,49,VCC-DRAM1,LDOB,"VCC-DRAM1 = 1.5V DDR3 supply, fed from LDOB. VERIFY vs t113-breakout SiP DDR"
+U1,50,VDD18-DRAM,LDOA,"VDD18-DRAM = 1.8V DRAM-controller supply (datasheet 1.62/1.8/1.98), fed from LDOA rail. VERIFY vs t113-breakout"
+U1,51,VDD-SYS1,+0V9,VDD-SYS1 = 0.9V core/system rail (see pin 46). VERIFY vs t113-breakout
+U1,52,PD22,PANEL_DISP,PD22 → display FPC DISP + 10K pull-up
+U1,53,PD21,RGB_VSYNC,PD21 LCD0-VSYNC → panel
+U1,54,PD20,RGB_HSYNC,PD20 LCD0-HSYNC → panel
+U1,55,PD0,RGB_B2,PD0 LCD0-D2 (ch-A LSB); R/G/B channel identity is convention-only — VERIFY panel map
+U1,56,PD1,RGB_B3,PD1 LCD0-D3
+U1,57,PD2,RGB_B4,PD2 LCD0-D4
+U1,58,PD3,RGB_B5,PD3 LCD0-D5
+U1,59,PD4,RGB_B6,PD4 LCD0-D6
+U1,60,PD5,RGB_B7,PD5 LCD0-D7 (ch-A MSB)
+U1,61,PD6,RGB_G2,PD6 LCD0-D10 (ch-B LSB)
+U1,62,PD7,RGB_G3,PD7 LCD0-D11
+U1,63,PD8,RGB_G4,PD8 LCD0-D12
+U1,64,PD9,RGB_G5,PD9 LCD0-D13
+U1,65,VCC-LVDS,LDOA,VCC-LVDS is 1.8V (datasheet 1.62/1.8/1.98) — dictionary's +3V3 would overvoltage; fed from internal LDOA 1.8V rail. VERIFY vs t113-breakout
+U1,66,VCC-PD,+3V3,"VCC-PD — PD-bank I/O supply, 3.3V"
+U1,67,PD10,RGB_G6,PD10 LCD0-D14
+U1,68,PD11,RGB_G7,PD11 LCD0-D15 (ch-B MSB)
+U1,69,PD13,RGB_R3,PD13 LCD0-D19
+U1,70,PD12,RGB_R2,PD12 LCD0-D18 (ch-C LSB)
+U1,71,PD14,RGB_R4,PD14 LCD0-D20
+U1,72,PD15,RGB_R5,PD15 LCD0-D21
+U1,73,PD16,RGB_R6,PD16 LCD0-D22
+U1,74,PD17,RGB_R7,PD17 LCD0-D23 (ch-C MSB)
+U1,75,PD18,RGB_DCLK,PD18 LCD0-CLK → panel (DNP 0Ω series-R option)
+U1,76,PD19,RGB_DE,PD19 LCD0-DE → panel
+U1,77,VCC-TVOUT,+3V3,VCC-TVOUT = 3.3V (datasheet typ 3.3); TVOUT block unused but supply kept at 3.3V
+U1,78,TVOUT0,,spare/NC — TVOUT0 CVBS output unused
+U1,79,PB7,,spare/NC — PB7 free GPIO
+U1,80,PB6,BT_EN_RST,PB6 → BT830 VREG_EN_RST# (boot low >5ms then high)
+U1,81,VDD-SYS2,+0V9,VDD-SYS2 = 0.9V core/system rail (see pin 46). VERIFY vs t113-breakout
+U1,82,PB5,GAUGE_ALRT,PB5 → MAX17048 ALRT (needs pull-up)
+U1,83,VCC-IO,+3V3,VCC-IO = 3.3V digital I/O supply
+U1,84,PB4,CHG_PGOOD,PB4 → BQ24074 PGOOD + pull-up (open-drain in)
+U1,85,PB3,DAC_XSMT,PB3 → PCM5102A XSMT (soft-mute)
+U1,86,PB2,HP_EN,PB2 → TPA6132A2 EN (+ pull-down)
+U1,87,MICIN3P,,spare/NC — MICIN3P (internal codec mic-in unused)
+U1,88,MICIN3N,,spare/NC — MICIN3N unused
+U1,89,AVCC,AVCC,"AVCC 1.8V (datasheet 1.782/1.8/1.818) — dictionary's +3V3 wrong. Datasheet §2.8: 'internal ALDO output for AVCC' → own node with bypass cap→GND (do NOT tie to external 3.3V). GPADC0 uses AVCC as reference. If breakout instead feeds it from the LDOA rail, merge with LDOA. VERIFY vs t113-breakout"
+U1,90,VRA2,VRA2,codec analog reference — 100nF→GND per PINOUT open-item; internal codec unused (section-local net). Confirm bypass cap exists
 U1,91,AGND,GND,ground family
-U1,92,VRA1,TODO_U1_VRA1,
-U1,93,FMINR,TODO_U1_FMINR,
-U1,94,FMINL,TODO_U1_FMINL,
-U1,95,LINEINR,TODO_U1_LINEINR,
-U1,96,LINEINL,TODO_U1_LINEINL,
-U1,97,HPVCC,TODO_U1_HPVCC,
-U1,98,HPOUTR,TODO_U1_HPOUTR,
-U1,99,HPOUTL,TODO_U1_HPOUTL,
-U1,100,HPOUTFB,TODO_U1_HPOUTFB,
-U1,101,GPADC0,TODO_U1_GPADC0,
-U1,102,TP-X1,TODO_U1_TP-X1,
-U1,103,TP-X2,TODO_U1_TP-X2,
-U1,104,TP-Y1,TODO_U1_TP-Y1,
-U1,105,TP-Y2,TODO_U1_TP-Y2,
-U1,106,NC0,TODO_U1_NC0,
-U1,107,VCC-TVIN,TODO_U1_VCC-TVIN,
-U1,108,TVIN0,TODO_U1_TVIN0,
-U1,109,TVIN1,TODO_U1_TVIN1,
-U1,110,TVIN-VRP,TODO_U1_TVIN-VRP,
-U1,111,TVIN-VRN,TODO_U1_TVIN-VRN,
-U1,112,USB1-DP,TODO_U1_USB1-DP,
-U1,113,USB1-DM,TODO_U1_USB1-DM,
-U1,114,USB0-DM,TODO_U1_USB0-DM,
-U1,115,USB0-DP,TODO_U1_USB0-DP,
-U1,116,VDD-CORE0,TODO_U1_VDD-CORE0,
-U1,117,VDD-CORE1,TODO_U1_VDD-CORE1,
-U1,118,PG1,TODO_U1_PG1,
-U1,119,PG2,TODO_U1_PG2,
-U1,120,PG0,TODO_U1_PG0,
-U1,121,PG3,TODO_U1_PG3,
-U1,122,PG5,TODO_U1_PG5,
-U1,123,PG4,TODO_U1_PG4,
-U1,124,PG12,TODO_U1_PG12,
-U1,125,PG13,TODO_U1_PG13,
-U1,126,PG14,TODO_U1_PG14,
-U1,127,PG15,TODO_U1_PG15,
-U1,128,VCC-PG,TODO_U1_VCC-PG,
+U1,92,VRA1,VRA1,codec analog reference — 100nF→GND per PINOUT open-item; internal codec unused (section-local net). Confirm bypass cap exists
+U1,93,FMINR,,spare/NC — FMINR FM-in unused
+U1,94,FMINL,,spare/NC — FMINL FM-in unused
+U1,95,LINEINR,,spare/NC — LINEINR line-in unused
+U1,96,LINEINL,,spare/NC — LINEINL line-in unused
+U1,97,HPVCC,HPVCC,"HPVCC 1.8V (datasheet 1.764/1.8/1.836). Datasheet §2.8: 'internal HPLDO output for HPVCC' → own node with bypass cap→GND. Internal codec HP out unused (external PCM5102A/TPA6132 used instead). If breakout feeds it from LDOA rail, merge with LDOA. VERIFY vs t113-breakout"
+U1,98,HPOUTR,,spare/NC — HPOUTR internal codec HP out unused
+U1,99,HPOUTL,,spare/NC — HPOUTL unused
+U1,100,HPOUTFB,,spare/NC — HPOUTFB unused
+U1,101,GPADC0,BAT_SENSE,GPADC0 → battery divider R75/R76 midpoint (reference = AVCC 1.8V)
+U1,102,TP-X1,,spare/NC — TP-X1 resistive-touch ADC unused
+U1,103,TP-X2,,spare/NC — TP-X2 unused
+U1,104,TP-Y1,,spare/NC — TP-Y1 unused
+U1,105,TP-Y2,,spare/NC — TP-Y2 unused
+U1,106,NC0,,spare/NC — NC0 no-connect
+U1,107,VCC-TVIN,LDOA,"VCC-TVIN is 1.8V (datasheet typ 1.8, NOT 3.3) — dictionary's +3V3 would overvoltage. TVIN block unused; supply tied to 1.8V LDOA rail. VERIFY vs t113-breakout (or leave unpowered if TVIN fully disabled)"
+U1,108,TVIN0,,spare/NC — TVIN0 CVBS-in unused
+U1,109,TVIN1,,spare/NC — TVIN1 CVBS-in unused
+U1,110,TVIN-VRP,,spare/NC — TVIN-VRP unused
+U1,111,TVIN-VRN,,spare/NC — TVIN-VRN unused
+U1,112,USB1-DP,,spare/NC — USB1-DP (USB host unused)
+U1,113,USB1-DM,,spare/NC — USB1-DM unused
+U1,114,USB0-DM,USB_DM,USB0-DM → USB-C D- via ESD D4 (90Ω diff)
+U1,115,USB0-DP,USB_DP,USB0-DP → USB-C D+ via ESD D4 (90Ω diff)
+U1,116,VDD-CORE0,+0V9,VDD-CORE0 core supply (datasheet 0.85/0.95/0.99; FP6161 core buck rail)
+U1,117,VDD-CORE1,+0V9,VDD-CORE1 core supply (FP6161 core buck rail)
+U1,118,PG1,UART3_RX,PG1 UART3-RX (HCI) → lands on BT830 UART_TX
+U1,119,PG2,UART3_RTS,PG2 UART3-RTS (HCI) → BT830 flow-control
+U1,120,PG0,UART3_TX,PG0 UART3-TX (HCI) → lands on BT830 UART_RX
+U1,121,PG3,UART3_CTS,PG3 UART3-CTS (HCI) → BT830 flow-control
+U1,122,PG5,,spare/NC — PG5 free GPIO
+U1,123,PG4,,spare/NC — PG4 free GPIO
+U1,124,PG12,I2S1_LRCK,PG12 I2S1-LRCK → MAX98357A + PCM5102A
+U1,125,PG13,I2S1_BCLK,PG13 I2S1-BCLK → MAX98357A + PCM5102A
+U1,126,PG14,I2S1_DIN,PG14 I2S1-DIN0; per task guidance kept as I2S1_DIN though nothing drives T113 I2S RX — effectively single-pin/static; confirm route vs static GPIO
+U1,127,PG15,I2S1_DOUT,PG15 I2S1-DOUT0 → MAX98357A DIN + PCM5102A DIN (via series-R)
+U1,128,VCC-PG,+3V3,"VCC-PG — PG-bank I/O supply, 3.3V"
 U1,129,EPAD,GND,ground family
-USBC1,1,EH,TODO_USBC1_EH,
-USBC1,2,EH,TODO_USBC1_EH,
-USBC1,3,EH,TODO_USBC1_EH,
-USBC1,4,EH,TODO_USBC1_EH,
+USBC1,1,EH,GND,EH shield/retention post -> GND (BOM #2: shell+mid-plate+4 posts direct short to GND)
+USBC1,2,EH,GND,EH shield/retention post -> GND
+USBC1,3,EH,GND,EH shield/retention post -> GND
+USBC1,4,EH,GND,EH shield/retention post -> GND
 USBC1,A1B12,GND,GND,ground family
 USBC1,A4B9,VBUS,+5V,rail: USB-C 5V input
-USBC1,A5,CC1,TODO_USBC1_CC1,
-USBC1,A6,DP1,TODO_USBC1_DP1,
-USBC1,A7,DN1,TODO_USBC1_DN1,
-USBC1,A8,SBU1,TODO_USBC1_SBU1,
+USBC1,A5,CC1,USBC_CC1,CC1 -> CH224K (U11) only; no external 5.1k pulldowns
+USBC1,A6,DP1,USB_DP,DP1; USB2-only reversible -> DP1=DP2 board-shorted; path via ESD D4 to T113 USB0-DP
+USBC1,A7,DN1,USB_DM,DN1; DN1=DN2 board-shorted; path via ESD D4 to T113 USB0-DM
+USBC1,A8,SBU1,,spare/NC — SBU1 unused (no alt-mode / analog-audio adapter)
 USBC1,B1A12,GND,GND,ground family
 USBC1,B4A9,VBUS,+5V,rail: USB-C 5V input
-USBC1,B5,CC2,TODO_USBC1_CC2,
-USBC1,B6,DP2,TODO_USBC1_DP2,
-USBC1,B7,DN2,TODO_USBC1_DN2,
-USBC1,B8,SBU2,TODO_USBC1_SBU2,
-U2,1,RUN,TODO_U2_RUN,
+USBC1,B5,CC2,USBC_CC2,CC2 -> CH224K (U11)
+USBC1,B6,DP2,USB_DP,DP2 shorted to DP1 (reversible USB2)
+USBC1,B7,DN2,USB_DM,DN2 shorted to DN1
+USBC1,B8,SBU2,,spare/NC — SBU2 unused
+U2,1,RUN,CORE_RUN,FP6161 RUN; node = R4(from PWR_EN) + C2(->GND); ~10ms delay after VCC-IO
 U2,2,GND,GND,ground family
-U2,3,SW,TODO_U2_SW,
+U2,3,SW,CORE_SW,switch node -> L1
 U2,4,VIN,SYS,rail: #3 input=SYS
-U2,5,FB/VOUT,TODO_U2_FB/VOUT,
-L1,1,1,TODO_L1_1,
-L1,2,2,TODO_L1_2,
-R1,1,1,TODO_R1_1,
-R1,2,2,TODO_R1_2,
-R2,1,1,TODO_R2_1,
-R2,2,2,TODO_R2_2,
-R3,1,1,TODO_R3_1,
-R3,2,2,TODO_R3_2,
-C1,1,1,TODO_C1_1,
-C1,2,2,TODO_C1_2,
-R4,1,1,TODO_R4_1,
-R4,2,2,TODO_R4_2,
-C2,1,1,TODO_C2_1,
-C2,2,2,TODO_C2_2,
-R5,1,1,TODO_R5_1,
-R5,2,2,TODO_R5_2,
-U3,1,~{CS},TODO_U3_~{CS},
-U3,2,DO,TODO_U3_DO,
-U3,3,IO2,TODO_U3_IO2,
+U2,5,FB/VOUT,CORE_FB,"FB sense (ADJ 0.6V); divider R3(top)/R2(bot), C1 feed-forward"
+L1,1,1,CORE_SW,core-buck switch node (U2 pin3)
+L1,2,2,+0V9,core buck output rail
+R1,1,1,SPK_SD,680k MAX98357A SD/MODE mono strap (BOM #5). DUPLICATE of R14 (#48) — verify only one stuffed
+R1,2,2,+3V3,strap pull-up to 3V3 (mono mode)
+R2,1,1,CORE_FB,FB R_bot 150k (FB -> GND)
+R2,2,2,GND,
+R3,1,1,+0V9,FB R_top 75k (VOUT/+0V9 -> FB)
+R3,2,2,CORE_FB,
+C1,1,1,+0V9,"10pF feed-forward across R3 (+0V9 <-> FB), loop stability"
+C1,2,2,CORE_FB,
+R4,1,1,PWR_EN,"100k; from STM6601 EN net (cross-chip, not in dict — must match U17.9 EN / U12.12 EN)"
+R4,2,2,CORE_RUN,RC to FP6161 RUN
+C2,1,1,CORE_RUN,100nF RUN delay cap
+C2,2,2,GND,
+R5,1,1,DDR_ZQ,"240R ZQ-cal; to T113 DZQ (U1 pin47) — cross-chip, U1 side must use DDR_ZQ"
+R5,2,2,GND,
+U3,1,~{CS},NOR_CS,W25Q128 /CS -> SPI0-CS0 (PC3)
+U3,2,DO,NOR_IO1,DO/MISO -> PC5 (also BOOT-SEL1 strap)
+U3,3,IO2,NOR_IO2,/WP(IO2) -> PC6
 U3,4,GND,GND,ground family
-U3,5,DI,TODO_U3_DI,
-U3,6,CLK,TODO_U3_CLK,
-U3,7,IO3,TODO_U3_IO3,
+U3,5,DI,NOR_IO0,DI/MOSI -> PC4 (also BOOT-SEL0 strap)
+U3,6,CLK,NOR_CLK,CLK -> PC2
+U3,7,IO3,NOR_IO3,/HOLD(IO3) -> PC7
 U3,8,VCC,+3V3,rail: SPI-NOR 3.3V logic
-U4,1,DAT2,TODO_U4_DAT2,
-U4,2,CD/DAT3,TODO_U4_CD/DAT3,
-U4,3,CMD,TODO_U4_CMD,
+U4,1,DAT2,SD_D2,microSD DAT2 -> PF5
+U4,2,CD/DAT3,SD_D3,CD/DAT3 used as DAT3 in 4-bit mode -> PF4
+U4,3,CMD,SD_CMD,CMD -> PF3
 U4,4,VDD,+3V3,rail: microSD 3.3V
-U4,5,CLK,TODO_U4_CLK,
+U4,5,CLK,SD_CLK,CLK -> PF2
 U4,6,VSS,GND,ground family
-U4,7,DAT0,TODO_U4_DAT0,
-U4,8,DAT1,TODO_U4_DAT1,
-U4,9,CARD_DETECT,TODO_U4_CARD_DETECT,
-U4,10,GROUND,TODO_U4_GROUND,
-D1,1,I/O1,TODO_D1_I/O1,
+U4,7,DAT0,SD_D0,DAT0 -> PF1
+U4,8,DAT1,SD_D1,DAT1 -> PF0
+U4,9,CARD_DETECT,SD_CD,"mechanical card-detect switch (closes to pin10/GND on insert). NO pull-up allocated & no explicit T113 GPIO in PINOUT — verify (spare GPIO+pull-up, or broken-cd/non-removable)"
+U4,10,GROUND,GND,socket shell/mechanical ground; CD switch return
+D1,1,I/O1,SD_CLK,SP3004 ch I/O1 shunt-clamp on SD_CLK
 D1,2,GND,GND,ground family
-D1,3,I/O2,TODO_D1_I/O2,
-D1,4,I/O3,TODO_D1_I/O3,
+D1,3,I/O2,SD_CMD,I/O2 clamp on SD_CMD
+D1,4,I/O3,SD_D0,I/O3 clamp on SD_D0
 D1,5,VCC,+3V3,rail: SD-line ESD clamp ref = 3.3V
-D1,6,I/O4,TODO_D1_I/O4,
-D2,1,I/O1,TODO_D2_I/O1,
+D1,6,I/O4,SD_D1,I/O4 clamp on SD_D1
+D2,1,I/O1,SD_D2,SP3004 ch I/O1 clamp on SD_D2
 D2,2,GND,GND,ground family
-D2,3,I/O2,TODO_D2_I/O2,
-D2,4,I/O3,TODO_D2_I/O3,
+D2,3,I/O2,SD_D3,I/O2 clamp on SD_D3
+D2,4,I/O3,,spare/NC — unused ESD channel (6 SD lines fill 4+2; CD not protected per BOM #13)
 D2,5,VCC,+3V3,rail: SD-line ESD clamp ref = 3.3V
-D2,6,I/O4,TODO_D2_I/O4,
-R6,1,1,TODO_R6_1,
-R6,2,2,TODO_R6_2,
-R7,1,1,TODO_R7_1,
-R7,2,2,TODO_R7_2,
-R8,1,1,TODO_R8_1,
-R8,2,2,TODO_R8_2,
-R9,1,1,TODO_R9_1,
-R9,2,2,TODO_R9_2,
-R10,1,1,TODO_R10_1,
-R10,2,2,TODO_R10_2,
-R11,1,1,TODO_R11_1,
-R11,2,2,TODO_R11_2,
-X1,1,OSC1,TODO_X1_OSC1,
+D2,6,I/O4,,spare/NC — unused ESD channel
+R6,1,1,SD_CMD,10k SD pull-up (bank pairing arbitrary)
+R6,2,2,+3V3,
+R7,1,1,SD_D0,10k SD pull-up
+R7,2,2,+3V3,
+R8,1,1,SD_D1,10k SD pull-up
+R8,2,2,+3V3,
+R9,1,1,SD_D2,10k SD pull-up
+R9,2,2,+3V3,
+R10,1,1,SD_D3,10k SD pull-up
+R10,2,2,+3V3,
+R11,1,1,RESET,10k RESET pull-up
+R11,2,2,VCC_RTC,"pull-up rail = 1.8V VCC-RTC, NOT 3V3 (RESET buffer abs-max 2.16V) per PINOUT pin27/BOM #14"
+X1,1,OSC1,HOSC_IN,"24MHz xtal OSC1 -> T113 DXIN (pin23); crystal symmetric, polarity must match U1"
 X1,2,GND,GND,ground family
-X1,3,OSC2,TODO_X1_OSC2,
+X1,3,OSC2,HOSC_OUT,OSC2 -> T113 DXOUT (pin22)
 X1,4,GND,GND,ground family
-X2,1,1,TODO_X2_1,
-X2,2,2,TODO_X2_2,
-C3,1,1,TODO_C3_1,
-C3,2,2,TODO_C3_2,
-C4,1,1,TODO_C4_1,
-C4,2,2,TODO_C4_2,
-C5,1,1,TODO_C5_1,
-C5,2,2,TODO_C5_2,
-C6,1,1,TODO_C6_1,
-C6,2,2,TODO_C6_2,
-C7,1,1,TODO_C7_1,
-C7,2,2,TODO_C7_2,
-C8,1,1,TODO_C8_1,
-C8,2,2,TODO_C8_2,
-C9,1,1,TODO_C9_1,
-C9,2,2,TODO_C9_2,
-C10,1,1,TODO_C10_1,
-C10,2,2,TODO_C10_2,
-C11,1,1,TODO_C11_1,
-C11,2,2,TODO_C11_2,
-C12,1,1,TODO_C12_1,
-C12,2,2,TODO_C12_2,
-C13,1,1,TODO_C13_1,
-C13,2,2,TODO_C13_2,
-C14,1,1,TODO_C14_1,
-C14,2,2,TODO_C14_2,
-C15,1,1,TODO_C15_1,
-C15,2,2,TODO_C15_2,
-C16,1,1,TODO_C16_1,
-C16,2,2,TODO_C16_2,
-C17,1,1,TODO_C17_1,
-C17,2,2,TODO_C17_2,
-C18,1,1,TODO_C18_1,
-C18,2,2,TODO_C18_2,
-C19,1,1,TODO_C19_1,
-C19,2,2,TODO_C19_2,
-C20,1,1,TODO_C20_1,
-C20,2,2,TODO_C20_2,
-C21,1,1,TODO_C21_1,
-C21,2,2,TODO_C21_2,
-C22,1,1,TODO_C22_1,
-C22,2,2,TODO_C22_2,
-C23,1,1,TODO_C23_1,
-C23,2,2,TODO_C23_2,
-C24,1,1,TODO_C24_1,
-C24,2,2,TODO_C24_2,
-C25,1,1,TODO_C25_1,
-C25,2,2,TODO_C25_2,
-C26,1,1,TODO_C26_1,
-C26,2,2,TODO_C26_2,
-C27,1,1,TODO_C27_1,
-C27,2,2,TODO_C27_2,
-C28,1,1,TODO_C28_1,
-C28,2,2,TODO_C28_2,
-C29,1,1,TODO_C29_1,
-C29,2,2,TODO_C29_2,
-C30,1,1,TODO_C30_1,
-C30,2,2,TODO_C30_2,
-C31,1,1,TODO_C31_1,
-C31,2,2,TODO_C31_2,
-C32,1,1,TODO_C32_1,
-C32,2,2,TODO_C32_2,
-C33,1,1,TODO_C33_1,
-C33,2,2,TODO_C33_2,
-C34,1,1,TODO_C34_1,
-C34,2,2,TODO_C34_2,
-C35,1,1,TODO_C35_1,
-C35,2,2,TODO_C35_2,
-C36,1,1,TODO_C36_1,
-C36,2,2,TODO_C36_2,
-C37,1,1,TODO_C37_1,
-C37,2,2,TODO_C37_2,
-C38,1,1,TODO_C38_1,
-C38,2,2,TODO_C38_2,
-C39,1,1,TODO_C39_1,
-C39,2,2,TODO_C39_2,
-C40,1,1,TODO_C40_1,
-C40,2,2,TODO_C40_2,
-C41,1,1,TODO_C41_1,
-C41,2,2,TODO_C41_2,
-C42,1,1,TODO_C42_1,
-C42,2,2,TODO_C42_2,
-C43,1,1,TODO_C43_1,
-C43,2,2,TODO_C43_2,
-C44,1,1,TODO_C44_1,
-C44,2,2,TODO_C44_2,
-SW1,1,A,TODO_SW1_A,
-SW1,2,B,TODO_SW1_B,
-SW1,3,C,TODO_SW1_C,
-SW1,4,D,TODO_SW1_D,
-U5,1,-,TODO_U5_-,
-U5,2,+,TODO_U5_+,
-R12,1,1,TODO_R12_1,
-R12,2,2,TODO_R12_2,
-P1,1,1,TODO_P1_1,
-P1,2,2,TODO_P1_2,
-P1,3,3,TODO_P1_3,
-P1,4,4,TODO_P1_4,
-P1,5,5,TODO_P1_5,
-P1,6,6,TODO_P1_6,
-P1,7,7,TODO_P1_7,
-P1,8,8,TODO_P1_8,
-P1,9,9,TODO_P1_9,
-P1,10,10,TODO_P1_10,
-P1,11,11,TODO_P1_11,
-P1,12,12,TODO_P1_12,
-P1,13,13,TODO_P1_13,
-P1,14,14,TODO_P1_14,
-P1,15,15,TODO_P1_15,
-P1,16,16,TODO_P1_16,
-P1,17,17,TODO_P1_17,
-P1,18,18,TODO_P1_18,
-P1,19,19,TODO_P1_19,
-P1,20,20,TODO_P1_20,
-P1,21,21,TODO_P1_21,
-P1,22,22,TODO_P1_22,
-P1,23,23,TODO_P1_23,
-P1,24,24,TODO_P1_24,
-P1,25,25,TODO_P1_25,
-P1,26,26,TODO_P1_26,
-P1,27,27,TODO_P1_27,
-P1,28,28,TODO_P1_28,
-P1,29,29,TODO_P1_29,
-P1,30,30,TODO_P1_30,
-P1,31,31,TODO_P1_31,
-P1,32,32,TODO_P1_32,
-P1,33,33,TODO_P1_33,
-P1,34,34,TODO_P1_34,
-P1,35,35,TODO_P1_35,
-P1,36,36,TODO_P1_36,
-P1,37,37,TODO_P1_37,
-P1,38,38,TODO_P1_38,
-P1,39,39,TODO_P1_39,
-P1,40,40,TODO_P1_40,
-P1,41,41,TODO_P1_41,
-P1,42,42,TODO_P1_42,
-FPC1,1,1,TODO_FPC1_1,
-FPC1,2,2,TODO_FPC1_2,
-FPC1,3,3,TODO_FPC1_3,
-FPC1,4,4,TODO_FPC1_4,
-FPC1,5,5,TODO_FPC1_5,
-FPC1,6,6,TODO_FPC1_6,
-FPC1,7,7,TODO_FPC1_7,
-FPC1,8,8,TODO_FPC1_8,
+X2,1,1,RTC_IN,32.768kHz OSC -> T113 X32KIN (pin25); polarity symmetric
+X2,2,2,RTC_OUT,-> T113 X32KOUT (pin24)
+C3,1,1,HOSC_IN,22pF HOSC load cap
+C3,2,2,GND,
+C4,1,1,HOSC_OUT,22pF HOSC load cap
+C4,2,2,GND,
+C5,1,1,RTC_IN,18pF RTC load cap
+C5,2,2,GND,
+C6,1,1,RTC_OUT,18pF RTC load cap
+C6,2,2,GND,
+C7,1,1,+3V3,100nF per-ball decoupling; +3V3 SoC supply balls (7 balls: 29/34/66/77/83/107/128). Cap<->ball pairing census-based
+C7,2,2,GND,
+C8,1,1,+3V3,100nF +3V3 ball decoupling
+C8,2,2,GND,
+C9,1,1,+3V3,100nF +3V3 ball decoupling
+C9,2,2,GND,
+C10,1,1,+3V3,100nF +3V3 ball decoupling
+C10,2,2,GND,
+C11,1,1,+3V3,100nF +3V3 ball decoupling
+C11,2,2,GND,
+C12,1,1,+3V3,100nF +3V3 ball decoupling
+C12,2,2,GND,
+C13,1,1,+3V3,100nF +3V3 ball decoupling
+C13,2,2,GND,
+C14,1,1,+0V9,100nF core-rail decoupling (+0V9 balls 46/51/81/116/117)
+C14,2,2,GND,
+C15,1,1,+0V9,100nF +0V9 ball decoupling
+C15,2,2,GND,
+C16,1,1,+0V9,100nF +0V9 ball decoupling
+C16,2,2,GND,
+C17,1,1,+0V9,100nF +0V9 ball decoupling
+C17,2,2,GND,
+C18,1,1,+0V9,100nF +0V9 ball decoupling
+C18,2,2,GND,
+C19,1,1,LDOA,100nF internal LDO-A bypass (balls 20/26/28/50/65/89/97); dict: LDOA-OUT net
+C19,2,2,GND,
+C20,1,1,LDOA,100nF LDO-A bypass
+C20,2,2,GND,
+C21,1,1,LDOA,100nF LDO-A bypass
+C21,2,2,GND,
+C22,1,1,LDOA,100nF LDO-A bypass
+C22,2,2,GND,
+C23,1,1,LDOA,100nF LDO-A bypass
+C23,2,2,GND,
+C24,1,1,LDOA,100nF LDO-A bypass
+C24,2,2,GND,
+C25,1,1,LDOA,100nF LDO-A bypass
+C25,2,2,GND,
+C26,1,1,LDOB,100nF internal LDO-B (1.5V DDR / VCC-DRAM) bypass (balls 30/48/49); dict: LDOB-OUT net
+C26,2,2,GND,
+C27,1,1,LDOB,100nF LDO-B bypass
+C27,2,2,GND,
+C28,1,1,LDOB,100nF LDO-B bypass
+C28,2,2,GND,
+C29,1,1,+3V3,100nF SPI-NOR (U3) VCC decoupling (BOM #19 'flash')
+C29,2,2,GND,
+C30,1,1,+3V3,100nF microSD (U4) VDD decoupling (BOM #19 'SD')
+C30,2,2,GND,
+C31,1,1,RESET,100nF RESET debounce cap -> GND (BOM #22 'RESET + 100nF')
+C31,2,2,GND,
+C32,1,1,+5V,10uF bulk on 5V VBUS (BOM #20 Rev-A brownout fix)
+C32,2,2,GND,
+C33,1,1,SYS,10uF bulk on SYS rail (BOM #20 Rev-A brownout fix)
+C33,2,2,GND,
+C34,1,1,+0V9,10uF FP6161 core-buck (#3) output bulk (BOM #20)
+C34,2,2,GND,
+C35,1,1,+3V3,10uF general bulk on +3V3
+C35,2,2,GND,
+C36,1,1,+3V3,10uF general bulk on +3V3
+C36,2,2,GND,
+C37,1,1,+3V3,10uF general bulk on +3V3
+C37,2,2,GND,
+C38,1,1,+3V3,10uF general bulk on +3V3
+C38,2,2,GND,
+C39,1,1,+3V3,10uF general bulk on +3V3
+C39,2,2,GND,
+C40,1,1,+3V3,10uF general bulk on +3V3
+C40,2,2,GND,
+C41,1,1,+3V3,4.7uF general bulk on +3V3 (BOM #21)
+C41,2,2,GND,
+C42,1,1,+3V3,4.7uF general bulk on +3V3
+C42,2,2,GND,
+C43,1,1,+3V3,4.7uF general bulk on +3V3
+C43,2,2,GND,
+C44,1,1,+3V3,4.7uF general bulk on +3V3
+C44,2,2,GND,
+SW1,1,A,RESET,RESET tactile; A/B assumed common (->RESET) — verify tactile footprint pin pairing
+SW1,2,B,RESET,B common with A
+SW1,3,C,GND,C common with D (-> GND); button shorts RESET->GND when pressed
+SW1,4,D,GND,D common with C
+U5,1,-,GND,power LED cathode(-) -> GND
+U5,2,+,PWR_LED_A,power LED anode(+) -> R12 junction
+R12,1,1,+3V3,510R power-LED limit off +3V3 (always-on)
+R12,2,2,PWR_LED_A,to LED anode
+P1,1,1,BL_LED_N,VLED- (LED string cathode); returns to TPS61165 U6 FB pin. Shared with U6.6.
+P1,2,2,BL_LED_P,VLED+ (LED string anode) = boost VOUT node (D3 cathode + C45).
+P1,3,3,GND,panel GND
+P1,4,4,+3V3,VDD panel logic supply
+P1,5,5,GND,Red R0 (LSB) tied low — T113 drives only top 6 bits (RGB666). VERIFY panel bit order before copper.
+P1,6,6,GND,Red R1 tied low — RGB666 6-MSB scheme.
+P1,7,7,RGB_R2,Red R2. Channel/bit order is copper-committing unknown (see PINOUT.md) — confirm vs Zettler map.
+P1,8,8,RGB_R3,Red R3
+P1,9,9,RGB_R4,Red R4
+P1,10,10,RGB_R5,Red R5
+P1,11,11,RGB_R6,Red R6
+P1,12,12,RGB_R7,Red R7 (MSB)
+P1,13,13,GND,Green G0 (LSB) tied low — 6-MSB scheme.
+P1,14,14,GND,Green G1 tied low.
+P1,15,15,RGB_G2,Green G2
+P1,16,16,RGB_G3,Green G3
+P1,17,17,RGB_G4,Green G4
+P1,18,18,RGB_G5,Green G5
+P1,19,19,RGB_G6,Green G6
+P1,20,20,RGB_G7,Green G7 (MSB)
+P1,21,21,GND,Blue B0 (LSB) tied low — 6-MSB scheme.
+P1,22,22,GND,Blue B1 tied low.
+P1,23,23,RGB_B2,Blue B2
+P1,24,24,RGB_B3,Blue B3
+P1,25,25,RGB_B4,Blue B4
+P1,26,26,RGB_B5,Blue B5
+P1,27,27,RGB_B6,Blue B6
+P1,28,28,RGB_B7,Blue B7 (MSB)
+P1,29,29,GND,panel GND
+P1,30,30,RGB_DCLK,pixel clock (CLK)
+P1,31,31,PANEL_DISP,"DISP display-on; needs 10K pull-up (PINOUT.md) — pull-up R not in this subsystem, verify placed elsewhere."
+P1,32,32,RGB_HSYNC,HSYNC (tie low if DE-only mode)
+P1,33,33,RGB_VSYNC,VSYNC (tie low if DE-only mode)
+P1,34,34,RGB_DE,data enable
+P1,35,35,,spare/NC — panel pin35=NC per datasheet
+P1,36,36,GND,panel GND
+P1,37,37,,spare/NC — panel pins 37-40 all NC per datasheet p.4
+P1,38,38,,spare/NC — panel pin38=NC
+P1,39,39,,spare/NC — panel pin39=NC
+P1,40,40,,spare/NC — panel pin40=NC
+P1,41,41,GND,"assumed FPC shield/mechanical mount tab -> GND. VERIFY vs symbol pin order (40-pin conn, symbol shows 42)."
+P1,42,42,GND,assumed FPC shield/mechanical mount tab -> GND. VERIFY vs symbol.
+FPC1,1,1,+3V3,"touch VDD (FT7311, 2.8-3.3V)"
+FPC1,2,2,GND,touch GND
+FPC1,3,3,I2C1_SCL,touch I2C clock -> T113 PG-bank I2C1
+FPC1,4,4,I2C1_SDA,touch I2C data -> I2C1
+FPC1,5,5,TOUCH_INT,FT7311 INT -> T113 PE8 (EINT)
+FPC1,6,6,TOUCH_RST,FT7311 RST -> T113 PE9
+FPC1,7,7,GND,connector is 6-pin (HDGC 1.0K-1.5-6PWB) but symbol shows 8 pins; assumed shield/mount tab -> GND. VERIFY symbol pin order/count.
+FPC1,8,8,GND,assumed shield/mount tab -> GND (see pin7). VERIFY symbol.
 U6,1,VIN,SYS,rail: #28 VIN from SYS/5V not 3.3V (REVIEW: SYS vs +5V)
-U6,2,CTRL,TODO_U6_CTRL,
-U6,3,SW,TODO_U6_SW,
+U6,2,CTRL,BL_CTRL,CTRL brightness control -> T113 PE6 (EasyScale/PWM). Cross-chip dictionary net.
+U6,3,SW,BL_SW,boost switch node: to L2 (VIN side of inductor) and D3 anode. Section-local.
 U6,4,GND,GND,ground family
-U6,5,COMP,TODO_U6_COMP,
-U6,6,FB,TODO_U6_FB,
-L2,1,1,TODO_L2_1,
-L2,2,2,TODO_L2_2,
-D3,1,K,TODO_D3_K,
-D3,2,A,TODO_D3_A,
-C45,1,1,TODO_C45_1,
-C45,2,2,TODO_C45_2,
-C46,1,1,TODO_C46_1,
-C46,2,2,TODO_C46_2,
-C47,1,1,TODO_C47_1,
-C47,2,2,TODO_C47_2,
-U7,1,SDO/SA0,TODO_U7_SDO/SA0,
-U7,2,SDX,TODO_U7_SDX,
-U7,3,SCX,TODO_U7_SCX,
-U7,4,INT1,TODO_U7_INT1,
+U6,5,COMP,BL_COMP,COMP error-amp output -> C47 to GND. Section-local.
+U6,6,FB,BL_LED_N,FB current-sense = LED string cathode = P1.1. Rset (5.1R) from FB to GND is MISSING as a placed part in netlist — see uncertainties.
+L2,1,1,SYS,"boost inductor VIN side (=U6 VIN rail, SYS). Inductor non-polar; orientation arbitrary."
+L2,2,2,BL_SW,boost inductor SW-node side -> U6 SW + D3 anode.
+D3,1,K,BL_LED_P,SS16 cathode (K) = boost output / LED anode -> P1.2 + C45.
+D3,2,A,BL_SW,SS16 anode (A) at switch node -> U6 SW + L2.
+C45,1,1,BL_LED_P,"Cout boost output cap, hot side to VOUT/LED anode."
+C45,2,2,GND,Cout return to GND.
+C46,1,1,SYS,"Cin boost input cap, to VIN rail (SYS)."
+C46,2,2,GND,Cin return to GND.
+C47,1,1,BL_COMP,"COMP compensation cap, to U6 COMP pin."
+C47,2,2,GND,COMP cap return to GND.
+U7,1,SDO/SA0,GND,SDO/SA0 strap → GND sets I2C addr 0x6A (BOM #39); must not float
+U7,2,SDX,GND,"SDx: Mode-1 unused aux, hard-tie to GND per DS Table 1 (no pull-R, must not float)"
+U7,3,SCX,GND,"SCx: Mode-1 unused aux, hard-tie to GND per DS Table 1 (no pull-R, must not float)"
+U7,4,INT1,IMU_INT1,INT1 → T113 PE0; R13 10k pulldown on this net guarantees I2C-not-I3C at POR (must NOT pull to VDDIO)
 U7,5,VDDIO,+3V3,rail: IMU IO 3.3V (REVIEW)
 U7,6,GND,GND,ground family
 U7,7,GND,GND,ground family
 U7,8,VDD,+3V3,rail: IMU 3.3V (REVIEW: rail not explicit)
-U7,9,INT2,TODO_U7_INT2,
-U7,10,OSC_AUX,TODO_U7_OSC_AUX,
-U7,11,SDO_AUX,TODO_U7_SDO_AUX,
-U7,12,CS,TODO_U7_CS,
+U7,9,INT2,IMU_INT2,"INT2 → T113 PE1 EINT (programmable, no tie)"
+U7,10,OSC_AUX,,"spare/NC: OCS_Aux, DS says leave unconnected in Mode 1; do NOT tie (could perturb aux path)"
+U7,11,SDO_AUX,,"spare/NC: SDO_Aux, left unconnected (DS allows tie to VDDIO as alternative — either valid)"
+U7,12,CS,+3V3,CS high selects I2C mode (BOM #38); ties to VDDIO = +3V3
 U7,13,SCL,I2C2_SCL,I2C2 bus
 U7,14,SDA,I2C2_SDA,I2C2 bus
-C48,1,1,TODO_C48_1,
-C48,2,2,TODO_C48_2,
-C49,1,1,TODO_C49_1,
-C49,2,2,TODO_C49_2,
-R13,1,1,TODO_R13_1,
-R13,2,2,TODO_R13_2,
-U8,1,REG,TODO_U8_REG,
+C48,1,1,+3V3,"100nF IMU VDD (pin8) decoupling, hot side to +3V3"
+C48,2,2,GND,"100nF IMU VDD decoupling, return to GND"
+C49,1,1,+3V3,"100nF IMU VDDIO (pin5) decoupling, hot side to +3V3"
+C49,2,2,GND,"100nF IMU VDDIO decoupling, return to GND"
+R13,1,1,IMU_INT1,"10k INT1 pulldown, top side on INT1 net"
+R13,2,2,GND,"10k INT1 pulldown, bottom to GND"
+U8,1,REG,HAP_REG,REG = internal LDO output; local node to C50 1uF-to-GND (section-local net name)
 U8,2,SCL,I2C1_SCL,I2C1 bus
 U8,3,SDA,I2C1_SDA,I2C1 bus
-U8,4,IN/TRIG,TODO_U8_IN/TRIG,
-U8,5,EN,TODO_U8_EN,
-U8,6,VDD/NC,TODO_U8_VDD/NC,
-U8,7,OUT+,TODO_U8_OUT+,
+U8,4,IN/TRIG,GND,IN/TRIG tied to GND for I2C-only internal-trigger mode (BOM #44)
+U8,5,EN,+3V3,"EN tied high per BOM #41 (always-enabled, SW standby via I2C). No dedicated MCU enable GPIO in PINOUT — VERIFY if hardware enable control is desired"
+U8,6,VDD/NC,+3V3,"VDD/NC tied to +3V3 (same as pin10); DS: shares H-bridge supply, caps #43/#45 serve both"
+U8,7,OUT+,LRA_P,"OUT+ → LRA actuator terminal (solder direct to Vybronics VG0832022D, no connector)"
 U8,8,GND,GND,ground family
-U8,9,OUT-,TODO_U8_OUT-,
+U8,9,OUT-,LRA_N,"OUT- → LRA actuator terminal (solder direct, no connector)"
 U8,10,VDD,+3V3,rail: #41 VDD on 3.3V not SYS
-C50,1,1,TODO_C50_1,
-C50,2,2,TODO_C50_2,
-C51,1,1,TODO_C51_1,
-C51,2,2,TODO_C51_2,
-C52,1,1,TODO_C52_1,
-C52,2,2,TODO_C52_2,
-U9,1,DIN,TODO_U9_DIN,
-U9,2,GAIN_SLOT,TODO_U9_GAIN_SLOT,
+C50,1,1,HAP_REG,"1uF REG cap, hot side on REG node (mandatory internal-LDO stability, place close)"
+C50,2,2,GND,"1uF REG cap, return to GND"
+C51,1,1,+3V3,"100nF haptic VDD HF bypass, hot side to +3V3"
+C51,2,2,GND,"100nF haptic VDD bypass, return to GND"
+C52,1,1,+3V3,"10uF haptic VDD bulk (sources motor/overdrive pulse), hot side to +3V3"
+C52,2,2,GND,"10uF haptic VDD bulk, return to GND"
+U9,1,DIN,I2S1_DOUT,DIN <- T113 I2S1 DOUT (PG15). Multi-drop with PCM5102A DAC per PINOUT.md.
+U9,2,GAIN_SLOT,SYS,"GAIN_SLOT tied directly to VDD(=SYS) => 6 dB gain (datasheet gain trip points are ratios of VDD, so must tie to amp VDD rail = SYS, not +3V3; BOM.md #49 confirms VDD tie = 6 dB)."
 U9,3,GND,GND,ground family
-U9,4,~{SD_MODE},TODO_U9_~{SD_MODE},
-U9,5,N.C.,TODO_U9_N.C.,
-U9,6,N.C.,TODO_U9_N.C.,
+U9,4,~{SD_MODE},SPK_SD,"~SD_MODE shutdown/channel-select; joins T113 PE13 open-drain SPK_SD net and R14 strap. hi-Z=mono run, low=mute."
+U9,5,N.C.,,"spare/NC (datasheet N.C., no internal connection)"
+U9,6,N.C.,,"spare/NC (datasheet N.C., no internal connection)"
 U9,7,VDD,SYS,rail: #47 VDD on SYS
 U9,8,VDD,SYS,rail: #47 VDD on SYS
-U9,9,OUTP,TODO_U9_OUTP,
-U9,10,OUTN,TODO_U9_OUTN,
+U9,9,OUTP,SPK_P,"OUTP -> speaker + terminal; filterless output, leads solder direct per BOM.md."
+U9,10,OUTN,SPK_N,OUTN -> speaker - terminal; filterless output.
 U9,11,GND,GND,ground family
-U9,12,N.C.,TODO_U9_N.C.,
-U9,13,N.C.,TODO_U9_N.C.,
-U9,14,LRCLK,TODO_U9_LRCLK,
+U9,12,N.C.,,"spare/NC (datasheet N.C., no internal connection)"
+U9,13,N.C.,,"spare/NC (datasheet N.C., no internal connection)"
+U9,14,LRCLK,I2S1_LRCK,LRCLK <- T113 I2S1 LRCK (PG12).
 U9,15,GND,GND,ground family
-U9,16,BCLK,TODO_U9_BCLK,
+U9,16,BCLK,I2S1_BCLK,BCLK <- T113 I2S1 BCLK (PG13). No MCLK needed.
 U9,17,EP,GND,ground family
-R14,1,1,TODO_R14_1,
-R14,2,2,TODO_R14_2,
-C53,1,1,TODO_C53_1,
-C53,2,2,TODO_C53_2,
-C54,1,1,TODO_C54_1,
-C54,2,2,TODO_C54_2,
-U10,1,TS,TODO_U10_TS,
-U10,2,BAT,TODO_U10_BAT,
-U10,3,BAT,TODO_U10_BAT,
-U10,4,~{CE},TODO_U10_~{CE},
-U10,5,EN2,TODO_U10_EN2,
-U10,6,EN1,TODO_U10_EN1,
-U10,7,~{PGOOD},TODO_U10_~{PGOOD},
+R14,1,1,SPK_SD,SD/MODE strap: shares SD_MODE node with U9.4 and T113 PE13 (SPK_SD).
+R14,2,2,+3V3,"680k pullup to +3V3 (VDDIO): datasheet Table 6 RLARGE=634k for VDDIO=3.3V selects (L/2+R/2) mono; 680k is nearest E-series. Pull rail keyed to +3V3 because RLARGE for SYS(4.2V) would be ~878k, not 680k. VERIFY rail vs schematic (both +3V3 and SYS electrically select mono, but 680k value points to +3V3)."
+C53,1,1,SYS,VDD bypass 100nF to amp VDD rail (=SYS).
+C53,2,2,GND,VDD bypass return.
+C54,1,1,SYS,VDD bulk 10uF to amp VDD rail (=SYS).
+C54,2,2,GND,VDD bulk return.
+U10,1,TS,CHG_TS,NTC-defeat: R17 10k from TS to GND (DS: no-NTC apps tie a fixed 10k TS->VSS)
+U10,2,BAT,BAT,"battery+ / power-path (pins 2,3)"
+U10,3,BAT,BAT,"battery+ / power-path (pins 2,3)"
+U10,4,~{CE},GND,~CE active-low chip-enable tied low = charger enabled (must not float)
+U10,5,EN2,CHG_EN2,EN2 -> R18 0R strap -> SYS_SRC(OUT); EN2=1/EN1=0 selects ILIM-resistor mode
+U10,6,EN1,GND,EN1 low
+U10,7,~{PGOOD},CHG_PGOOD,/PGOOD open-drain; R28 pull-up to +3V3; goes to T113 PB4
 U10,8,VSS,GND,ground family
-U10,9,~{CHG},TODO_U10_~{CHG},
-U10,10,OUT,TODO_U10_OUT,
-U10,11,OUT,TODO_U10_OUT,
-U10,12,ILIM,TODO_U10_ILIM,
-U10,13,IN,TODO_U10_IN,
-U10,14,TMR,TODO_U10_TMR,
-U10,15,ITERM,TODO_U10_ITERM,
-U10,16,ISET,TODO_U10_ISET,
+U10,9,~{CHG},CHG_LED_K,"/CHG open-drain, sinks charge-status LED U14 cathode"
+U10,10,OUT,SYS_SRC,"charger OUT = supply/upstream side of INA226 shunt (SYS_SRC), before R27; distinct from post-shunt SYS distribution"
+U10,11,OUT,SYS_SRC,"charger OUT (pins 10,11)"
+U10,12,ILIM,CHG_ILIM,ILIM -> R16 1.2k -> GND (input current limit ~1.34A)
+U10,13,IN,+5V,charger IN from USB-C VBUS (+5V); C55 IN cap
+U10,14,TMR,,spare/NC: TMR left unconnected = default safety timers per DS (no timer-set R allocated in BOM). VERIFY intent (or tie to VSS to disable timers)
+U10,15,ITERM,,spare/NC: ITERM left unconnected = default 10% termination per DS (no R allocated in BOM). VERIFY intent
+U10,16,ISET,CHG_ISET,ISET -> R15 2.0k -> GND (charge current ~445mA)
 U10,17,EP,GND,ground family
-C55,1,1,TODO_C55_1,
-C55,2,2,TODO_C55_2,
-C56,1,1,TODO_C56_1,
-C56,2,2,TODO_C56_2,
-C57,1,1,TODO_C57_1,
-C57,2,2,TODO_C57_2,
-R15,1,1,TODO_R15_1,
-R15,2,2,TODO_R15_2,
-R16,1,1,TODO_R16_1,
-R16,2,2,TODO_R16_2,
-R17,1,1,TODO_R17_1,
-R17,2,2,TODO_R17_2,
-R18,1,1,TODO_R18_1,
-R18,2,2,TODO_R18_2,
-U11,1,VDD,TODO_U11_VDD,"NO-RAIL: fed via 1k from +5V (#62) — own node, not a rail"
-U11,2,CFG2,TODO_U11_CFG2,
-U11,3,CFG3,TODO_U11_CFG3,
-U11,4,DP,TODO_U11_DP,
-U11,5,DM,TODO_U11_DM,
-U11,6,CC2,TODO_U11_CC2,
-U11,7,CC1,TODO_U11_CC1,
+C55,1,1,+5V,charger IN cap 4.7uF -> GND
+C55,2,2,GND,
+C56,1,1,SYS_SRC,"charger OUT cap 10uF; sits on charger-output/supply side of shunt (SYS_SRC), not post-shunt SYS"
+C56,2,2,GND,
+C57,1,1,BAT,"charger BAT cap 10uF -> GND, near JST CN1"
+C57,2,2,GND,
+R15,1,1,CHG_ISET,ISET program R 2.0k
+R15,2,2,GND,
+R16,1,1,CHG_ILIM,ILIM program R 1.2k
+R16,2,2,GND,
+R17,1,1,CHG_TS,TS NTC-defeat 10k
+R17,2,2,GND,
+R18,1,1,CHG_EN2,EN2 0R strap
+R18,2,2,SYS_SRC,"strap EN2 to OUT node (SYS_SRC); SYS also acceptable (~same voltage), BOM says OUT/SYS"
+U11,1,VDD,CH224K_VDD,internal shunt-reg VDD; fed via R19 1k from +5V; C58 1uF bypass
+U11,2,CFG2,GND,CFG2 -> GND (5V request strap)
+U11,3,CFG3,GND,CFG3 -> GND (5V request strap)
+U11,4,DP,,spare/NC: DP unused — design requests fixed 5V via CC/CFG only; legacy BC1.2/QC DP-DM detection not used and USB2 data path is dedicated to T113 USB0. VERIFY no legacy-charger detect needed
+U11,5,DM,,spare/NC: DM unused — see pin 4
+U11,6,CC2,USBC_CC2,CH224K CC2 <-> USB-C connector CC2 (no external 5.1k CC pulldowns)
+U11,7,CC1,USBC_CC1,CH224K CC1 <-> USB-C connector CC1
 U11,8,VBUS,+5V,rail: #61 USB-C 5V rail sense
-U11,9,CFG1,TODO_U11_CFG1,
-U11,10,PG,TODO_U11_PG,
+U11,9,CFG1,CH224K_CFG1,CFG1 -> R20 10k -> +5V = request 5V (with CFG2/CFG3=GND)
+U11,10,PG,,spare/NC: PG power-good open-drain; BOM says leave open (optional pull-up to +3V3 for adapter-present)
 U11,11,GND,GND,ground family
-R19,1,1,TODO_R19_1,
-R19,2,2,TODO_R19_2,
-C58,1,1,TODO_C58_1,
-C58,2,2,TODO_C58_2,
-R20,1,1,TODO_R20_1,
-R20,2,2,TODO_R20_2,
-R21,1,1,TODO_R21_1,
-R21,2,2,TODO_R21_2,
+R19,1,1,+5V,CH224K VDD series R 1k from +5V
+R19,2,2,CH224K_VDD,
+C58,1,1,CH224K_VDD,CH224K VDD cap 1uF -> GND
+C58,2,2,GND,
+R20,1,1,CH224K_CFG1,CFG1 strap 10k
+R20,2,2,+5V,CFG1 pulled to VBUS(+5V) = 5V request
+R21,1,1,+5V,VBUS-sense R (to U11 pin8 which is committed +5V)
+R21,2,2,+5V,"DEGENERATE: BOM #65 intends R21 as a series hi-Z VBUS sense R between +5V rail and CH224K VBUS pin8, but pin8 is pre-committed = +5V, so both ends are +5V. To honor the sense-R intent, pin8 should be a separate VBUS_SENSE node fed only via R21. VERIFY"
 U12,1,VINA,SYS,rail: #66 buck-boost in=SYS
 U12,2,GND,GND,ground family
-U12,3,FB,TODO_U12_FB,
-U12,4,VOUT,TODO_U12_VOUT,
-U12,5,VOUT,TODO_U12_VOUT,
-U12,6,L2,TODO_U12_L2,
-U12,7,L2,TODO_U12_L2,
-U12,8,L1,TODO_U12_L1,
-U12,9,L1,TODO_U12_L1,
+U12,3,FB,BB_FB,FB -> R22 0R -> +3V3 (external rail sense for fixed-output DSJ part)
+U12,4,VOUT,+3V3,"VOUT = 3.3V rail (pins 4,5)"
+U12,5,VOUT,+3V3,
+U12,6,L2,BB_L2,"L2 switch node (pins 6,7) -> inductor L3"
+U12,7,L2,BB_L2,
+U12,8,L1,BB_L1,"L1 switch node (pins 8,9) -> inductor L3"
+U12,9,L1,BB_L1,
 U12,10,VIN,SYS,rail: #66 buck-boost in=SYS
 U12,11,VIN,SYS,rail: #66 buck-boost in=SYS
-U12,12,EN,TODO_U12_EN,
-U12,13,PS/SYNC,TODO_U12_PS/SYNC,
-U12,14,PG,TODO_U12_PG,
+U12,12,EN,PWR_EN,EN driven by STM6601 (U17) EN pin9; cross-subsystem net PWR_EN also feeds FP6161 (U2) RUN via RC R4/C2 — ensure U17/U2 owners use this exact name
+U12,13,PS/SYNC,BB_PSYNC,PS/SYNC -> R23 0R -> GND = power-save mode on
+U12,14,PG,,spare/NC: PG power-good open-drain; BOM silent — leave NC or add pull-up to +3V3
 U12,15,PGND,GND,ground family
-R22,1,1,TODO_R22_1,
-R22,2,2,TODO_R22_2,
-R23,1,1,TODO_R23_1,
-R23,2,2,TODO_R23_2,
-C59,1,1,TODO_C59_1,
-C59,2,2,TODO_C59_2,
-C60,1,1,TODO_C60_1,
-C60,2,2,TODO_C60_2,
-C61,1,1,TODO_C61_1,
-C61,2,2,TODO_C61_2,
-C62,1,1,TODO_C62_1,
-C62,2,2,TODO_C62_2,
-C63,1,1,TODO_C63_1,
-C63,2,2,TODO_C63_2,
-C64,1,1,TODO_C64_1,
-C64,2,2,TODO_C64_2,
-L3,1,1,TODO_L3_1,
-L3,2,2,TODO_L3_2,
-CN1,1,1,TODO_CN1_1,
-CN1,2,2,TODO_CN1_2,
-CN1,3,3,TODO_CN1_3,
-CN1,4,4,TODO_CN1_4,
-R24,1,1,TODO_R24_1,
-R24,2,2,TODO_R24_2,
-R25,1,1,TODO_R25_1,
-R25,2,2,TODO_R25_2,
-U13,1,CTG,TODO_U13_CTG,
-U13,2,CELL,TODO_U13_CELL,
+R22,1,1,BB_FB,FB tie 0R
+R22,2,2,+3V3,
+R23,1,1,BB_PSYNC,PS/SYNC strap 0R
+R23,2,2,GND,
+C59,1,1,SYS,VINA bypass 100nF (VINA=SYS)
+C59,2,2,GND,
+C60,1,1,SYS,buck-boost VIN input cap 10uF (VIN=SYS)
+C60,2,2,GND,
+C61,1,1,SYS,buck-boost VIN input cap 10uF
+C61,2,2,GND,
+C62,1,1,+3V3,buck-boost VOUT output cap 22uF
+C62,2,2,GND,
+C63,1,1,+3V3,buck-boost VOUT output cap 22uF
+C63,2,2,GND,
+C64,1,1,+3V3,buck-boost VOUT output cap 22uF
+C64,2,2,GND,
+L3,1,1,BB_L1,buck-boost inductor between L1 and L2 switch nodes
+L3,2,2,BB_L2,
+CN1,1,1,BAT,battery + (red). POLARITY is copper-committing: confirm pin1=+ against JST S2B-PH drawing + cell (reversed = destroyed cell). Footprint pads 1/2 are the 2.0mm contacts
+CN1,2,2,GND,battery - (black)
+CN1,3,3,GND,"mechanical board-lock tab (footprint pad 3) -> GND for retention; isolated from contacts, NC also acceptable. VERIFY"
+CN1,4,4,GND,mechanical board-lock tab (footprint pad 4) -> GND for retention
+R24,1,1,BAT,fuel divider R_top 180k: BAT -> midpoint
+R24,2,2,BAT_SENSE,
+R25,1,1,BAT_SENSE,fuel divider R_bot 100k: midpoint -> GND; BAT_SENSE -> T113 GPADC0 (pin101)
+R25,2,2,GND,
+U13,1,CTG,GND,CTG -> GND per DS
+U13,2,CELL,,spare/NC: CELL is NO-CONNECT per DS (single-cell; VDD does cell-sense)
 U13,3,VDD,BAT,rail: #77 VDD->battery+
 U13,4,GND,GND,ground family
-U13,5,~{ALRT},TODO_U13_~{ALRT},
-U13,6,QSTRT,TODO_U13_QSTRT,
+U13,5,~{ALRT},GAUGE_ALRT,~ALRT open-drain -> T113 PB5; needs pull-up to +3V3 (NONE allocated in BOM — add one). VERIFY
+U13,6,QSTRT,GND,QSTRT -> GND per DS
 U13,7,SCL,I2C1_SCL,I2C1 bus
 U13,8,SDA,I2C1_SDA,I2C1 bus
 U13,9,EP,GND,ground family
-C65,1,1,TODO_C65_1,
-C65,2,2,TODO_C65_2,
-U14,1,-,TODO_U14_-,
-U14,2,+,TODO_U14_+,
-R26,1,1,TODO_R26_1,
-R26,2,2,TODO_R26_2,
-U15,1,A1,TODO_U15_A1,
-U15,2,A0,TODO_U15_A0,
-U15,3,Alert,TODO_U15_Alert,
+C65,1,1,BAT,"MAX17048 VDD bypass 1uF (VDD=BAT), at pin3"
+C65,2,2,GND,
+U14,1,-,CHG_LED_K,charge-LED cathode(-) -> BQ24074 /CHG pin9 (open-drain sink)
+U14,2,+,CHG_LED_A,charge-LED anode(+) -> R26 -> +3V3
+R26,1,1,+3V3,charge-LED limit R 510R
+R26,2,2,CHG_LED_A,
+U15,1,A1,GND,A1 -> GND (I2C addr 0x40)
+U15,2,A0,GND,A0 -> GND (I2C addr 0x40)
+U15,3,Alert,,spare/NC: Alert unused — INA226 polled via I2C hwmon; optional pull-up + spare GPIO if interrupt wanted
 U15,4,SDA,I2C1_SDA,I2C1 bus
 U15,5,SCL,I2C1_SCL,I2C1 bus
-U15,6,VS+,TODO_U15_VS+,
+U15,6,VS+,+3V3,VS supply (2.7-5.5V); +3V3 to match i2c1 logic; C66 decoupling. Rail not explicit in BOM — VERIFY
 U15,7,GND,GND,ground family
 U15,8,VBUS,SYS,rail: #81 bus-voltage SENSE pin -> SYS (not a supply)
-U15,9,VIN-,TODO_U15_VIN-,
-U15,10,VIN+,TODO_U15_VIN+,
-R27,1,1,TODO_R27_1,
-R27,2,2,TODO_R27_2,
-C66,1,1,TODO_C66_1,
-C66,2,2,TODO_C66_2,
-R28,1,1,TODO_R28_1,
-R28,2,2,TODO_R28_2,
-U16,1,~{INT},TODO_U16_~{INT},
-U16,2,A1,TODO_U16_A1,
-U16,3,A2,TODO_U16_A2,
-U16,4,P00,TODO_U16_P00,
-U16,5,P01,TODO_U16_P01,
-U16,6,P02,TODO_U16_P02,
-U16,7,P03,TODO_U16_P03,
-U16,8,P04,TODO_U16_P04,
-U16,9,P05,TODO_U16_P05,
-U16,10,P06,TODO_U16_P06,
-U16,11,P07,TODO_U16_P07,
+U15,9,VIN-,SYS,IN- = shunt LOAD side (DS pin9) = SYS distribution rail (VBUS also senses here)
+U15,10,VIN+,SYS_SRC,IN+ = shunt SUPPLY side (DS pin10) = charger-output node SYS_SRC
+R27,1,1,SYS_SRC,"10mR Kelvin shunt, supply side (charger OUT)"
+R27,2,2,SYS,shunt load side = SYS distribution; INA226 IN+/IN- sense across R27
+C66,1,1,+3V3,INA226 VS decoupling 100nF
+C66,2,2,GND,
+R28,1,1,CHG_PGOOD,/PGOOD pull-up 10k
+R28,2,2,+3V3,
+U16,1,~{INT},EXP_INT,PCA9555 ~INT open-drain -> EXP_INT (T113 PE7) + R29 pull-up to +3V3
+U16,2,A1,GND,A1 strap=0 for I2C base addr 0x20
+U16,3,A2,GND,A2 strap=0 for I2C base addr 0x20
+U16,4,P00,BTN_UP,"P00 input; D-pad SW2 (direction label nominal, set in gpio-keys keymap)"
+U16,5,P01,BTN_DOWN,P01 input; D-pad SW3 (label nominal)
+U16,6,P02,BTN_LEFT,P02 input; D-pad SW4 (label nominal)
+U16,7,P03,BTN_RIGHT,P03 input; D-pad SW5 (label nominal)
+U16,8,P04,BTN_A,P04 input; face SW6 (A/B/X/Y label nominal)
+U16,9,P05,BTN_B,P05 input; face SW7 (label nominal)
+U16,10,P06,BTN_X,P06 input; face SW8 (label nominal)
+U16,11,P07,BTN_Y,P07 input; face SW9 (label nominal)
 U16,12,GND,GND,ground family
-U16,13,P10,TODO_U16_P10,
-U16,14,P11,TODO_U16_P11,
-U16,15,P12,TODO_U16_P12,
-U16,16,P13,TODO_U16_P13,
-U16,17,P14,TODO_U16_P14,
-U16,18,P15,TODO_U16_P15,
-U16,19,P16,TODO_U16_P16,
-U16,20,P17,TODO_U16_P17,
-U16,21,A0,TODO_U16_A0,
+U16,13,P10,BTN_START,P10 input; SW10
+U16,14,P11,BTN_SELECT,P11 input; SW11
+U16,15,P12,BTN_VOLUP,P12 input; volume SW12
+U16,16,P13,BTN_VOLDOWN,P13 input; volume SW13
+U16,17,P14,BTN_L1,P14 input; L bumper SW15
+U16,18,P15,BTN_R1,P15 input; R bumper SW16
+U16,19,P16,,"P16 spare/NC expander input (14 buttons on 16 pins); PCA9555 POR internal ~100k pull-up holds it, leave open"
+U16,20,P17,,"P17 spare/NC expander input; internal pull-up holds it, leave open"
+U16,21,A0,GND,A0 strap=0 for I2C base addr 0x20
 U16,22,SCL,I2C1_SCL,I2C1 bus
 U16,23,SDA,I2C1_SDA,I2C1 bus
 U16,24,VCC,+3V3,rail: #85 i2c1 expander 3.3V logic
-SW2,1,A,TODO_SW2_A,
-SW2,2,B,TODO_SW2_B,
-SW2,3,C,TODO_SW2_C,
-SW2,4,D,TODO_SW2_D,
-SW3,1,A,TODO_SW3_A,
-SW3,2,B,TODO_SW3_B,
-SW3,3,C,TODO_SW3_C,
-SW3,4,D,TODO_SW3_D,
-SW4,1,A,TODO_SW4_A,
-SW4,2,B,TODO_SW4_B,
-SW4,3,C,TODO_SW4_C,
-SW4,4,D,TODO_SW4_D,
-SW5,1,A,TODO_SW5_A,
-SW5,2,B,TODO_SW5_B,
-SW5,3,C,TODO_SW5_C,
-SW5,4,D,TODO_SW5_D,
-SW6,1,A,TODO_SW6_A,
-SW6,2,B,TODO_SW6_B,
-SW6,3,C,TODO_SW6_C,
-SW6,4,D,TODO_SW6_D,
-SW7,1,A,TODO_SW7_A,
-SW7,2,B,TODO_SW7_B,
-SW7,3,C,TODO_SW7_C,
-SW7,4,D,TODO_SW7_D,
-SW8,1,A,TODO_SW8_A,
-SW8,2,B,TODO_SW8_B,
-SW8,3,C,TODO_SW8_C,
-SW8,4,D,TODO_SW8_D,
-SW9,1,A,TODO_SW9_A,
-SW9,2,B,TODO_SW9_B,
-SW9,3,C,TODO_SW9_C,
-SW9,4,D,TODO_SW9_D,
-SW10,1,A,TODO_SW10_A,
-SW10,2,B,TODO_SW10_B,
-SW10,3,C,TODO_SW10_C,
-SW10,4,D,TODO_SW10_D,
-SW11,1,A,TODO_SW11_A,
-SW11,2,B,TODO_SW11_B,
-SW11,3,C,TODO_SW11_C,
-SW11,4,D,TODO_SW11_D,
-R29,1,1,TODO_R29_1,
-R29,2,2,TODO_R29_2,
-C67,1,1,TODO_C67_1,
-C67,2,2,TODO_C67_2,
-SW12,1,1,TODO_SW12_1,
-SW12,2,2,TODO_SW12_2,
-SW12,3,3,TODO_SW12_3,
-SW12,4,4,TODO_SW12_4,
-SW12,5,5,TODO_SW12_5,
-SW13,1,1,TODO_SW13_1,
-SW13,2,2,TODO_SW13_2,
-SW13,3,3,TODO_SW13_3,
-SW13,4,4,TODO_SW13_4,
-SW13,5,5,TODO_SW13_5,
-SW14,1,1,TODO_SW14_1,
-SW14,2,2,TODO_SW14_2,
-SW14,3,3,TODO_SW14_3,
-SW14,4,4,TODO_SW14_4,
-SW14,5,5,TODO_SW14_5,
-SW15,1,1,TODO_SW15_1,
-SW15,2,2,TODO_SW15_2,
-SW15,3,3,TODO_SW15_3,
-SW15,4,4,TODO_SW15_4,
-SW15,5,5,TODO_SW15_5,
-SW16,1,1,TODO_SW16_1,
-SW16,2,2,TODO_SW16_2,
-SW16,3,3,TODO_SW16_3,
-SW16,4,4,TODO_SW16_4,
-SW16,5,5,TODO_SW16_5,
+SW2,1,A,BTN_UP,"TS-1187A tactile node = pads {1,3} (same left edge x=-3.0 => internally shorted). VERIFY vs symbol {1,2}/{3,4} (see uncertainties)"
+SW2,2,B,GND,"tactile GND node = pads {2,4} (same right edge x=+3.0)"
+SW2,3,C,BTN_UP,same node as pin1 (left-edge terminal)
+SW2,4,D,GND,same node as pin2 (right-edge terminal)
+SW3,1,A,BTN_DOWN,"tactile node pads {1,3}"
+SW3,2,B,GND,"tactile GND node pads {2,4}"
+SW3,3,C,BTN_DOWN,same node as pin1
+SW3,4,D,GND,same node as pin2
+SW4,1,A,BTN_LEFT,"tactile node pads {1,3}"
+SW4,2,B,GND,"tactile GND node pads {2,4}"
+SW4,3,C,BTN_LEFT,same node as pin1
+SW4,4,D,GND,same node as pin2
+SW5,1,A,BTN_RIGHT,"tactile node pads {1,3}"
+SW5,2,B,GND,"tactile GND node pads {2,4}"
+SW5,3,C,BTN_RIGHT,same node as pin1
+SW5,4,D,GND,same node as pin2
+SW6,1,A,BTN_A,"tactile node pads {1,3}"
+SW6,2,B,GND,"tactile GND node pads {2,4}"
+SW6,3,C,BTN_A,same node as pin1
+SW6,4,D,GND,same node as pin2
+SW7,1,A,BTN_B,"tactile node pads {1,3}"
+SW7,2,B,GND,"tactile GND node pads {2,4}"
+SW7,3,C,BTN_B,same node as pin1
+SW7,4,D,GND,same node as pin2
+SW8,1,A,BTN_X,"tactile node pads {1,3}"
+SW8,2,B,GND,"tactile GND node pads {2,4}"
+SW8,3,C,BTN_X,same node as pin1
+SW8,4,D,GND,same node as pin2
+SW9,1,A,BTN_Y,"tactile node pads {1,3}"
+SW9,2,B,GND,"tactile GND node pads {2,4}"
+SW9,3,C,BTN_Y,same node as pin1
+SW9,4,D,GND,same node as pin2
+SW10,1,A,BTN_START,"tactile node pads {1,3}"
+SW10,2,B,GND,"tactile GND node pads {2,4}"
+SW10,3,C,BTN_START,same node as pin1
+SW10,4,D,GND,same node as pin2
+SW11,1,A,BTN_SELECT,"tactile node pads {1,3}"
+SW11,2,B,GND,"tactile GND node pads {2,4}"
+SW11,3,C,BTN_SELECT,same node as pin1
+SW11,4,D,GND,same node as pin2
+R29,1,1,EXP_INT,10k INT pull-up: to expander ~INT / EXP_INT node
+R29,2,2,+3V3,"10k INT pull-up: to +3V3 (expander logic rail, open-drain INT)"
+C67,1,1,+3V3,100nF PCA9555 VCC decoupling: rail side
+C67,2,2,GND,100nF PCA9555 VCC decoupling: GND side
+SW12,1,1,GND,"ALPS SKRT: assumed common/outer contact -> GND (VERIFY grouping, see uncertainties)"
+SW12,2,2,BTN_VOLUP,ALPS SKRT: assumed center=switched contact -> expander P12
+SW12,3,3,GND,ALPS SKRT: outer contact -> GND
+SW12,4,4,GND,mechanical mounting lug -> GND
+SW12,5,5,GND,mechanical mounting lug -> GND
+SW13,1,1,GND,ALPS SKRT outer contact -> GND (VERIFY grouping)
+SW13,2,2,BTN_VOLDOWN,ALPS SKRT center=switched contact -> expander P13
+SW13,3,3,GND,ALPS SKRT outer contact -> GND
+SW13,4,4,GND,mounting lug -> GND
+SW13,5,5,GND,mounting lug -> GND
+SW14,1,1,GND,soft-power ALPS SKRT outer contact -> GND (VERIFY grouping)
+SW14,2,2,PWR_BTN,soft-power center contact -> PWR_BTN: drives STM6601 U17 /PB(pin6) AND native T113 EINT PE10 (wake/power-on)
+SW14,3,3,GND,soft-power outer contact -> GND
+SW14,4,4,GND,mounting lug -> GND
+SW14,5,5,GND,mounting lug -> GND
+SW15,1,1,GND,L bumper ALPS SKRT outer contact -> GND (VERIFY grouping)
+SW15,2,2,BTN_L1,L bumper center contact -> expander P14
+SW15,3,3,GND,L bumper outer contact -> GND
+SW15,4,4,GND,mounting lug -> GND
+SW15,5,5,GND,mounting lug -> GND
+SW16,1,1,GND,R bumper ALPS SKRT outer contact -> GND (VERIFY grouping)
+SW16,2,2,BTN_R1,R bumper center contact -> expander P15
+SW16,3,3,GND,R bumper outer contact -> GND
+SW16,4,4,GND,mounting lug -> GND
+SW16,5,5,GND,mounting lug -> GND
 U17,1,VCC,SYS,rail: #94 VCC always-on SYS
-U17,2,#SR,TODO_U17_#SR,
-U17,3,VREF,TODO_U17_VREF,
-U17,4,PS_HOLD,TODO_U17_PS_HOLD,
-U17,5,C_SRD,TODO_U17_C_SRD,
-U17,6,#PB,TODO_U17_#PB,
-U17,7,#VCC_LO,TODO_U17_#VCC_LO,
-U17,8,#PB_OUT,TODO_U17_#PB_OUT,
-U17,9,EN(#EN),TODO_U17_EN(#EN),
-U17,10,#RST,TODO_U17_#RST,
-U17,11,#INT,TODO_U17_#INT,
+U17,2,#SR,,STM6601 /SR Smart-Reset input unused -> leave open per BOM #94. Relies on device-option internal SR pull-up; verify STM6601CA2 has it else tie to VCC(SYS)
+U17,3,VREF,STM_VREF,1.5V VREF -> CREF cap C69 to GND (mandatory even though VREF unused)
+U17,4,PS_HOLD,PSHOLD,PS_HOLD gpio-poweroff handshake -> T113 PE11 (PSHOLD)
+U17,5,C_SRD,,C_SRD Smart-Reset delay cap input unused -> leave open per BOM #94
+U17,6,#PB,PWR_BTN,/PB push-button input <- SW14 center + T113 PE10 (PWR_BTN). Has internal pull-up
+U17,7,#VCC_LO,,"/VCC_LO comparator output unused -> leave open per BOM #94 (open-drain, no pull-up needed)"
+U17,8,#PB_OUT,,/PB_OUT status output unused -> leave open per BOM #94
+U17,9,EN(#EN),PWR_EN,EN (active-high) -> PWR_EN master enable: TPS63021 U12.12 EN + R4.1 (RC to FP6161 CORE_RUN). Fixed seam: was CORE_RUN
+U17,10,#RST,,/RST reset output unused -> leave open per BOM #94 (open-drain)
+U17,11,#INT,,/INT interrupt output unused -> leave open per BOM #94 (open-drain)
 U17,12,GND,GND,ground family
-C68,1,1,TODO_C68_1,
-C68,2,2,TODO_C68_2,
-C69,1,1,TODO_C69_1,
-C69,2,2,TODO_C69_2,
-R30,1,1,TODO_R30_1,
-R30,2,2,TODO_R30_2,
-R31,1,1,TODO_R31_1,
-R31,2,2,TODO_R31_2,
-D4,1,1,TODO_D4_1,
-D4,2,2,TODO_D4_2,
-D4,3,3,TODO_D4_3,
-D4,4,4,TODO_D4_4,
-D4,5,5,TODO_D4_5,
-D4,6,6,TODO_D4_6,
+C68,1,1,SYS,100nF STM6601 VCC decoupling; VCC(U17 pin1)=always-on SYS
+C68,2,2,GND,100nF STM6601 VCC decoupling: GND side
+C69,1,1,STM_VREF,1uF CREF on STM6601 VREF (U17 pin3)
+C69,2,2,GND,1uF CREF: GND side
+R30,1,1,I2C1_SCL,I2C1 SCL pull-up (1.5k #97); joins bus SCL already assigned on peripherals
+R30,2,2,+3V3,pull-up top to 3.3V
+R31,1,1,I2C1_SDA,I2C1 SDA pull-up (1.5k #97); joins bus SDA
+R31,2,2,+3V3,pull-up top to 3.3V
+D4,1,1,USB_DP,"USBLC6-2SC6 I/O1 (pins 1&6 = same internal node, pass-through); DP<->I/O1 channel choice is symmetric. VERIFY pin numbering vs ST datasheet (no DS in cad/docs)"
+D4,2,2,GND,USBLC6 GND
+D4,3,3,USB_DM,"USBLC6-2SC6 I/O2 (pins 3&4 = same internal node, pass-through)"
+D4,4,4,USB_DM,USBLC6-2SC6 I/O2 (same net as pin3)
+D4,5,5,+5V,USBLC6 VBUS rail-clamp = USB-C VBUS (+5V)
+D4,6,6,USB_DP,USBLC6-2SC6 I/O1 (same net as pin1); ESD taps the DP line pass-through to T113
 U18,1,VDD_PADS,+3V3,rail: BT830 note: VDD_PADS=3.3V
 U18,2,GND,GND,ground family
-U18,3,PIO2,TODO_U18_PIO2,
-U18,4,~{UART_RTS},TODO_U18_~{UART_RTS},
-U18,5,UART_TX,TODO_U18_UART_TX,
-U18,6,~{UART_CTS},TODO_U18_~{UART_CTS},
-U18,7,UART_RX,TODO_U18_UART_RX,
-U18,8,VREG_EN_~{RST},TODO_U18_VREG_EN_~{RST},
+U18,3,PIO2,,PIO2 unused -> spare/NC (datasheet recommends NC)
+U18,4,~{UART_RTS},UART3_CTS,BT UART_RTS (output) -> T113 UART3_CTS input (crossed HW flow control)
+U18,5,UART_TX,UART3_RX,BT UART_TX (data out) -> T113 UART3_RX (crossed)
+U18,6,~{UART_CTS},UART3_RTS,BT UART_CTS (input) <- T113 UART3_RTS output (crossed HW flow control)
+U18,7,UART_RX,UART3_TX,BT UART_RX (data in) <- T113 UART3_TX (crossed; matches dictionary example)
+U18,8,VREG_EN_~{RST},BT_EN_RST,"VREG_EN_RST# -> GPIO PB6 (boot low, hold >5ms, then high; do NOT strap via 10k)"
 U18,9,VREG_IN_HV,+3V3,rail: BT830 note: VREG_IN_HV=3.3V
-U18,10,VREG_OUT_HV,TODO_U18_VREG_OUT_HV,NO-RAIL: internal LDO output (needs #100 cap) — own node
+U18,10,VREG_OUT_HV,BT_VREG18,"VREG_OUT_HV = internal 1.8V HV-LDO output; own node with C70 (>=1.5uF mandatory), not a supply rail"
 U18,11,GND,GND,ground family
 U18,12,GND,GND,ground family
 U18,13,GND,GND,ground family
 U18,14,GND,GND,ground family
 U18,15,GND,GND,ground family
 U18,16,GND,GND,ground family
-U18,17,RF,TODO_U18_RF,
+U18,17,RF,,RF pin: BT830-SA-01 has integrated antenna -> NC. VERIFY the -SA RF pad is truly no-connect
 U18,18,GND,GND,ground family
-U18,19,PCM_SYNC/SPI_~{CS}/PIO23,TODO_U18_PCM_SYNC/SPI_~{CS}/PIO23,
-U18,20,PCM_CLK/SPI_CLK/PIO24,TODO_U18_PCM_CLK/SPI_CLK/PIO24,
-U18,21,PCM_IN/SPI_MOSI/PIO21,TODO_U18_PCM_IN/SPI_MOSI/PIO21,
-U18,22,PCM_OUT/SPI_MISO/PIO22,TODO_U18_PCM_OUT/SPI_MISO/PIO22,
+U18,19,PCM_SYNC/SPI_~{CS}/PIO23,,"PCM_SYNC/SPI_CS#/PIO23 unused (BT audio over HCI, not PCM) -> spare/NC, weak internal pull-down"
+U18,20,PCM_CLK/SPI_CLK/PIO24,,PCM_CLK/SPI_CLK/PIO24 unused -> spare/NC
+U18,21,PCM_IN/SPI_MOSI/PIO21,,PCM_IN/SPI_MOSI/PIO21 unused -> spare/NC
+U18,22,PCM_OUT/SPI_MISO/PIO22,,PCM_OUT/SPI_MISO/PIO22 unused -> spare/NC
 U18,23,GND,GND,ground family
-U18,24,PIO0/32K_CLK_IN,TODO_U18_PIO0/32K_CLK_IN,
-U18,25,PIO1/BT_ACTIVE,TODO_U18_PIO1/BT_ACTIVE,
-U18,26,PIO9/BT_PRIORITY,TODO_U18_PIO9/BT_PRIORITY,
-U18,27,PIO4/WLAN_ACTIVE,TODO_U18_PIO4/WLAN_ACTIVE,
-U18,28,SPI_~{PCM}_SEL,TODO_U18_SPI_~{PCM}_SEL,
-U18,29,PIO3/HOST_WAKE_UP,TODO_U18_PIO3/HOST_WAKE_UP,
+U18,24,PIO0/32K_CLK_IN,,PIO0/32K_CLK_IN: no external 32kHz clock supplied -> spare/NC
+U18,25,PIO1/BT_ACTIVE,,PIO1/BT_ACTIVE: Wi-Fi coexist unused (no WLAN) -> spare/NC
+U18,26,PIO9/BT_PRIORITY,,PIO9/BT_PRIORITY: coexist unused -> spare/NC
+U18,27,PIO4/WLAN_ACTIVE,,PIO4/WLAN_ACTIVE: coexist unused -> spare/NC
+U18,28,SPI_~{PCM}_SEL,GND,"SPI_PCM#_SEL -> GND selects PCM/normal (prevents SPI test mode); has internal pull-down, tied low for determinism"
+U18,29,PIO3/HOST_WAKE_UP,,PIO3/HOST_WAKE_UP unused (no host-wake net allocated) -> spare/NC
 U18,30,GND,GND,ground family
-C70,1,1,TODO_C70_1,
-C70,2,2,TODO_C70_2,
-C71,1,1,TODO_C71_1,
-C71,2,2,TODO_C71_2,
-C72,1,1,TODO_C72_1,
-C72,2,2,TODO_C72_2,
-C73,1,1,TODO_C73_1,
-C73,2,2,TODO_C73_2,
+C70,1,1,BT_VREG18,4.7uF VREG_OUT_HV stability cap (BT830 pin10)
+C70,2,2,GND,
+C71,1,1,+3V3,100nF decoupling on VDD_PADS(1)
+C71,2,2,GND,
+C72,1,1,+3V3,100nF decoupling on VREG_IN_HV(9)
+C72,2,2,GND,
+C73,1,1,+3V3,4.7uF RF-burst bulk near VREG_IN_HV(9)
+C73,2,2,GND,
 U19,1,CPVDD,+3V3,rail: #105 3.3V
-U19,2,CAPP,TODO_U19_CAPP,
-U19,3,CPGND,TODO_U19_CPGND,
-U19,4,CAPM,TODO_U19_CAPM,
-U19,5,VNEG,TODO_U19_VNEG,
-U19,6,OUTL,TODO_U19_OUTL,
-U19,7,OUTR,TODO_U19_OUTR,
+U19,2,CAPP,PCM_CAPP,charge-pump flying cap + terminal; C81 between CAPP and CAPM
+U19,3,CPGND,GND,CPGND charge-pump ground
+U19,4,CAPM,PCM_CAPM,charge-pump flying cap - terminal; C81 other side
+U19,5,VNEG,PCM_VNEG,"-3.3V charge-pump rail; C82 reservoir to GND (mandatory, else dead output)"
+U19,6,OUTL,DAC_OUTL,DAC left output -> R35 anti-imaging series
+U19,7,OUTR,DAC_OUTR,DAC right output -> R36 anti-imaging series
 U19,8,AVDD,+3V3,rail: #105 3.3V
 U19,9,AGND,GND,ground family
-U19,10,DEMP,TODO_U19_DEMP,
-U19,11,FLT,TODO_U19_FLT,
+U19,10,DEMP,GND,DEMP strap -> GND (de-emphasis off)
+U19,11,FLT,GND,FLT strap -> GND (normal latency filter)
 U19,12,SCK,GND,#103 SCK(12)->GND (MCLK-less internal PLL)
-U19,13,BCK,TODO_U19_BCK,
-U19,14,DIN,TODO_U19_DIN,
-U19,15,LRCK,TODO_U19_LRCK,
-U19,16,FMT,TODO_U19_FMT,
-U19,17,XSMT,TODO_U19_XSMT,
-U19,18,LDOO,TODO_U19_LDOO,
+U19,13,BCK,DAC_BCK,I2S BCK via series R32 from I2S1_BCLK bus
+U19,14,DIN,DAC_DIN,I2S DIN via series R34 from I2S1_DOUT bus
+U19,15,LRCK,DAC_LRCK,I2S LRCK via series R33 from I2S1_LRCK bus
+U19,16,FMT,GND,FMT strap -> GND (I2S format)
+U19,17,XSMT,DAC_XSMT,soft-mute GPIO (PB3); not hard-high per datasheet
+U19,18,LDOO,PCM_LDOO,"internal 1.8V logic-LDO decoupling node; C77 to GND (mandatory, do NOT drive)"
 U19,19,DGND,GND,ground family
 U19,20,DVDD,+3V3,rail: #105 DVDD strapped 3.3V
-R32,1,1,TODO_R32_1,
-R32,2,2,TODO_R32_2,
-R33,1,1,TODO_R33_1,
-R33,2,2,TODO_R33_2,
-R34,1,1,TODO_R34_1,
-R34,2,2,TODO_R34_2,
-C74,1,1,TODO_C74_1,
-C74,2,2,TODO_C74_2,
-C75,1,1,TODO_C75_1,
-C75,2,2,TODO_C75_2,
-C76,1,1,TODO_C76_1,
-C76,2,2,TODO_C76_2,
-C77,1,1,TODO_C77_1,
-C77,2,2,TODO_C77_2,
-C78,1,1,TODO_C78_1,
-C78,2,2,TODO_C78_2,
-C79,1,1,TODO_C79_1,
-C79,2,2,TODO_C79_2,
-C80,1,1,TODO_C80_1,
-C80,2,2,TODO_C80_2,
-C81,1,1,TODO_C81_1,
-C81,2,2,TODO_C81_2,
-C82,1,1,TODO_C82_1,
-C82,2,2,TODO_C82_2,
-R35,1,1,TODO_R35_1,
-R35,2,2,TODO_R35_2,
-R36,1,1,TODO_R36_1,
-R36,2,2,TODO_R36_2,
-C83,1,1,TODO_C83_1,
-C83,2,2,TODO_C83_2,
-C84,1,1,TODO_C84_1,
-C84,2,2,TODO_C84_2,
-U20,1,INL-,TODO_U20_INL-,
-U20,2,INL+,TODO_U20_INL+,
-U20,3,INR+,TODO_U20_INR+,
-U20,4,INR-,TODO_U20_INR-,
-U20,5,OUTR,TODO_U20_OUTR,
-U20,6,G0,TODO_U20_G0,
-U20,7,G1,TODO_U20_G1,
-U20,8,HPVSS,TODO_U20_HPVSS,
-U20,9,CPN,TODO_U20_CPN,
+R32,1,1,I2S1_BCLK,"0R I2S1 series-R, bus side (shared w/ MAX98357A amp #47)"
+R32,2,2,DAC_BCK,"DAC-branch series-R, DAC pin13 side"
+R33,1,1,I2S1_LRCK,"0R I2S1 series-R, bus side"
+R33,2,2,DAC_LRCK,DAC pin15 side
+R34,1,1,I2S1_DOUT,"0R I2S1 series-R, bus side (T113 DOUT)"
+R34,2,2,DAC_DIN,DAC pin14 side
+C74,1,1,+3V3,100nF CPVDD decoupling
+C74,2,2,GND,
+C75,1,1,+3V3,100nF AVDD decoupling
+C75,2,2,GND,
+C76,1,1,+3V3,100nF DVDD decoupling
+C76,2,2,GND,
+C77,1,1,PCM_LDOO,100nF LDOO decoupling (U19 pin18); mandatory
+C77,2,2,GND,
+C78,1,1,+3V3,10uF CPVDD bulk
+C78,2,2,GND,
+C79,1,1,+3V3,10uF AVDD bulk
+C79,2,2,GND,
+C80,1,1,+3V3,10uF DVDD bulk
+C80,2,2,GND,
+C81,1,1,PCM_CAPP,2.2uF charge-pump flying cap CAPP<->CAPM
+C81,2,2,PCM_CAPM,
+C82,1,1,PCM_VNEG,2.2uF VNEG reservoir to GND
+C82,2,2,GND,
+R35,1,1,DAC_OUTL,470R anti-imaging series from OUTL
+R35,2,2,DAC_OUTL_F,filtered node (R+shunt-C junction) -> coupling cap C85
+R36,1,1,DAC_OUTR,470R anti-imaging series from OUTR
+R36,2,2,DAC_OUTR_F,filtered node -> coupling cap C86
+C83,1,1,DAC_OUTL_F,2.2nF C0G shunt to AGND after R35 (fc~154kHz)
+C83,2,2,GND,AGND
+C84,1,1,DAC_OUTR_F,2.2nF C0G shunt to AGND after R36
+C84,2,2,GND,AGND
+U20,1,INL-,AMP_INL,INL- inverting left input <- coupling cap C85
+U20,2,INL+,GND,INL+ grounded (single-ended)
+U20,3,INR+,GND,INR+ grounded (single-ended)
+U20,4,INR-,AMP_INR,INR- inverting right input <- coupling cap C86
+U20,5,OUTR,HP_R,"OUTR -> jack ring, direct (no cap)"
+U20,6,G0,GND,G0 -> GND (-6dB gain)
+U20,7,G1,GND,G1 -> GND (-6dB gain)
+U20,8,HPVSS,TPA_HPVSS,charge-pump negative rail; C88 (1uF CHPVSS) to GND
+U20,9,CPN,TPA_CPN,charge-pump negative flying cap; C87 between CPP/CPN
 U20,10,PGND,GND,ground family
-U20,11,CPP,TODO_U20_CPP,
-U20,12,HPVDD,TODO_U20_HPVDD,"NO-RAIL: cap-only charge-pump node, NEVER a supply (#110)"
-U20,13,EN,TODO_U20_EN,
+U20,11,CPP,TPA_CPP,charge-pump positive flying cap; C87 other side
+U20,12,HPVDD,TPA_HPVDD,"charge-pump output; C89 (2.2uF) to GND ONLY, never a supply"
+U20,13,EN,HP_EN,"EN -> GPIO PB2 (+ R37 100k pulldown, boots off)"
 U20,14,VDD,+3V3,rail: #110 VDD 3.3V
 U20,15,SGND,GND,ground family
-U20,16,OUTL,TODO_U20_OUTL,
+U20,16,OUTL,HP_L,"OUTL -> jack tip, direct (no cap)"
 U20,17,EP,GND,ground family
-C85,1,1,TODO_C85_1,
-C85,2,2,TODO_C85_2,
-C86,1,1,TODO_C86_1,
-C86,2,2,TODO_C86_2,
-C87,1,1,TODO_C87_1,
-C87,2,2,TODO_C87_2,
-C88,1,1,TODO_C88_1,
-C88,2,2,TODO_C88_2,
-C89,1,1,TODO_C89_1,
-C89,2,2,TODO_C89_2,
-C90,1,1,TODO_C90_1,
-C90,2,2,TODO_C90_2,
-C91,1,1,TODO_C91_1,
-C91,2,2,TODO_C91_2,
-R37,1,1,TODO_R37_1,
-R37,2,2,TODO_R37_2,
-Audio1,1,1,TODO_Audio1_1,
-Audio1,2,2,TODO_Audio1_2,
-Audio1,3,3,TODO_Audio1_3,
-Audio1,4,4,TODO_Audio1_4,
+C85,1,1,DAC_OUTL_F,1uF input coupling (DC-block) from filtered DAC left
+C85,2,2,AMP_INL,-> TPA INL-
+C86,1,1,DAC_OUTR_F,1uF input coupling from filtered DAC right
+C86,2,2,AMP_INR,-> TPA INR-
+C87,1,1,TPA_CPP,1uF charge-pump flying cap (CFLYING) between CPP and CPN
+C87,2,2,TPA_CPN,
+C88,1,1,TPA_HPVSS,"1uF CHPVSS decoupling (HPVSS pin8, CHPVSS>=CFLYING)"
+C88,2,2,GND,
+C89,1,1,TPA_HPVDD,2.2uF CHPVDD (HPVDD pin12) to GND; cap-only node
+C89,2,2,GND,
+C90,1,1,+3V3,2.2uF CVDD bulk on VDD(14)
+C90,2,2,GND,
+C91,1,1,+3V3,"100nF VDD(14) HF decoupling, close-in"
+C91,2,2,GND,
+R37,1,1,HP_EN,100k EN pull-down (boots off until GPIO drives high)
+R37,2,2,GND,
+Audio1,1,1,GND,jack sleeve -> GND (also TPA SGND ref). VERIFY pin->function map from PJ-327C-4A maker drawing (BOM.md warns it varies)
+Audio1,2,2,HP_L,tip = left = TPA OUTL. VERIFY pin numbering from PJ-327C-4A drawing
+Audio1,3,3,HP_R,ring = right = TPA OUTR. VERIFY pin numbering
+Audio1,4,4,JACK_DET,"tip-detect switch -> GPIO PE12 (SW_HEADPHONE_INSERT), mutes speaker amp. VERIFY switch pin & sense polarity from drawing"
