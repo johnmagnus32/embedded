@@ -39,7 +39,7 @@ static void build_symtab(Obj *o) {
 	for (int pass = 0; pass < 2; pass++) {                    /* pass 0 = locals, pass 1 = globals */
 		if (pass == 1) o->first_global = o->ne;
 		for (int i = 0; i < nsym; i++) {
-			int is_local = (syms[i].bind == STB_LOCAL);
+			int is_local = syms[i].defined && !syms[i].global;
 			if (!syms[i].name || is_local != (pass == 0)) continue;
 			int e = o->ne++; o->symmap[i] = e;
 			o->esym[e].st_name  = str_add(&o->str, syms[i].name);

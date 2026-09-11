@@ -50,7 +50,7 @@ int sym_find(const char *name) { for (int i = 0; i < nsym; i++) if (syms[i].name
 int sym_intern(const char *name) {
 	int i = sym_find(name); if (i >= 0) return i;
 	if (nsym >= MAXSYM) die("too many symbols");
-	syms[nsym] = (Sym){ strdup(name), 0, 0, 0, STB_GLOBAL, STT_NOTYPE, 0 };
+	syms[nsym] = (Sym){ strdup(name), 0, 0, 0, 0, STT_NOTYPE, 0 };   /* global=0 (local until .global'd) */
 	return nsym++;
 }
 void add_reloc(int sec, u32 off, int symidx, u32 type) { if (nrel >= MAXREL) die("too many relocations"); rels[nrel++] = (Reloc){ sec, off, symidx, type }; }
@@ -82,7 +82,12 @@ static void tokenize(const char *line) {
 		if (!*p || *p == '\n') break;
 		if (ntok >= MAXTOK) die("too many tokens on a line");
 		toks[ntok++] = p;
-		while (*p && *p != ' ' && *p != '\t' && *p != ',' && *p != '\n') p++;
+		int inq = 0;   /* inside "..." spaces/commas are part of the token (e.g. .ascii "a b") */
+		while (*p && (inq || (*p != ' ' && *p != '\t' && *p != ',' && *p != '\n'))) {
+			if (*p == '\\' && p[1]) { p += 2; continue; }   /* skip an escaped char (incl. \") */
+			if (*p == '"') inq = !inq;
+			p++;
+		}
 		if (*p) *p++ = 0;
 	}
 }
@@ -92,6 +97,23 @@ static void def_label(const char *name) {
 	if (cursec < 0) die("label '%s' outside any section", name);
 	if (isdigit((unsigned char)name[0]) && name[1] == 0) { local_define(name[0] - '0', secs[cursec].len); return; }
 	int i = sym_intern(name); syms[i].sec = cursec; syms[i].value = secs[cursec].len; syms[i].defined = 1;
+}
+
+/* Emit the bytes of a C-string token like "\"Unknown error\000\"" (quotes included), decoding escapes
+ * (\ooo octal, \n \t \r \b \f \\ \" \0). add_nul appends a terminating NUL (.asciz), else not (.ascii). */
+static void emit_string(const char *tok, int add_nul) {
+	const char *p = tok; if (*p == '"') p++;
+	while (*p && *p != '"') {
+		u8 b;
+		if (*p == '\\') {
+			p++;
+			if (*p >= '0' && *p <= '7') { int v = 0, n = 0; while (*p >= '0' && *p <= '7' && n < 3) { v = v*8 + (*p++ - '0'); n++; } b = (u8)v; }
+			else { switch (*p) { case 'n': b='\n'; break; case 't': b='\t'; break; case 'r': b='\r'; break;
+			                     case 'b': b='\b'; break; case 'f': b='\f'; break; default: b=(u8)*p; } p++; }
+		} else b = (u8)*p++;
+		emit(&b, 1);
+	}
+	if (add_nul) { u8 z = 0; emit(&z, 1); }
 }
 
 /* GENERIC directives (shared by every ELF target). Arch pseudo-ops fall through to md_directive(). */
@@ -106,7 +128,7 @@ static void do_directive(void) {
 		sec_get(toks[1], SHT_PROGBITS, flags);
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
-	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].bind = STB_GLOBAL;
+	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].global = 1;
 	} else if (!strcmp(d, ".type")) { int i = sym_intern(toks[1]); if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;
 	} else if (!strcmp(d, ".size")) {
 		/* .size <sym>, . - <label>  — the one expression form our startup asm needs. */
@@ -123,7 +145,27 @@ static void do_directive(void) {
 		u32 bytes = (!strcmp(d, ".balign")) ? a : (1u << a);
 		while (bytes && (secs[cursec].len % bytes)) { u8 z = 0; emit(&z, 1); }
 	} else if (!strcmp(d, ".word") || !strcmp(d, ".4byte")) {
-		emit32((u32)strtol(toks[1], NULL, 0));
+		/* .word <number> emits the value; .word <symbol>[+addend] emits the addend in place + an
+		 * absolute (R_ARM_ABS32) relocation the linker fills with the symbol's address. */
+		char *end; long v = strtol(toks[1], &end, 0);
+		if (*end == 0) { emit32((u32)v); }
+		else {
+			char name[128]; long addend = 0;
+			char *plus = strpbrk(toks[1], "+-");
+			if (plus) { addend = strtol(plus, NULL, 0); size_t k = plus - toks[1]; if (k >= sizeof name) k = sizeof name - 1; memcpy(name, toks[1], k); name[k] = 0; }
+			else { strncpy(name, toks[1], sizeof name - 1); name[sizeof name - 1] = 0; }
+			u32 off = secs[cursec].len; emit32((u32)addend);
+			add_reloc(cursec, off, sym_intern(name), md_r_abs32);
+		}
+	} else if (!strcmp(d, ".ascii") || !strcmp(d, ".asciz") || !strcmp(d, ".string")) {
+		emit_string(toks[1], strcmp(d, ".ascii") != 0);   /* .ascii: no NUL; .asciz/.string: add NUL */
+	} else if (!strcmp(d, ".set") || !strcmp(d, ".equ")) {
+		/* the one form our compiler output uses: `.set name, . [+ N]` — an anchor at the current spot. */
+		int i = sym_intern(toks[1]);
+		u32 base = secs[cursec].len; long addend = 0;
+		if (ntok >= 3 && !strcmp(toks[2], ".")) { if (ntok >= 5 && !strcmp(toks[3], "+")) addend = strtol(toks[4], NULL, 0); }
+		else die(".set: only 'name, . [+ N]' supported");
+		syms[i].sec = cursec; syms[i].value = base + (u32)addend; syms[i].defined = 1;
 	} else if (!md_directive(toks, ntok)) {
 		die("unknown directive '%s'", d);
 	}
@@ -172,6 +214,7 @@ int main(int argc, char **argv) {
 	do { nl = strchr(line, '\n'); if (nl) *nl = 0; parse_line(line); line = nl ? nl + 1 : NULL; } while (line);
 
 	resolve_fixups();
+	md_finish();       /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
 	obj_write(out);
 	return 0;
 }

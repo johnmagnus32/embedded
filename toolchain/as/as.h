@@ -19,7 +19,9 @@
 /* The assembler's INTERNAL tables (not the ELF on-disk structs — those are Elf32_* in elf.h): the
  * section byte buffers, symbol records, relocations, and forward-local-branch fixups the front-end owns. */
 typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shndx; } Section;
-typedef struct { char *name; int sec; u32 value, size; int bind, type, defined; } Sym;
+typedef struct { char *name; int sec; u32 value, size; int global, type, defined; } Sym;
+/* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
+ * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
 typedef struct { int sec; u32 off; int local_num; } Fixup;          /* forward local-label branch to patch */
 
@@ -53,8 +55,10 @@ u32  local_value(int n);
 void md_assemble(char **toks, int ntok);   /* encode ONE instruction (toks[0]=mnemonic) into cursec */
 void md_apply_fix(const Fixup *f);          /* patch a resolved forward-local branch (arch encoding) */
 int  md_directive(char **toks, int ntok);   /* arch pseudo-ops (.cpu/.fpu/…); 1 = handled, 0 = not ours */
+void md_finish(void);                       /* end of pass: resolve arch-internal fixups (ldr literals) */
 extern const u16 md_e_machine;              /* ELF e_machine (EM_ARM) */
 extern const u32 md_e_flags;                /* ELF e_flags (EABI version) */
+extern const u32 md_r_abs32;                /* the arch's 32-bit absolute reloc (for `.word <symbol>`) */
 
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */
 void obj_write(const char *path);
