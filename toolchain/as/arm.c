@@ -52,15 +52,48 @@ static u32 modimm(u32 v) {
 }
 
 /* ------------------------------------------------------------------ instruction encoders ---------- */
-static void enc_mov(void) {   /* mov Rd, Rm  (register move) */
-	int rd = reg(toks[1]), rm = reg(toks[2]);
-	if (rd < 0 || rm < 0) die("mov: only 'mov Rd, Rm' (registers) supported so far");
-	emit32(0xe1a00000u | (rd << 12) | rm);
+static u32 need_reg(int i) {   /* operand i must be a register */
+	int r = (i < ntok) ? reg(toks[i]) : -1;
+	if (r < 0) die("%s: expected a register at operand %d", toks[0], i);
+	return (u32)r;
 }
-static void enc_bic(void) {   /* bic Rd, Rn, #imm */
-	int rd = reg(toks[1]), rn = reg(toks[2]);
-	if (rd < 0 || rn < 0) die("bic: only 'bic Rd, Rn, #imm' supported so far");
-	emit32(0xe3c00000u | (rn << 16) | (rd << 12) | modimm(imm(toks[3])));
+
+/* ---- data-processing family (and/eor/sub/rsb/add/adc/sbc/rsc/tst/teq/cmp/cmn/orr/mov/bic/mvn) ------
+ * ONE encoder for all 16: ARM DP format cond(4) 00 I(1) opcode(4) S(1) Rn(4) Rd(4) operand2(12). They
+ * differ only by the 4-bit opcode + the operand FORM. operand2 is #imm (I=1, modimm) or a plain
+ * register Rm (I=0). Shifted-register operand2 ("Rm, lsl #n") is a later increment. */
+enum { DP_3OP, DP_MOV, DP_CMP };   /* Rd,Rn,op2 | Rd,op2 | Rn,op2 (flags forced) */
+static const struct { const char *name; u32 opc; int form; } dp_tab[] = {
+	{"and",0,DP_3OP},{"eor",1,DP_3OP},{"sub",2,DP_3OP},{"rsb",3,DP_3OP},
+	{"add",4,DP_3OP},{"adc",5,DP_3OP},{"sbc",6,DP_3OP},{"rsc",7,DP_3OP},
+	{"tst",8,DP_CMP},{"teq",9,DP_CMP},{"cmp",10,DP_CMP},{"cmn",11,DP_CMP},
+	{"orr",12,DP_3OP},{"mov",13,DP_MOV},{"bic",14,DP_3OP},{"mvn",15,DP_MOV},
+};
+static const struct { const char *name; u32 code; } cc_tab[] = {
+	{"eq",0},{"ne",1},{"cs",2},{"hs",2},{"cc",3},{"lo",3},{"mi",4},{"pl",5},
+	{"vs",6},{"vc",7},{"hi",8},{"ls",9},{"ge",10},{"lt",11},{"gt",12},{"le",13},{"al",14},
+};
+static int lookup_cc(const char *s, u32 *code) {
+	for (unsigned i = 0; i < sizeof cc_tab / sizeof *cc_tab; i++)
+		if (!strcmp(s, cc_tab[i].name)) { *code = cc_tab[i].code; return 1; }
+	return 0;
+}
+
+/* operand2 at token index opidx: "#imm" -> I=1 + modimm; a bare register -> I=0 + Rm. */
+static u32 operand2(int opidx, u32 *I) {
+	if (toks[opidx][0] == '#') { *I = 1; return modimm(imm(toks[opidx])); }
+	int rm = reg(toks[opidx]); if (rm < 0) die("%s: bad operand2 '%s'", toks[0], toks[opidx]);
+	if (ntok > opidx + 1) die("%s: shifted-register operand2 not supported yet", toks[0]);
+	*I = 0; return (u32)rm;
+}
+
+static void enc_dp(u32 opc, int form, u32 cond, int s) {
+	u32 rd = 0, rn = 0, I; int opidx;
+	if (form == DP_MOV)      { rd = need_reg(1);                    opidx = 2; }        /* mov/mvn Rd, op2 */
+	else if (form == DP_CMP) { rn = need_reg(1); s = 1;            opidx = 2; }        /* cmp/… Rn, op2 (S forced) */
+	else                     { rd = need_reg(1); rn = need_reg(2); opidx = 3; }        /* add/… Rd, Rn, op2 */
+	u32 op2 = operand2(opidx, &I);
+	emit32((cond << 28) | (I << 25) | (opc << 21) | ((u32)s << 20) | (rn << 16) | (rd << 12) | op2);
 }
 static void enc_branch(int is_bl) {   /* b/bl <label> */
 	if (ntok < 2) die("%s: missing target", toks[0]);
@@ -111,13 +144,21 @@ static void enc_pop(void)  { emit32(0xe8bd0000u | reglist()); }   /* LDMIA sp!, 
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
 	const char *m = toks[0];
-	if (!strcmp(m, "mov")) enc_mov();
-	else if (!strcmp(m, "bic")) enc_bic();
-	else if (!strcmp(m, "bl")) enc_branch(1);
-	else if (!strcmp(m, "b")) enc_branch(0);
-	else if (!strcmp(m, "push")) enc_push();
-	else if (!strcmp(m, "pop")) enc_pop();
-	else die("unknown mnemonic '%s' (not in the ARM backend's instruction set yet)", m);
+	if (!strcmp(m, "b"))    { enc_branch(0); return; }
+	if (!strcmp(m, "bl"))   { enc_branch(1); return; }
+	if (!strcmp(m, "push")) { enc_push();    return; }
+	if (!strcmp(m, "pop"))  { enc_pop();     return; }
+	/* data-processing: a 3-char base (add/mov/cmp/…) + optional {s}{cond} suffix (UAL order). */
+	if (strlen(m) >= 3)
+		for (unsigned i = 0; i < sizeof dp_tab / sizeof *dp_tab; i++)
+			if (!strncmp(m, dp_tab[i].name, 3)) {
+				const char *suf = m + 3; u32 cond = 14; int s = 0;   /* default AL, S=0 */
+				if (*suf == 's') { s = 1; suf++; }
+				if (*suf && !lookup_cc(suf, &cond)) die("%s: bad condition/suffix", m);
+				enc_dp(dp_tab[i].opc, dp_tab[i].form, cond, s);
+				return;
+			}
+	die("unknown mnemonic '%s' (not in the ARM backend's instruction set yet)", m);
 }
 
 void md_apply_fix(const Fixup *f) {   /* resolve a forward local branch: OR the pc-relative offset in */
