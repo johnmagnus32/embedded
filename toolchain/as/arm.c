@@ -95,9 +95,9 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	u32 op2 = operand2(opidx, &I);
 	emit32((cond << 28) | (I << 25) | (opc << 21) | ((u32)s << 20) | (rn << 16) | (rd << 12) | op2);
 }
-static void enc_branch(int is_bl) {   /* b/bl <label> */
+static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	if (ntok < 2) die("%s: missing target", toks[0]);
-	u32 base = is_bl ? 0xeb000000u : 0xea000000u;
+	u32 base = (cond << 28) | 0x0a000000u | ((u32)is_bl << 24);   /* cond 101 L imm24 */
 	u32 off = here(); emit32(base);        /* placeholder; patched below or by md_apply_fix */
 	const char *name = toks[1];
 	if (isdigit((unsigned char)name[0]) && (name[1] == 'b' || name[1] == 'f') && name[2] == 0) {
@@ -114,6 +114,10 @@ static void enc_branch(int is_bl) {   /* b/bl <label> */
 	/* named symbol -> external ref -> relocation (imm24 = -2 => addend -8, per ARM REL). */
 	patch32(cursec, off, base | 0xfffffe);
 	add_reloc(cursec, off, sym_intern(name), is_bl ? R_ARM_CALL : R_ARM_JUMP24);
+}
+
+static void enc_bx(u32 cond) {   /* bx{cond} Rm — branch-and-exchange (interworking return) */
+	emit32((cond << 28) | 0x012fff10u | need_reg(1));
 }
 
 /* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
@@ -144,10 +148,17 @@ static void enc_pop(void)  { emit32(0xe8bd0000u | reglist()); }   /* LDMIA sp!, 
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
 	const char *m = toks[0];
-	if (!strcmp(m, "b"))    { enc_branch(0); return; }
-	if (!strcmp(m, "bl"))   { enc_branch(1); return; }
-	if (!strcmp(m, "push")) { enc_push();    return; }
-	if (!strcmp(m, "pop"))  { enc_pop();     return; }
+	if (!strcmp(m, "push")) { enc_push(); return; }
+	if (!strcmp(m, "pop"))  { enc_pop();  return; }
+	/* branches: b/bl/bx with an optional condition suffix. "bic" (b+"ic") isn't a cond -> falls to DP. */
+	{ u32 cc; size_t L = strlen(m);
+	  if (!strcmp(m, "b"))  { enc_branch(0, 14); return; }
+	  if (!strcmp(m, "bl")) { enc_branch(1, 14); return; }
+	  if (!strcmp(m, "bx")) { enc_bx(14);        return; }
+	  if (L == 3 && m[0] == 'b' && lookup_cc(m + 1, &cc))                   { enc_branch(0, cc); return; }
+	  if (L == 4 && m[0] == 'b' && m[1] == 'l' && lookup_cc(m + 2, &cc))    { enc_branch(1, cc); return; }
+	  if (L == 4 && m[0] == 'b' && m[1] == 'x' && lookup_cc(m + 2, &cc))    { enc_bx(cc);        return; }
+	}
 	/* data-processing: a 3-char base (add/mov/cmp/…) + optional {s}{cond} suffix (UAL order). */
 	if (strlen(m) >= 3)
 		for (unsigned i = 0; i < sizeof dp_tab / sizeof *dp_tab; i++)
