@@ -11,6 +11,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "as.h"
 
 /* ELF identity this backend targets (read by the obj backend when it writes the header). */
@@ -120,6 +121,50 @@ static void enc_bx(u32 cond) {   /* bx{cond} Rm — branch-and-exchange (interwo
 	emit32((cond << 28) | 0x012fff10u | need_reg(1));
 }
 
+/* ---- single data transfer: ldr/str{b}{cond} Rd, <addr> --------------------------------------------
+ * Encoding: cond 01 I P U B W L Rn Rd offset(12). NOTE I is INVERTED vs data-processing: I=0 => the
+ * offset is a 12-bit IMMEDIATE (U = sign), I=1 => a register (optionally lsl #n). Addressing:
+ *   [Rn]            P=1 W=0 off=0        [Rn,#imm]     P=1 W=0        [Rn,#imm]!  P=1 W=1  (pre, writeback)
+ *   [Rn],#imm       P=0 W=0 (post)       [Rn,Rm]       P=1 I=1        [Rn,Rm,lsl #n]  P=1 I=1 shift
+ * B = byte (ldrb/strb), L = load (ldr). */
+static void enc_ldst(u32 cond, int is_load, int is_byte) {
+	u32 rd = need_reg(1);
+	/* the tokenizer split the [ ] address on commas/spaces — rejoin it (spaces preserved) to re-scan */
+	char buf[128]; size_t bl = 0;
+	for (int i = 2; i < ntok && bl < sizeof buf - 1; i++) bl += (size_t)snprintf(buf + bl, sizeof buf - bl, "%s%s", i > 2 ? " " : "", toks[i]);
+	if (buf[0] != '[') die("%s: expected [Rn ...] address, got '%s'", toks[0], buf);
+	u32 W = 0; if (bl && buf[bl - 1] == '!') { W = 1; buf[--bl] = 0; }        /* trailing '!' = writeback */
+	char *rb = strchr(buf, ']'); if (!rb) die("%s: missing ']' in address", toks[0]);
+	*rb = 0; char *after = rb + 1; while (*after == ' ') after++;             /* text after ']' = post-index */
+
+	int rn = reg(strtok(buf + 1, " ")); if (rn < 0) die("%s: bad base register", toks[0]);
+	u32 P, U = 1, I = 0, off = 0;
+	char *ofs = *after ? after : strtok(NULL, " ");                          /* post uses `after`, else inside */
+	P = *after ? 0 : 1;
+	if (ofs) {
+		if (ofs[0] == '#') {                                                  /* immediate offset */
+			long v = strtol(ofs + 1, NULL, 0); if (v < 0) { U = 0; v = -v; }
+			off = (u32)v & 0xfff;
+		} else {                                                              /* register offset [, lsl #n] */
+			int rm = reg(ofs); if (rm < 0) die("%s: bad offset register '%s'", toks[0], ofs);
+			I = 1; off = (u32)rm;
+			char *sh = P ? strtok(NULL, " ") : NULL;
+			if (sh) {
+				if (strcmp(sh, "lsl")) die("%s: only 'lsl' index shift supported", toks[0]);
+				char *amt = strtok(NULL, " "); if (!amt || amt[0] != '#') die("%s: lsl needs #amount", toks[0]);
+				off |= ((u32)strtol(amt + 1, NULL, 0) & 31) << 7;             /* shift type lsl = 00 */
+			}
+		}
+	}
+	emit32((cond << 28) | (1u << 26) | (I << 25) | (P << 24) | (U << 23) | ((u32)is_byte << 22)
+	     | (W << 21) | ((u32)is_load << 20) | ((u32)rn << 16) | (rd << 12) | off);
+}
+
+static void enc_uxtb(u32 cond) {   /* uxtb{cond} Rd, Rm — zero-extend byte (rotate 0) */
+	u32 rd = need_reg(1), rm = need_reg(2);
+	emit32((cond << 28) | 0x06ef0070u | (rd << 12) | rm);
+}
+
 /* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
  * and aliases (sp/lr/pc/fp/…); the '{' and '}' are stripped wherever the tokenizer left them. */
 static u32 reglist(void) {
@@ -159,6 +204,17 @@ void md_assemble(char **t, int n) {
 	  if (L == 4 && m[0] == 'b' && m[1] == 'l' && lookup_cc(m + 2, &cc))    { enc_branch(1, cc); return; }
 	  if (L == 4 && m[0] == 'b' && m[1] == 'x' && lookup_cc(m + 2, &cc))    { enc_bx(cc);        return; }
 	}
+	/* single data transfer: ldr/str{b}{cond}. Size letter ('b') then condition (UAL). Check the whole
+	 * suffix as a condition FIRST so "ldrhi" = ldr+hi (not ldr+h+i) — halfword ldrh/ldrd are deferred. */
+	if (!strncmp(m, "ldr", 3) || !strncmp(m, "str", 3)) {
+		const char *suf = m + 3; u32 cond = 14; int byte = 0;
+		if (!*suf) { /* word, AL */ }
+		else if (lookup_cc(suf, &cond)) { /* word + cond */ }
+		else if (suf[0] == 'b') { byte = 1; if (suf[1] && !lookup_cc(suf + 1, &cond)) die("%s: bad suffix", m); }
+		else die("%s: ldr/str variant not supported yet (ldrh/ldrd/ldrsb/…)", m);
+		enc_ldst(cond, m[0] == 'l', byte); return;
+	}
+	if (!strncmp(m, "uxtb", 4)) { u32 cond = 14; if (m[4] && !lookup_cc(m + 4, &cond)) die("%s: bad suffix", m); enc_uxtb(cond); return; }
 	/* data-processing: a 3-char base (add/mov/cmp/…) + optional {s}{cond} suffix (UAL order). */
 	if (strlen(m) >= 3)
 		for (unsigned i = 0; i < sizeof dp_tab / sizeof *dp_tab; i++)
