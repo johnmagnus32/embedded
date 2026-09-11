@@ -83,6 +83,30 @@ static void enc_branch(int is_bl) {   /* b/bl <label> */
 	add_reloc(cursec, off, sym_intern(name), is_bl ? R_ARM_CALL : R_ARM_JUMP24);
 }
 
+/* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
+ * and aliases (sp/lr/pc/fp/…); the '{' and '}' are stripped wherever the tokenizer left them. */
+static u32 reglist(void) {
+	u32 mask = 0;
+	for (int i = 1; i < ntok; i++) {
+		char t[32]; size_t k = 0;
+		for (const char *p = toks[i]; *p && k < sizeof t - 1; p++) if (*p != '{' && *p != '}') t[k++] = *p;
+		t[k] = 0;
+		if (!t[0]) continue;                          /* a lone '{' or '}' token */
+		char *dash = strchr(t, '-');
+		if (dash) {                                    /* range rA-rB */
+			*dash = 0; int a = reg(t), b = reg(dash + 1);
+			if (a < 0 || b < 0 || a > b) die("bad register range '%s' in list", toks[i]);
+			for (int r = a; r <= b; r++) mask |= 1u << r;
+		} else {
+			int r = reg(t); if (r < 0) die("bad register '%s' in list", t);
+			mask |= 1u << r;
+		}
+	}
+	return mask;
+}
+static void enc_push(void) { emit32(0xe92d0000u | reglist()); }   /* STMDB sp!, {list} */
+static void enc_pop(void)  { emit32(0xe8bd0000u | reglist()); }   /* LDMIA sp!, {list} */
+
 /* ------------------------------------------------------------------ md hooks ---------------------- */
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
@@ -91,6 +115,8 @@ void md_assemble(char **t, int n) {
 	else if (!strcmp(m, "bic")) enc_bic();
 	else if (!strcmp(m, "bl")) enc_branch(1);
 	else if (!strcmp(m, "b")) enc_branch(0);
+	else if (!strcmp(m, "push")) enc_push();
+	else if (!strcmp(m, "pop")) enc_pop();
 	else die("unknown mnemonic '%s' (not in the ARM backend's instruction set yet)", m);
 }
 

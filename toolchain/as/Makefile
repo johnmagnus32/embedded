@@ -12,7 +12,8 @@ CFLAGS += -I$(COMMON)
 GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
 
 # Test inputs as `source.s:codesection` pairs — our .o's <codesection> bytes must match GNU as's exactly.
-TESTS := tests/m1_dp.s:.text tests/m1_branch.s:.text ../../libc/src/crt/crt0.S:.text._start
+TESTS := tests/m1_dp.s:.text tests/m1_branch.s:.text ../../libc/src/crt/crt0.S:.text._start \
+         ../../libc/src/crt/crti.S:.init ../../libc/src/crt/crtn.S:.init
 
 # Three layers, GNU-binutils-style: front-end (as.c) + machine-dependent backend (arm.c) + object
 # backend (elf.c). Swapping arm.c for another arch backend is the ONLY change a new target needs.

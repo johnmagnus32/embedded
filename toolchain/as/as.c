@@ -72,7 +72,7 @@ static void strip_comments(char *s) {
 }
 
 /* Split a line into tokens on whitespace + commas ('#','{','}','[',']' stay attached to their operand). */
-#define MAXTOK 16
+#define MAXTOK 32   /* mnemonic + operands; register lists (push/pop) can be long */
 static char *toks[MAXTOK]; static int ntok; static char linebuf[512];
 static void tokenize(const char *line) {
 	ntok = 0; strncpy(linebuf, line, sizeof linebuf - 1); linebuf[sizeof linebuf - 1] = 0;
