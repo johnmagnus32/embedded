@@ -90,7 +90,7 @@ static int lookup_cc(const char *s, u32 *code) {
 }
 
 static int shift_type(const char *s) {   /* lsl=0 lsr=1 asr=2 ror=3; -1 if not a shift */
-	if (!strcmp(s, "lsl")) return 0;
+	if (!strcmp(s, "lsl") || !strcmp(s, "asl")) return 0;   /* asl = legacy synonym for lsl */
 	if (!strcmp(s, "lsr")) return 1;
 	if (!strcmp(s, "asr")) return 2;
 	if (!strcmp(s, "ror")) return 3;
@@ -192,9 +192,10 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 			I = 1; off = (u32)rm;
 			char *sh = P ? strtok(NULL, " ") : NULL;
 			if (sh) {
-				if (strcmp(sh, "lsl")) die("%s: only 'lsl' index shift supported", toks[0]);
-				char *amt = strtok(NULL, " "); if (!amt || amt[0] != '#') die("%s: lsl needs #amount", toks[0]);
-				off |= ((u32)strtol(amt + 1, NULL, 0) & 31) << 7;             /* shift type lsl = 00 */
+				int st = shift_type(sh); if (st < 0) die("%s: bad index shift '%s'", toks[0], sh);
+				char *amt = strtok(NULL, " "); if (!amt || amt[0] != '#') die("%s: %s needs #amount", toks[0], sh);
+				off |= ((u32)strtol(amt + 1, NULL, 0) & 31) << 7;             /* shift amount, bits 11:7 */
+				off |= (u32)st << 5;                                          /* shift type, bits 6:5 (lsl/lsr/asr/ror) */
 			}
 		}
 	}
@@ -231,12 +232,13 @@ static u32 reglist_at(int start) {   /* parse a { … } register list from toks[
 static void enc_push(u32 cond) { emit32((cond << 28) | 0x092d0000u | reglist_at(1)); }   /* STMDB sp!, {list} */
 static void enc_pop(u32 cond)  { emit32((cond << 28) | 0x08bd0000u | reglist_at(1)); }   /* LDMIA sp!, {list} */
 
-/* ldm/stm Rn[!], {list} — load/store multiple, IA (increment-after) form gcc emits. */
-static void enc_ldstm(int is_load, u32 cond) {
+/* ldm/stm{ia,ib,da,db} Rn[!], {list} — load/store multiple. P/U select the addressing mode:
+ * IA=P0U1 (increment after), IB=P1U1, DA=P0U0, DB=P1U0 (decrement before). */
+static void enc_ldstm(int is_load, u32 cond, u32 P, u32 U) {
 	char rn[8]; strncpy(rn, toks[1], sizeof rn - 1); rn[sizeof rn - 1] = 0;
 	u32 wb = 0; size_t l = strlen(rn); if (l && rn[l - 1] == '!') { wb = 1; rn[l - 1] = 0; }
 	int r = reg(rn); if (r < 0) die("%s: bad base register '%s'", toks[0], toks[1]);
-	u32 base = is_load ? 0x08900000u : 0x08800000u;   /* P=0 U=1 (IA); L per is_load */
+	u32 base = 0x08000000u | (P << 24) | (U << 23) | ((u32)is_load << 20);
 	emit32((cond << 28) | base | (wb << 21) | ((u32)r << 16) | reglist_at(2));
 }
 
@@ -335,10 +337,14 @@ void md_assemble(char **t, int n) {
 		else die("%s: ldr/str variant not supported (ldrsb/ldrsh?)", m);
 		return;
 	}
-	if (!strncmp(m, "ldm", 3) || !strncmp(m, "stm", 3)) {   /* load/store multiple (IA) */
-		const char *suf = m + 3; if (!strncmp(suf, "ia", 2)) suf += 2;
+	if (!strncmp(m, "ldm", 3) || !strncmp(m, "stm", 3)) {   /* load/store multiple, any addressing mode */
+		const char *suf = m + 3; u32 P = 0, U = 1;          /* bare ldm/stm defaults to IA */
+		if      (!strncmp(suf, "ia", 2)) { P = 0; U = 1; suf += 2; }
+		else if (!strncmp(suf, "ib", 2)) { P = 1; U = 1; suf += 2; }
+		else if (!strncmp(suf, "da", 2)) { P = 0; U = 0; suf += 2; }
+		else if (!strncmp(suf, "db", 2)) { P = 1; U = 0; suf += 2; }
 		if (!suffix_c(suf, &cond)) die("%s: unsupported ldm/stm mode", m);
-		enc_ldstm(m[0] == 'l', cond); return;
+		enc_ldstm(m[0] == 'l', cond, P, U); return;
 	}
 	if (!strncmp(m, "uxtb", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_uxtb(cond); return; }
 	if (!strncmp(m, "movw", 4) || !strncmp(m, "movt", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_movw(m[3] == 't', cond); return; }

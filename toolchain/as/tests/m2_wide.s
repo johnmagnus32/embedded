@@ -27,3 +27,11 @@ m2c:
 	pusheq {r4, lr}
 	popcs  {r4, pc}
 	pushne {r0-r3}
+	ldr   r0, [r1, r2, lsr #3]
+	ldr   r0, [r1, r2, asr #1]
+	str   r4, [r5, r6, ror #2]
+	ldrb  r0, [r1, r2, asl #2]
+	stmib r0!, {r1, r2}
+	ldmdb r3, {r4, r5}
+	stmda r7, {r0, r1}
+	ldmib r8!, {r9, sl}
