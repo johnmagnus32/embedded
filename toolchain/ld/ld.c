@@ -50,22 +50,33 @@ static u32 resolve(Obj *o, int symidx) {
 }
 
 /* ---- phases -------------------------------------------------------------------------------------- */
-/* Place allocatable sections at virtual addresses. One PT_LOAD from file offset 0 (so ehdr+phdr map
- * too); a section's vaddr == LOAD_BASE + its file offset (identity map). PROGBITS get file+memory;
- * NOBITS (.bss) get memory only, placed after all PROGBITS. Returns the file/memory end addresses. */
-static void layout(u32 *filesz_end, u32 *memsz_end) {
-	u32 hdrsz = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);   /* one program header */
-	u32 cur = LOAD_BASE + hdrsz;
-	for (int pass = 0; pass < 2; pass++) {                 /* pass 0 = PROGBITS, pass 1 = NOBITS */
-		for (int i = 0; i < nobj; i++) for (int j = 0; j < objs[i].nsh; j++) {
-			Elf32_Shdr *s = &objs[i].sh[j];
-			int nobits = (s->sh_type == SHT_NOBITS);
-			if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || nobits != (pass == 1)) continue;
-			cur = alignup(cur, s->sh_addralign); objs[i].sec_vaddr[j] = cur; cur += s->sh_size;
-		}
-		if (pass == 0) *filesz_end = cur;
+/* Assign every allocatable input section a virtual address, grouped into two page-aligned segments so
+ * the kernel can map them with different permissions (W^X). Both segments keep vaddr == LOAD_BASE +
+ * file-offset (the RW segment is bumped to a page boundary in file AND memory together, preserving that
+ * identity), so the writer places each PROGBITS section at file offset vaddr - LOAD_BASE.
+ *   seg 0 (R-X): headers + read-only sections   — SHF_ALLOC && !SHF_WRITE   (.text, .rodata)
+ *   seg 1 (R-W): writable data then .bss         — SHF_ALLOC &&  SHF_WRITE   (.data [PROGBITS], .bss [NOBITS])
+ * Three placement passes so sections of like kind are contiguous regardless of input order. */
+static void place(int want_write, int nobits, u32 *cur) {
+	for (int i = 0; i < nobj; i++) for (int j = 0; j < objs[i].nsh; j++) {
+		Elf32_Shdr *s = &objs[i].sh[j];
+		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size) continue;
+		if (!!(s->sh_flags & SHF_WRITE) != want_write) continue;
+		if ((s->sh_type == SHT_NOBITS) != nobits) continue;
+		*cur = alignup(*cur, s->sh_addralign); objs[i].sec_vaddr[j] = *cur; *cur += s->sh_size;
 	}
-	*memsz_end = cur;
+}
+static void layout(Layout *L) {
+	u32 hdrsz = sizeof(Elf32_Ehdr) + 2 * sizeof(Elf32_Phdr);   /* two program headers (R-X, R-W) */
+	u32 cur = LOAD_BASE + hdrsz;
+	place(0, 0, &cur);                       /* seg 0: read-only PROGBITS (.text, .rodata)          */
+	L->rx_filesz = cur - LOAD_BASE;
+	cur = LOAD_BASE + alignup(cur - LOAD_BASE, PAGE);   /* page-align the R-W segment (file + mem)   */
+	L->rw_vaddr = cur; L->rw_off = cur - LOAD_BASE;
+	place(1, 0, &cur);                       /* seg 1a: writable PROGBITS (.data) — on disk + memory */
+	L->rw_filesz = cur - L->rw_vaddr;
+	place(1, 1, &cur);                       /* seg 1b: .bss (NOBITS) — memory only, no file bytes    */
+	L->rw_memsz = cur - L->rw_vaddr;
 }
 
 /* Record every defined global symbol's final address. */
@@ -104,12 +115,12 @@ int main(int argc, char **argv) {
 	}
 	if (!nobj) die("usage: ld [-o out] obj.o ...");
 
-	u32 filesz_end, memsz_end;
-	layout(&filesz_end, &memsz_end);
+	Layout L = {0};
+	layout(&L);
 	build_globals();
 	GSym *start = gsym_find("_start");
 	if (!start || !start->defined) die("no _start symbol (entry point)");
 	relocate();
-	elf_write_exec(out, start->vaddr, filesz_end, memsz_end);
+	elf_write_exec(out, start->vaddr, &L);
 	return 0;
 }

@@ -18,6 +18,7 @@
 #include "elfutil.h"    /* shared helpers: rd32/wr32, alignup, Strtab */
 
 #define LOAD_BASE 0x00010000u   /* where the image maps (GNU ld's ARM static default region) */
+#define PAGE      0x1000u       /* segment alignment: each PT_LOAD maps on its own page => W^X enforceable */
 
 typedef struct {
 	const char *path; u8 *data; long size;      /* whole file (mutable — relocations patch it in place) */
@@ -30,9 +31,18 @@ extern Obj objs[]; extern int nobj;
 
 void die(const char *fmt, ...);                                    /* front-end (ld.c) */
 
+/* The result of layout(): two loadable segments (W^X). Segment 0 is R-X (headers + .text + .rodata);
+ * segment 1 is R-W (.data then .bss). Each is page-aligned so it maps with its own permissions; within
+ * a segment we keep vaddr == LOAD_BASE + file-offset (identity map), so the writer needs no offset table.
+ * A segment is absent when its *_memsz is 0 (e.g. a program with no writable data). */
+typedef struct {
+	u32 rx_filesz;                              /* seg 0 size from LOAD_BASE (== memsz; headers included) */
+	u32 rw_vaddr, rw_off, rw_filesz, rw_memsz;  /* seg 1: vaddr, file offset, on-disk size, in-mem size  */
+} Layout;
+
 /* ---- OBJECT-FORMAT backend (elf.c) --------------------------------------------------------------- */
 Obj *elf_load(const char *path);                                   /* parse one .o into objs[] */
-void elf_write_exec(const char *out, u32 entry, u32 filesz_end, u32 memsz_end);
+void elf_write_exec(const char *out, u32 entry, const Layout *L);
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
 extern const u16 md_e_machine;                                     /* EM_ARM — checked on load, stamped on write */
