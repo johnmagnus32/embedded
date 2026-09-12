@@ -83,7 +83,8 @@ static void build_shdrs(Obj *o) {
 static void layout(Obj *o) {
 	u32 off = sizeof(Elf32_Ehdr);
 	for (int i = 0; i < nsec; i++) { Elf32_Shdr *h = &o->sh[secs[i].shndx];
-		h->sh_offset = off; h->sh_size = secs[i].len; off = (off + secs[i].len + 3) & ~3u; }
+		h->sh_offset = off; h->sh_size = secs[i].len;
+		if (secs[i].type != SHT_NOBITS) off = (off + secs[i].len + 3) & ~3u; }   /* .bss occupies no file space */
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) { int cnt = 0; for (int r = 0; r < nrel; r++) if (rels[r].sec == i) cnt++;
 		Elf32_Shdr *h = &o->sh[o->relof[i]]; h->sh_offset = off; h->sh_size = cnt * sizeof(Elf32_Rel); off += h->sh_size; }
 	o->sh[o->symtab_ndx].sh_offset = off; o->sh[o->symtab_ndx].sh_size = o->ne * sizeof(Elf32_Sym); off += o->sh[o->symtab_ndx].sh_size;
@@ -101,7 +102,8 @@ static void write_out(Obj *o, FILE *f) {
 
 	u8 pad[4] = {0};
 	fwrite(&eh, sizeof eh, 1, f);
-	for (int i = 0; i < nsec; i++) { fwrite(secs[i].data, 1, secs[i].len, f); u32 p = (4 - (secs[i].len & 3)) & 3; if (p) fwrite(pad, 1, p, f); }
+	for (int i = 0; i < nsec; i++) { if (secs[i].type == SHT_NOBITS) continue;   /* .bss: no bytes on disk */
+		fwrite(secs[i].data, 1, secs[i].len, f); u32 p = (4 - (secs[i].len & 3)) & 3; if (p) fwrite(pad, 1, p, f); }
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) for (int r = 0; r < nrel; r++) if (rels[r].sec == i) {
 		Elf32_Rel er = { rels[r].off, ELF32_R_INFO(o->symmap[rels[r].symidx], rels[r].type) }; fwrite(&er, sizeof er, 1, f); }
 	fwrite(o->esym, sizeof(Elf32_Sym), o->ne, f);

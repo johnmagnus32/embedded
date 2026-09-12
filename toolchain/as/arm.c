@@ -89,12 +89,29 @@ static int lookup_cc(const char *s, u32 *code) {
 	return 0;
 }
 
-/* operand2 at token index opidx: "#imm" -> I=1 + modimm; a bare register -> I=0 + Rm. */
+static int shift_type(const char *s) {   /* lsl=0 lsr=1 asr=2 ror=3; -1 if not a shift */
+	if (!strcmp(s, "lsl")) return 0;
+	if (!strcmp(s, "lsr")) return 1;
+	if (!strcmp(s, "asr")) return 2;
+	if (!strcmp(s, "ror")) return 3;
+	return -1;
+}
+/* Build the 12-bit shifted-register operand2 for Rm with a shift at tokens [si]=type [si+1]=amount:
+ * "Rm, lsl #n" -> (n<<7)|(type<<5)|Rm ; "Rm, lsl Rs" -> (Rs<<8)|(type<<5)|(1<<4)|Rm. */
+static u32 shifted_reg(u32 rm, int si) {
+	int st = shift_type(toks[si]); if (st < 0) die("%s: bad shift '%s'", toks[0], toks[si]);
+	const char *amt = (si + 1 < ntok) ? toks[si + 1] : NULL; if (!amt) die("%s: shift needs an amount", toks[0]);
+	if (amt[0] == '#') return (((u32)strtol(amt + 1, NULL, 0) & 31) << 7) | ((u32)st << 5) | rm;
+	int rs = reg(amt); if (rs < 0) die("%s: bad shift amount '%s'", toks[0], amt);
+	return ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm;
+}
+
+/* operand2 at token index opidx: "#imm" -> I=1 + modimm; register [,shift] -> I=0 + shifted-reg. */
 static u32 operand2(int opidx, u32 *I) {
 	if (toks[opidx][0] == '#') { *I = 1; return modimm(imm(toks[opidx])); }
 	int rm = reg(toks[opidx]); if (rm < 0) die("%s: bad operand2 '%s'", toks[0], toks[opidx]);
-	if (ntok > opidx + 1) die("%s: shifted-register operand2 not supported yet", toks[0]);
-	*I = 0; return (u32)rm;
+	*I = 0;
+	return (ntok > opidx + 1) ? shifted_reg((u32)rm, opidx + 1) : (u32)rm;
 }
 
 static void enc_dp(u32 opc, int form, u32 cond, int s) {
@@ -192,9 +209,9 @@ static void enc_uxtb(u32 cond) {   /* uxtb{cond} Rd, Rm — zero-extend byte (ro
 
 /* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
  * and aliases (sp/lr/pc/fp/…); the '{' and '}' are stripped wherever the tokenizer left them. */
-static u32 reglist(void) {
+static u32 reglist_at(int start) {   /* parse a { … } register list from toks[start..] into a 16-bit mask */
 	u32 mask = 0;
-	for (int i = 1; i < ntok; i++) {
+	for (int i = start; i < ntok; i++) {
 		char t[32]; size_t k = 0;
 		for (const char *p = toks[i]; *p && k < sizeof t - 1; p++) if (*p != '{' && *p != '}') t[k++] = *p;
 		t[k] = 0;
@@ -211,42 +228,132 @@ static u32 reglist(void) {
 	}
 	return mask;
 }
-static void enc_push(void) { emit32(0xe92d0000u | reglist()); }   /* STMDB sp!, {list} */
-static void enc_pop(void)  { emit32(0xe8bd0000u | reglist()); }   /* LDMIA sp!, {list} */
+static void enc_push(void) { emit32(0xe92d0000u | reglist_at(1)); }   /* STMDB sp!, {list} */
+static void enc_pop(void)  { emit32(0xe8bd0000u | reglist_at(1)); }   /* LDMIA sp!, {list} */
+
+/* ldm/stm Rn[!], {list} — load/store multiple, IA (increment-after) form gcc emits. */
+static void enc_ldstm(int is_load, u32 cond) {
+	char rn[8]; strncpy(rn, toks[1], sizeof rn - 1); rn[sizeof rn - 1] = 0;
+	u32 wb = 0; size_t l = strlen(rn); if (l && rn[l - 1] == '!') { wb = 1; rn[l - 1] = 0; }
+	int r = reg(rn); if (r < 0) die("%s: bad base register '%s'", toks[0], toks[1]);
+	u32 base = is_load ? 0x08900000u : 0x08800000u;   /* P=0 U=1 (IA); L per is_load */
+	emit32((cond << 28) | base | (wb << 21) | ((u32)r << 16) | reglist_at(2));
+}
+
+/* standalone shifts: lsl/lsr/asr/ror Rd, Rm, #n|Rs  == MOV Rd, Rm <shift>. */
+static void enc_shift(int st, u32 cond, int s) {
+	u32 rd = need_reg(1), rm = need_reg(2);
+	const char *amt = (3 < ntok) ? toks[3] : NULL; if (!amt) die("%s: missing shift amount", toks[0]);
+	u32 op2;
+	if (amt[0] == '#') op2 = (((u32)strtol(amt + 1, NULL, 0) & 31) << 7) | ((u32)st << 5) | rm;
+	else { int rs = reg(amt); if (rs < 0) die("%s: bad shift amount", toks[0]); op2 = ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm; }
+	emit32((cond << 28) | (13u << 21) | ((u32)s << 20) | (rd << 12) | op2);   /* MOV */
+}
+
+/* movw/movt Rd, #imm16 — 16-bit immediate (imm4:imm12 split). */
+static void enc_movw(int is_movt, u32 cond) {
+	u32 rd = need_reg(1), v = imm(toks[2]) & 0xffff;
+	emit32((cond << 28) | (is_movt ? 0x03400000u : 0x03000000u) | ((v >> 12) << 16) | (rd << 12) | (v & 0xfff));
+}
+
+/* multiply / divide / count-leading-zeros. */
+static void enc_mul(u32 cond, int s) {   /* mul Rd, Rn, Rm  (Rd=19:16, Rm=11:8, Rn=3:0) */
+	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3);
+	emit32((cond << 28) | ((u32)s << 20) | (rd << 16) | (rm << 8) | 0x90 | rn);
+}
+static void enc_mla(u32 cond, int s) {   /* mla Rd, Rn, Rm, Ra */
+	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3), ra = need_reg(4);
+	emit32((cond << 28) | 0x00200000u | ((u32)s << 20) | (rd << 16) | (ra << 12) | (rm << 8) | 0x90 | rn);
+}
+static void enc_mls(u32 cond) {   /* mls Rd, Rn, Rm, Ra  (Rd = Ra - Rn*Rm) */
+	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3), ra = need_reg(4);
+	emit32((cond << 28) | 0x00600000u | (rd << 16) | (ra << 12) | (rm << 8) | 0x90 | rn);
+}
+static void enc_div(int is_sdiv, u32 cond) {   /* udiv/sdiv Rd, Rn, Rm  (Rn=3:0 dividend, Rm=11:8) */
+	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3);
+	emit32((cond << 28) | (is_sdiv ? 0x0710f010u : 0x0730f010u) | (rd << 16) | (rm << 8) | rn);
+}
+static void enc_clz(u32 cond) {   /* clz Rd, Rm */
+	emit32((cond << 28) | 0x016f0f10u | (need_reg(1) << 12) | need_reg(2));
+}
+
+/* supervisor call + branch-and-link-exchange (register). */
+static void enc_svc(u32 cond) {
+	const char *t = toks[1]; emit32((cond << 28) | 0x0f000000u | ((u32)strtol(t[0] == '#' ? t + 1 : t, NULL, 0) & 0xffffff));
+}
+static void enc_blx(u32 cond) { emit32((cond << 28) | 0x012fff30u | need_reg(1)); }   /* blx Rm */
+
+/* extra load/store: ldrd/strd/ldrh/strh Rd, [Rn] | [Rn, #±imm].  cond 000 P U 1 W L Rn Rd immhi 1SH1 immlo */
+static void enc_xldst(u32 cond, int Lbit, u32 nib) {
+	u32 rd = need_reg(1);
+	if (ntok < 3 || toks[2][0] != '[') die("%s: expected [Rn ...]", toks[0]);
+	char buf[64]; size_t bl = 0;
+	for (int i = 2; i < ntok && bl < sizeof buf - 1; i++) bl += (size_t)snprintf(buf + bl, sizeof buf - bl, "%s%s", i > 2 ? " " : "", toks[i]);
+	char *rb = strchr(buf, ']'); if (!rb) die("%s: missing ']'", toks[0]);
+	*rb = 0;
+	int rn = reg(strtok(buf + 1, " ")); if (rn < 0) die("%s: bad base register", toks[0]);
+	u32 U = 1, off = 0; char *o = strtok(NULL, " ");
+	if (o) { if (o[0] != '#') die("%s: only immediate offset supported here", toks[0]); long v = strtol(o + 1, NULL, 0); if (v < 0) { U = 0; v = -v; } off = (u32)v; }
+	emit32((cond << 28) | (1u << 24) | (U << 23) | (1u << 22) | ((u32)Lbit << 20) | ((u32)rn << 16) | (rd << 12)
+	     | (((off >> 4) & 0xf) << 8) | (nib << 4) | (off & 0xf));
+}
 
 /* ------------------------------------------------------------------ md hooks ---------------------- */
+/* Parse an optional UAL suffix after a base mnemonic. Returns 0 on a bad suffix. */
+static int suffix_sc(const char *suf, u32 *cond, int *s) { *cond = 14; *s = 0; if (*suf == 's') { *s = 1; suf++; } if (*suf && !lookup_cc(suf, cond)) return 0; return 1; }
+static int suffix_c(const char *suf, u32 *cond) { *cond = 14; if (*suf && !lookup_cc(suf, cond)) return 0; return 1; }
+
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
-	const char *m = toks[0];
+	const char *m = toks[0]; size_t L = strlen(m); u32 cond; int s;
+	char b3[4] = { L > 0 ? m[0] : 0, L > 1 ? m[1] : 0, L > 2 ? m[2] : 0, 0 };   /* first 3 chars, for shifts */
+
 	if (!strcmp(m, "push")) { enc_push(); return; }
 	if (!strcmp(m, "pop"))  { enc_pop();  return; }
-	/* branches: b/bl/bx with an optional condition suffix. "bic" (b+"ic") isn't a cond -> falls to DP. */
-	{ u32 cc; size_t L = strlen(m);
-	  if (!strcmp(m, "b"))  { enc_branch(0, 14); return; }
-	  if (!strcmp(m, "bl")) { enc_branch(1, 14); return; }
-	  if (!strcmp(m, "bx")) { enc_bx(14);        return; }
-	  if (L == 3 && m[0] == 'b' && lookup_cc(m + 1, &cc))                   { enc_branch(0, cc); return; }
-	  if (L == 4 && m[0] == 'b' && m[1] == 'l' && lookup_cc(m + 2, &cc))    { enc_branch(1, cc); return; }
-	  if (L == 4 && m[0] == 'b' && m[1] == 'x' && lookup_cc(m + 2, &cc))    { enc_bx(cc);        return; }
+
+	/* branches: b/bl/bx/blx with an optional condition. ("bic" = b+"ic" isn't a cond -> falls to DP.) */
+	if (m[0] == 'b') {
+		if (!strcmp(m, "b"))   { enc_branch(0, 14); return; }
+		if (!strcmp(m, "bl"))  { enc_branch(1, 14); return; }
+		if (!strcmp(m, "bx"))  { enc_bx(14);  return; }
+		if (!strcmp(m, "blx")) { enc_blx(14); return; }
+		if (L == 3 && lookup_cc(m + 1, &cond))                                    { enc_branch(0, cond); return; }
+		if (L == 4 && m[1] == 'l' && lookup_cc(m + 2, &cond))                     { enc_branch(1, cond); return; }
+		if (L == 4 && m[1] == 'x' && lookup_cc(m + 2, &cond))                     { enc_bx(cond);  return; }
+		if (L == 5 && m[1] == 'l' && m[2] == 'x' && lookup_cc(m + 3, &cond))      { enc_blx(cond); return; }
 	}
-	/* single data transfer: ldr/str{b}{cond}. Size letter ('b') then condition (UAL). Check the whole
-	 * suffix as a condition FIRST so "ldrhi" = ldr+hi (not ldr+h+i) — halfword ldrh/ldrd are deferred. */
+
+	/* single data transfer: ldr/str {b|d|h}{cond}. Whole-suffix cond FIRST so "ldrhi"=ldr+hi. */
 	if (!strncmp(m, "ldr", 3) || !strncmp(m, "str", 3)) {
-		const char *suf = m + 3; u32 cond = 14; int byte = 0;
-		if (!*suf) { /* word, AL */ }
-		else if (lookup_cc(suf, &cond)) { /* word + cond */ }
-		else if (suf[0] == 'b') { byte = 1; if (suf[1] && !lookup_cc(suf + 1, &cond)) die("%s: bad suffix", m); }
-		else die("%s: ldr/str variant not supported yet (ldrh/ldrd/ldrsb/…)", m);
-		enc_ldst(cond, m[0] == 'l', byte); return;
+		int is_load = (m[0] == 'l'); const char *suf = m + 3; cond = 14;
+		if (!*suf || lookup_cc(suf, &cond)) enc_ldst(cond, is_load, 0);            /* word */
+		else if (suf[0] == 'b') { if (!suffix_c(suf + 1, &cond)) die("%s: bad suffix", m); enc_ldst(cond, is_load, 1); }
+		else if (suf[0] == 'd') { if (!suffix_c(suf + 1, &cond)) die("%s: bad suffix", m); enc_xldst(cond, 0, is_load ? 0xd : 0xf); }
+		else if (suf[0] == 'h') { if (!suffix_c(suf + 1, &cond)) die("%s: bad suffix", m); enc_xldst(cond, is_load ? 1 : 0, 0xb); }
+		else die("%s: ldr/str variant not supported (ldrsb/ldrsh?)", m);
+		return;
 	}
-	if (!strncmp(m, "uxtb", 4)) { u32 cond = 14; if (m[4] && !lookup_cc(m + 4, &cond)) die("%s: bad suffix", m); enc_uxtb(cond); return; }
-	/* data-processing: a 3-char base (add/mov/cmp/…) + optional {s}{cond} suffix (UAL order). */
-	if (strlen(m) >= 3)
+	if (!strncmp(m, "ldm", 3) || !strncmp(m, "stm", 3)) {   /* load/store multiple (IA) */
+		const char *suf = m + 3; if (!strncmp(suf, "ia", 2)) suf += 2;
+		if (!suffix_c(suf, &cond)) die("%s: unsupported ldm/stm mode", m);
+		enc_ldstm(m[0] == 'l', cond); return;
+	}
+	if (!strncmp(m, "uxtb", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_uxtb(cond); return; }
+	if (!strncmp(m, "movw", 4) || !strncmp(m, "movt", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_movw(m[3] == 't', cond); return; }
+	if (!strncmp(m, "mul", 3)) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_mul(cond, s); return; }
+	if (!strncmp(m, "mla", 3)) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_mla(cond, s); return; }
+	if (!strncmp(m, "mls", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_mls(cond); return; }
+	if (!strncmp(m, "udiv", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_div(0, cond); return; }
+	if (!strncmp(m, "sdiv", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_div(1, cond); return; }
+	if (!strncmp(m, "clz", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_clz(cond); return; }
+	if (!strncmp(m, "svc", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_svc(cond); return; }
+	{ int st = shift_type(b3); if (st >= 0) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_shift(st, cond, s); return; } }
+
+	/* data-processing: 3-char base (add/mov/cmp/…) + optional {s}{cond} (UAL order). */
+	if (L >= 3)
 		for (unsigned i = 0; i < sizeof dp_tab / sizeof *dp_tab; i++)
 			if (!strncmp(m, dp_tab[i].name, 3)) {
-				const char *suf = m + 3; u32 cond = 14; int s = 0;   /* default AL, S=0 */
-				if (*suf == 's') { s = 1; suf++; }
-				if (*suf && !lookup_cc(suf, &cond)) die("%s: bad condition/suffix", m);
+				if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad condition/suffix", m);
 				enc_dp(dp_tab[i].opc, dp_tab[i].form, cond, s);
 				return;
 			}

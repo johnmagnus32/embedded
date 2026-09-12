@@ -157,6 +157,12 @@ static void do_directive(void) {
 			u32 off = secs[cursec].len; emit32((u32)addend);
 			add_reloc(cursec, off, sym_intern(name), md_r_abs32);
 		}
+	} else if (!strcmp(d, ".bss")) {
+		sec_get(".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE);
+	} else if (!strcmp(d, ".space") || !strcmp(d, ".skip") || !strcmp(d, ".zero")) {
+		long nb = strtol(toks[1], NULL, 0);
+		if (secs[cursec].type == SHT_NOBITS) secs[cursec].len += (size_t)nb;   /* .bss: reserve size, no bytes */
+		else { u8 z = 0; for (long i = 0; i < nb; i++) emit(&z, 1); }
 	} else if (!strcmp(d, ".ascii") || !strcmp(d, ".asciz") || !strcmp(d, ".string")) {
 		emit_string(toks[1], strcmp(d, ".ascii") != 0);   /* .ascii: no NUL; .asciz/.string: add NUL */
 	} else if (!strcmp(d, ".set") || !strcmp(d, ".equ")) {
