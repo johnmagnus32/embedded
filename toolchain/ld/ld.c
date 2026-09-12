@@ -37,6 +37,38 @@ static void gsym_define(const char *name, u32 vaddr) {
 	gsyms[ngsym++] = (GSym){ name, vaddr, 1 };
 }
 
+/* ---- archive member selection -------------------------------------------------------------------- */
+/* Does object o define global symbol `name`? */
+static int defines_global(Obj *o, const char *name) {
+	for (int k = 0; k < o->nsym; k++) { Elf32_Sym *s = &o->sym[k];
+		if (ELF32_ST_BIND(s->st_info) == STB_GLOBAL && s->st_shndx != SHN_UNDEF && s->st_name
+		    && !strcmp(o->strtab + s->st_name, name)) return 1; }
+	return 0;
+}
+/* Is `name` currently NEEDED: referenced undefined by an active object AND not yet defined by one? */
+static int needed_globally(const char *name) {
+	for (int i = 0; i < nobj; i++) if (objs[i].active && defines_global(&objs[i], name)) return 0;
+	for (int i = 0; i < nobj; i++) if (objs[i].active) for (int k = 0; k < objs[i].nsym; k++) {
+		Elf32_Sym *s = &objs[i].sym[k];
+		if (ELF32_ST_BIND(s->st_info) == STB_GLOBAL && s->st_shndx == SHN_UNDEF && s->st_name
+		    && !strcmp(objs[i].strtab + s->st_name, name)) return 1; }
+	return 0;
+}
+/* Pull archive members on demand: activate any lazy member that defines a needed symbol, repeating to a
+ * fixpoint (a pulled member's own undefined refs may pull further members). This is the classic
+ * static-archive rule; we resolve globally rather than by command-line position (like --start-group). */
+static void pull_archive_members(void) {
+	int changed = 1;
+	while (changed) { changed = 0;
+		for (int i = 0; i < nobj; i++) { if (objs[i].active) continue;
+			for (int k = 0; k < objs[i].nsym; k++) { Elf32_Sym *s = &objs[i].sym[k];
+				if (ELF32_ST_BIND(s->st_info) != STB_GLOBAL || s->st_shndx == SHN_UNDEF || !s->st_name) continue;
+				if (needed_globally(objs[i].strtab + s->st_name)) { objs[i].active = 1; changed = 1; break; }
+			}
+		}
+	}
+}
+
 /* Resolve one object-local symbol index to a final virtual address. */
 static u32 resolve(Obj *o, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
@@ -58,13 +90,13 @@ static u32 resolve(Obj *o, int symidx) {
  *   seg 1 (R-W): writable data then .bss         — SHF_ALLOC &&  SHF_WRITE   (.data [PROGBITS], .bss [NOBITS])
  * Three placement passes so sections of like kind are contiguous regardless of input order. */
 static void place(int want_write, int nobits, u32 *cur) {
-	for (int i = 0; i < nobj; i++) for (int j = 0; j < objs[i].nsh; j++) {
+	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
 		Elf32_Shdr *s = &objs[i].sh[j];
 		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size) continue;
 		if (!!(s->sh_flags & SHF_WRITE) != want_write) continue;
 		if ((s->sh_type == SHT_NOBITS) != nobits) continue;
 		*cur = alignup(*cur, s->sh_addralign); objs[i].sec_vaddr[j] = *cur; *cur += s->sh_size;
-	}
+	} }
 }
 static void layout(Layout *L) {
 	u32 hdrsz = sizeof(Elf32_Ehdr) + 2 * sizeof(Elf32_Phdr);   /* two program headers (R-X, R-W) */
@@ -81,16 +113,16 @@ static void layout(Layout *L) {
 
 /* Record every defined global symbol's final address. */
 static void build_globals(void) {
-	for (int i = 0; i < nobj; i++) for (int k = 0; k < objs[i].nsym; k++) {
+	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int k = 0; k < objs[i].nsym; k++) {
 		Elf32_Sym *s = &objs[i].sym[k];
 		if (ELF32_ST_BIND(s->st_info) == STB_GLOBAL && s->st_shndx != SHN_UNDEF && s->st_name)
 			gsym_define(objs[i].strtab + s->st_name, objs[i].sec_vaddr[s->st_shndx] + s->st_value);
-	}
+	} }
 }
 
 /* For each REL section, patch its target section's bytes now that addresses are known. */
 static void relocate(void) {
-	for (int i = 0; i < nobj; i++) for (int j = 0; j < objs[i].nsh; j++) {
+	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
 		Elf32_Shdr *rs = &objs[i].sh[j];
 		if (rs->sh_type != SHT_REL) continue;
 		Elf32_Shdr *ts = &objs[i].sh[rs->sh_info];              /* the section being patched */
@@ -103,7 +135,14 @@ static void relocate(void) {
 			u8 *loc = objs[i].data + ts->sh_offset + rel[r].r_offset;    /* bytes to patch          */
 			md_apply_reloc(&objs[i], ELF32_R_TYPE(rel[r].r_info), loc, S, P);
 		}
-	}
+	} }
+}
+
+/* An input file is an archive if it opens with the ar magic; otherwise treat it as a relocatable object. */
+static int is_archive(const char *path) {
+	FILE *f = fopen(path, "rb"); if (!f) die("cannot open %s", path);
+	char m[8]; size_t n = fread(m, 1, 8, f); fclose(f);
+	return n == 8 && !memcmp(m, "!<arch>\n", 8);
 }
 
 int main(int argc, char **argv) {
@@ -111,9 +150,11 @@ int main(int argc, char **argv) {
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
 		else if (argv[i][0] == '-') die("unknown option '%s'", argv[i]);
-		else elf_load(argv[i]);
+		else if (is_archive(argv[i])) ar_load(argv[i]);   /* lazy members, pulled on demand below */
+		else elf_load(argv[i]);                           /* always-linked object */
 	}
-	if (!nobj) die("usage: ld [-o out] obj.o ...");
+	if (!nobj) die("usage: ld [-o out] obj.o|lib.a ...");
+	pull_archive_members();
 
 	Layout L = {0};
 	layout(&L);

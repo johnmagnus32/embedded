@@ -10,16 +10,11 @@
 #include <string.h>
 #include "ld.h"
 
-/* Parse one relocatable object into objs[] (locating its symbol + string tables). */
-Obj *elf_load(const char *path) {
+/* Parse an in-memory ELF32 relocatable into objs[] (locating its symbol + string tables). `active`
+ * distinguishes always-linked command-line objects (1) from lazy archive members (0, pulled on demand). */
+Obj *elf_parse(const char *path, u8 *data, long size, int active) {
 	if (nobj >= MAXOBJ) die("too many objects");
-	Obj *o = &objs[nobj++]; o->path = path;
-	FILE *f = fopen(path, "rb"); if (!f) die("cannot open %s", path);
-	fseek(f, 0, SEEK_END); o->size = ftell(f); fseek(f, 0, SEEK_SET);
-	o->data = malloc(o->size);
-	if (fread(o->data, 1, o->size, f) != (size_t)o->size) die("%s: read failed", path);
-	fclose(f);
-
+	Obj *o = &objs[nobj++]; o->path = path; o->data = data; o->size = size; o->active = active;
 	o->eh = (Elf32_Ehdr *)o->data;
 	if (memcmp(o->eh->e_ident, "\177ELF\1\1", 6)) die("%s: not a little-endian ELF32", path);
 	if (o->eh->e_machine != md_e_machine) die("%s: wrong machine (e_machine=%u, want %u)", path, o->eh->e_machine, md_e_machine);
@@ -33,17 +28,56 @@ Obj *elf_load(const char *path) {
 	return o;
 }
 
+/* Read a whole file into a fresh buffer. */
+static u8 *slurp(const char *path, long *size) {
+	FILE *f = fopen(path, "rb"); if (!f) die("cannot open %s", path);
+	fseek(f, 0, SEEK_END); *size = ftell(f); fseek(f, 0, SEEK_SET);
+	u8 *b = malloc(*size); if (fread(b, 1, *size, f) != (size_t)*size) die("%s: read failed", path);
+	fclose(f); return b;
+}
+
+/* Parse one relocatable object FILE (always active). */
+Obj *elf_load(const char *path) { long n; u8 *d = slurp(path, &n); return elf_parse(path, d, n, 1); }
+
+/* Split a `!<arch>\n` archive into its object members, each parsed LAZY (active=0). Handles the GNU
+ * variant our ar writes: skip the "/" symbol index and "//" long-name table; resolve "/off" member
+ * names against "//". Every 60-byte header is followed by sh_size bytes padded to an even length. */
+void ar_load(const char *path) {
+	long size; u8 *d = slurp(path, &size);
+	if (size < 8 || memcmp(d, "!<arch>\n", 8)) die("%s: not an archive", path);
+	const char *longtab = NULL;
+	long p = 8;
+	while (p + 60 <= size) {
+		char *h = (char *)(d + p);                    /* 60-byte header: name[16] .. size[48..58] fmag[58..60] */
+		char namef[17]; memcpy(namef, h, 16); namef[16] = 0;
+		char szf[11];   memcpy(szf, h + 48, 10); szf[10] = 0;
+		long msize = strtol(szf, NULL, 10);
+		u8 *mdata = d + p + 60;
+		if (!memcmp(namef, "//", 2) && (namef[2] == ' ' || namef[2] == 0)) {
+			longtab = (const char *)mdata;            /* extended long-name table */
+		} else if (namef[0] != '/') {                 /* short name "name/": copy up to the / or space */
+			char name[64]; int k = 0; while (k < 15 && namef[k] && namef[k] != '/' && namef[k] != ' ') { name[k] = namef[k]; k++; } name[k] = 0;
+			elf_parse(strdup(name), mdata, msize, 0);
+		} else if (namef[1] >= '0' && namef[1] <= '9') {   /* "/off": long name referencing // */
+			const char *nm = longtab ? longtab + atoi(namef + 1) : "member";
+			char name[64]; int k = 0; while (k < 63 && nm[k] && nm[k] != '/' && nm[k] != '\n') { name[k] = nm[k]; k++; } name[k] = 0;
+			elf_parse(strdup(name), mdata, msize, 0);
+		}   /* else namef == "/" : the symbol index — skip (we scan member symtabs directly) */
+		p += 60 + msize + (msize & 1);                /* members are padded to even length */
+	}
+}
+
 /* Write each allocatable PROGBITS section (already relocated in place) at its assigned file offset
  * vaddr - LOAD_BASE, zero-padding the gap first. Iterating RO then writable reproduces layout()'s order,
  * so the zero fill absorbs both per-section alignment and the page gap before the R-W segment. */
 static void write_image(FILE *f, int want_write) {
-	for (int i = 0; i < nobj; i++) for (int j = 0; j < objs[i].nsh; j++) {
+	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
 		Elf32_Shdr *s = &objs[i].sh[j];
 		if (!(s->sh_flags & SHF_ALLOC) || s->sh_type == SHT_NOBITS || !s->sh_size) continue;
 		if (!!(s->sh_flags & SHF_WRITE) != want_write) continue;
 		for (long p = ftell(f); p < (long)(objs[i].sec_vaddr[j] - LOAD_BASE); p++) fputc(0, f);
 		fwrite(objs[i].data + s->sh_offset, 1, s->sh_size, f);
-	}
+	} }
 }
 
 /* Serialize the static executable: ehdr + program headers (R-X seg, optional R-W seg) + the loadable
@@ -68,7 +102,9 @@ void elf_write_exec(const char *out, u32 entry, const Layout *L) {
 	if (have_bss)  sh[ns++] = (Elf32_Shdr){ .sh_name=13, .sh_type=SHT_NOBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
 	    .sh_addr=L->rw_vaddr+L->rw_filesz, .sh_offset=L->rw_off+L->rw_filesz, .sh_size=bss_size, .sh_addralign=4 };
 	int ndx_shstr = ns++;
-	u32 shstr_off = L->rw_off + L->rw_filesz;               /* .shstrtab follows the on-disk image */
+	/* .shstrtab follows the last byte actually written: end of .data if there is any, else end of the
+	 * R-X segment (a .bss-only or code-only program writes no R-W bytes, so nothing pads out to rw_off). */
+	u32 shstr_off = have_data ? L->rw_off + L->rw_filesz : L->rx_filesz;
 	sh[ndx_shstr] = (Elf32_Shdr){ .sh_name=18, .sh_type=SHT_STRTAB, .sh_offset=shstr_off, .sh_size=sizeof(shstr), .sh_addralign=1 };
 	u32 shoff = alignup(shstr_off + sizeof(shstr), 4);
 

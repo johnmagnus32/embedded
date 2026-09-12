@@ -25,6 +25,7 @@ typedef struct {
 	Elf32_Ehdr *eh; Elf32_Shdr *sh; int nsh;
 	Elf32_Sym *sym; int nsym; const char *strtab;
 	u32 *sec_vaddr;                              /* [nsh] assigned virtual address of each allocated section */
+	int active;                                  /* 1 = contributes to output; archive members start 0 (lazy) */
 } Obj;
 #define MAXOBJ 32
 extern Obj objs[]; extern int nobj;
@@ -41,7 +42,9 @@ typedef struct {
 } Layout;
 
 /* ---- OBJECT-FORMAT backend (elf.c) --------------------------------------------------------------- */
-Obj *elf_load(const char *path);                                   /* parse one .o into objs[] */
+Obj *elf_load(const char *path);                                   /* parse one .o file into objs[] (active) */
+Obj *elf_parse(const char *path, u8 *data, long size, int active); /* parse an in-memory ELF image into objs[] */
+void ar_load(const char *path);                                    /* split a .a into objs[] as LAZY members  */
 void elf_write_exec(const char *out, u32 entry, const Layout *L);
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */

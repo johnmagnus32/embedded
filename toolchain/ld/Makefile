@@ -63,6 +63,16 @@ test: $(BUILD)/ld
 	               eb??????) echo "PASS bl relocated -> 0x$$bl (R_ARM_CALL applied)";; \
 	               *) echo "FAIL bl word 0x$$bl not a bl"; fail=1;; esac; \
 	$(GNU)readelf -lW $$t/prog.elf | sed -n '/LOAD/p' | sed 's/^/    /'; \
+	printf '.text\n.global used\nused: push {lr}\nbl helper\npop {pc}\n'      > $$t/used.s; \
+	printf '.text\n.global helper\nhelper: mov r0, #42\nbx lr\n'              > $$t/helper.s; \
+	printf '.text\n.global unused\nunused: mov r0, #99\nbx lr\n'              > $$t/unused.s; \
+	printf '.text\n.global __libc_start_main\n__libc_start_main: b used\n'    > $$t/lsm.s; \
+	for x in used helper unused lsm; do $(OURAS) -o $$t/$$x.o $$t/$$x.s; done; \
+	$(MAKE) -s -C ../ar >/dev/null; ../ar/build/ar rc $$t/lib.a $$t/used.o $$t/helper.o $$t/unused.o; \
+	$(BUILD)/ld -o $$t/C.elf $$t/crt0.o $$t/lsm.o $$t/lib.a || { echo "FAIL: our ld errored on archive"; exit 1; }; \
+	$(BUILD)/ld -o $$t/D.elf $$t/crt0.o $$t/lsm.o $$t/used.o $$t/helper.o; \
+	if cmp -s $$t/C.elf $$t/D.elf; then echo "PASS archive: helper pulled, unused dropped (== direct link)"; \
+	  else echo "FAIL archive: link with lib.a differs from equivalent direct link"; fail=1; fi; \
 	rm -rf $$t; \
 	[ $$fail -eq 0 ] && echo "----- ld M2 OK -----" || { echo "----- FAILED -----"; exit 1; }
 
