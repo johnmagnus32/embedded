@@ -228,8 +228,8 @@ static u32 reglist_at(int start) {   /* parse a { … } register list from toks[
 	}
 	return mask;
 }
-static void enc_push(void) { emit32(0xe92d0000u | reglist_at(1)); }   /* STMDB sp!, {list} */
-static void enc_pop(void)  { emit32(0xe8bd0000u | reglist_at(1)); }   /* LDMIA sp!, {list} */
+static void enc_push(u32 cond) { emit32((cond << 28) | 0x092d0000u | reglist_at(1)); }   /* STMDB sp!, {list} */
+static void enc_pop(u32 cond)  { emit32((cond << 28) | 0x08bd0000u | reglist_at(1)); }   /* LDMIA sp!, {list} */
 
 /* ldm/stm Rn[!], {list} — load/store multiple, IA (increment-after) form gcc emits. */
 static void enc_ldstm(int is_load, u32 cond) {
@@ -308,8 +308,10 @@ void md_assemble(char **t, int n) {
 	const char *m = toks[0]; size_t L = strlen(m); u32 cond; int s;
 	char b3[4] = { L > 0 ? m[0] : 0, L > 1 ? m[1] : 0, L > 2 ? m[2] : 0, 0 };   /* first 3 chars, for shifts */
 
-	if (!strcmp(m, "push")) { enc_push(); return; }
-	if (!strcmp(m, "pop"))  { enc_pop();  return; }
+	if (!strcmp(m, "push")) { enc_push(14); return; }
+	if (!strcmp(m, "pop"))  { enc_pop(14);  return; }
+	if (L == 6 && !strncmp(m, "push", 4) && lookup_cc(m + 4, &cond)) { enc_push(cond); return; }   /* pusheq, … */
+	if (L == 5 && !strncmp(m, "pop",  3) && lookup_cc(m + 3, &cond)) { enc_pop(cond);  return; }   /* popeq, popcs, … */
 
 	/* branches: b/bl/bx/blx with an optional condition. ("bic" = b+"ic" isn't a cond -> falls to DP.) */
 	if (m[0] == 'b') {

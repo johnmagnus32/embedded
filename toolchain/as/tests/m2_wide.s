@@ -24,3 +24,6 @@ m2c:
 	blx   r9
 	bx    lr
 	mls   r0, r1, r2, r3
+	pusheq {r4, lr}
+	popcs  {r4, pc}
+	pushne {r0-r3}
