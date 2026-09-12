@@ -120,12 +120,18 @@ static void emit_string(const char *tok, int add_nul) {
 static void do_directive(void) {
 	const char *d = toks[0];
 	if (!strcmp(d, ".section")) {
-		u32 flags = 0;
-		if (ntok >= 3) { const char *f = toks[2];
+		/* Default flags/type by well-known name (as GNU as does when no flag string is given): .text is
+		 * code, .rodata read-only, .data writable, .bss NOBITS; unknown names get nothing (e.g. .note.*). */
+		u32 type = SHT_PROGBITS, flags = 0; const char *nm = toks[1];
+		if      (!strncmp(nm, ".text",   5)) flags = SHF_ALLOC | SHF_EXECINSTR;
+		else if (!strncmp(nm, ".rodata", 7)) flags = SHF_ALLOC;
+		else if (!strncmp(nm, ".data",   5)) flags = SHF_ALLOC | SHF_WRITE;
+		else if (!strncmp(nm, ".bss",    4)) { flags = SHF_ALLOC | SHF_WRITE; type = SHT_NOBITS; }
+		if (ntok >= 3) { const char *f = toks[2]; flags = 0;   /* an explicit "flags" string overrides the default */
 			if (strchr(f, 'a')) flags |= SHF_ALLOC;
 			if (strchr(f, 'x')) flags |= SHF_EXECINSTR;
 			if (strchr(f, 'w')) flags |= SHF_WRITE; }
-		sec_get(toks[1], SHT_PROGBITS, flags);
+		sec_get(nm, type, flags);
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
 	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].global = 1;
@@ -201,6 +207,31 @@ static void resolve_fixups(void) {
 	}
 }
 
+/* Find-or-create the STT_SECTION symbol for section `sec` — a local, value-0 marker for the section
+ * itself, the reference a reduced relocation points at (see reduce_local_relocs). */
+static int section_symbol(int sec) {
+	for (int i = 0; i < nsym; i++)
+		if (syms[i].type == STT_SECTION && syms[i].defined && syms[i].sec == sec) return i;
+	if (nsym >= MAXSYM) die("too many symbols");
+	syms[nsym] = (Sym){ secs[sec].name, sec, 0, 0, 0, STT_SECTION, 1 };   /* local, value 0, defined here */
+	return nsym++;
+}
+
+/* GNU as "reduces" a relocation against a LOCAL defined symbol to the section symbol + the symbol's
+ * section-relative value folded into the in-place addend, so the .o's section bytes carry that offset
+ * (e.g. a `.word .Llabel` jump-table entry stores .Llabel's offset, not 0). We do the same for the only
+ * local-symbol relocation our backend emits — R_ARM_ABS32 from `.word <local>` (branches to locals are
+ * already resolved in md_finish; ldr-literals too). This makes such .text/.rodata bytes match GNU as. */
+static void reduce_local_relocs(void) {
+	for (int i = 0; i < nrel; i++) {
+		if (rels[i].type != md_r_abs32) continue;
+		Sym *s = &syms[rels[i].symidx];
+		if (!s->defined || s->global || s->type == STT_SECTION) continue;   /* only local, non-section defs */
+		patch32(rels[i].sec, rels[i].off, read32(rels[i].sec, rels[i].off) + s->value);
+		rels[i].symidx = section_symbol(s->sec);
+	}
+}
+
 /* ------------------------------------------------------------------ driver ------------------------ */
 int main(int argc, char **argv) {
 	const char *out = "a.out", *in = NULL;
@@ -220,7 +251,8 @@ int main(int argc, char **argv) {
 	do { nl = strchr(line, '\n'); if (nl) *nl = 0; parse_line(line); line = nl ? nl + 1 : NULL; } while (line);
 
 	resolve_fixups();
-	md_finish();       /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
+	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
+	reduce_local_relocs();  /* fold local-symbol relocs to section-symbol + in-place value (GNU parity) */
 	obj_write(out);
 	return 0;
 }
