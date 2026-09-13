@@ -28,6 +28,15 @@ Token *lex(const char *src) {
 		if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }      /* line comment  */
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) { if(*p=='\n')line++; p++; } if(*p) p+=2; continue; }
 
+		if (*p == '"') {                                                                 /* string literal */
+			const char *s = ++p;                                                         /* skip opening quote */
+			while (*p && *p != '"') { if (*p == '\\' && p[1]) p += 2; else p++; }         /* keep escapes intact */
+			Token *t = new_tok(TK_STR, line);
+			size_t n = p - s; if (n >= sizeof t->text) n = sizeof t->text - 1;
+			memcpy(t->text, s, n); t->text[n] = 0;                                       /* raw inner text (as spelled) */
+			if (*p == '"') p++;                                                          /* skip closing quote */
+			cur = cur->next = t; continue;
+		}
 		if (isdigit((unsigned char)*p)) {                                                /* integer literal */
 			Token *t = new_tok(TK_NUM, line);
 			char *end; t->val = strtol(p, &end, 0);                                      /* 0x.. / 0.. / dec */

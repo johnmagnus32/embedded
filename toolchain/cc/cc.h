@@ -16,7 +16,7 @@
 #define CC_H
 
 /* ---- tokens (lex.c) ------------------------------------------------------------------------------ */
-typedef enum { TK_NUM, TK_IDENT, TK_PUNCT, TK_KW, TK_EOF } TokKind;
+typedef enum { TK_NUM, TK_IDENT, TK_STR, TK_PUNCT, TK_KW, TK_EOF } TokKind;
 typedef struct Token {
 	TokKind kind;
 	struct Token *next;
@@ -37,7 +37,7 @@ int   is_ptr(Type *t);
 
 /* ---- AST (parse.c) ------------------------------------------------------------------------------- */
 typedef enum {
-	ND_NUM, ND_VAR, ND_ASSIGN, ND_CALL,                          /* leaves + assignment + call        */
+	ND_NUM, ND_VAR, ND_GVAR, ND_ASSIGN, ND_CALL,                 /* leaves (local/global) + assign + call */
 	ND_ADDR, ND_DEREF,                                           /* & (address-of) and * (dereference)*/
 	ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD,                      /* arithmetic                        */
 	ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE,                    /* comparisons (result 0/1)          */
@@ -70,7 +70,19 @@ typedef struct Func {
 } Func;
 
 void  add_type(Node *n);         /* recursively annotate a subtree with result types (type.c) */
-Func *parse(Token *tok);         /* tokens -> a list of functions */
+
+/* File-scope objects: global variables and string literals, emitted by gen() as .data/.bss/.rodata. */
+typedef struct Gvar {
+	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
+	Type *type;
+	int is_str;                  /* 1 = string literal -> .rodata .asciz; 0 = variable            */
+	int has_init; long init;     /* scalar variable with a constant integer initializer -> .data  */
+	char str[64];                /* is_str: the raw string bytes (escapes as spelled)             */
+	struct Gvar *next;
+} Gvar;
+extern Gvar *globals;            /* built by parse(), consumed by gen() */
+
+Func *parse(Token *tok);         /* tokens -> a list of functions (+ fills `globals`) */
 
 /* ---- codegen (gen.c) ----------------------------------------------------------------------------- */
 void gen(Func *prog, const char *out);   /* emit ARM assembly text for the whole program */

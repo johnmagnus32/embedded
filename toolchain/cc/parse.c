@@ -36,6 +36,11 @@ static int add_local(const char *name, Type *ty) {
 static Type *declspec(void) { if (consume("int")) return ty_int; if (consume("char")) return ty_char; die("parse: expected a type (line %d)", tk->line); return NULL; }
 static Type *declarator(Type *base, char *name) { while (consume("*")) base = pointer_to(base); ident(name); return base; }
 
+/* ---- file-scope objects: globals + string literals ----------------------------------------------- */
+Gvar *globals; static Gvar *gtail; static int str_id;
+static Gvar *add_global(void) { Gvar *g = calloc(1, sizeof *g); if (gtail) gtail->next = g; else globals = g; gtail = g; return g; }
+static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !strcmp(g->name, name)) return g; return NULL; }
+
 /* ---- node constructors --------------------------------------------------------------------------- */
 static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
 static Node *binary(NodeKind k, Node *l, Node *r) { Node *n = node(k); n->lhs = l; n->rhs = r; return n; }
@@ -48,6 +53,13 @@ static Node *expr(void);
 static Node *primary(void) {
 	if (consume("(")) { Node *n = expr(); expect(")"); return n; }
 	if (tk->kind == TK_NUM) { Node *n = num(tk->val); tk = tk->next; return n; }
+	if (tk->kind == TK_STR) {                                /* string literal -> anonymous .rodata array */
+		Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
+		snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
+		strncpy(g->str, tk->text, sizeof g->str - 1); tk = tk->next;
+		Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = ty_char;
+		return unary(ND_ADDR, gv);                           /* its value is &(first byte) : char* */
+	}
 	if (tk->kind == TK_IDENT) {
 		char name[64]; ident(name);
 		if (consume("(")) {                                  /* function call name(args) */
@@ -56,8 +68,10 @@ static Node *primary(void) {
 			if (!is(")")) { do { ac = ac->next = expr(); } while (consume(",")); }
 			expect(")"); n->args = argh.next; return n;
 		}
-		if (!local_exists(name)) die("parse: use of undeclared '%s' (line %d)", name, tk->line);
-		Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); n->type = local_type(name); return n;
+		if (local_exists(name)) { Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); n->type = local_type(name); return n; }
+		Gvar *g = global_find(name);                         /* locals shadow globals */
+		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; return n; }
+		die("parse: use of undeclared '%s' (line %d)", name, tk->line);
 	}
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
@@ -97,7 +111,7 @@ static Node *bitxor(void){ Node *n = bitand();      while (consume("^")) n = bin
 static Node *bitor(void) { Node *n = bitxor();      while (consume("|")) n = binary(ND_BITOR, n, bitxor()); return n; }
 static Node *logand(void){ Node *n = bitor();       while (consume("&&")) n = binary(ND_AND, n, bitor()); return n; }
 static Node *logor(void) { Node *n = logand();      while (consume("||")) n = binary(ND_OR, n, logand()); return n; }
-static Node *assign(void){ Node *n = logor(); if (consume("=")) { if (n->kind != ND_VAR && n->kind != ND_DEREF) die("parse: assignment to non-lvalue"); n = binary(ND_ASSIGN, n, assign()); } return n; }
+static Node *assign(void){ Node *n = logor(); if (consume("=")) { if (n->kind != ND_VAR && n->kind != ND_GVAR && n->kind != ND_DEREF) die("parse: assignment to non-lvalue"); n = binary(ND_ASSIGN, n, assign()); } return n; }
 static Node *expr(void)  { return assign(); }
 
 /* ---- statements ---------------------------------------------------------------------------------- */
@@ -117,9 +131,9 @@ static Node *stmt(void) {
 }
 
 /* ---- functions ----------------------------------------------------------------------------------- */
-static Func *function(void) {
-	if (!consume("int") && !consume("char") && !consume("void")) die("parse: expected a return type (line %d)", tk->line);
-	Func *f = calloc(1, sizeof *f); ident(f->name);
+/* The name + return type have already been read; the cursor is at "(". Parse params + body. */
+static Func *function_tail(const char *name) {
+	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63);
 	nlocals = 0;
 	expect("(");
 	if (!is(")") && !is("void")) { do { char p[64]; Type *ty = declarator(declspec(), p); add_local(p, ty); f->nparams++; } while (consume(",")); }
@@ -133,9 +147,21 @@ static Func *function(void) {
 	return f;
 }
 
+/* Top level: read a type + name, then dispatch — "(" means a function, anything else a global variable
+ * (optionally with a constant integer initializer). `void` is only valid as a function return type. */
 Func *parse(Token *tok) {
 	tk = tok;
 	Func head = {0}, *cur = &head;
-	while (tk->kind != TK_EOF) cur = cur->next = function();
+	while (tk->kind != TK_EOF) {
+		char name[64]; Type *ty;
+		if (consume("void")) { ty = NULL; ident(name); }     /* void return */
+		else ty = declarator(declspec(), name);              /* int/char (+ *s) then the name */
+		if (is("(")) { cur = cur->next = function_tail(name); continue; }
+		if (!ty) die("parse: 'void' variable '%s'", name);
+		Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;   /* a global variable */
+		if (consume("=")) { if (tk->kind != TK_NUM) die("parse: global initializer must be an integer constant (line %d)", tk->line);
+			g->has_init = 1; g->init = tk->val; tk = tk->next; }
+		expect(";");
+	}
 	return head.next;
 }

@@ -8,12 +8,18 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "cc.h"
 
 static FILE *o;
 static int label_id;                 /* source of unique .L labels */
 static int ret_label;                /* the current function's return label id */
 static int uniq(void) { return label_id++; }
+
+/* Per-function literal pool: ARM can't load a 32-bit symbol address in one instruction, so a global's
+ * address is fetched pc-relative from a `.word <sym>` we drop just past the function's code. */
+static int cur_func_id, func_seq;
+static char pool[64][64]; static int npool;
 
 static void gen_expr(Node *n);
 static void gen_stmt(Node *n);
@@ -40,6 +46,12 @@ static void gen_addr(Node *n) {
 	switch (n->kind) {
 	case ND_VAR:   fprintf(o, "\tsub r0, r11, #%d\n", -n->offset); return;   /* offset is negative */
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
+	case ND_GVAR: {                                                          /* address via the literal pool */
+		if (npool >= 64) die("cc: too many pooled addresses in one function");
+		int k = npool++; strncpy(pool[k], n->name, 63);
+		fprintf(o, "\tldr r0, .LCPI%d_%d\n", cur_func_id, k);
+		return;
+	}
 	default: die("cc: not an lvalue");
 	}
 }
@@ -47,7 +59,7 @@ static void gen_addr(Node *n) {
 static void gen_expr(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:  load_imm("r0", n->val); return;
-	case ND_VAR:  gen_addr(n); load(n->type); return;       /* address -> r0, then load its value by width */
+	case ND_VAR: case ND_GVAR: gen_addr(n); load(n->type); return;   /* address -> r0, then load by width */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:
@@ -132,18 +144,38 @@ static void gen_stmt(Node *n) {
 }
 
 static void gen_func(Func *f) {
-	ret_label = uniq();
+	ret_label = uniq(); cur_func_id = func_seq++; npool = 0;
 	fprintf(o, "\t.global %s\n\t.type %s, %%function\n%s:\n", f->name, f->name, f->name);
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);
 	for (int i = 0; i < f->nparams; i++) fprintf(o, "\tstr r%d, [r11, #%d]\n", i, -4 * (i + 1));   /* spill params */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n\tbx lr\n", ret_label);   /* fall-through return */
+	if (npool) { fprintf(o, "\t.align 2\n");                                     /* address pool, past the code */
+		for (int k = 0; k < npool; k++) fprintf(o, ".LCPI%d_%d:\n\t.word %s\n", cur_func_id, k, pool[k]); }
+}
+
+/* Emit the file-scope objects: string literals in .rodata, initialized globals in .data, zero-init in .bss. */
+static void gen_data(void) {
+	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
+		fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str);
+	}
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->has_init) {
+		fprintf(o, "\t.data\n\t.global %s\n", g->name);
+		if (g->type->size >= 4) fprintf(o, "\t.align 2\n%s:\n\t.word %ld\n", g->name, g->init);
+		else                    fprintf(o, "%s:\n\t.byte %ld\n", g->name, g->init);
+	}
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->has_init) {
+		fprintf(o, "\t.bss\n\t.global %s\n", g->name);
+		if (g->type->size >= 4) fprintf(o, "\t.align 2\n");
+		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
+	}
 }
 
 void gen(Func *prog, const char *out) {
 	o = fopen(out, "w"); if (!o) die("cc: cannot open %s", out);
 	fprintf(o, "\t.text\n");
 	for (Func *f = prog; f; f = f->next) gen_func(f);
+	gen_data();
 	fclose(o);
 }
