@@ -20,15 +20,21 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
                                    strncpy(out, tk->text, 63); out[63] = 0; tk = tk->next; }
 
 /* ---- locals (per function) ----------------------------------------------------------------------- */
-static struct { char name[64]; int offset; } locals[128];
+static struct { char name[64]; int offset; Type *type; } locals[128];
 static int nlocals;
 static int local_offset(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return locals[i].offset; return 0; }
+static Type *local_type(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return locals[i].type; return ty_int; }
 static int local_exists(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return 1; return 0; }
-static int add_local(const char *name) {
+static int add_local(const char *name, Type *ty) {
 	if (local_exists(name)) die("parse: redeclaration of '%s'", name);
-	int off = -4 * (nlocals + 1); strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; nlocals++;
+	int off = -4 * (nlocals + 1);   /* every local occupies a 4-byte slot (char included), like a small stack */
+	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 	return off;
 }
+
+/* type = ("int"|"char") "*"* ; declarator also reads the name. */
+static Type *declspec(void) { if (consume("int")) return ty_int; if (consume("char")) return ty_char; die("parse: expected a type (line %d)", tk->line); return NULL; }
+static Type *declarator(Type *base, char *name) { while (consume("*")) base = pointer_to(base); ident(name); return base; }
 
 /* ---- node constructors --------------------------------------------------------------------------- */
 static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
@@ -51,20 +57,38 @@ static Node *primary(void) {
 			expect(")"); n->args = argh.next; return n;
 		}
 		if (!local_exists(name)) die("parse: use of undeclared '%s' (line %d)", name, tk->line);
-		Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); return n;
+		Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); n->type = local_type(name); return n;
 	}
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
 
 static Node *unary_expr(void) {
+	if (consume("&")) return unary(ND_ADDR, unary_expr());   /* address-of */
+	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
 	if (consume("-")) return unary(ND_NEG, unary_expr());
 	if (consume("!")) return unary(ND_NOT, unary_expr());
 	if (consume("~")) return unary(ND_BITNOT, unary_expr());
 	if (consume("+")) return unary_expr();                   /* unary plus is a no-op */
 	return primary();
 }
+
+/* +/- with C pointer semantics: `ptr + int` scales the int by the pointee size; `int + ptr` is
+ * commuted to `ptr + int`; `ptr - ptr` is the element distance (difference / pointee size). */
+static Node *new_add(Node *l, Node *r) {
+	add_type(l); add_type(r);
+	if (is_ptr(l->type) && is_ptr(r->type)) die("parse: cannot add two pointers");
+	if (!is_ptr(l->type) && is_ptr(r->type)) { Node *t = l; l = r; r = t; }
+	if (is_ptr(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));
+	return binary(ND_ADD, l, r);
+}
+static Node *new_sub(Node *l, Node *r) {
+	add_type(l); add_type(r);
+	if (is_ptr(l->type) && is_ptr(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), num(l->type->base->size));
+	if (is_ptr(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));
+	return binary(ND_SUB, l, r);
+}
 static Node *mul(void)   { Node *n = unary_expr(); for (;;) { if (consume("*")) n = binary(ND_MUL, n, unary_expr()); else if (consume("/")) n = binary(ND_DIV, n, unary_expr()); else if (consume("%")) n = binary(ND_MOD, n, unary_expr()); else return n; } }
-static Node *add(void)   { Node *n = mul();         for (;;) { if (consume("+")) n = binary(ND_ADD, n, mul()); else if (consume("-")) n = binary(ND_SUB, n, mul()); else return n; } }
+static Node *add(void)   { Node *n = mul();         for (;;) { if (consume("+")) n = new_add(n, mul()); else if (consume("-")) n = new_sub(n, mul()); else return n; } }
 static Node *shift(void) { Node *n = add();         for (;;) { if (consume("<<")) n = binary(ND_SHL, n, add()); else if (consume(">>")) n = binary(ND_SHR, n, add()); else return n; } }
 static Node *rel(void)   { Node *n = shift();       for (;;) { if (consume("<")) n = binary(ND_LT, n, shift()); else if (consume("<=")) n = binary(ND_LE, n, shift()); else if (consume(">")) n = binary(ND_GT, n, shift()); else if (consume(">=")) n = binary(ND_GE, n, shift()); else return n; } }
 static Node *eq(void)    { Node *n = rel();         for (;;) { if (consume("==")) n = binary(ND_EQ, n, rel()); else if (consume("!=")) n = binary(ND_NE, n, rel()); else return n; } }
@@ -73,7 +97,7 @@ static Node *bitxor(void){ Node *n = bitand();      while (consume("^")) n = bin
 static Node *bitor(void) { Node *n = bitxor();      while (consume("|")) n = binary(ND_BITOR, n, bitxor()); return n; }
 static Node *logand(void){ Node *n = bitor();       while (consume("&&")) n = binary(ND_AND, n, bitor()); return n; }
 static Node *logor(void) { Node *n = logand();      while (consume("||")) n = binary(ND_OR, n, logand()); return n; }
-static Node *assign(void){ Node *n = logor(); if (consume("=")) { if (n->kind != ND_VAR) die("parse: assignment to non-lvalue"); n = binary(ND_ASSIGN, n, assign()); } return n; }
+static Node *assign(void){ Node *n = logor(); if (consume("=")) { if (n->kind != ND_VAR && n->kind != ND_DEREF) die("parse: assignment to non-lvalue"); n = binary(ND_ASSIGN, n, assign()); } return n; }
 static Node *expr(void)  { return assign(); }
 
 /* ---- statements ---------------------------------------------------------------------------------- */
@@ -82,10 +106,10 @@ static Node *stmt(void) {
 	if (consume("if")) { Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt(); return n; }
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
 	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
-	if (is("int")) {                                         /* `int name [= expr];` local declaration */
-		tk = tk->next; char name[64]; ident(name); int off = add_local(name);
+	if (is("int") || is("char")) {                           /* `T *…* name [= expr];` local declaration */
+		char name[64]; Type *ty = declarator(declspec(), name); int off = add_local(name, ty);
 		Node *n;
-		if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, name, 63); v->offset = off; n = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, expr())); }
+		if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, name, 63); v->offset = off; v->type = ty; n = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, expr())); }
 		else n = node(ND_BLOCK);                             /* bare declaration: no code */
 		expect(";"); return n;
 	}
@@ -94,16 +118,17 @@ static Node *stmt(void) {
 
 /* ---- functions ----------------------------------------------------------------------------------- */
 static Func *function(void) {
-	if (!consume("int") && !consume("void")) die("parse: expected 'int'/'void' return type (line %d)", tk->line);
+	if (!consume("int") && !consume("char") && !consume("void")) die("parse: expected a return type (line %d)", tk->line);
 	Func *f = calloc(1, sizeof *f); ident(f->name);
 	nlocals = 0;
 	expect("(");
-	if (!is(")") && !is("void")) { do { expect("int"); char p[64]; ident(p); add_local(p); f->nparams++; } while (consume(",")); }
+	if (!is(")") && !is("void")) { do { char p[64]; Type *ty = declarator(declspec(), p); add_local(p, ty); f->nparams++; } while (consume(",")); }
 	else consume("void");
 	expect(")");
 	expect("{");
 	Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt();
 	f->body = h.next;
+	for (Node *s = f->body; s; s = s->next) add_type(s);      /* annotate every node with its result type */
 	f->frame = (nlocals * 4 + 7) & ~7;                       /* 8-byte aligned frame for locals+params */
 	return f;
 }

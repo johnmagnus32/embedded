@@ -8,7 +8,7 @@ OURAS := ../as/build/as
 GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
-OBJS := $(BUILD)/cc.o $(BUILD)/lex.o $(BUILD)/parse.o $(BUILD)/gen.o
+OBJS := $(BUILD)/cc.o $(BUILD)/lex.o $(BUILD)/parse.o $(BUILD)/gen.o $(BUILD)/type.o
 
 $(BUILD)/cc: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)

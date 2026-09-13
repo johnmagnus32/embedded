@@ -10,7 +10,7 @@
 #include <ctype.h>
 #include "cc.h"
 
-static const char *KEYWORDS[] = { "int", "void", "return", "if", "else", "while", NULL };
+static const char *KEYWORDS[] = { "int", "char", "void", "return", "if", "else", "while", NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
 static const char *PUNCT[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||",
                                "+","-","*","/","%","(",")","{","}",";",",","=","<",">","&","|","^","~","!", NULL };

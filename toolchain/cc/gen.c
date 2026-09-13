@@ -17,6 +17,7 @@ static int uniq(void) { return label_id++; }
 
 static void gen_expr(Node *n);
 static void gen_stmt(Node *n);
+static void gen_addr(Node *n);
 
 /* Materialize a 32-bit constant into r0 with movw (+movt for the high half) — no literal pool needed. */
 static void load_imm(const char *reg, long v) {
@@ -30,13 +31,29 @@ static void gen_setcc(const char *cc) {
 	fprintf(o, "\tcmp r0, r1\n\tmov r0, #0\n\tmov%s r0, #1\n", cc);
 }
 
+/* Load/store through an address by WIDTH: char is one byte (ldrb/strb, zero-extended), int/pointer four. */
+static void load(Type *ty)  { fprintf(o, ty->size == 1 ? "\tldrb r0, [r0]\n" : "\tldr r0, [r0]\n"); }   /* r0=addr -> r0=value */
+static void store(Type *ty) { fprintf(o, ty->size == 1 ? "\tstrb r0, [r1]\n" : "\tstr r0, [r1]\n"); }   /* r1=addr, r0=value */
+
+/* Put the ADDRESS of an lvalue in r0. A variable's address is fp+offset; *p's address is p's value. */
+static void gen_addr(Node *n) {
+	switch (n->kind) {
+	case ND_VAR:   fprintf(o, "\tsub r0, r11, #%d\n", -n->offset); return;   /* offset is negative */
+	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
+	default: die("cc: not an lvalue");
+	}
+}
+
 static void gen_expr(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:  load_imm("r0", n->val); return;
-	case ND_VAR:  fprintf(o, "\tldr r0, [r11, #%d]\n", n->offset); return;
+	case ND_VAR:  gen_addr(n); load(n->type); return;       /* address -> r0, then load its value by width */
+	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
+	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:
-		gen_expr(n->rhs);                                   /* value -> r0 */
-		fprintf(o, "\tstr r0, [r11, #%d]\n", n->lhs->offset);
+		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
+		gen_expr(n->rhs); fprintf(o, "\tpop {r1}\n");       /* value in r0, address in r1 */
+		store(n->lhs->type);                                /* store by width; r0 keeps the value (assignment result) */
 		return;
 	case ND_NEG:    gen_expr(n->lhs); fprintf(o, "\trsb r0, r0, #0\n"); return;
 	case ND_BITNOT: gen_expr(n->lhs); fprintf(o, "\tmvn r0, r0\n"); return;

@@ -27,9 +27,18 @@ typedef struct Token {
 
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
 
+/* ---- types (type.c) ------------------------------------------------------------------------------ */
+typedef enum { TY_INT, TY_CHAR, TY_PTR } TypeKind;
+typedef struct Type { TypeKind kind; struct Type *base; int size; } Type;   /* base = pointee (TY_PTR) */
+extern Type *ty_int, *ty_char;               /* the two scalar singletons */
+Type *pointer_to(Type *base);                /* a fresh `base *` type */
+int   is_ptr(Type *t);
+/* add_type is declared after the Node typedef below */
+
 /* ---- AST (parse.c) ------------------------------------------------------------------------------- */
 typedef enum {
 	ND_NUM, ND_VAR, ND_ASSIGN, ND_CALL,                          /* leaves + assignment + call        */
+	ND_ADDR, ND_DEREF,                                           /* & (address-of) and * (dereference)*/
 	ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD,                      /* arithmetic                        */
 	ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE,                    /* comparisons (result 0/1)          */
 	ND_AND, ND_OR,                                               /* && || (short-circuit)             */
@@ -40,6 +49,7 @@ typedef enum {
 
 typedef struct Node {
 	NodeKind kind;
+	Type *type;                  /* result type (filled by add_type); drives ptr scaling + load width */
 	struct Node *lhs, *rhs;      /* binary/unary operands                                        */
 	long val;                    /* ND_NUM                                                       */
 	char name[64];               /* ND_VAR / ND_CALL name                                        */
@@ -59,6 +69,7 @@ typedef struct Func {
 	struct Func *next;
 } Func;
 
+void  add_type(Node *n);         /* recursively annotate a subtree with result types (type.c) */
 Func *parse(Token *tok);         /* tokens -> a list of functions */
 
 /* ---- codegen (gen.c) ----------------------------------------------------------------------------- */
