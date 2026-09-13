@@ -163,6 +163,8 @@ static void do_directive(void) {
 			u32 off = secs[cursec].len; emit32((u32)addend);
 			add_reloc(cursec, off, sym_intern(name), md_r_abs32);
 		}
+	} else if (!strcmp(d, ".byte")) {
+		for (int i = 1; i < ntok; i++) { u8 b = (u8)strtol(toks[i], NULL, 0); emit(&b, 1); }   /* one byte per value */
 	} else if (!strcmp(d, ".bss")) {
 		sec_get(".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE);
 	} else if (!strcmp(d, ".space") || !strcmp(d, ".skip") || !strcmp(d, ".zero")) {
