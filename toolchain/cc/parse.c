@@ -410,6 +410,63 @@ static Func *function_tail(const char *name) {
 
 /* Top level: read a type + name, then dispatch — "(" means a function, anything else a global variable
  * (optionally with a constant integer initializer). `void` is only valid as a function return type. */
+/* Parse a static initializer for `ty` into a flat item list (constants, &symbol addresses, zero padding),
+ * following the type's layout: struct members get padding for alignment gaps + a zero tail for missing
+ * fields; array elements likewise. Recurses for nested braces. */
+/* Fold a constant expression (for initializers, case labels, enum values, array sizes). */
+static long eval_const(Node *n) {
+	switch (n->kind) {
+	case ND_NUM:    return n->val;
+	case ND_NEG:    return -eval_const(n->lhs);
+	case ND_BITNOT: return ~eval_const(n->lhs);
+	case ND_NOT:    return !eval_const(n->lhs);
+	case ND_CAST:   return eval_const(n->lhs);
+	case ND_ADD:    return eval_const(n->lhs) +  eval_const(n->rhs);
+	case ND_SUB:    return eval_const(n->lhs) -  eval_const(n->rhs);
+	case ND_MUL:    return eval_const(n->lhs) *  eval_const(n->rhs);
+	case ND_DIV:    return eval_const(n->lhs) /  eval_const(n->rhs);
+	case ND_MOD:    return eval_const(n->lhs) %  eval_const(n->rhs);
+	case ND_BITAND: return eval_const(n->lhs) &  eval_const(n->rhs);
+	case ND_BITOR:  return eval_const(n->lhs) |  eval_const(n->rhs);
+	case ND_BITXOR: return eval_const(n->lhs) ^  eval_const(n->rhs);
+	case ND_SHL:    return eval_const(n->lhs) << eval_const(n->rhs);
+	case ND_SHR:    return eval_const(n->lhs) >> eval_const(n->rhs);
+	case ND_EQ:     return eval_const(n->lhs) == eval_const(n->rhs);
+	case ND_NE:     return eval_const(n->lhs) != eval_const(n->rhs);
+	case ND_LT:     return eval_const(n->lhs) <  eval_const(n->rhs);
+	case ND_LE:     return eval_const(n->lhs) <= eval_const(n->rhs);
+	case ND_GT:     return eval_const(n->lhs) >  eval_const(n->rhs);
+	case ND_GE:     return eval_const(n->lhs) >= eval_const(n->rhs);
+	case ND_COND:   return eval_const(n->cond) ? eval_const(n->then) : eval_const(n->els);
+	default: die("parse: not a constant expression"); return 0;
+	}
+}
+static Init *mkinit(int kind) { Init *i = calloc(1, sizeof *i); i->kind = kind; return i; }
+static Init *global_init(Type *ty) {
+	if (is("{")) {
+		expect("{");
+		Init head = {0}, *c = &head;
+		if (ty->kind == TY_STRUCT) {
+			int cur = 0;
+			for (Member *m = ty->members; m && !is("}"); m = m->next) {
+				if (m->offset > cur) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset - cur; c = c->next; }
+				c->next = global_init(m->type); while (c->next) c = c->next;   /* append member's items */
+				cur = m->offset + m->type->size;
+				if (!consume(",")) break;
+			}
+			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
+		} else if (ty->kind == TY_ARRAY) {
+			int i = 0;
+			for (; i < ty->len && !is("}"); i++) { c->next = global_init(ty->base); while (c->next) c = c->next; if (!consume(",")) break; }
+			if (i * ty->base->size < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - i * ty->base->size; c = c->next; }
+		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
+		expect("}");
+		return head.next;
+	}
+	if (consume("&")) { Init *i = mkinit(INIT_SYM); ident(i->sym); i->size = 4; return i; }   /* address of a global */
+	Init *i = mkinit(INIT_CONST); i->val = eval_const(conditional()); i->size = (ty->size == 1) ? 1 : 4; return i;
+}
+
 Func *parse(Token *tok) {
 	tk = tok;
 	add_typedef("__builtin_va_list", pointer_to(ty_char));   /* va_list is a char* walking the arg block */
@@ -423,8 +480,7 @@ Func *parse(Token *tok) {
 		if (is("(")) { Func *fn = function_tail(name); if (fn) cur = cur->next = fn; continue; }   /* NULL = prototype */
 		for (;;) {                                           /* global variable(s), comma-separated */
 			Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;
-			if (consume("=")) { if (tk->kind != TK_NUM) die("parse: global initializer must be an integer constant (line %d)", tk->line);
-				g->has_init = 1; g->init = tk->val; tk = tk->next; }
+			if (consume("=")) g->init = global_init(ty);
 			if (!consume(",")) break;
 			ty = declarator(base, name);
 		}

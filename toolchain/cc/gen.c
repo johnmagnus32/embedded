@@ -244,14 +244,19 @@ static void gen_data(void) {
 	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
 		fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str);
 	}
-	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->has_init) {
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
 		fprintf(o, "\t.data\n\t.global %s\n", g->name);
-		if (g->type->size >= 4) fprintf(o, "\t.align 2\n%s:\n\t.word %ld\n", g->name, g->init);
-		else                    fprintf(o, "%s:\n\t.byte %ld\n", g->name, g->init);
+		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n");
+		fprintf(o, "%s:\n", g->name);
+		for (Init *it = g->init; it; it = it->next) {
+			if (it->kind == INIT_CONST) fprintf(o, it->size == 1 ? "\t.byte %ld\n" : "\t.word %ld\n", it->val);
+			else if (it->kind == INIT_SYM) fprintf(o, "\t.word %s\n", it->sym);
+			else fprintf(o, "\t.space %d\n", it->size);
+		}
 	}
-	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->has_init) {
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->init) {
 		fprintf(o, "\t.bss\n\t.global %s\n", g->name);
-		if (g->type->size >= 4) fprintf(o, "\t.align 2\n");
+		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n");
 		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
 	}
 }

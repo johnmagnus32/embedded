@@ -82,12 +82,17 @@ typedef struct Func {
 
 void  add_type(Node *n);         /* recursively annotate a subtree with result types (type.c) */
 
+/* A global's initializer, as a flat list of emitted items (constant word/byte, a symbol's address, or
+ * a run of zero bytes for padding / uninitialized tail). NULL init => the whole object goes in .bss. */
+enum { INIT_CONST, INIT_SYM, INIT_ZERO };
+typedef struct Init { int kind; long val; char sym[64]; int size; struct Init *next; } Init;
+
 /* File-scope objects: global variables and string literals, emitted by gen() as .data/.bss/.rodata. */
 typedef struct Gvar {
 	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
 	Type *type;
 	int is_str;                  /* 1 = string literal -> .rodata .asciz; 0 = variable            */
-	int has_init; long init;     /* scalar variable with a constant integer initializer -> .data  */
+	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
 	char str[64];                /* is_str: the raw string bytes (escapes as spelled)             */
 	struct Gvar *next;
 } Gvar;
