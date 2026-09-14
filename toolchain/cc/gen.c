@@ -14,7 +14,8 @@
 static FILE *o;
 static int label_id;                 /* source of unique .L labels */
 static int ret_label;                /* the current function's return label id */
-static int uniq(void) { return label_id++; }
+static int brk_lbl, cont_lbl;        /* innermost loop's break/continue targets (0 = not in a loop) */
+static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none" sentinel */
 
 /* Per-function literal pool: ARM can't load a 32-bit symbol address in one instruction, so a global's
  * address is fetched pc-relative from a `.word <sym>` we drop just past the function's code. */
@@ -72,6 +73,8 @@ static void gen_expr(Node *n) {
 		gen_expr(n->rhs); fprintf(o, "\tpop {r1}\n");       /* value in r0, address in r1 */
 		store(n->lhs->type);                                /* store by width; r0 keeps the value (assignment result) */
 		return;
+	case ND_CAST:   gen_expr(n->lhs); if (n->type->size == 1) fprintf(o, "\tand r0, r0, #255\n"); return;   /* char cast truncates */
+	case ND_COMMA:  gen_expr(n->lhs); gen_expr(n->rhs); return;   /* evaluate left (discard), then right */
 	case ND_NEG:    gen_expr(n->lhs); fprintf(o, "\trsb r0, r0, #0\n"); return;
 	case ND_BITNOT: gen_expr(n->lhs); fprintf(o, "\tmvn r0, r0\n"); return;
 	case ND_NOT:    gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
@@ -87,6 +90,13 @@ static void gen_expr(Node *n) {
 		gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tbne .L%d\n", t);
 		gen_expr(n->rhs); fprintf(o, "\tcmp r0, #0\n\tbne .L%d\n", t);
 		fprintf(o, "\tmov r0, #0\n\tb .L%d\n.L%d:\n\tmov r0, #1\n.L%d:\n", e, t, e);
+		return;
+	}
+	case ND_COND: {                                         /* cond ? then : els */
+		int els = uniq(), end = uniq();
+		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", els);
+		gen_expr(n->then); fprintf(o, "\tb .L%d\n.L%d:\n", end, els);
+		gen_expr(n->els);  fprintf(o, ".L%d:\n", end);
 		return;
 	}
 	case ND_CALL: {
@@ -142,22 +152,29 @@ static void gen_stmt(Node *n) {
 		return;
 	}
 	case ND_WHILE: {
-		int begin = uniq(), end = uniq();
+		int begin = uniq(), end = uniq(), sb = brk_lbl, sc = cont_lbl;
+		brk_lbl = end; cont_lbl = begin;                    /* continue -> re-test, break -> exit */
 		fprintf(o, ".L%d:\n", begin);
 		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", end);
 		gen_stmt(n->body); fprintf(o, "\tb .L%d\n.L%d:\n", begin, end);
+		brk_lbl = sb; cont_lbl = sc;
 		return;
 	}
 	case ND_FOR: {
-		int begin = uniq(), end = uniq();
+		int begin = uniq(), end = uniq(), cont = uniq(), sb = brk_lbl, sc = cont_lbl;
+		brk_lbl = end; cont_lbl = cont;                     /* continue -> the inc step, break -> exit */
 		if (n->init) gen_stmt(n->init);
 		fprintf(o, ".L%d:\n", begin);
 		if (n->cond) { gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", end); }
 		gen_stmt(n->body);
+		fprintf(o, ".L%d:\n", cont);
 		if (n->inc) gen_expr(n->inc);
 		fprintf(o, "\tb .L%d\n.L%d:\n", begin, end);
+		brk_lbl = sb; cont_lbl = sc;
 		return;
 	}
+	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;
+	case ND_CONTINUE: if (!cont_lbl) die("cc: continue outside a loop"); fprintf(o, "\tb .L%d\n", cont_lbl); return;
 	default: gen_expr(n); return;   /* a bare declaration compiles to an empty ND_BLOCK; other exprs run */
 	}
 }

@@ -10,10 +10,17 @@
 #include <ctype.h>
 #include "cc.h"
 
-static const char *KEYWORDS[] = { "int", "char", "void", "struct", "return", "if", "else", "while", "for", NULL };
+static const char *KEYWORDS[] = {
+	"int", "char", "void", "short", "long", "signed", "unsigned",          /* base integer types      */
+	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
+	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
+	"return", "if", "else", "while", "for", "break", "continue",            /* control flow            */
+	NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
-static const char *PUNCT[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||", "->",
-                               "+","-","*","/","%","(",")","{","}","[","]",";",",",".","=","<",">","&","|","^","~","!", NULL };
+static const char *PUNCT[] = { "<<=", ">>=",                                        /* 3-char first    */
+                               "<<", ">>", "==", "!=", "<=", ">=", "&&", "||", "->", "++", "--",
+                               "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",       /* compound assign */
+                               "+","-","*","/","%","(",")","{","}","[","]",";",",",".","=","<",">","&","|","^","~","!","?",":", NULL };
 
 static Token *new_tok(TokKind kind, int line) {
 	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line; return t;
@@ -52,6 +59,7 @@ Token *lex(const char *src) {
 		if (isdigit((unsigned char)*p)) {                                                /* integer literal */
 			Token *t = new_tok(TK_NUM, line);
 			char *end; t->val = strtol(p, &end, 0);                                      /* 0x.. / 0.. / dec */
+			while (*end == 'u' || *end == 'U' || *end == 'l' || *end == 'L') end++;      /* skip int suffixes (UL, LL, …) */
 			size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, p, n); t->text[n] = 0; p = end;
 			cur = cur->next = t; continue;

@@ -48,7 +48,8 @@ typedef enum {
 	ND_AND, ND_OR,                                               /* && || (short-circuit)             */
 	ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR,              /* bitwise + shifts                  */
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
-	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BLOCK, ND_EXPRSTMT   /* statements                        */
+	ND_COND, ND_CAST, ND_COMMA,                                  /* c?a:b ; (type)expr ; (a, b)       */
+	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BREAK, ND_CONTINUE, ND_BLOCK, ND_EXPRSTMT   /* statements     */
 } NodeKind;
 
 typedef struct Node {

@@ -27,12 +27,13 @@ int   align_of(Type *t) {
 /* Recursively annotate a subtree with result types (children first, then the node itself). Idempotent
  * enough to run over a whole function body; leaves set by the parser (ND_VAR/ND_NUM) are respected. */
 void add_type(Node *n) {
-	if (!n || n->type) return;
+	if (!n) return;
 	add_type(n->lhs); add_type(n->rhs);
 	add_type(n->cond); add_type(n->then); add_type(n->els);
 	add_type(n->init); add_type(n->inc);
 	for (Node *c = n->body; c; c = c->next) add_type(c);
 	for (Node *a = n->args; a; a = a->next) add_type(a);
+	if (n->type) return;                 /* leaf/cast/member set by the parser — keep it (children now typed) */
 
 	switch (n->kind) {
 	case ND_NUM: n->type = ty_int; return;
@@ -47,6 +48,8 @@ void add_type(Node *n) {
 	case ND_NEG: case ND_BITNOT: case ND_CALL:
 		n->type = ty_int; return;                     /* all yield an int */
 	case ND_ASSIGN: n->type = n->lhs->type; return;
+	case ND_COND:   n->type = n->then->type; return;   /* both arms assumed compatible */
+	case ND_COMMA:  n->type = n->rhs->type; return;    /* value of the right operand */
 	case ND_ADDR:   n->type = pointer_to(n->lhs->type); return;
 	case ND_DEREF:
 		if (!is_ptr_like(n->lhs->type)) die("cc: cannot dereference a non-pointer");
