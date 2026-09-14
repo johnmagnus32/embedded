@@ -49,7 +49,8 @@ typedef enum {
 	ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR,              /* bitwise + shifts                  */
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
 	ND_COND, ND_CAST, ND_COMMA,                                  /* c?a:b ; (type)expr ; (a, b)       */
-	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BREAK, ND_CONTINUE, ND_BLOCK, ND_EXPRSTMT   /* statements     */
+	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements                        */
+	ND_SWITCH, ND_CASE, ND_BLOCK, ND_EXPRSTMT                    /* switch/case + block/expr-stmt     */
 } NodeKind;
 
 typedef struct Node {
@@ -61,6 +62,8 @@ typedef struct Node {
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
 	struct Node *init, *inc;         /* ND_FOR: initializer statement + per-iteration step expr    */
+	struct Node *case_list, *case_next;  /* ND_SWITCH: its cases; ND_CASE: link in that list        */
+	int is_default;                  /* ND_CASE: this is `default:`                                 */
 	struct Node *body;           /* ND_BLOCK: statement list (chained via ->next)                */
 	struct Node *args;           /* ND_CALL: argument list (chained via ->next)                  */
 	struct Node *next;           /* next statement / next argument in a list                     */

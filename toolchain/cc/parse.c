@@ -11,6 +11,7 @@
 #include "cc.h"
 
 static Token *tk;                                  /* the parse cursor */
+static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
 
 /* ---- token helpers ------------------------------------------------------------------------------- */
 static int is(const char *s)     { return (tk->kind == TK_PUNCT || tk->kind == TK_KW) && !strcmp(tk->text, s); }
@@ -290,6 +291,20 @@ static Node *expr(void)  { Node *n = assign(); while (consume(",")) n = binary(N
 
 /* ---- statements ---------------------------------------------------------------------------------- */
 static Node *stmt(void) {
+	if (consume("switch")) {                                 /* switch (e) body ; cases attach to it */
+		Node *n = node(ND_SWITCH); expect("("); n->cond = expr(); expect(")");
+		Node *save = cur_switch; cur_switch = n; n->then = stmt(); cur_switch = save;
+		return n;
+	}
+	if (consume("case")) {                                   /* case CONST: */
+		if (!cur_switch) die("parse: 'case' outside switch");
+		Node *c = conditional(); if (c->kind != ND_NUM) die("parse: case label must be a constant (line %d)", tk->line);
+		expect(":");
+		Node *n = node(ND_CASE); n->val = c->val; n->case_next = cur_switch->case_list; cur_switch->case_list = n;
+		return n;
+	}
+	if (consume("default")) { if (!cur_switch) die("parse: 'default' outside switch"); expect(":");
+		Node *n = node(ND_CASE); n->is_default = 1; n->case_next = cur_switch->case_list; cur_switch->case_list = n; return n; }
 	if (consume("break"))    { expect(";"); return node(ND_BREAK); }
 	if (consume("continue")) { expect(";"); return node(ND_CONTINUE); }
 	if (consume("return")) { Node *n = unary(ND_RETURN, expr()); expect(";"); return n; }

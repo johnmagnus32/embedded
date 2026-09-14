@@ -42,6 +42,17 @@ test: $(BUILD)/cc
 	out=$$(timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/u.elf 2>/dev/null); \
 	case "$$out" in *"cc UART works"*) echo "PASS uart: cc program printed via PL011 (real I/O)"; pass=$$((pass+1));; \
 	                *) echo "FAIL uart: expected UART output, got '$$out'"; fail=$$((fail+1));; esac; \
+	gi=$$($(GNU)gcc -print-file-name=include); \
+	$(GNU)gcc -E -Os -mcpu=cortex-a7 -marm -ffreestanding -nostdinc -isystem $$gi -I../../libc/include -I../../kernel/include/uapi ../../libc/src/string.c > $$t/str.pp.c 2>/dev/null; \
+	printf '%s\n' 'int strlen(char*s);' 'int strcmp(char*a,char*b);' 'void*malloc(int n){return 0;}' \
+	  'int main(void){int n=strlen("hello");int e=strcmp("abc","abc");int d=strcmp("abd","abc");int r=n;if(e==0)r+=10;if(d>0)r+=100;return r;}' > $$t/lm.c; \
+	if $(BUILD)/cc -o $$t/str.s $$t/str.pp.c && $(OURAS) -o $$t/str.o $$t/str.s \
+	   && $(BUILD)/cc -o $$t/lm.s $$t/lm.c && $(OURAS) -o $$t/lm.o $$t/lm.s \
+	   && $(GNU)ld -T tests/bare.ld -o $$t/lp.elf $$t/crt.o $$t/lm.o $$t/str.o 2>/dev/null; then \
+	  timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/lp.elf >/dev/null 2>&1; g=$$?; \
+	  [ "$$g" = 115 ] && { echo "PASS libc-string: our cc+as compiled real libc/src/string.c; strlen/strcmp ran = $$g"; pass=$$((pass+1)); } \
+	                  || { echo "FAIL libc-string: got $$g, want 115"; fail=$$((fail+1)); }; \
+	else echo "FAIL libc-string: compile/assemble/link of real string.c failed"; fail=$$((fail+1)); fi; \
 	rm -rf $$t; echo "----- $$pass passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
 clean:

@@ -173,6 +173,22 @@ static void gen_stmt(Node *n) {
 		brk_lbl = sb; cont_lbl = sc;
 		return;
 	}
+	case ND_SWITCH: {                                       /* eval, compare-chain to each case, then body */
+		int end = uniq(), sb = brk_lbl; brk_lbl = end;
+		gen_expr(n->cond);                                  /* switch value -> r0 */
+		int def = 0;
+		for (Node *c = n->case_list; c; c = c->case_next) {
+			c->offset = uniq();                             /* the label this case jumps to */
+			if (c->is_default) { def = c->offset; continue; }
+			load_imm("r1", c->val); fprintf(o, "\tcmp r0, r1\n\tbeq .L%d\n", c->offset);
+		}
+		fprintf(o, "\tb .L%d\n", def ? def : end);          /* no match -> default, else past the switch */
+		gen_stmt(n->then);                                  /* body; ND_CASE nodes drop their labels inline */
+		fprintf(o, ".L%d:\n", end);
+		brk_lbl = sb;
+		return;
+	}
+	case ND_CASE: fprintf(o, ".L%d:\n", n->offset); return;  /* label placed inline in the switch body */
 	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;
 	case ND_CONTINUE: if (!cont_lbl) die("cc: continue outside a loop"); fprintf(o, "\tb .L%d\n", cont_lbl); return;
 	default: gen_expr(n); return;   /* a bare declaration compiles to an empty ND_BLOCK; other exprs run */
