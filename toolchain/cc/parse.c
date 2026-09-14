@@ -21,13 +21,16 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
                                    strncpy(out, tk->text, 63); out[63] = 0; tk = tk->next; }
 
 /* ---- locals (per function) ----------------------------------------------------------------------- */
-static struct { char name[64]; int offset; Type *type; } locals[128];
+static struct { char name[64]; int offset; Type *type; } locals[1024];
 static int nlocals, local_bytes;   /* local_bytes = total frame bytes used by locals+params so far */
-static int local_offset(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return locals[i].offset; return 0; }
-static Type *local_type(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return locals[i].type; return ty_int; }
-static int local_exists(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return 1; return 0; }
+/* Lookups scan newest-first, so a redeclared name (a different block, no true block scoping here) or a
+ * local shadowing a param resolves to the most recent binding — correct for disjoint/nested blocks; we
+ * just never reclaim an inner block's frame space. */
+static int local_offset(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].offset; return 0; }
+static Type *local_type(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].type; return ty_int; }
+static int local_exists(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return 1; return 0; }
 static int add_local(const char *name, Type *ty) {
-	if (local_exists(name)) die("parse: redeclaration of '%s'", name);
+	if (nlocals >= 1024) die("parse: too many locals in one function");
 	local_bytes += (ty->size + 3) & ~3;   /* a 4-aligned slot big enough for the whole object (arrays too) */
 	int off = -local_bytes;               /* offset points at the object's first (lowest) byte */
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
@@ -36,7 +39,6 @@ static int add_local(const char *name, Type *ty) {
 /* Bind a name to an explicit offset without allocating frame space — for params 5+ that live in the
  * CALLER's frame (above our saved r11/lr), at [r11, #8 + 4*(i-4)]. */
 static void add_local_at(const char *name, Type *ty, int off) {
-	if (local_exists(name)) die("parse: redeclaration of '%s'", name);
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 }
 
@@ -176,6 +178,9 @@ static Node *primary(void) {
 	}
 	if (tk->kind == TK_IDENT) {
 		char name[64]; ident(name);
+		if (!strcmp(name, "__builtin_va_start")) { expect("("); Node *n = node(ND_VA_START); n->lhs = assign(); expect(","); assign(); expect(")"); return n; }
+		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL), d); expect(")"); return n; }
+		if (!strcmp(name, "__builtin_va_end"))   { expect("("); assign(); expect(")"); return num(0); }
 		if (consume("(")) {                                  /* function call name(args) */
 			Node *n = node(ND_CALL); strncpy(n->name, name, 63);
 			Node argh = {0}, *ac = &argh;
@@ -314,6 +319,7 @@ static Node *stmt(void) {
 	if (consume("return")) { Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";"); return n; }   /* `return;` allowed */
 	if (consume("if")) { Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt(); return n; }
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
+	if (consume("do")) { Node *n = node(ND_DOWHILE); n->body = stmt(); expect("while"); expect("("); n->cond = expr(); expect(")"); expect(";"); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
 		Node *n = node(ND_FOR); expect("(");
 		if (is_typename()) n->init = stmt();       /* declaration eats its own ; */
@@ -345,17 +351,26 @@ static Func *function_tail(const char *name) {
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63);
 	nlocals = 0; local_bytes = 0;
 	expect("(");
+	struct { char name[64]; Type *ty; } prm[16]; int np = 0;   /* collect params, then assign offsets by kind */
 	if (is("void") && !strcmp(tk->next->text, ")")) tk = tk->next;   /* (void) = no params */
 	else if (!is(")")) {
 		do {
-			if (is(".")) { while (consume(".")) ; break; }   /* variadic `...` — parsed, not yet implemented */
+			if (is(".")) { while (consume(".")) ; f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL), p);
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
-			if (p[0]) { if (f->nparams < 4) add_local(p, ty); else add_local_at(p, ty, 8 + 4 * (f->nparams - 4)); }
-			f->nparams++;
+			if (np < 16) { strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++; }
 		} while (consume(","));
 	}
 	expect(")");
+	f->nparams = np;
+	/* A variadic function spills r0..r3 into a contiguous incoming-arg block, so ALL params sit at
+	 * [r11, #8 + 4*i]. A normal function keeps r0..r3 in negative frame slots, stack args at +8. */
+	for (int i = 0; i < np; i++) {
+		if (!prm[i].name[0]) continue;                           /* abstract (prototype) param — no binding */
+		if (f->variadic)   add_local_at(prm[i].name, prm[i].ty, 8 + 4 * i);
+		else if (i < 4)    add_local(prm[i].name, prm[i].ty);
+		else               add_local_at(prm[i].name, prm[i].ty, 8 + 4 * (i - 4));
+	}
 	while (consume("__attribute__")) skip_attribute();       /* e.g. int f(void) __attribute__((noreturn)) { … } */
 	if (consume(";")) return NULL;                           /* a prototype — no body to compile */
 	expect("{");
@@ -370,6 +385,7 @@ static Func *function_tail(const char *name) {
  * (optionally with a constant integer initializer). `void` is only valid as a function return type. */
 Func *parse(Token *tok) {
 	tk = tok;
+	add_typedef("__builtin_va_list", pointer_to(ty_char));   /* va_list is a char* walking the arg block */
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
 		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_attribute(); consume(";"); continue; }

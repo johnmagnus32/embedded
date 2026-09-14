@@ -49,7 +49,8 @@ typedef enum {
 	ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR,              /* bitwise + shifts                  */
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
 	ND_COND, ND_CAST, ND_COMMA,                                  /* c?a:b ; (type)expr ; (a, b)       */
-	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements                        */
+	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
+	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
 	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_BLOCK, ND_EXPRSTMT /* switch/case, goto/label, block/expr */
 } NodeKind;
 
@@ -72,7 +73,8 @@ typedef struct Node {
 /* A compiled function: name, its parameter count, the total stack frame it needs, and its body list. */
 typedef struct Func {
 	char name[64];
-	int nparams;                 /* params occupy the first slots (spilled from r0..r3)          */
+	int nparams;                 /* number of NAMED params (excludes the variadic `...`)         */
+	int variadic;                /* 1 if declared with `...` (needs the register-save prologue)  */
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
 	Node *body;                  /* statement list                                               */
 	struct Func *next;

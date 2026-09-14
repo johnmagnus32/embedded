@@ -14,7 +14,7 @@ static const char *KEYWORDS[] = {
 	"int", "char", "void", "short", "long", "signed", "unsigned",          /* base integer types      */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
-	"return", "if", "else", "while", "for", "break", "continue", "switch", "case", "default", "goto",  /* control flow */
+	"return", "if", "else", "while", "do", "for", "break", "continue", "switch", "case", "default", "goto",  /* control flow */
 	NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
 static const char *PUNCT[] = { "<<=", ">>=",                                        /* 3-char first    */

@@ -20,6 +20,7 @@ static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none
 /* Per-function literal pool: ARM can't load a 32-bit symbol address in one instruction, so a global's
  * address is fetched pc-relative from a `.word <sym>` we drop just past the function's code. */
 static int cur_func_id, func_seq;
+static int cur_nfixed, cur_variadic;   /* current function's fixed-param count + whether it's variadic */
 static char pool[64][64]; static int npool;
 
 /* Per-function C-label -> asm-label-id map (goto/label; forward references get an id on first sight). */
@@ -83,6 +84,13 @@ static void gen_expr(Node *n) {
 		return;
 	case ND_CAST:   gen_expr(n->lhs); if (n->type->size == 1) fprintf(o, "\tand r0, r0, #255\n"); return;   /* char cast truncates */
 	case ND_COMMA:  gen_expr(n->lhs); gen_expr(n->rhs); return;   /* evaluate left (discard), then right */
+	case ND_VA_START:                                            /* ap = &(first variadic arg) */
+		gen_addr(n->lhs); fprintf(o, "\tadd r1, r11, #%d\n\tstr r1, [r0]\n", 8 + 4 * cur_nfixed);
+		return;
+	case ND_VA_ARG:                                              /* r0 = *ap; ap += 4 */
+		gen_addr(n->lhs);
+		fprintf(o, "\tldr r1, [r0]\n\tadd r2, r1, #4\n\tstr r2, [r0]\n\tldr r0, [r1]\n");
+		return;
 	case ND_NEG:    gen_expr(n->lhs); fprintf(o, "\trsb r0, r0, #0\n"); return;
 	case ND_BITNOT: gen_expr(n->lhs); fprintf(o, "\tmvn r0, r0\n"); return;
 	case ND_NOT:    gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
@@ -168,6 +176,16 @@ static void gen_stmt(Node *n) {
 		brk_lbl = sb; cont_lbl = sc;
 		return;
 	}
+	case ND_DOWHILE: {
+		int begin = uniq(), end = uniq(), cont = uniq(), sb = brk_lbl, sc = cont_lbl;
+		brk_lbl = end; cont_lbl = cont;                     /* continue -> re-test at the bottom */
+		fprintf(o, ".L%d:\n", begin);
+		gen_stmt(n->body);
+		fprintf(o, ".L%d:\n", cont);
+		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbne .L%d\n.L%d:\n", begin, end);
+		brk_lbl = sb; cont_lbl = sc;
+		return;
+	}
 	case ND_FOR: {
 		int begin = uniq(), end = uniq(), cont = uniq(), sb = brk_lbl, sc = cont_lbl;
 		brk_lbl = end; cont_lbl = cont;                     /* continue -> the inc step, break -> exit */
@@ -207,12 +225,16 @@ static void gen_stmt(Node *n) {
 
 static void gen_func(Func *f) {
 	ret_label = uniq(); cur_func_id = func_seq++; npool = 0; nclabels = 0;
+	cur_nfixed = f->nparams; cur_variadic = f->variadic;
 	fprintf(o, "\t.global %s\n\t.type %s, %%function\n%s:\n", f->name, f->name, f->name);
+	if (f->variadic) fprintf(o, "\tpush {r0, r1, r2, r3}\n");   /* save area: args become contiguous at [r11,#8+4i] */
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);
-	for (int i = 0; i < f->nparams && i < 4; i++) fprintf(o, "\tstr r%d, [r11, #%d]\n", i, -4 * (i + 1));   /* spill register params (r0..r3) */
+	if (!f->variadic) for (int i = 0; i < f->nparams && i < 4; i++) fprintf(o, "\tstr r%d, [r11, #%d]\n", i, -4 * (i + 1));   /* spill r0..r3 */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
-	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n\tbx lr\n", ret_label);   /* fall-through return */
+	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
+	if (f->variadic) fprintf(o, "\tadd sp, sp, #16\n");        /* discard the r0..r3 save area */
+	fprintf(o, "\tbx lr\n");
 	if (npool) { fprintf(o, "\t.align 2\n");                                     /* address pool, past the code */
 		for (int k = 0; k < npool; k++) fprintf(o, ".LCPI%d_%d:\n\t.word %s\n", cur_func_id, k, pool[k]); }
 }
