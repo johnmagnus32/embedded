@@ -50,7 +50,7 @@ typedef enum {
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
 	ND_COND, ND_CAST, ND_COMMA,                                  /* c?a:b ; (type)expr ; (a, b)       */
 	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements                        */
-	ND_SWITCH, ND_CASE, ND_BLOCK, ND_EXPRSTMT                    /* switch/case + block/expr-stmt     */
+	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_BLOCK, ND_EXPRSTMT /* switch/case, goto/label, block/expr */
 } NodeKind;
 
 typedef struct Node {

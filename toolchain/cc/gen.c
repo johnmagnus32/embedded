@@ -22,6 +22,14 @@ static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none
 static int cur_func_id, func_seq;
 static char pool[64][64]; static int npool;
 
+/* Per-function C-label -> asm-label-id map (goto/label; forward references get an id on first sight). */
+static struct { char name[64]; int id; } clabels[128]; static int nclabels;
+static int clabel_id(const char *name) {
+	for (int i = 0; i < nclabels; i++) if (!strcmp(clabels[i].name, name)) return clabels[i].id;
+	int id = uniq(); if (nclabels < 128) { strncpy(clabels[nclabels].name, name, 63); clabels[nclabels].id = id; nclabels++; }
+	return id;
+}
+
 static void gen_expr(Node *n);
 static void gen_stmt(Node *n);
 static void gen_addr(Node *n);
@@ -140,7 +148,7 @@ static void gen_expr(Node *n) {
 
 static void gen_stmt(Node *n) {
 	switch (n->kind) {
-	case ND_RETURN:   gen_expr(n->lhs); fprintf(o, "\tb .L%d\n", ret_label); return;
+	case ND_RETURN:   if (n->lhs) gen_expr(n->lhs); fprintf(o, "\tb .L%d\n", ret_label); return;   /* lhs NULL for `return;` */
 	case ND_EXPRSTMT: gen_expr(n->lhs); return;
 	case ND_BLOCK:    for (Node *s = n->body; s; s = s->next) gen_stmt(s); return;
 	case ND_IF: {
@@ -189,6 +197,8 @@ static void gen_stmt(Node *n) {
 		return;
 	}
 	case ND_CASE: fprintf(o, ".L%d:\n", n->offset); return;  /* label placed inline in the switch body */
+	case ND_GOTO:  fprintf(o, "\tb .L%d\n", clabel_id(n->name)); return;
+	case ND_LABEL: fprintf(o, ".L%d:\n", clabel_id(n->name)); return;
 	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;
 	case ND_CONTINUE: if (!cont_lbl) die("cc: continue outside a loop"); fprintf(o, "\tb .L%d\n", cont_lbl); return;
 	default: gen_expr(n); return;   /* a bare declaration compiles to an empty ND_BLOCK; other exprs run */
@@ -196,7 +206,7 @@ static void gen_stmt(Node *n) {
 }
 
 static void gen_func(Func *f) {
-	ret_label = uniq(); cur_func_id = func_seq++; npool = 0;
+	ret_label = uniq(); cur_func_id = func_seq++; npool = 0; nclabels = 0;
 	fprintf(o, "\t.global %s\n\t.type %s, %%function\n%s:\n", f->name, f->name, f->name);
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);

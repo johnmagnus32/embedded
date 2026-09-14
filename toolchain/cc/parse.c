@@ -222,11 +222,11 @@ static int cast_ahead(void) {
 
 static Node *unary_expr(void) {
 	if (cast_ahead()) {                                      /* (type) expr — re-types the operand */
-		expect("("); Type *t = declspec(NULL); while (consume("*")) t = pointer_to(t); expect(")");
+		char d[64]; expect("("); Type *t = declarator(declspec(NULL), d); expect(")");
 		Node *n = node(ND_CAST); n->lhs = unary_expr(); n->type = t; return n;
 	}
 	if (consume("sizeof")) {                                 /* sizeof(type) or sizeof expr -> a constant */
-		if (cast_ahead()) { expect("("); Type *t = declspec(NULL); while (consume("*")) t = pointer_to(t); t = type_suffix(t); expect(")"); return num(t->size); }
+		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL), d); expect(")"); return num(t->size); }
 		Node *e = unary_expr(); add_type(e); return num(e->type ? e->type->size : 4);
 	}
 	if (consume("++")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_add(x, num(1))); }   /* ++x */
@@ -307,7 +307,11 @@ static Node *stmt(void) {
 		Node *n = node(ND_CASE); n->is_default = 1; n->case_next = cur_switch->case_list; cur_switch->case_list = n; return n; }
 	if (consume("break"))    { expect(";"); return node(ND_BREAK); }
 	if (consume("continue")) { expect(";"); return node(ND_CONTINUE); }
-	if (consume("return")) { Node *n = unary(ND_RETURN, expr()); expect(";"); return n; }
+	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); expect(";"); return n; }
+	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
+		Node *n = node(ND_LABEL); ident(n->name); expect(":"); return n;
+	}
+	if (consume("return")) { Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";"); return n; }   /* `return;` allowed */
 	if (consume("if")) { Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt(); return n; }
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
