@@ -10,10 +10,10 @@
 #include <ctype.h>
 #include "cc.h"
 
-static const char *KEYWORDS[] = { "int", "char", "void", "return", "if", "else", "while", "for", NULL };
+static const char *KEYWORDS[] = { "int", "char", "void", "struct", "return", "if", "else", "while", "for", NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
-static const char *PUNCT[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||",
-                               "+","-","*","/","%","(",")","{","}","[","]",";",",","=","<",">","&","|","^","~","!", NULL };
+static const char *PUNCT[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||", "->",
+                               "+","-","*","/","%","(",")","{","}","[","]",";",",",".","=","<",">","&","|","^","~","!", NULL };
 
 static Token *new_tok(TokKind kind, int line) {
 	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line; return t;
@@ -25,9 +25,21 @@ Token *lex(const char *src) {
 	for (const char *p = src; *p; ) {
 		if (*p == '\n') { line++; p++; continue; }
 		if (isspace((unsigned char)*p)) { p++; continue; }
+		if (*p == '#') { while (*p && *p != '\n') p++; continue; }                        /* cpp line-marker/directive (we consume gcc -E output) */
 		if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }      /* line comment  */
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) { if(*p=='\n')line++; p++; } if(*p) p+=2; continue; }
 
+		if (*p == '\'') {                                                                /* char literal 'x' / '\n' */
+			long v; p++;
+			if (*p == '\\') { p++;
+				switch (*p) { case 'n': v='\n'; break; case 't': v='\t'; break; case 'r': v='\r'; break;
+				              case '0': v=0; break; case '\\': v='\\'; break; case '\'': v='\''; break;
+				              case '"': v='"'; break; default: v=(unsigned char)*p; } p++;
+			} else { v = (unsigned char)*p; p++; }
+			if (*p != '\'') die("lex: unterminated char literal on line %d", line);
+			p++;
+			Token *t = new_tok(TK_NUM, line); t->val = v; cur = cur->next = t; continue;
+		}
 		if (*p == '"') {                                                                 /* string literal */
 			const char *s = ++p;                                                         /* skip opening quote */
 			while (*p && *p != '"') { if (*p == '\\' && p[1]) p += 2; else p++; }         /* keep escapes intact */

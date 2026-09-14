@@ -8,8 +8,8 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty  = { TY_INT,  NULL, 4, 0 };
-static Type char_ty = { TY_CHAR, NULL, 1, 0 };
+static Type int_ty  = { TY_INT,  NULL, 4, 0, NULL };
+static Type char_ty = { TY_CHAR, NULL, 1, 0, NULL };
 Type *ty_int  = &int_ty;
 Type *ty_char = &char_ty;
 
@@ -17,6 +17,12 @@ Type *pointer_to(Type *base) { Type *t = calloc(1, sizeof *t); t->kind = TY_PTR;
 Type *array_of(Type *base, int len) { Type *t = calloc(1, sizeof *t); t->kind = TY_ARRAY; t->base = base; t->len = len; t->size = base->size * len; return t; }
 int   is_ptr(Type *t) { return t && t->kind == TY_PTR; }
 int   is_ptr_like(Type *t) { return t && (t->kind == TY_PTR || t->kind == TY_ARRAY); }
+int   align_of(Type *t) {
+	if (t->kind == TY_CHAR)  return 1;
+	if (t->kind == TY_ARRAY) return align_of(t->base);
+	if (t->kind == TY_STRUCT) { int a = 1; for (Member *m = t->members; m; m = m->next) { int ma = align_of(m->type); if (ma > a) a = ma; } return a; }
+	return 4;   /* int, pointer */
+}
 
 /* Recursively annotate a subtree with result types (children first, then the node itself). Idempotent
  * enough to run over a whole function body; leaves set by the parser (ND_VAR/ND_NUM) are respected. */

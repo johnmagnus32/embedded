@@ -28,19 +28,21 @@ typedef struct Token {
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
-typedef enum { TY_INT, TY_CHAR, TY_PTR, TY_ARRAY } TypeKind;
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; } Type;   /* base=pointee/element; len=array count */
+typedef enum { TY_INT, TY_CHAR, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
+typedef struct Member { char name[64]; struct Type *type; int offset; struct Member *next; } Member;
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; } Type;
 extern Type *ty_int, *ty_char;               /* the two scalar singletons */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
 Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);
 int   is_ptr_like(Type *t);                  /* pointer OR array (both index/decay the same way) */
+int   align_of(Type *t);                     /* byte alignment (int/ptr=4, char=1, array=elem, struct=max) */
 /* add_type is declared after the Node typedef below */
 
 /* ---- AST (parse.c) ------------------------------------------------------------------------------- */
 typedef enum {
 	ND_NUM, ND_VAR, ND_GVAR, ND_ASSIGN, ND_CALL,                 /* leaves (local/global) + assign + call */
-	ND_ADDR, ND_DEREF,                                           /* & (address-of) and * (dereference)*/
+	ND_ADDR, ND_DEREF, ND_MEMBER,                                /* &, *, and struct member access (. / ->) */
 	ND_ADD, ND_SUB, ND_MUL, ND_DIV, ND_MOD,                      /* arithmetic                        */
 	ND_EQ, ND_NE, ND_LT, ND_LE, ND_GT, ND_GE,                    /* comparisons (result 0/1)          */
 	ND_AND, ND_OR,                                               /* && || (short-circuit)             */

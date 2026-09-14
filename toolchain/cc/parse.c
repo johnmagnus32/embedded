@@ -39,8 +39,14 @@ static void add_local_at(const char *name, Type *ty, int off) {
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 }
 
-/* type = ("int"|"char") "*"* name ("[" num "]")* ; declarator reads the name and any array suffix. */
-static Type *declspec(void) { if (consume("int")) return ty_int; if (consume("char")) return ty_char; die("parse: expected a type (line %d)", tk->line); return NULL; }
+/* type = ("int"|"char"|struct-spec) "*"* name ("[" num "]")* ; declarator reads name + array suffix. */
+static Type *struct_decl(void);
+static Type *declspec(void) {
+	if (consume("int")) return ty_int;
+	if (consume("char")) return ty_char;
+	if (consume("struct")) return struct_decl();
+	die("parse: expected a type (line %d)", tk->line); return NULL;
+}
 static Type *type_suffix(Type *base) {
 	if (consume("[")) { if (tk->kind != TK_NUM) die("parse: array length must be an integer (line %d)", tk->line);
 		int n = tk->val; tk = tk->next; expect("]"); return array_of(type_suffix(base), n); }   /* outer dim wraps inner */
@@ -48,12 +54,39 @@ static Type *type_suffix(Type *base) {
 }
 static Type *declarator(Type *base, char *name) { while (consume("*")) base = pointer_to(base); ident(name); return type_suffix(base); }
 
+/* struct-spec = "struct" tag? ( "{" (declspec declarator ("," declarator)* ";")* "}" )?  — a named
+ * definition registers the tag; a bare "struct tag" looks it up. Member offsets are assigned with each
+ * member aligned to its own alignment, and the struct's size rounded up to its max member alignment. */
+static struct { char name[64]; Type *type; } struct_tags[64]; static int nstruct_tags;
+static Type *tag_find(const char *name) { for (int i = 0; i < nstruct_tags; i++) if (!strcmp(struct_tags[i].name, name)) return struct_tags[i].type; return NULL; }
+static Type *struct_decl(void) {
+	char tag[64] = ""; if (tk->kind == TK_IDENT) ident(tag);
+	if (!is("{")) { Type *t = tag_find(tag); if (!t) die("parse: unknown struct '%s' (line %d)", tag, tk->line); return t; }
+	expect("{");
+	Type *ty = calloc(1, sizeof *ty); ty->kind = TY_STRUCT;
+	Member mh = {0}, *mc = &mh; int off = 0, salign = 1;
+	while (!consume("}")) {
+		Type *base = declspec();
+		do {
+			char mname[64]; Type *mt = declarator(base, mname);
+			int a = align_of(mt); off = (off + a - 1) & ~(a - 1);   /* align this member */
+			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt; m->offset = off;
+			off += mt->size; if (a > salign) salign = a; mc = mc->next = m;
+		} while (consume(","));
+		expect(";");
+	}
+	ty->members = mh.next; ty->size = (off + salign - 1) & ~(salign - 1);
+	if (tag[0] && nstruct_tags < 64) { strncpy(struct_tags[nstruct_tags].name, tag, 63); struct_tags[nstruct_tags].type = ty; nstruct_tags++; }
+	return ty;
+}
+
 /* ---- file-scope objects: globals + string literals ----------------------------------------------- */
 Gvar *globals; static Gvar *gtail; static int str_id;
 static Gvar *add_global(void) { Gvar *g = calloc(1, sizeof *g); if (gtail) gtail->next = g; else globals = g; gtail = g; return g; }
 static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !strcmp(g->name, name)) return g; return NULL; }
 
 /* ---- node constructors --------------------------------------------------------------------------- */
+static int is_typename(void) { return is("int") || is("char") || is("struct"); }   /* does a declaration start here? */
 static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
 static Node *binary(NodeKind k, Node *l, Node *r) { Node *n = node(k); n->lhs = l; n->rhs = r; return n; }
 static Node *unary(NodeKind k, Node *e) { Node *n = node(k); n->lhs = e; return n; }
@@ -89,11 +122,25 @@ static Node *primary(void) {
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
 
-/* postfix := primary ("[" expr "]")* ; a[i] is sugar for *(a + i), so it rides on new_add + deref. */
+/* base.member — resolve the member's offset+type on the struct; ND_MEMBER holds the base lvalue. */
+static Node *struct_member(Node *base, const char *mname) {
+	add_type(base);
+	if (!base->type || base->type->kind != TY_STRUCT) die("parse: '.%s' on a non-struct", mname);
+	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
+		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type; return n;
+	}
+	die("parse: struct has no member '%s'", mname); return NULL;
+}
+
+/* postfix := primary ( "[" expr "]" | "." ident | "->" ident )* ; a[i] = *(a+i), p->m = (*p).m. */
 static Node *postfix(void) {
 	Node *n = primary();
-	while (consume("[")) { Node *idx = expr(); expect("]"); n = unary(ND_DEREF, new_add(n, idx)); }
-	return n;
+	for (;;) {
+		if (consume("[")) { Node *idx = expr(); expect("]"); n = unary(ND_DEREF, new_add(n, idx)); }
+		else if (consume(".")) { char m[64]; ident(m); n = struct_member(n, m); }
+		else if (consume("->")) { char m[64]; ident(m); n = struct_member(unary(ND_DEREF, n), m); }
+		else return n;
+	}
 }
 
 static Node *unary_expr(void) {
@@ -131,7 +178,7 @@ static Node *bitxor(void){ Node *n = bitand();      while (consume("^")) n = bin
 static Node *bitor(void) { Node *n = bitxor();      while (consume("|")) n = binary(ND_BITOR, n, bitxor()); return n; }
 static Node *logand(void){ Node *n = bitor();       while (consume("&&")) n = binary(ND_AND, n, bitor()); return n; }
 static Node *logor(void) { Node *n = logand();      while (consume("||")) n = binary(ND_OR, n, logand()); return n; }
-static Node *assign(void){ Node *n = logor(); if (consume("=")) { if (n->kind != ND_VAR && n->kind != ND_GVAR && n->kind != ND_DEREF) die("parse: assignment to non-lvalue"); n = binary(ND_ASSIGN, n, assign()); } return n; }
+static Node *assign(void){ Node *n = logor(); if (consume("=")) { if (n->kind != ND_VAR && n->kind != ND_GVAR && n->kind != ND_DEREF && n->kind != ND_MEMBER) die("parse: assignment to non-lvalue"); n = binary(ND_ASSIGN, n, assign()); } return n; }
 static Node *expr(void)  { return assign(); }
 
 /* ---- statements ---------------------------------------------------------------------------------- */
@@ -141,14 +188,14 @@ static Node *stmt(void) {
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
 		Node *n = node(ND_FOR); expect("(");
-		if (is("int") || is("char")) n->init = stmt();       /* declaration eats its own ; */
+		if (is_typename()) n->init = stmt();       /* declaration eats its own ; */
 		else if (!consume(";")) { n->init = unary(ND_EXPRSTMT, expr()); expect(";"); }
 		if (!consume(";")) { n->cond = expr(); expect(";"); }
 		if (!is(")")) n->inc = expr();
 		expect(")"); n->body = stmt(); return n;
 	}
 	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
-	if (is("int") || is("char")) {                           /* `T *…* name [= expr];` local declaration */
+	if (is_typename()) {                                     /* `T *…* name [= expr];` local declaration */
 		char name[64]; Type *ty = declarator(declspec(), name); int off = add_local(name, ty);
 		Node *n;
 		if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, name, 63); v->offset = off; v->type = ty; n = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, expr())); }
@@ -184,11 +231,11 @@ Func *parse(Token *tok) {
 	tk = tok;
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
-		char name[64]; Type *ty;
-		if (consume("void")) { ty = NULL; ident(name); }     /* void return */
-		else ty = declarator(declspec(), name);              /* int/char (+ *s) then the name */
+		if (consume("void")) { char name[64]; ident(name); cur = cur->next = function_tail(name); continue; }  /* void fn */
+		Type *base = declspec();                             /* int/char/struct-spec (a struct def registers its tag) */
+		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
+		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
 		if (is("(")) { cur = cur->next = function_tail(name); continue; }
-		if (!ty) die("parse: 'void' variable '%s'", name);
 		Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;   /* a global variable */
 		if (consume("=")) { if (tk->kind != TK_NUM) die("parse: global initializer must be an integer constant (line %d)", tk->line);
 			g->has_init = 1; g->init = tk->val; tk = tk->next; }
