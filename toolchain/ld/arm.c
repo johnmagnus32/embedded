@@ -11,10 +11,16 @@
 #include "ld.h"
 
 const u16 md_e_machine = EM_ARM;
+const u32 md_r_relative = 23;      /* R_ARM_RELATIVE: runtime `*P += load_bias` — the only dynamic reloc a PIE emits */
 
 #define R_ARM_ABS32  2
 #define R_ARM_CALL   28
 #define R_ARM_JUMP24 29
+
+/* In a PIE, an absolute reference (ABS32) is the only thing whose value depends on where we load: it
+ * must become a runtime R_ARM_RELATIVE base-fixup. PC-relative branches (CALL/JUMP24) are bias-invariant
+ * — the linker resolves them statically — so they need no dynamic reloc. */
+int md_needs_dynamic_reloc(u32 type) { return type == R_ARM_ABS32; }
 
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	u32 w = rd32(loc);

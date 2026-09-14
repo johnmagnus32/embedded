@@ -8,7 +8,9 @@ COMMON := ../common
 CFLAGS += -I$(COMMON)
 
 OURAS := ../as/build/as
+OURCC := ../cc/build/cc
 GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
+QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
 # backend (arm.c). A new arch swaps arm.c; a new object format swaps elf.c.
@@ -31,7 +33,9 @@ $(BUILD):
 # .data/.bss) and prove our ld emits a valid ET_EXEC with the M2 properties: entry=_start, TWO PT_LOADs
 # split W^X (seg0 R-X, seg1 R-W, never R-W-X), a .bss whose memsz exceeds its filesz, and the R_ARM_CALL
 # placeholder (0xebfffffe) relocated to a real branch. Entry = LOAD_BASE + ehdr(52) + 2*phdr(64) = 0x10074.
-test: $(BUILD)/ld
+test: test-static test-pie
+
+test-static: $(BUILD)/ld
 	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc' (set GNU=<prefix>)"; exit 0; fi
 	@$(MAKE) -s -C ../as >/dev/null                 # ensure our assembler is built
 	@t=$$(mktemp -d); fail=0; \
@@ -76,7 +80,36 @@ test: $(BUILD)/ld
 	rm -rf $$t; \
 	[ $$fail -eq 0 ] && echo "----- ld M2 OK -----" || { echo "----- FAILED -----"; exit 1; }
 
+# PIE gate (dynamic-linking M1): link a position-independent ET_DYN with our `ld -pie`, prove it carries
+# the self-relocation metadata (ET_DYN + PT_DYNAMIC + R_ARM_RELATIVE in .rel.dyn), then RUN it at a
+# nonzero load bias and check it self-relocated correctly. The bias is produced by a two-part boot on
+# qemu -M virt: a stub (the -kernel) sets a stack and jumps to 0x40200000, where the PIE — linked at
+# base 0, stripped to a raw binary — was placed via `-device loader`. tests/pie_reloc.c returns 42 only
+# if the crt applied the R_ARM_RELATIVE to `p` (else `p` still holds its link-time address = garbage at
+# runtime). Everything is our own: our cc + our as + our ld -pie + our crt_pie.s.
+test-pie: $(BUILD)/ld
+	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../cc >/dev/null
+	@fail=0; t=$$(mktemp -d); \
+	$(OURAS) -o $$t/crt_pie.o tests/crt_pie.s && $(OURCC) -o $$t/pie.s tests/pie_reloc.c \
+	  && $(OURAS) -o $$t/pie.o $$t/pie.s && $(BUILD)/ld -pie -o $$t/pie.elf $$t/crt_pie.o $$t/pie.o \
+	  || { echo "FAIL: our cc/as/ld could not build the PIE"; rm -rf $$t; exit 1; }; \
+	typ=$$($(GNU)readelf -h $$t/pie.elf | sed -n 's/.*Type:[[:space:]]*\([A-Z]*\).*/\1/p'); \
+	ndyn=$$($(GNU)readelf -lW $$t/pie.elf | grep -c 'DYNAMIC'); \
+	nrel=$$($(GNU)readelf -rW $$t/pie.elf | grep -c 'R_ARM_RELATIVE'); \
+	[ "$$typ" = DYN ]   && echo "PASS type=DYN (ET_DYN / PIE)"                    || { echo "FAIL type=$$typ (want DYN)"; fail=1; }; \
+	[ "$$ndyn" -ge 1 ]  && echo "PASS PT_DYNAMIC present"                         || { echo "FAIL no PT_DYNAMIC"; fail=1; }; \
+	[ "$$nrel" -ge 1 ]  && echo "PASS $$nrel R_ARM_RELATIVE dynamic relocs"       || { echo "FAIL no R_ARM_RELATIVE relocs"; fail=1; }; \
+	if [ ! -x "$$(command -v $(QEMU))" ]; then echo "SKIP run: $(QEMU) not found"; rm -rf $$t; [ $$fail -eq 0 ]; exit $$?; fi; \
+	$(GNU)objcopy -O binary $$t/pie.elf $$t/blob.bin; \
+	$(OURAS) -o $$t/stub.o tests/stub.s && $(BUILD)/ld -Ttext 0x40000000 -o $$t/stub.elf $$t/stub.o; \
+	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none \
+	  -kernel $$t/stub.elf -device loader,file=$$t/blob.bin,addr=0x40200000 >/dev/null 2>&1; g=$$?; \
+	[ "$$g" = 42 ] && echo "PASS run: PIE self-relocated at bias 0x40200000; main()==$$g" \
+	              || { echo "FAIL run: got $$g, want 42 (self-relocation broken)"; fail=1; }; \
+	rm -rf $$t; \
+	[ $$fail -eq 0 ] && echo "----- ld PIE OK -----" || { echo "----- FAILED -----"; exit 1; }
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: clean test
+.PHONY: clean test test-static test-pie

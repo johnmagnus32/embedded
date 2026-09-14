@@ -18,7 +18,15 @@
 #include "elfutil.h"    /* shared helpers: rd32/wr32, alignup, Strtab */
 
 extern u32 load_base;           /* where the image maps: default 0x10000 (hosted), override with -Ttext <addr> */
+extern int pie;                 /* -pie: emit ET_DYN with self-relocation metadata (base 0, load-bias fixups) */
 #define PAGE      0x1000u       /* segment alignment: each PT_LOAD maps on its own page => W^X enforceable */
+
+/* Dynamic relocation table (PIE only): the virtual addresses of every word that holds an absolute
+ * reference. relocate() collects them; the writer emits one R_ARM_RELATIVE per entry into .rel.dyn,
+ * and the runtime crt walks that table adding the load bias to each. */
+#define MAXDYNREL 16384
+extern u32 dynrel[MAXDYNREL]; extern int ndynrel;
+#define NDYNENT 5               /* .dynamic entries: DT_REL, DT_RELSZ, DT_RELENT, DT_RELCOUNT, DT_NULL */
 
 typedef struct {
 	const char *path; u8 *data; long size;      /* whole file (mutable — relocations patch it in place) */
@@ -39,6 +47,10 @@ void die(const char *fmt, ...);                                    /* front-end 
 typedef struct {
 	u32 rx_filesz;                              /* seg 0 size from LOAD_BASE (== memsz; headers included) */
 	u32 rw_vaddr, rw_off, rw_filesz, rw_memsz;  /* seg 1: vaddr, file offset, on-disk size, in-mem size  */
+	/* PIE only: the .rel.dyn (R_ARM_RELATIVE table) and .dynamic array live at the tail of seg 0. */
+	u32 text_size;                              /* .text+.rodata size (seg 0 minus headers and the two below) */
+	u32 reldyn_vaddr, reldyn_off, reldyn_sz;    /* .rel.dyn: ndynrel * sizeof(Elf32_Rel)                     */
+	u32 dynamic_vaddr, dynamic_off, dynamic_sz; /* .dynamic: the DT_* array + PT_DYNAMIC target              */
 } Layout;
 
 /* ---- OBJECT-FORMAT backend (elf.c) --------------------------------------------------------------- */
@@ -49,5 +61,7 @@ void elf_write_exec(const char *out, u32 entry, const Layout *L);
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
 extern const u16 md_e_machine;                                     /* EM_ARM — checked on load, stamped on write */
+extern const u32 md_r_relative;                                    /* the arch's base-fixup reloc (R_ARM_RELATIVE) */
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P);      /* patch one relocation in place */
+int  md_needs_dynamic_reloc(u32 type);                             /* 1 if this reloc must become a runtime RELATIVE */
 #endif

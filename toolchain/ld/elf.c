@@ -80,49 +80,75 @@ static void write_image(FILE *f, int want_write) {
 	} }
 }
 
-/* Serialize the static executable: ehdr + program headers (R-X seg, optional R-W seg) + the loadable
- * image + a section-header table describing the real output sections (.text/.data/.bss/.shstrtab) so
- * readelf/objdump can inspect it. Program headers are what the kernel actually maps. */
+/* Zero-pad the file to `off`, then write the .rel.dyn (one R_ARM_RELATIVE per collected vaddr) and
+ * .dynamic (the DT_* array) that a self-relocating PIE carries at the tail of its R-X segment. */
+static void write_dynamic(FILE *f, const Layout *L) {
+	for (long p = ftell(f); p < (long)L->reldyn_off; p++) fputc(0, f);
+	for (int i = 0; i < ndynrel; i++) {
+		Elf32_Rel re = { dynrel[i], ELF32_R_INFO(0, md_r_relative) };   /* sym 0: pure base fixup */
+		fwrite(&re, sizeof re, 1, f);
+	}
+	for (long p = ftell(f); p < (long)L->dynamic_off; p++) fputc(0, f);
+	Elf32_Dyn dyn[NDYNENT] = {
+		{ DT_REL, L->reldyn_vaddr }, { DT_RELSZ, L->reldyn_sz }, { DT_RELENT, sizeof(Elf32_Rel) },
+		{ DT_RELCOUNT, (u32)ndynrel }, { DT_NULL, 0 },
+	};
+	fwrite(dyn, sizeof dyn[0], NDYNENT, f);
+}
+
+/* Serialize the output image: ehdr + program headers (R-X seg, optional R-W seg, and for a PIE a
+ * PT_DYNAMIC) + the loadable image + a section-header table describing the real output sections so
+ * readelf/objdump can inspect it. Program headers are what the loader actually maps.
+ *   ET_EXEC (default): fixed base, statically relocated, no .dynamic.
+ *   ET_DYN  (-pie):    base 0; absolute refs left at their link-time value with an R_ARM_RELATIVE in
+ *                      .rel.dyn so a tiny crt can add the load bias at startup. .rel.dyn + .dynamic sit
+ *                      at the tail of the R-X segment; a PT_DYNAMIC header points at .dynamic. */
 void elf_write_exec(const char *out, u32 entry, const Layout *L) {
 	FILE *f = fopen(out, "wb"); if (!f) die("cannot open %s", out);
-	u32 hdrsz    = sizeof(Elf32_Ehdr) + 2 * sizeof(Elf32_Phdr);
+	int nphdr    = pie ? 3 : 2;                                       /* reserved header slots (must match layout()) */
+	u32 hdrsz    = sizeof(Elf32_Ehdr) + nphdr * sizeof(Elf32_Phdr);
 	u32 bss_size = L->rw_memsz - L->rw_filesz;
 	int have_rw = L->rw_memsz > 0, have_data = L->rw_filesz > 0, have_bss = bss_size > 0;
 
-	/* .shstrtab: name offsets .text=1, .data=7, .bss=13, .shstrtab=18. */
-	const char shstr[] = "\0.text\0.data\0.bss\0.shstrtab";
+	const char shstr[] = "\0.text\0.rel.dyn\0.dynamic\0.data\0.bss\0.shstrtab";
+	enum { N_text=1, N_reldyn=7, N_dynamic=16, N_data=25, N_bss=31, N_shstr=36 };
 
-	/* Build the section headers we actually have: [0]=null, .text, [.data], [.bss], .shstrtab. */
-	Elf32_Shdr sh[5] = {0}; int ns = 1;
-	int ndx_text = ns++;
-	sh[ndx_text] = (Elf32_Shdr){ .sh_name=1, .sh_type=SHT_PROGBITS, .sh_flags=SHF_ALLOC|SHF_EXECINSTR,
-	    .sh_addr=load_base+hdrsz, .sh_offset=hdrsz, .sh_size=L->rx_filesz-hdrsz, .sh_addralign=4 };
-	if (have_data) sh[ns++] = (Elf32_Shdr){ .sh_name=7, .sh_type=SHT_PROGBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
+	/* Section headers we actually have: [0]=null, .text, [.rel.dyn, .dynamic], [.data], [.bss], .shstrtab. */
+	Elf32_Shdr sh[7] = {0}; int ns = 1;
+	sh[ns++] = (Elf32_Shdr){ .sh_name=N_text, .sh_type=SHT_PROGBITS, .sh_flags=SHF_ALLOC|SHF_EXECINSTR,
+	    .sh_addr=load_base+hdrsz, .sh_offset=hdrsz, .sh_size=L->text_size, .sh_addralign=4 };
+	if (pie && L->reldyn_sz) sh[ns++] = (Elf32_Shdr){ .sh_name=N_reldyn, .sh_type=SHT_REL, .sh_flags=SHF_ALLOC,
+	    .sh_addr=L->reldyn_vaddr, .sh_offset=L->reldyn_off, .sh_size=L->reldyn_sz, .sh_addralign=4, .sh_entsize=sizeof(Elf32_Rel) };
+	if (pie) sh[ns++] = (Elf32_Shdr){ .sh_name=N_dynamic, .sh_type=SHT_DYNAMIC, .sh_flags=SHF_ALLOC,
+	    .sh_addr=L->dynamic_vaddr, .sh_offset=L->dynamic_off, .sh_size=L->dynamic_sz, .sh_addralign=4, .sh_entsize=sizeof(Elf32_Dyn) };
+	if (have_data) sh[ns++] = (Elf32_Shdr){ .sh_name=N_data, .sh_type=SHT_PROGBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
 	    .sh_addr=L->rw_vaddr, .sh_offset=L->rw_off, .sh_size=L->rw_filesz, .sh_addralign=4 };
-	if (have_bss)  sh[ns++] = (Elf32_Shdr){ .sh_name=13, .sh_type=SHT_NOBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
+	if (have_bss)  sh[ns++] = (Elf32_Shdr){ .sh_name=N_bss, .sh_type=SHT_NOBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
 	    .sh_addr=L->rw_vaddr+L->rw_filesz, .sh_offset=L->rw_off+L->rw_filesz, .sh_size=bss_size, .sh_addralign=4 };
 	int ndx_shstr = ns++;
 	/* .shstrtab follows the last byte actually written: end of .data if there is any, else end of the
 	 * R-X segment (a .bss-only or code-only program writes no R-W bytes, so nothing pads out to rw_off). */
 	u32 shstr_off = have_data ? L->rw_off + L->rw_filesz : L->rx_filesz;
-	sh[ndx_shstr] = (Elf32_Shdr){ .sh_name=18, .sh_type=SHT_STRTAB, .sh_offset=shstr_off, .sh_size=sizeof(shstr), .sh_addralign=1 };
+	sh[ndx_shstr] = (Elf32_Shdr){ .sh_name=N_shstr, .sh_type=SHT_STRTAB, .sh_offset=shstr_off, .sh_size=sizeof(shstr), .sh_addralign=1 };
 	u32 shoff = alignup(shstr_off + sizeof(shstr), 4);
 
 	Elf32_Ehdr eh = {0};
 	memcpy(eh.e_ident, "\177ELF\1\1\1", 7);          /* MAG + ELFCLASS32 + ELFDATA2LSB + EV_CURRENT */
-	eh.e_type = ET_EXEC; eh.e_machine = md_e_machine; eh.e_version = 1; eh.e_entry = entry; eh.e_flags = 0x05000000;
-	eh.e_phoff = sizeof(Elf32_Ehdr); eh.e_phentsize = sizeof(Elf32_Phdr); eh.e_phnum = have_rw ? 2 : 1;
+	eh.e_type = pie ? ET_DYN : ET_EXEC; eh.e_machine = md_e_machine; eh.e_version = 1; eh.e_entry = entry; eh.e_flags = 0x05000000;
+	eh.e_phoff = sizeof(Elf32_Ehdr); eh.e_phentsize = sizeof(Elf32_Phdr);
+	eh.e_phnum = (have_rw ? 2 : 1) + (pie ? 1 : 0);
 	eh.e_ehsize = sizeof(Elf32_Ehdr); eh.e_shentsize = sizeof(Elf32_Shdr); eh.e_shnum = ns; eh.e_shstrndx = ndx_shstr; eh.e_shoff = shoff;
 
 	/* p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_flags, p_align */
-	Elf32_Phdr ph[2] = {
-		{ PT_LOAD, 0,         load_base,   load_base,   L->rx_filesz, L->rx_filesz, PF_R|PF_X, PAGE },
-		{ PT_LOAD, L->rw_off, L->rw_vaddr, L->rw_vaddr, L->rw_filesz, L->rw_memsz,  PF_R|PF_W, PAGE },
-	};
+	Elf32_Phdr ph[3]; int np = 0;
+	ph[np++] = (Elf32_Phdr){ PT_LOAD, 0, load_base, load_base, L->rx_filesz, L->rx_filesz, PF_R|PF_X, PAGE };
+	if (have_rw) ph[np++] = (Elf32_Phdr){ PT_LOAD, L->rw_off, L->rw_vaddr, L->rw_vaddr, L->rw_filesz, L->rw_memsz, PF_R|PF_W, PAGE };
+	if (pie)     ph[np++] = (Elf32_Phdr){ PT_DYNAMIC, L->dynamic_off, L->dynamic_vaddr, L->dynamic_vaddr, L->dynamic_sz, L->dynamic_sz, PF_R, 4 };
 
 	fwrite(&eh, sizeof eh, 1, f);
-	fwrite(ph, sizeof ph[0], have_rw ? 2 : 1, f);
+	fwrite(ph, sizeof ph[0], np, f);
 	write_image(f, 0);                               /* R-X image: .text, .rodata          */
+	if (pie) write_dynamic(f, L);                    /* R-X tail: .rel.dyn then .dynamic   */
 	write_image(f, 1);                               /* R-W image: .data (page gap auto-filled) */
 	fwrite(shstr, 1, sizeof(shstr), f);
 	for (long p = ftell(f); p < (long)shoff; p++) fputc(0, f);

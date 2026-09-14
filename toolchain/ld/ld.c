@@ -19,6 +19,8 @@
 
 Obj objs[MAXOBJ]; int nobj;
 u32 load_base = 0x00010000u;               /* image base; -Ttext <addr> overrides (e.g. bare-metal 0x40000000) */
+int pie = 0;                               /* -pie: ET_DYN, base 0, absolute refs become load-bias fixups */
+u32 dynrel[MAXDYNREL]; int ndynrel;        /* PIE: vaddrs needing an R_ARM_RELATIVE (filled by relocate()) */
 static const char *entry_sym = "_start";   /* entry point symbol; -e/--entry overrides */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
@@ -102,10 +104,34 @@ static void place(int want_write, int nobits, u32 *cur) {
 		*cur = alignup(*cur, s->sh_addralign); objs[i].sec_vaddr[j] = *cur; *cur += s->sh_size;
 	} }
 }
+/* PIE: how many R_ARM_RELATIVE entries .rel.dyn will hold — one per absolute reference to a relocatable
+ * address. Counts exactly what relocate() will later collect (same predicate, same iteration order), so
+ * the space reserved here matches the entries filled there. */
+static int count_pie_relocs(void) {
+	int n = 0;
+	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
+		Elf32_Shdr *rs = &objs[i].sh[j];
+		if (rs->sh_type != SHT_REL || !(objs[i].sh[rs->sh_info].sh_flags & SHF_ALLOC)) continue;
+		Elf32_Rel *rel = (Elf32_Rel *)(objs[i].data + rs->sh_offset);
+		for (int r = 0, m = rs->sh_size / sizeof(Elf32_Rel); r < m; r++) {
+			Elf32_Sym *sym = &objs[i].sym[ELF32_R_SYM(rel[r].r_info)];
+			if (md_needs_dynamic_reloc(ELF32_R_TYPE(rel[r].r_info)) && sym->st_shndx != SHN_ABS) n++;
+		}
+	} }
+	return n;
+}
 static void layout(Layout *L) {
-	u32 hdrsz = sizeof(Elf32_Ehdr) + 2 * sizeof(Elf32_Phdr);   /* two program headers (R-X, R-W) */
+	int nphdr = pie ? 3 : 2;                                             /* R-X, R-W [, PT_DYNAMIC] */
+	u32 hdrsz = sizeof(Elf32_Ehdr) + nphdr * sizeof(Elf32_Phdr);
 	u32 cur = load_base + hdrsz;
 	place(RO, PROGBITS, &cur);               /* seg 0: read-only PROGBITS (.text, .rodata)          */
+	L->text_size = cur - (load_base + hdrsz);
+	if (pie) {                               /* seg 0 tail: .rel.dyn then .dynamic (read-only metadata) */
+		cur = alignup(cur, 4); L->reldyn_vaddr = cur; L->reldyn_off = cur - load_base;
+		L->reldyn_sz = count_pie_relocs() * sizeof(Elf32_Rel); cur += L->reldyn_sz;
+		cur = alignup(cur, 4); L->dynamic_vaddr = cur; L->dynamic_off = cur - load_base;
+		L->dynamic_sz = NDYNENT * sizeof(Elf32_Dyn); cur += L->dynamic_sz;
+	}
 	L->rx_filesz = cur - load_base;
 	cur = load_base + alignup(cur - load_base, PAGE);   /* page-align the R-W segment (file + mem)   */
 	L->rw_vaddr = cur; L->rw_off = cur - load_base;
@@ -134,10 +160,18 @@ static void relocate(void) {
 		Elf32_Rel *rel = (Elf32_Rel *)(objs[i].data + rs->sh_offset);
 		int n = rs->sh_size / sizeof(Elf32_Rel);
 		for (int r = 0; r < n; r++) {
+			u32 type = ELF32_R_TYPE(rel[r].r_info);
 			u32 S = resolve(&objs[i], ELF32_R_SYM(rel[r].r_info));       /* target symbol address   */
 			u32 P = objs[i].sec_vaddr[rs->sh_info] + rel[r].r_offset;    /* address being patched   */
 			u8 *loc = objs[i].data + ts->sh_offset + rel[r].r_offset;    /* bytes to patch          */
-			md_apply_reloc(&objs[i], ELF32_R_TYPE(rel[r].r_info), loc, S, P);
+			md_apply_reloc(&objs[i], type, loc, S, P);
+			/* PIE: the static patch above wrote the LINK-TIME value (base 0). Record an R_ARM_RELATIVE
+			 * so the runtime crt adds the load bias to it. Absolute symbols carry no address, so skip. */
+			if (pie && md_needs_dynamic_reloc(type)
+			    && objs[i].sym[ELF32_R_SYM(rel[r].r_info)].st_shndx != SHN_ABS) {
+				if (ndynrel >= MAXDYNREL) die("too many dynamic relocations");
+				dynrel[ndynrel++] = P;
+			}
 		}
 	} }
 }
@@ -156,6 +190,7 @@ int main(int argc, char **argv) {
 		else if (!strcmp(argv[i], "-Ttext") && i + 1 < argc) load_base = strtoul(argv[++i], NULL, 0);   /* text base */
 		else if (!strncmp(argv[i], "-Ttext=", 7)) load_base = strtoul(argv[i] + 7, NULL, 0);
 		else if ((!strcmp(argv[i], "-e") || !strcmp(argv[i], "--entry")) && i + 1 < argc) entry_sym = argv[++i];
+		else if (!strcmp(argv[i], "-pie") || !strcmp(argv[i], "--pie")) { pie = 1; load_base = 0; }   /* PIE: link at 0, self-relocate */
 		else if (argv[i][0] == '-') die("unknown option '%s'", argv[i]);
 		else if (is_archive(argv[i])) ar_load(argv[i]);   /* lazy members, pulled on demand below */
 		else elf_load(argv[i]);                           /* always-linked object */
@@ -166,6 +201,7 @@ int main(int argc, char **argv) {
 	Layout L = {0};
 	layout(&L);
 	build_globals();
+	if (pie) gsym_define("_DYNAMIC", L.dynamic_vaddr);   /* so the crt's `.word _DYNAMIC` finds the array */
 	GSym *start = gsym_find(entry_sym);
 	if (!start || !start->defined) die("no '%s' symbol (entry point)", entry_sym);
 	relocate();

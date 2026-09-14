@@ -19,10 +19,12 @@ typedef struct { u32 sh_name, sh_type, sh_flags, sh_addr, sh_offset, sh_size, sh
 typedef struct { u32 st_name, st_value, st_size; u8 st_info, st_other; u16 st_shndx; } Elf32_Sym;
 typedef struct { u32 r_offset, r_info; } Elf32_Rel;
 typedef struct { u32 p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_flags, p_align; } Elf32_Phdr;
+typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubles as d_ptr) */
 
 /* --- e_type / e_machine -------------------------------------------------------------------------- */
 #define ET_REL   1
 #define ET_EXEC  2
+#define ET_DYN   3       /* shared object / PIE: has a load bias, self-relocated via .dynamic */
 #define EM_ARM   40
 
 /* --- section header: sh_type / sh_flags / special indices ---------------------------------------- */
@@ -31,6 +33,7 @@ typedef struct { u32 p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_fl
 #define SHT_STRTAB   3
 #define SHT_NOBITS   8
 #define SHT_REL      9
+#define SHT_DYNAMIC  6
 #define SHF_WRITE      1
 #define SHF_ALLOC      2
 #define SHF_EXECINSTR  4
@@ -51,9 +54,17 @@ typedef struct { u32 p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_fl
 #define ELF32_R_SYM(i)   ((i)>>8)
 #define ELF32_R_TYPE(i)  ((i)&0xff)
 #define ELF32_R_INFO(s,t) (((s)<<8)|((t)&0xff))
-#define PT_LOAD 1
+#define PT_LOAD    1
+#define PT_DYNAMIC 2     /* points the loader/self-relocator at the .dynamic array */
 #define PF_X 1
 #define PF_W 2
 #define PF_R 4
+
+/* --- .dynamic tags (generic subset a self-relocating PIE needs) ---------------------------------- */
+#define DT_NULL     0            /* end of the .dynamic array                     */
+#define DT_REL      17           /* address of the Elf32_Rel relocation table     */
+#define DT_RELSZ    18           /* total size of that table, in bytes            */
+#define DT_RELENT   19           /* size of one Elf32_Rel entry (8)               */
+#define DT_RELCOUNT 0x6ffffffau  /* number of leading R_ARM_RELATIVE entries      */
 
 #endif
