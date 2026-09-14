@@ -17,7 +17,7 @@
 #include "elf.h"        /* shared ELF32 format: structs + constants (toolchain/common) */
 #include "elfutil.h"    /* shared helpers: rd32/wr32, alignup, Strtab */
 
-#define LOAD_BASE 0x00010000u   /* where the image maps (GNU ld's ARM static default region) */
+extern u32 load_base;           /* where the image maps: default 0x10000 (hosted), override with -Ttext <addr> */
 #define PAGE      0x1000u       /* segment alignment: each PT_LOAD maps on its own page => W^X enforceable */
 
 typedef struct {

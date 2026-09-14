@@ -18,6 +18,8 @@
 #include "ld.h"
 
 Obj objs[MAXOBJ]; int nobj;
+u32 load_base = 0x00010000u;               /* image base; -Ttext <addr> overrides (e.g. bare-metal 0x40000000) */
+static const char *entry_sym = "_start";   /* entry point symbol; -e/--entry overrides */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
 void die(const char *fmt, ...) {
@@ -89,6 +91,8 @@ static u32 resolve(Obj *o, int symidx) {
  *   seg 0 (R-X): headers + read-only sections   — SHF_ALLOC && !SHF_WRITE   (.text, .rodata)
  *   seg 1 (R-W): writable data then .bss         — SHF_ALLOC &&  SHF_WRITE   (.data [PROGBITS], .bss [NOBITS])
  * Three placement passes so sections of like kind are contiguous regardless of input order. */
+enum { RO = 0, RW = 1 };            /* writability axis: SHF_WRITE clear / set   */
+enum { PROGBITS = 0, NOBITS = 1 };  /* storage axis: file-backed / zero-filled   */
 static void place(int want_write, int nobits, u32 *cur) {
 	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
 		Elf32_Shdr *s = &objs[i].sh[j];
@@ -100,14 +104,14 @@ static void place(int want_write, int nobits, u32 *cur) {
 }
 static void layout(Layout *L) {
 	u32 hdrsz = sizeof(Elf32_Ehdr) + 2 * sizeof(Elf32_Phdr);   /* two program headers (R-X, R-W) */
-	u32 cur = LOAD_BASE + hdrsz;
-	place(0, 0, &cur);                       /* seg 0: read-only PROGBITS (.text, .rodata)          */
-	L->rx_filesz = cur - LOAD_BASE;
-	cur = LOAD_BASE + alignup(cur - LOAD_BASE, PAGE);   /* page-align the R-W segment (file + mem)   */
-	L->rw_vaddr = cur; L->rw_off = cur - LOAD_BASE;
-	place(1, 0, &cur);                       /* seg 1a: writable PROGBITS (.data) — on disk + memory */
+	u32 cur = load_base + hdrsz;
+	place(RO, PROGBITS, &cur);               /* seg 0: read-only PROGBITS (.text, .rodata)          */
+	L->rx_filesz = cur - load_base;
+	cur = load_base + alignup(cur - load_base, PAGE);   /* page-align the R-W segment (file + mem)   */
+	L->rw_vaddr = cur; L->rw_off = cur - load_base;
+	place(RW, PROGBITS, &cur);               /* seg 1a: writable PROGBITS (.data) — on disk + memory */
 	L->rw_filesz = cur - L->rw_vaddr;
-	place(1, 1, &cur);                       /* seg 1b: .bss (NOBITS) — memory only, no file bytes    */
+	place(RW, NOBITS, &cur);                 /* seg 1b: .bss (NOBITS) — memory only, no file bytes    */
 	L->rw_memsz = cur - L->rw_vaddr;
 }
 
@@ -149,18 +153,21 @@ int main(int argc, char **argv) {
 	const char *out = "a.out";
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+		else if (!strcmp(argv[i], "-Ttext") && i + 1 < argc) load_base = strtoul(argv[++i], NULL, 0);   /* text base */
+		else if (!strncmp(argv[i], "-Ttext=", 7)) load_base = strtoul(argv[i] + 7, NULL, 0);
+		else if ((!strcmp(argv[i], "-e") || !strcmp(argv[i], "--entry")) && i + 1 < argc) entry_sym = argv[++i];
 		else if (argv[i][0] == '-') die("unknown option '%s'", argv[i]);
 		else if (is_archive(argv[i])) ar_load(argv[i]);   /* lazy members, pulled on demand below */
 		else elf_load(argv[i]);                           /* always-linked object */
 	}
-	if (!nobj) die("usage: ld [-o out] obj.o|lib.a ...");
+	if (!nobj) die("usage: ld [-o out] [-Ttext addr] [-e sym] obj.o|lib.a ...");
 	pull_archive_members();
 
 	Layout L = {0};
 	layout(&L);
 	build_globals();
-	GSym *start = gsym_find("_start");
-	if (!start || !start->defined) die("no _start symbol (entry point)");
+	GSym *start = gsym_find(entry_sym);
+	if (!start || !start->defined) die("no '%s' symbol (entry point)", entry_sym);
 	relocate();
 	elf_write_exec(out, start->vaddr, &L);
 	return 0;

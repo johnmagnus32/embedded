@@ -6,6 +6,7 @@ CFLAGS ?= -O0 -g -Wall -Wextra -std=gnu11
 
 OURCC := ../cc/build/cc
 OURAS := ../as/build/as
+OURLD := ../ld/build/ld
 GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
@@ -19,7 +20,7 @@ $(BUILD):
 # our cc and assemble with our as. Proves the fully self-hosted C front end: our cpp -> our cc -> our as.
 # Then the string.c end-to-end (cpp+cc+as -> link -> run) must still print strlen/strcmp == 115.
 test: $(BUILD)/cpp
-	@$(MAKE) -s -C ../cc >/dev/null; $(MAKE) -s -C ../as >/dev/null
+	@$(MAKE) -s -C ../cc >/dev/null; $(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null
 	@ok=0; fail=0; t=$$(mktemp -d); \
 	for c in ../../libc/src/string.c ../../libc/src/stdlib.c ../../libc/src/printf.c ../../libc/src/dirent.c ../../libc/src/malloc.c; do \
 	  b=$$(basename $$c); \
@@ -32,7 +33,7 @@ test: $(BUILD)/cpp
 	$(OURCC) -o $$t/string.s $$t/string.c && $(OURAS) -o $$t/string.o $$t/string.s; \
 	printf 'int strlen(char*s);int strcmp(char*a,char*b);void*malloc(int n){return 0;}\nint main(void){int n=strlen("hello");int e=strcmp("abc","abc");int d=strcmp("abd","abc");int r=n;if(e==0)r+=10;if(d>0)r+=100;return r;}\n' > $$t/main.c; \
 	$(OURCC) -o $$t/main.s $$t/main.c && $(OURAS) -o $$t/main.o $$t/main.s && $(OURAS) -o $$t/crt.o ../cc/tests/crt.s; \
-	$(GNU)ld -T ../cc/tests/bare.ld -o $$t/prog.elf $$t/crt.o $$t/main.o $$t/string.o 2>/dev/null; \
+	$(OURLD) -Ttext 0x40000000 -o $$t/prog.elf $$t/crt.o $$t/main.o $$t/string.o 2>/dev/null; \
 	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/prog.elf >/dev/null 2>&1; g=$$?; \
 	[ "$$g" = 115 ] && { echo "PASS e2e: our cpp+cc+as built libc string.c; ran = $$g"; ok=$$((ok+1)); } || { echo "FAIL e2e: got $$g want 115"; fail=$$((fail+1)); }; \
 	printf '#define CONCAT(a,b) a##b\nCONCAT(foo,bar) AFTER\nSECOND\n' > $$t/paste.c; \

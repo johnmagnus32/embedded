@@ -75,7 +75,7 @@ static void write_image(FILE *f, int want_write) {
 		Elf32_Shdr *s = &objs[i].sh[j];
 		if (!(s->sh_flags & SHF_ALLOC) || s->sh_type == SHT_NOBITS || !s->sh_size) continue;
 		if (!!(s->sh_flags & SHF_WRITE) != want_write) continue;
-		for (long p = ftell(f); p < (long)(objs[i].sec_vaddr[j] - LOAD_BASE); p++) fputc(0, f);
+		for (long p = ftell(f); p < (long)(objs[i].sec_vaddr[j] - load_base); p++) fputc(0, f);
 		fwrite(objs[i].data + s->sh_offset, 1, s->sh_size, f);
 	} }
 }
@@ -96,7 +96,7 @@ void elf_write_exec(const char *out, u32 entry, const Layout *L) {
 	Elf32_Shdr sh[5] = {0}; int ns = 1;
 	int ndx_text = ns++;
 	sh[ndx_text] = (Elf32_Shdr){ .sh_name=1, .sh_type=SHT_PROGBITS, .sh_flags=SHF_ALLOC|SHF_EXECINSTR,
-	    .sh_addr=LOAD_BASE+hdrsz, .sh_offset=hdrsz, .sh_size=L->rx_filesz-hdrsz, .sh_addralign=4 };
+	    .sh_addr=load_base+hdrsz, .sh_offset=hdrsz, .sh_size=L->rx_filesz-hdrsz, .sh_addralign=4 };
 	if (have_data) sh[ns++] = (Elf32_Shdr){ .sh_name=7, .sh_type=SHT_PROGBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
 	    .sh_addr=L->rw_vaddr, .sh_offset=L->rw_off, .sh_size=L->rw_filesz, .sh_addralign=4 };
 	if (have_bss)  sh[ns++] = (Elf32_Shdr){ .sh_name=13, .sh_type=SHT_NOBITS, .sh_flags=SHF_ALLOC|SHF_WRITE,
@@ -116,7 +116,7 @@ void elf_write_exec(const char *out, u32 entry, const Layout *L) {
 
 	/* p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_flags, p_align */
 	Elf32_Phdr ph[2] = {
-		{ PT_LOAD, 0,         LOAD_BASE,   LOAD_BASE,   L->rx_filesz, L->rx_filesz, PF_R|PF_X, PAGE },
+		{ PT_LOAD, 0,         load_base,   load_base,   L->rx_filesz, L->rx_filesz, PF_R|PF_X, PAGE },
 		{ PT_LOAD, L->rw_off, L->rw_vaddr, L->rw_vaddr, L->rw_filesz, L->rw_memsz,  PF_R|PF_W, PAGE },
 	};
 
