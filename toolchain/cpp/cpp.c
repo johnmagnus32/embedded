@@ -36,14 +36,29 @@ typedef struct Tok {
 	struct Tok *next;
 } Tok;
 
-static int hide_has(Hide *h, const char *n) { for (; h; h = h->next) if (!strcmp(h->name, n)) return 1; return 0; }
-static Hide *hide_add(Hide *h, const char *n) { Hide *e = calloc(1, sizeof *e); e->name = xstrdup(n); e->next = h; return e; }
-static Hide *hide_union(Hide *a, Hide *b) { for (; b; b = b->next) if (!hide_has(a, b->name)) a = hide_add(a, b->name); return a; }
+static int hide_has(Hide *h, const char *n) {
+	for (; h; h = h->next) if (!strcmp(h->name, n)) return 1;
+	return 0;
+}
+static Hide *hide_add(Hide *h, const char *n) {
+	Hide *e = calloc(1, sizeof *e); e->name = xstrdup(n); e->next = h;
+	return e;
+}
+static Hide *hide_union(Hide *a, Hide *b) {
+	for (; b; b = b->next) if (!hide_has(a, b->name)) a = hide_add(a, b->name);
+	return a;
+}
 
 static Tok *newtok(Kind k, const char *s, size_t n) {
-	Tok *t = calloc(1, sizeof *t); t->kind = k; t->text = malloc(n + 1); memcpy(t->text, s, n); t->text[n] = 0; return t;
+	Tok *t = calloc(1, sizeof *t);
+	t->kind = k; t->text = malloc(n + 1); memcpy(t->text, s, n); t->text[n] = 0;
+	return t;
 }
-static Tok *copytok(const Tok *o) { Tok *t = calloc(1, sizeof *t); *t = *o; t->text = xstrdup(o->text); t->next = NULL; return t; }
+static Tok *copytok(const Tok *o) {
+	Tok *t = calloc(1, sizeof *t); *t = *o;
+	t->text = xstrdup(o->text); t->next = NULL;
+	return t;
+}
 
 /* ------------------------------------------------------------------ tokenizer --------------------- */
 /* Multi-char punctuators we must keep whole (## for paste; the rest so #if expressions tokenize right). */
@@ -96,13 +111,22 @@ typedef struct Macro {
 	struct Macro *next;
 } Macro;
 static Macro *macros;
-static Macro *macro_find(const char *n) { for (Macro *m = macros; m; m = m->next) if (!strcmp(m->name, n)) return m; return NULL; }
-static void macro_undef(const char *n) { for (Macro **p = &macros; *p; p = &(*p)->next) if (!strcmp((*p)->name, n)) { *p = (*p)->next; return; } }
-static Macro *macro_add(const char *n) { macro_undef(n); Macro *m = calloc(1, sizeof *m); m->name = xstrdup(n); m->next = macros; macros = m; return m; }
+static Macro *macro_find(const char *n) {
+	for (Macro *m = macros; m; m = m->next) if (!strcmp(m->name, n)) return m;
+	return NULL;
+}
+static void macro_undef(const char *n) {
+	for (Macro **p = &macros; *p; p = &(*p)->next)
+		if (!strcmp((*p)->name, n)) { *p = (*p)->next; return; }
+}
+static Macro *macro_add(const char *n) {
+	macro_undef(n);                                          /* a redefinition replaces the old one */
+	Macro *m = calloc(1, sizeof *m); m->name = xstrdup(n); m->next = macros; macros = m;
+	return m;
+}
 
 /* ------------------------------------------------------------------ include paths ----------------- */
 static char *inc_dirs[64]; static int n_inc_dirs;
-static char *once_files[1024]; static int n_once;   /* #pragma once guard */
 
 /* ------------------------------------------------------------------ output ------------------------ */
 static FILE *out;
@@ -121,7 +145,11 @@ static Tok *last(Tok *t) { while (t && t->next) t = t->next; return t; }
 /* Copy a macro body, tagging every token with the given hide set (union with its own). */
 static Tok *copy_body(Tok *body, Hide *hs) {
 	Tok head = {0}, *cur = &head;
-	for (Tok *t = body; t; t = t->next) { Tok *c = copytok(t); c->hide = hide_union(c->hide, hs); cur = cur->next = c; }
+	for (Tok *t = body; t; t = t->next) {
+		Tok *c = copytok(t);
+		c->hide = hide_union(c->hide, hs);
+		cur = cur->next = c;
+	}
 	return head.next;
 }
 
@@ -134,15 +162,21 @@ static int read_args(Tok **tok, Tok **args, int max, int variadic, int nparams) 
 	Tok head = {0}, *cur = &head;
 	for (;;) {
 		if (t->kind == TEOF) die("unterminated macro argument list");
-		if (depth == 0 && t->text[0] == ')' && !t->text[1]) break;
+		if (depth == 0 && t->text[0] == ')' && !t->text[1]) break;      /* end of the whole arg list */
+		/* a top-level comma ends an argument — unless we're inside the variadic tail (it keeps commas) */
 		if (depth == 0 && t->text[0] == ',' && !t->text[1] && !(variadic && n == nparams - 1)) {
-			cur->next = newtok(TEOF, "", 0); if (n < max) args[n] = head.next; n++; head.next = NULL; cur = &head; t = t->next; continue;
+			cur->next = newtok(TEOF, "", 0);
+			if (n < max) args[n] = head.next;
+			n++; head.next = NULL; cur = &head; t = t->next;
+			continue;
 		}
-		if (t->text[0] == '(' && !t->text[1]) depth++;
+		if (t->text[0] == '(' && !t->text[1]) depth++;                  /* track nested parens */
 		if (t->text[0] == ')' && !t->text[1]) depth--;
 		cur = cur->next = copytok(t); t = t->next;
 	}
-	cur->next = newtok(TEOF, "", 0); if (n < max) args[n] = head.next; n++;
+	cur->next = newtok(TEOF, "", 0);                                    /* the final argument */
+	if (n < max) args[n] = head.next;
+	n++;
 	*tok = t->next;   /* past ")" */
 	return n;
 }
@@ -196,9 +230,17 @@ static Tok *subst(Macro *m, Tok **args, int nargs) {
 			t = t->next->next->next;   /* skip lhs? no: skip '##' and rhs token */
 			continue;
 		}
-		if (pi >= 0 && pi < nargs) { for (Tok *a = expand(copy_body(args[pi], NULL)); a && a->kind != TEOF; a = a->next) { cur = cur->next = copytok(a); } t = t->next; continue; }
-		if (va) { int i = m->nparams - 1; if (i < nargs) for (Tok *a = args[i]; a && a->kind != TEOF; a = a->next) cur = cur->next = copytok(a); t = t->next; continue; }
-		cur = cur->next = copytok(t); t = t->next;
+		if (pi >= 0 && pi < nargs) {                                 /* a parameter: splice its EXPANDED argument */
+			for (Tok *a = expand(copy_body(args[pi], NULL)); a && a->kind != TEOF; a = a->next)
+				cur = cur->next = copytok(a);
+			t = t->next; continue;
+		}
+		if (va) {                                                   /* __VA_ARGS__: the trailing variadic argument */
+			int i = m->nparams - 1;
+			if (i < nargs) for (Tok *a = args[i]; a && a->kind != TEOF; a = a->next) cur = cur->next = copytok(a);
+			t = t->next; continue;
+		}
+		cur = cur->next = copytok(t); t = t->next;                  /* ordinary body token */
 	}
 	return head.next;
 }
@@ -250,17 +292,64 @@ static long ev_primary(Tok **t) {
 	long v = ((*t)->kind == TNUM || (*t)->kind == TCHAR) ? tok_num(*t) : 0;   /* leftover idents = 0 */
 	*t = (*t)->next; return v;
 }
-static long ev_mul(Tok **t){ long v=ev_primary(t); for(;;){ if(is_p(*t,"*")){*t=(*t)->next;v*=ev_primary(t);} else if(is_p(*t,"/")){*t=(*t)->next;long d=ev_primary(t);v=d?v/d:0;} else if(is_p(*t,"%")){*t=(*t)->next;long d=ev_primary(t);v=d?v%d:0;} else return v; } }
-static long ev_add(Tok **t){ long v=ev_mul(t); for(;;){ if(is_p(*t,"+")){*t=(*t)->next;v+=ev_mul(t);} else if(is_p(*t,"-")){*t=(*t)->next;v-=ev_mul(t);} else return v; } }
-static long ev_shift(Tok **t){ long v=ev_add(t); for(;;){ if(is_p(*t,"<<")){*t=(*t)->next;v<<=ev_add(t);} else if(is_p(*t,">>")){*t=(*t)->next;v>>=ev_add(t);} else return v; } }
-static long ev_rel(Tok **t){ long v=ev_shift(t); for(;;){ if(is_p(*t,"<")){*t=(*t)->next;v=v<ev_shift(t);} else if(is_p(*t,">")){*t=(*t)->next;v=v>ev_shift(t);} else if(is_p(*t,"<=")){*t=(*t)->next;v=v<=ev_shift(t);} else if(is_p(*t,">=")){*t=(*t)->next;v=v>=ev_shift(t);} else return v; } }
-static long ev_eq(Tok **t){ long v=ev_rel(t); for(;;){ if(is_p(*t,"==")){*t=(*t)->next;v=v==ev_rel(t);} else if(is_p(*t,"!=")){*t=(*t)->next;v=v!=ev_rel(t);} else return v; } }
-static long ev_band(Tok **t){ long v=ev_eq(t); while(is_p(*t,"&")){*t=(*t)->next;v&=ev_eq(t);} return v; }
-static long ev_bxor(Tok **t){ long v=ev_band(t); while(is_p(*t,"^")){*t=(*t)->next;v^=ev_band(t);} return v; }
-static long ev_bor(Tok **t){ long v=ev_bxor(t); while(is_p(*t,"|")){*t=(*t)->next;v|=ev_bxor(t);} return v; }
-static long ev_land(Tok **t){ long v=ev_bor(t); while(is_p(*t,"&&")){*t=(*t)->next;long r=ev_bor(t);v=v&&r;} return v; }
-static long ev_lor(Tok **t){ long v=ev_land(t); while(is_p(*t,"||")){*t=(*t)->next;long r=ev_land(t);v=v||r;} return v; }
-static long ev_ternary(Tok **t){ long c=ev_lor(t); if(is_p(*t,"?")){*t=(*t)->next;long a=ev_ternary(t); if(is_p(*t,":"))*t=(*t)->next; long b=ev_ternary(t); return c?a:b;} return c; }
+/* Precedence-climbing ladder over the token list: one function per level, low precedence outermost. */
+static long ev_mul(Tok **t) {
+	long v = ev_primary(t);
+	for (;;) {
+		if      (is_p(*t, "*")) { *t = (*t)->next; v *= ev_primary(t); }
+		else if (is_p(*t, "/")) { *t = (*t)->next; long d = ev_primary(t); v = d ? v / d : 0; }
+		else if (is_p(*t, "%")) { *t = (*t)->next; long d = ev_primary(t); v = d ? v % d : 0; }
+		else return v;
+	}
+}
+static long ev_add(Tok **t) {
+	long v = ev_mul(t);
+	for (;;) {
+		if      (is_p(*t, "+")) { *t = (*t)->next; v += ev_mul(t); }
+		else if (is_p(*t, "-")) { *t = (*t)->next; v -= ev_mul(t); }
+		else return v;
+	}
+}
+static long ev_shift(Tok **t) {
+	long v = ev_add(t);
+	for (;;) {
+		if      (is_p(*t, "<<")) { *t = (*t)->next; v <<= ev_add(t); }
+		else if (is_p(*t, ">>")) { *t = (*t)->next; v >>= ev_add(t); }
+		else return v;
+	}
+}
+static long ev_rel(Tok **t) {
+	long v = ev_shift(t);
+	for (;;) {
+		if      (is_p(*t, "<"))  { *t = (*t)->next; v = v <  ev_shift(t); }
+		else if (is_p(*t, ">"))  { *t = (*t)->next; v = v >  ev_shift(t); }
+		else if (is_p(*t, "<=")) { *t = (*t)->next; v = v <= ev_shift(t); }
+		else if (is_p(*t, ">=")) { *t = (*t)->next; v = v >= ev_shift(t); }
+		else return v;
+	}
+}
+static long ev_eq(Tok **t) {
+	long v = ev_rel(t);
+	for (;;) {
+		if      (is_p(*t, "==")) { *t = (*t)->next; v = v == ev_rel(t); }
+		else if (is_p(*t, "!=")) { *t = (*t)->next; v = v != ev_rel(t); }
+		else return v;
+	}
+}
+static long ev_band(Tok **t) { long v = ev_eq(t);   while (is_p(*t, "&"))  { *t = (*t)->next; v &= ev_eq(t); }   return v; }
+static long ev_bxor(Tok **t) { long v = ev_band(t); while (is_p(*t, "^"))  { *t = (*t)->next; v ^= ev_band(t); } return v; }
+static long ev_bor(Tok **t)  { long v = ev_bxor(t); while (is_p(*t, "|"))  { *t = (*t)->next; v |= ev_bxor(t); } return v; }
+static long ev_land(Tok **t) { long v = ev_bor(t);  while (is_p(*t, "&&")) { *t = (*t)->next; long r = ev_bor(t);  v = v && r; } return v; }
+static long ev_lor(Tok **t)  { long v = ev_land(t); while (is_p(*t, "||")) { *t = (*t)->next; long r = ev_land(t); v = v || r; } return v; }
+static long ev_ternary(Tok **t) {
+	long c = ev_lor(t);
+	if (!is_p(*t, "?")) return c;
+	*t = (*t)->next;
+	long a = ev_ternary(t);
+	if (is_p(*t, ":")) *t = (*t)->next;
+	long b = ev_ternary(t);
+	return c ? a : b;
+}
 
 /* Evaluate a #if / #elif line: resolve defined(), macro-expand, then evaluate the constant expression. */
 static long eval_if(Tok *line) {
@@ -291,6 +380,12 @@ static char *find_include(const char *name, int angle) {
 /* ------------------------------------------------------------------ conditional stack ------------- */
 static struct { int active, taken, parent; } cond[256]; static int ncond;
 static int active_now(void) { return ncond == 0 ? 1 : cond[ncond - 1].active; }
+static void push_cond(int parent, int cond_true) {   /* open a new #if frame */
+	cond[ncond].parent = parent;
+	cond[ncond].active = cond_true;
+	cond[ncond].taken  = cond_true;
+	ncond++;
+}
 
 /* ------------------------------------------------------------------ the driver -------------------- */
 static void drive(Tok *tok, const char *dir);
@@ -327,30 +422,63 @@ static Tok *directive(Tok *hash) {
 	Tok *line = lh.next;
 	const char *d = (name && name->kind == TIDENT) ? name->text : (name ? name->text : "");
 
-	if (!strcmp(d, "if"))      { int p = active_now(); int c = p ? (eval_if(line) != 0) : 0; cond[ncond++] = (typeof(cond[0])){ c, c, p }; }
-	else if (!strcmp(d, "ifdef"))  { int p = active_now(); int c = p ? (macro_find(line->text) != NULL) : 0; cond[ncond++] = (typeof(cond[0])){ c, c, p }; }
-	else if (!strcmp(d, "ifndef")) { int p = active_now(); int c = p ? (macro_find(line->text) == NULL) : 0; cond[ncond++] = (typeof(cond[0])){ c, c, p }; }
-	else if (!strcmp(d, "elif")) { if (ncond) { if (!cond[ncond-1].parent) cond[ncond-1].active = 0; else if (cond[ncond-1].taken) cond[ncond-1].active = 0; else { int c = eval_if(line) != 0; cond[ncond-1].active = c; cond[ncond-1].taken |= c; } } }
-	else if (!strcmp(d, "else")) { if (ncond) { cond[ncond-1].active = cond[ncond-1].parent && !cond[ncond-1].taken; cond[ncond-1].taken = 1; } }
-	else if (!strcmp(d, "endif")) { if (ncond) ncond--; }
+	if (!strcmp(d, "if")) {
+		int p = active_now();
+		push_cond(p, p && eval_if(line) != 0);               /* eval only when the parent is active */
+	} else if (!strcmp(d, "ifdef")) {
+		int p = active_now();
+		push_cond(p, p && macro_find(line->text) != NULL);
+	} else if (!strcmp(d, "ifndef")) {
+		int p = active_now();
+		push_cond(p, p && macro_find(line->text) == NULL);
+	} else if (!strcmp(d, "elif")) {
+		if (ncond) {
+			if (!cond[ncond-1].parent || cond[ncond-1].taken) cond[ncond-1].active = 0;   /* no branch left */
+			else { int c = eval_if(line) != 0; cond[ncond-1].active = c; cond[ncond-1].taken |= c; }
+		}
+	} else if (!strcmp(d, "else")) {
+		if (ncond) {
+			cond[ncond-1].active = cond[ncond-1].parent && !cond[ncond-1].taken;
+			cond[ncond-1].taken = 1;
+		}
+	} else if (!strcmp(d, "endif")) {
+		if (ncond) ncond--;
+	}
 	else if (active_now()) {
-		if (!strcmp(d, "define")) do_define(line);
-		else if (!strcmp(d, "undef")) macro_undef(line->text);
-		else if (!strcmp(d, "include")) {
+		if (!strcmp(d, "define")) {
+			do_define(line);
+		} else if (!strcmp(d, "undef")) {
+			macro_undef(line->text);
+		} else if (!strcmp(d, "include")) {
+			/* filename: a "..." string token, or the tokens between < and > concatenated */
 			char fn[512]; int angle = 0;
-			if (line->kind == TSTR) { size_t n = strlen(line->text); memcpy(fn, line->text + 1, n - 2); fn[n - 2] = 0; }
-			else if (is_p(line, "<")) { angle = 1; fn[0] = 0; for (Tok *t = line->next; t && !is_p(t, ">") && t->kind != TEOF; t = t->next) strncat(fn, t->text, sizeof fn - strlen(fn) - 1); }
+			if (line->kind == TSTR) {
+				size_t n = strlen(line->text); memcpy(fn, line->text + 1, n - 2); fn[n - 2] = 0;
+			} else if (is_p(line, "<")) {
+				angle = 1; fn[0] = 0;
+				for (Tok *t = line->next; t && !is_p(t, ">") && t->kind != TEOF; t = t->next)
+					strncat(fn, t->text, sizeof fn - strlen(fn) - 1);
+			}
 			char *path = find_include(fn, angle);
 			if (!path) die("#include: cannot find '%s'", fn);
-			for (int i = 0; i < n_once; i++) if (!strcmp(once_files[i], path)) { path = NULL; break; }
-			if (path) { char saved[512]; strcpy(saved, cur_dir); char full[512]; strcpy(full, path);
-				char *slash = strrchr(full, '/'); char ndir[512]; if (slash) { size_t k = slash - full; memcpy(ndir, full, k); ndir[k] = 0; } else strcpy(ndir, ".");
-				Tok *sub = slurp_tokens(full); if (!sub) die("#include: cannot open '%s'", full);
-				drive(sub, ndir); strcpy(cur_dir, saved); }
+			/* the included file's directory becomes cur_dir for its own "" includes; restore after */
+			char full[512]; strcpy(full, path);
+			char saved[512]; strcpy(saved, cur_dir);
+			char ndir[512]; char *slash = strrchr(full, '/');
+			if (slash) { size_t k = slash - full; memcpy(ndir, full, k); ndir[k] = 0; } else strcpy(ndir, ".");
+			Tok *sub = slurp_tokens(full);
+			if (!sub) die("#include: cannot open '%s'", full);
+			drive(sub, ndir);
+			strcpy(cur_dir, saved);
+		} else if (!strcmp(d, "error")) {
+			char msg[512] = "";
+			for (Tok *t = line; t && t->kind != TEOF; t = t->next) {
+				strncat(msg, " ", sizeof msg - strlen(msg) - 1);
+				strncat(msg, t->text, sizeof msg - strlen(msg) - 1);
+			}
+			die("#error:%s", msg);
 		}
-		else if (!strcmp(d, "error")) { char msg[512] = ""; for (Tok *t = line; t && t->kind != TEOF; t = t->next) { strncat(msg, " ", sizeof msg - strlen(msg) - 1); strncat(msg, t->text, sizeof msg - strlen(msg) - 1); } die("#error:%s", msg); }
-		else if (!strcmp(d, "pragma")) { if (line->kind == TIDENT && !strcmp(line->text, "once") && n_once < 1024) once_files[n_once++] = xstrdup(/*cur file*/ "")/*set below*/; }
-		/* #line, #warning, #ident, unknown: ignored */
+		/* #pragma, #line, #warning, #ident, unknown: ignored (our headers guard with #ifndef, not #pragma once) */
 	}
 	return end;
 }
@@ -370,7 +498,15 @@ static void drive(Tok *tok, const char *dir) {
 }
 
 /* ------------------------------------------------------------------ predefined macros ------------- */
-static void predef(const char *name, const char *val) { Macro *m = macro_add(name); m->body = val && *val ? tokenize(val) : NULL; if (m->body) { Tok *e = m->body; while (e->next && e->next->kind != TEOF) e = e->next; e->next = NULL; m->body->space = 0; m->body->bol = 0; } }
+static void predef(const char *name, const char *val) {
+	Macro *m = macro_add(name);
+	m->body = (val && *val) ? tokenize(val) : NULL;
+	if (!m->body) return;
+	Tok *e = m->body;                                        /* drop the tokenizer's trailing TEOF */
+	while (e->next && e->next->kind != TEOF) e = e->next;
+	e->next = NULL;
+	m->body->space = 0; m->body->bol = 0;
+}
 
 int main(int argc, char **argv) {
 	const char *in = NULL, *outpath = NULL;
@@ -391,7 +527,11 @@ int main(int argc, char **argv) {
 	for (int i = 1; i < argc; i++) {
 		if (!strncmp(argv[i], "-I", 2)) inc_dirs[n_inc_dirs++] = argv[i][2] ? argv[i] + 2 : argv[++i];
 		else if (!strcmp(argv[i], "-isystem")) inc_dirs[n_inc_dirs++] = argv[++i];
-		else if (!strncmp(argv[i], "-D", 2)) { char *s = argv[i][2] ? argv[i] + 2 : argv[++i]; char *eq = strchr(s, '='); if (eq) { *eq = 0; predef(s, eq + 1); } else predef(s, "1"); }
+		else if (!strncmp(argv[i], "-D", 2)) {
+			char *s = argv[i][2] ? argv[i] + 2 : argv[++i];      /* -DNAME or -DNAME=val */
+			char *eq = strchr(s, '=');
+			if (eq) { *eq = 0; predef(s, eq + 1); } else predef(s, "1");
+		}
 		else if (!strcmp(argv[i], "-o")) outpath = argv[++i];
 		else if (argv[i][0] != '-') in = argv[i];
 	}
