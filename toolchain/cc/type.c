@@ -8,13 +8,15 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty  = { TY_INT,  NULL, 4 };
-static Type char_ty = { TY_CHAR, NULL, 1 };
+static Type int_ty  = { TY_INT,  NULL, 4, 0 };
+static Type char_ty = { TY_CHAR, NULL, 1, 0 };
 Type *ty_int  = &int_ty;
 Type *ty_char = &char_ty;
 
 Type *pointer_to(Type *base) { Type *t = calloc(1, sizeof *t); t->kind = TY_PTR; t->base = base; t->size = 4; return t; }
+Type *array_of(Type *base, int len) { Type *t = calloc(1, sizeof *t); t->kind = TY_ARRAY; t->base = base; t->len = len; t->size = base->size * len; return t; }
 int   is_ptr(Type *t) { return t && t->kind == TY_PTR; }
+int   is_ptr_like(Type *t) { return t && (t->kind == TY_PTR || t->kind == TY_ARRAY); }
 
 /* Recursively annotate a subtree with result types (children first, then the node itself). Idempotent
  * enough to run over a whole function body; leaves set by the parser (ND_VAR/ND_NUM) are respected. */
@@ -28,7 +30,8 @@ void add_type(Node *n) {
 	switch (n->kind) {
 	case ND_NUM: n->type = ty_int; return;
 	case ND_ADD: case ND_SUB:
-		n->type = n->lhs->type;                       /* pointer if lhs is a pointer (ptr +/- int) */
+		if (n->lhs->type->kind == TY_ARRAY) n->type = pointer_to(n->lhs->type->base);   /* array decays to pointer */
+		else n->type = n->lhs->type;                  /* pointer stays pointer, int stays int */
 		return;
 	case ND_MUL: case ND_DIV: case ND_MOD:
 	case ND_EQ: case ND_NE: case ND_LT: case ND_LE: case ND_GT: case ND_GE:
@@ -39,7 +42,7 @@ void add_type(Node *n) {
 	case ND_ASSIGN: n->type = n->lhs->type; return;
 	case ND_ADDR:   n->type = pointer_to(n->lhs->type); return;
 	case ND_DEREF:
-		if (!is_ptr(n->lhs->type)) die("cc: cannot dereference a non-pointer");
+		if (!is_ptr_like(n->lhs->type)) die("cc: cannot dereference a non-pointer");
 		n->type = n->lhs->type->base; return;
 	default: n->type = ty_int; return;                /* statements: type unused */
 	}

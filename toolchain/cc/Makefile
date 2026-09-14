@@ -29,6 +29,7 @@ test: $(BUILD)/cc
 	@pass=0; fail=0; t=$$(mktemp -d); \
 	$(OURAS) -o $$t/crt.o tests/crt.s; \
 	for c in tests/*.c; do \
+	  [ "$$(basename $$c)" = uart.c ] && continue; \
 	  want=$$(sed -n 's|.*//[[:space:]]*expect:[[:space:]]*\([0-9]*\).*|\1|p' $$c | head -1); \
 	  $(BUILD)/cc -o $$t/p.s $$c || { echo "FAIL $$c: cc errored"; fail=$$((fail+1)); continue; }; \
 	  $(OURAS) -o $$t/p.o $$t/p.s || { echo "FAIL $$c: our as rejected cc output"; fail=$$((fail+1)); continue; }; \
@@ -37,6 +38,10 @@ test: $(BUILD)/cc
 	  if [ "$$got" = "$$want" ]; then echo "PASS $$(basename $$c): main() == $$got"; pass=$$((pass+1)); \
 	  else echo "FAIL $$(basename $$c): got $$got, want $$want"; fail=$$((fail+1)); fi; \
 	done; \
+	$(BUILD)/cc -o $$t/u.s tests/uart.c && $(OURAS) -o $$t/u.o $$t/u.s && $(GNU)ld -T tests/bare.ld -o $$t/u.elf $$t/crt.o $$t/u.o; \
+	out=$$(timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/u.elf 2>/dev/null); \
+	case "$$out" in *"cc UART works"*) echo "PASS uart: cc program printed via PL011 (real I/O)"; pass=$$((pass+1));; \
+	                *) echo "FAIL uart: expected UART output, got '$$out'"; fail=$$((fail+1));; esac; \
 	rm -rf $$t; echo "----- $$pass passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
 clean:

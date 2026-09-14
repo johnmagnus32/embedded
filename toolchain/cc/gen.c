@@ -59,7 +59,8 @@ static void gen_addr(Node *n) {
 static void gen_expr(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:  load_imm("r0", n->val); return;
-	case ND_VAR: case ND_GVAR: gen_addr(n); load(n->type); return;   /* address -> r0, then load by width */
+	case ND_VAR: case ND_GVAR:                              /* address -> r0; scalars then load, arrays decay */
+		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:

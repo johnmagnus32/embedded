@@ -21,20 +21,26 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
 
 /* ---- locals (per function) ----------------------------------------------------------------------- */
 static struct { char name[64]; int offset; Type *type; } locals[128];
-static int nlocals;
+static int nlocals, local_bytes;   /* local_bytes = total frame bytes used by locals+params so far */
 static int local_offset(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return locals[i].offset; return 0; }
 static Type *local_type(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return locals[i].type; return ty_int; }
 static int local_exists(const char *name) { for (int i = 0; i < nlocals; i++) if (!strcmp(locals[i].name, name)) return 1; return 0; }
 static int add_local(const char *name, Type *ty) {
 	if (local_exists(name)) die("parse: redeclaration of '%s'", name);
-	int off = -4 * (nlocals + 1);   /* every local occupies a 4-byte slot (char included), like a small stack */
+	local_bytes += (ty->size + 3) & ~3;   /* a 4-aligned slot big enough for the whole object (arrays too) */
+	int off = -local_bytes;               /* offset points at the object's first (lowest) byte */
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 	return off;
 }
 
-/* type = ("int"|"char") "*"* ; declarator also reads the name. */
+/* type = ("int"|"char") "*"* name ("[" num "]")* ; declarator reads the name and any array suffix. */
 static Type *declspec(void) { if (consume("int")) return ty_int; if (consume("char")) return ty_char; die("parse: expected a type (line %d)", tk->line); return NULL; }
-static Type *declarator(Type *base, char *name) { while (consume("*")) base = pointer_to(base); ident(name); return base; }
+static Type *type_suffix(Type *base) {
+	if (consume("[")) { if (tk->kind != TK_NUM) die("parse: array length must be an integer (line %d)", tk->line);
+		int n = tk->val; tk = tk->next; expect("]"); return array_of(type_suffix(base), n); }   /* outer dim wraps inner */
+	return base;
+}
+static Type *declarator(Type *base, char *name) { while (consume("*")) base = pointer_to(base); ident(name); return type_suffix(base); }
 
 /* ---- file-scope objects: globals + string literals ----------------------------------------------- */
 Gvar *globals; static Gvar *gtail; static int str_id;
@@ -49,6 +55,7 @@ static Node *num(long v) { Node *n = node(ND_NUM); n->val = v; return n; }
 
 /* ---- expression grammar (each returns the parsed subtree; result convention lives in gen.c) ------- */
 static Node *expr(void);
+static Node *new_add(Node *l, Node *r);       /* +/- with pointer/array scaling (defined below) */
 
 static Node *primary(void) {
 	if (consume("(")) { Node *n = expr(); expect(")"); return n; }
@@ -76,6 +83,13 @@ static Node *primary(void) {
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
 
+/* postfix := primary ("[" expr "]")* ; a[i] is sugar for *(a + i), so it rides on new_add + deref. */
+static Node *postfix(void) {
+	Node *n = primary();
+	while (consume("[")) { Node *idx = expr(); expect("]"); n = unary(ND_DEREF, new_add(n, idx)); }
+	return n;
+}
+
 static Node *unary_expr(void) {
 	if (consume("&")) return unary(ND_ADDR, unary_expr());   /* address-of */
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
@@ -83,22 +97,22 @@ static Node *unary_expr(void) {
 	if (consume("!")) return unary(ND_NOT, unary_expr());
 	if (consume("~")) return unary(ND_BITNOT, unary_expr());
 	if (consume("+")) return unary_expr();                   /* unary plus is a no-op */
-	return primary();
+	return postfix();
 }
 
 /* +/- with C pointer semantics: `ptr + int` scales the int by the pointee size; `int + ptr` is
  * commuted to `ptr + int`; `ptr - ptr` is the element distance (difference / pointee size). */
 static Node *new_add(Node *l, Node *r) {
 	add_type(l); add_type(r);
-	if (is_ptr(l->type) && is_ptr(r->type)) die("parse: cannot add two pointers");
-	if (!is_ptr(l->type) && is_ptr(r->type)) { Node *t = l; l = r; r = t; }
-	if (is_ptr(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));
+	if (is_ptr_like(l->type) && is_ptr_like(r->type)) die("parse: cannot add two pointers");
+	if (!is_ptr_like(l->type) && is_ptr_like(r->type)) { Node *t = l; l = r; r = t; }
+	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));   /* scale by element size */
 	return binary(ND_ADD, l, r);
 }
 static Node *new_sub(Node *l, Node *r) {
 	add_type(l); add_type(r);
-	if (is_ptr(l->type) && is_ptr(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), num(l->type->base->size));
-	if (is_ptr(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));
+	if (is_ptr_like(l->type) && is_ptr_like(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), num(l->type->base->size));
+	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));
 	return binary(ND_SUB, l, r);
 }
 static Node *mul(void)   { Node *n = unary_expr(); for (;;) { if (consume("*")) n = binary(ND_MUL, n, unary_expr()); else if (consume("/")) n = binary(ND_DIV, n, unary_expr()); else if (consume("%")) n = binary(ND_MOD, n, unary_expr()); else return n; } }
@@ -134,7 +148,7 @@ static Node *stmt(void) {
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
 static Func *function_tail(const char *name) {
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63);
-	nlocals = 0;
+	nlocals = 0; local_bytes = 0;
 	expect("(");
 	if (!is(")") && !is("void")) { do { char p[64]; Type *ty = declarator(declspec(), p); add_local(p, ty); f->nparams++; } while (consume(",")); }
 	else consume("void");
@@ -143,7 +157,7 @@ static Func *function_tail(const char *name) {
 	Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt();
 	f->body = h.next;
 	for (Node *s = f->body; s; s = s->next) add_type(s);      /* annotate every node with its result type */
-	f->frame = (nlocals * 4 + 7) & ~7;                       /* 8-byte aligned frame for locals+params */
+	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
 	return f;
 }
 

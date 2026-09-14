@@ -13,7 +13,7 @@
 static const char *KEYWORDS[] = { "int", "char", "void", "return", "if", "else", "while", NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
 static const char *PUNCT[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||",
-                               "+","-","*","/","%","(",")","{","}",";",",","=","<",">","&","|","^","~","!", NULL };
+                               "+","-","*","/","%","(",")","{","}","[","]",";",",","=","<",">","&","|","^","~","!", NULL };
 
 static Token *new_tok(TokKind kind, int line) {
 	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line; return t;

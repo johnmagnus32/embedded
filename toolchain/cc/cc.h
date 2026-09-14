@@ -28,11 +28,13 @@ typedef struct Token {
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
-typedef enum { TY_INT, TY_CHAR, TY_PTR } TypeKind;
-typedef struct Type { TypeKind kind; struct Type *base; int size; } Type;   /* base = pointee (TY_PTR) */
+typedef enum { TY_INT, TY_CHAR, TY_PTR, TY_ARRAY } TypeKind;
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; } Type;   /* base=pointee/element; len=array count */
 extern Type *ty_int, *ty_char;               /* the two scalar singletons */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
+Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);
+int   is_ptr_like(Type *t);                  /* pointer OR array (both index/decay the same way) */
 /* add_type is declared after the Node typedef below */
 
 /* ---- AST (parse.c) ------------------------------------------------------------------------------- */
