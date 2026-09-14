@@ -295,6 +295,32 @@ static Node *assign(void) {
 static Node *expr(void)  { Node *n = assign(); while (consume(",")) n = binary(ND_COMMA, n, assign()); return n; }   /* comma operator */
 
 /* ---- statements ---------------------------------------------------------------------------------- */
+/* Aggregate/brace initializer for a local: `{ e0, e1, ... }` -> a block of member/element assignments to
+ * `dest` (an lvalue). Recurses for nested braces; a scalar with braces takes the first element. Partial
+ * initializers just stop (the rest is left as-is — no zero-fill, an M1 simplification). */
+static Node *init_of(Node *dest, Type *ty) {
+	expect("{");
+	Node blk = {0}, *c = &blk;
+	if (ty->kind == TY_STRUCT) {
+		for (Member *m = ty->members; m && !is("}"); m = m->next) {
+			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = m->offset; dm->type = m->type;
+			c->next = is("{") ? init_of(dm, m->type) : unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, assign()));
+			c = c->next; if (!consume(",")) break;
+		}
+	} else if (ty->kind == TY_ARRAY) {
+		for (int i = 0; i < ty->len && !is("}"); i++) {
+			Node *de = unary(ND_DEREF, new_add(dest, num(i)));   /* dest[i] */
+			c->next = is("{") ? init_of(de, ty->base) : unary(ND_EXPRSTMT, binary(ND_ASSIGN, de, assign()));
+			c = c->next; if (!consume(",")) break;
+		}
+	} else {   /* scalar in braces: {e} */
+		c = c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dest, assign()));
+		consume(",");
+	}
+	expect("}");
+	Node *n = node(ND_BLOCK); n->body = blk.next; return n;
+}
+
 static Node *stmt(void) {
 	if (consume("switch")) {                                 /* switch (e) body ; cases attach to it */
 		Node *n = node(ND_SWITCH); expect("("); n->cond = expr(); expect(")");
@@ -337,7 +363,8 @@ static Node *stmt(void) {
 		do {
 			char nm[64]; Type *ty = declarator(base, nm); int off = add_local(nm, ty);
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty;
-				bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, assign())); }   /* assign(): ',' separates declarators */
+				if (is("{")) bc = bc->next = init_of(v, ty);              /* aggregate initializer */
+				else bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, assign())); }
 		} while (consume(","));
 		expect(";");
 		Node *n = node(ND_BLOCK); n->body = blk.next; return n;
