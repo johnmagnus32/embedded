@@ -26,6 +26,24 @@ override BOARD      := $(strip $(BOARD))
 $(if $(PACKAGES),,$(error PACKAGES is empty — a rootfs needs at least one package))
 $(if $(filter-out nor sd,$(MEDIA)),$(error MEDIA must be nor|sd (got '$(MEDIA)')))
 
+# --- toolchain axis: HOW the from-scratch libc's compiler is delivered --------
+# prebuilt = the Bootlin cross toolchain (our libc rides it bare via -nostdlib); source = build
+# GCC + binutils from source (toolchain-gcc) with our libc as its real sysroot (a NORMAL
+# cross-link). Enum-checked (a MODE, not a provider dir). ORTHOGONAL to LIBC: it does NOT rewrite
+# LIBC — LIBC stays exactly what the user selected. TOOLCHAIN instead drives (a) the rootfs cross
+# toolchain below, (b) the from-scratch libc's cc-profile/stage-runtime (which branch on $TOOLCHAIN),
+# and (c) a build-skip in the libc class (source mode builds the libc inside the toolchain). All
+# three read $TOOLCHAIN from forge.conf, and (c) the SPLIT toolchain graph: the libc is built with the
+# stage-1 LIBC_TC (toolchain-gcc-initial) while packages compile with the stage-2 ROOTFS_TC (toolchain-gcc,
+# built --with-sysroot=the libc). Only meaningful for LIBC=custom; a no-op for musl.
+override TOOLCHAIN := $(strip $(if $(TOOLCHAIN),$(TOOLCHAIN),prebuilt))
+$(if $(filter-out prebuilt source custom,$(TOOLCHAIN)),$(error TOOLCHAIN must be prebuilt|source|custom (got '$(TOOLCHAIN)')))
+# _SRC_TC / _CUSTOM_TC: non-empty iff the from-scratch libc is being built with the from-SOURCE gcc /
+# with OUR from-scratch tools. Both are meaningful only for LIBC=custom (a no-op for the prebuilt musl
+# libc, like source). custom = our own cpp/cc/as/ar/ld (toolchain-custom host package + forge-cc driver).
+_SRC_TC    := $(if $(filter custom,$(LIBC)),$(filter source,$(TOOLCHAIN)),)
+_CUSTOM_TC := $(if $(filter custom,$(LIBC)),$(filter custom,$(TOOLCHAIN)),)
+
 # --- recipe field reader ------------------------------------------------------
 # ONE parser for every recipe in the tree, so it can't disagree with the bash-side reader
 # (run-recipe.sh recipe_get) on a value. _field <file> <KEY>: last KEY= wins, strip an inline
@@ -104,13 +122,29 @@ ROOTFS_TARGET := $(strip $(if $(ROOTFS_TARGET),$(ROOTFS_TARGET),$(KERNEL_TARGET)
 TC_ARCH              := $(strip $(if $(TC_ARCH),$(TC_ARCH),armv7-eabihf))
 CROSS_COMPILE        := $(strip $(if $(CROSS_COMPILE),$(CROSS_COMPILE),arm-buildroot-linux-gnueabihf-))
 ARCH                 := $(strip $(if $(ARCH),$(ARCH),arm))
-ROOTFS_CROSS_COMPILE := $(strip $(if $(ROOTFS_CROSS_COMPILE),$(ROOTFS_CROSS_COMPILE),arm-buildroot-linux-musleabihf-))
+# The ROOTFS cross toolchain is chosen by (LIBC, TOOLCHAIN): the from-scratch libc built with
+# TOOLCHAIN=source uses the from-source toolchain-gcc (arm-forge triple, our libc as its
+# sysroot); everything else uses the prebuilt Bootlin musl toolchain. board.conf may still override
+# the prefix. ROOTFS_TC (the host-package NAME) is the single source rules.mk + the libc recipe read.
+ROOTFS_TC            := $(if $(_SRC_TC),toolchain-gcc,$(if $(_CUSTOM_TC),toolchain-custom,toolchain-prebuilt-bootlin-musl))
+ROOTFS_CROSS_COMPILE := $(strip $(if $(ROOTFS_CROSS_COMPILE),$(ROOTFS_CROSS_COMPILE),$(if $(_SRC_TC),arm-forge-linux-gnueabihf-,$(if $(_CUSTOM_TC),arm-forge-custom-,arm-buildroot-linux-musleabihf-))))
+# LIBC_TC — the toolchain the LIBC NODE is built WITH (vs ROOTFS_TC = what PACKAGES compile with). They
+# DIVERGE only for the from-source stack: the libc builds with the stage-1 toolchain-gcc-initial, then
+# the stage-2 toolchain-gcc (ROOTFS_TC) is built --with-sysroot=the libc. Everywhere else LIBC_TC ==
+# ROOTFS_TC (the prebuilt musl toolchain), so the split is inert. The libc recipe folds LIBC_TC via
+# PKG_HOST_DEPENDS; rules.mk makes `libc` depend on host-$(LIBC_TC). LIBC_TC_DIR is where build-sysroot.sh
+# finds the stage-1 gcc (by full path — PATH carries ROOTFS_TC for packages, so the libc build can't rely on it).
+LIBC_TC              := $(if $(_SRC_TC),toolchain-gcc-initial,$(ROOTFS_TC))
+LIBC_TC_DIR          := $(BUILD)/$(LIBC_TC)
 
 # config string for bundle/image names: <bootloader>-<kernel>-<libc>-<init>-<pkg>[+<pkg>...].
 # INIT is part of the rootfs identity (its /init + init config), so it's in the tag — otherwise
 # INIT=custom and INIT=runit (same libc/pkgs) would clobber the same initramfs/bundle name.
 _space := $(subst ,, )
-ROOTFS_TAG := $(LIBC)-$(INIT)-$(subst $(_space),+,$(PACKAGES))
+# The from-source / from-scratch toolchain builds get a `-src` / `-cust` libc tag so their artifacts
+# don't clobber the prebuilt-toolchain build of the same libc (all are LIBC=custom; only the TOOLCHAIN differs).
+_LIBC_TAG := $(if $(_SRC_TC),$(LIBC)-src,$(if $(_CUSTOM_TC),$(LIBC)-cust,$(LIBC)))
+ROOTFS_TAG := $(_LIBC_TAG)-$(INIT)-$(subst $(_space),+,$(PACKAGES))
 CFG := $(BOOTLOADER)-$(BUILD_KERNEL)-$(ROOTFS_TAG)
 
 # The rootfs artifact name is keyed by WHAT IT DEPENDS ON — the rootfs tag + link mode — so two
@@ -139,8 +173,8 @@ FORGE_DIR=$(FORGE_DIR)
 # --- build-tree layout (all under the product's build/, derived once from PRODUCT_DIR) -------
 BUILD_DIR=$(BUILD)
 DOWNLOAD_DIR=$(BUILD)/downloads
-TOOLCHAIN_DIR=$(BUILD)/toolchain
-ROOTFS_TOOLCHAIN_DIR=$(BUILD)/toolchain-musl
+TOOLCHAIN_DIR=$(BUILD)/toolchain-prebuilt-bootlin-glibc
+ROOTFS_TOOLCHAIN_DIR=$(BUILD)/$(ROOTFS_TC)
 OUTPUT_DIR=$(BUILD)/output
 PYENV_DIR=$(BUILD)/pyenv
 HOSTMAKE_DIR=$(BUILD)/hostmake
@@ -159,6 +193,14 @@ TC_ARCH=$(TC_ARCH)
 CROSS_COMPILE=$(CROSS_COMPILE)
 ARCH=$(ARCH)
 ROOTFS_CROSS_COMPILE=$(ROOTFS_CROSS_COMPILE)
+# TOOLCHAIN axis + the resolved toolchains: the from-scratch libc's cc-profile.sh / stage-runtime.sh
+# branch on TOOLCHAIN. ROOTFS_TC = what packages compile with (stage-2 toolchain-gcc for source, else
+# musl); LIBC_TC = what the libc node builds with (stage-1 toolchain-gcc-initial for source, else musl);
+# LIBC_TC_DIR = its dir (build-sysroot.sh runs the stage-1 gcc from there by full path).
+TOOLCHAIN=$(TOOLCHAIN)
+ROOTFS_TC=$(ROOTFS_TC)
+LIBC_TC=$(LIBC_TC)
+LIBC_TC_DIR=$(LIBC_TC_DIR)
 MEDIA=$(MEDIA)
 # KERNEL holds the ARTIFACT name (BUILD_KERNEL: mainline->linux), which is what the shell
 # consumers want (image.sh maps linux->mainline back). The raw axis value isn't needed shell-side.

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# forge-cc — the DRIVER for our from-scratch toolchain (the gcc-front-end analogue).
+#
+# Our toolchain is five separate programs (cpp, cc, as, ar, ld); a build system expects ONE
+# compiler command that behaves like `gcc`: take a .c/.S/.s (+ -I/-D/-o/-c/-E/-S), run the right
+# stages, and emit a .o or a linked ELF. This script is that front end. It parses the subset of the
+# gcc CLI that forge's compile classes and our libc's build.sh actually use, ignores the codegen/
+# warning/arch flags our tools don't need, and chains the stages:
+#
+#     .c  --cpp-->  .i  --cc-->  .s  --as-->  .o   [ --ld-->  ELF ]
+#     .S  --cpp-->  .s  --as-->  .o                (preprocessed assembly)
+#     .s            --as-->  .o
+#
+# Modes: -E (preprocess only), -S (stop at asm), -c (stop at .o), default (compile+link).
+# The real tools are installed BESIDE this script (forge-cpp/forge-cc1/forge-as/forge-ld); we find
+# them by our own location so the driver is relocatable.
+# (No `set -u`: several arg arrays are legitimately empty — e.g. a source with no -I — and expanding
+#  an empty array under nounset aborts on older bash. Every scalar below is explicitly initialized.)
+set -eo pipefail
+
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+CPP="${here}/forge-cpp"; CC1="${here}/forge-cc1"; AS="${here}/forge-as"; LD="${here}/forge-ld"
+
+mode=link            # link | compile | asm | preprocess
+out=""
+cppargs=()           # -I/-D/-U/-isystem -> forwarded to cpp
+inputs=()            # .c/.S/.s/.i sources to run through the pipeline
+linkobjs=()          # .o/.a already-built, passed straight to ld
+ttext=""             # -Ttext <addr> forwarded to ld
+entry=""             # -e <sym> forwarded to ld
+
+die() { echo "forge-cc: $*" >&2; exit 1; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -c) mode=compile ;;
+    -E) mode=preprocess ;;
+    -S) mode=asm ;;
+    -o) out="$2"; shift ;;
+    -o*) out="${1#-o}" ;;
+    -I) cppargs+=("-I$2"); shift ;;          # attached form (-Idir): the unambiguous gcc-driver convention
+    -I*) cppargs+=("$1") ;;
+    -isystem) cppargs+=("-I$2"); shift ;;    # our cpp has one include path kind
+    -D*|-U*) cppargs+=("$1") ;;
+    -Ttext) ttext="$2"; shift ;;
+    -Ttext=*) ttext="${1#-Ttext=}" ;;
+    -e|--entry) entry="$2"; shift ;;
+    # Flags our tools neither need nor understand — accept and ignore, like a lenient driver:
+    # optimization, warnings, dialect, arch/ABI tuning, and freestanding/link toggles handled
+    # implicitly by our tools (static ELF, no host libc, no PIC unless -pie is passed to ld).
+    -O*|-g*|-W*|-f*|-m*|-std=*|-pipe|-pedantic|-ansi) ;;
+    -static|-nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s|-shared|-fPIC|-fpic) ;;
+    -Wl,*|-Wa,*|-Wp,*) ;;                    # toolchain-passthrough we don't forward (unsupported opts)
+    -l*|-L*) ;;                              # libraries are passed as explicit .a paths, not -l
+    -pie|--pie) linkpie=1 ;;
+    -*.o|-*.a) die "unexpected option '$1'" ;;
+    *.c|*.i) inputs+=("$1") ;;
+    *.S|*.s) inputs+=("$1") ;;
+    *.o|*.a) linkobjs+=("$1") ;;
+    *) inputs+=("$1") ;;                     # treat any other bare arg as a source
+  esac
+  shift
+done
+linkpie="${linkpie:-}"
+
+[ ${#inputs[@]} -gt 0 ] || [ ${#linkobjs[@]} -gt 0 ] || die "no input files"
+
+tmp="$(mktemp -d)"; trap 'rm -rf "${tmp}"' EXIT
+
+# compile_one <src> <dstobj|-> : run a single source through cpp[/cc]/as, honoring the stop mode.
+# For -E/-S with -o unset, output goes to stdout / <base>.s per gcc convention.
+compile_one() {
+  local src="$1" dst="$2" ext="${src##*.}" i="${tmp}/u.i" s="${tmp}/u.s"
+  case "${ext}" in
+    c)
+      "${CPP}" "${cppargs[@]}" "${src}" > "${i}"
+      [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${i}" "${out}"; else cat "${i}"; fi; return 0; }
+      "${CC1}" -o "${s}" "${i}"
+      ;;
+    i)
+      [ "${mode}" = preprocess ] && { cat "${src}"; return 0; }
+      "${CC1}" -o "${s}" "${src}"
+      ;;
+    S)
+      "${CPP}" "${cppargs[@]}" "${src}" > "${s}"
+      [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${s}" "${out}"; else cat "${s}"; fi; return 0; }
+      ;;
+    s)
+      cp "${src}" "${s}"
+      ;;
+    *) die "don't know how to compile '${src}'" ;;
+  esac
+  if [ "${mode}" = asm ]; then                       # stop at assembly
+    cp "${s}" "${dst}"; return 0
+  fi
+  "${AS}" -o "${dst}" "${s}"                          # assemble to object
+}
+
+# --- non-link modes: transform each input independently -------------------------------------------
+if [ "${mode}" != link ]; then
+  for src in "${inputs[@]}"; do
+    if [ -n "${out}" ]; then
+      compile_one "${src}" "${out}"
+    else
+      base="$(basename "${src}")"; base="${base%.*}"
+      case "${mode}" in
+        compile) compile_one "${src}" "${base}.o" ;;
+        asm)     compile_one "${src}" "${base}.s" ;;
+        preprocess) compile_one "${src}" "-" ;;
+      esac
+    fi
+  done
+  exit 0
+fi
+
+# --- link mode: compile every source to a temp .o, then ld everything into one ELF ----------------
+objs=()
+n=0
+for src in "${inputs[@]}"; do
+  o="${tmp}/obj${n}.o"; compile_one "${src}" "${o}"; objs+=("${o}"); n=$((n + 1))
+done
+: "${out:=a.out}"
+ldflags=()
+[ -n "${linkpie}" ] && ldflags+=(-pie)
+[ -n "${ttext}" ] && ldflags+=(-Ttext "${ttext}")
+[ -n "${entry}" ] && ldflags+=(-e "${entry}")
+"${LD}" "${ldflags[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}"
