@@ -35,6 +35,10 @@ test: $(BUILD)/cpp
 	$(GNU)ld -T ../cc/tests/bare.ld -o $$t/prog.elf $$t/crt.o $$t/main.o $$t/string.o 2>/dev/null; \
 	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/prog.elf >/dev/null 2>&1; g=$$?; \
 	[ "$$g" = 115 ] && { echo "PASS e2e: our cpp+cc+as built libc string.c; ran = $$g"; ok=$$((ok+1)); } || { echo "FAIL e2e: got $$g want 115"; fail=$$((fail+1)); }; \
+	printf '#define CONCAT(a,b) a##b\nCONCAT(foo,bar) AFTER\nSECOND\n' > $$t/paste.c; \
+	po=$$($(BUILD)/cpp $$t/paste.c | tr -s ' \n' ' '); \
+	case "$$po" in *"foobar AFTER SECOND"*) echo "PASS paste: ## keeps trailing tokens (no truncation)"; ok=$$((ok+1));; \
+	               *) echo "FAIL paste: '$$po' (## truncated the stream)"; fail=$$((fail+1));; esac; \
 	rm -rf $$t; echo "----- $$ok passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
 clean:

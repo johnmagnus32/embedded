@@ -193,11 +193,19 @@ static Tok *stringize(Tok *arg) {
 	buf[k++] = '"'; buf[k] = 0;
 	return newtok(TSTR, buf, k);
 }
-/* Paste two tokens' spellings into one new token (the ## operator). */
+/* Paste two tokens' spellings into one new token (the ## operator). Either side may be NULL (an empty
+ * macro argument acts as a placemarker); if both are empty the result is nothing (NULL). */
 static Tok *paste(Tok *a, Tok *b) {
-	char buf[512]; snprintf(buf, sizeof buf, "%s%s", a->text, b ? b->text : "");
+	char buf[512]; snprintf(buf, sizeof buf, "%s%s", a ? a->text : "", b ? b->text : "");
+	if (!buf[0]) return NULL;
 	Kind k = (isalpha((unsigned char)buf[0]) || buf[0] == '_') ? TIDENT : isdigit((unsigned char)buf[0]) ? TNUM : TPUNCT;
 	return newtok(k, buf, strlen(buf));
+}
+/* Copy an argument's tokens WITHOUT its terminating TEOF (which must never leak into the output stream). */
+static Tok *copy_noeof(Tok *arg) {
+	Tok head = {0}, *cur = &head;
+	for (Tok *t = arg; t && t->kind != TEOF; t = t->next) cur = cur->next = copytok(t);
+	return head.next;
 }
 
 /* Substitute args into a function-macro body, handling # and ##; params expanded unless adjacent to #/##. */
@@ -214,20 +222,27 @@ static Tok *subst(Macro *m, Tok **args, int nargs) {
 			cur = cur->next = stringize(a); t = t->next->next; continue;
 		}
 		if (t->next && t->next->text[0] == '#' && t->next->text[1] == '#') {   /* lhs ## rhs -> paste */
-			Tok *lhs = (pi >= 0 && pi < nargs) ? args[pi] : NULL;
-			/* place all-but-last of lhs, then paste last-of-lhs with first-of-rhs below */
-			Tok *lcopy = lhs ? copy_body(lhs, NULL) : NULL;
-			Tok *ltail = last(lcopy);
-			while (lcopy && lcopy != ltail) { cur = cur->next = lcopy; lcopy = lcopy->next; }
+			/* LEFT operand: a parameter contributes its raw (unexpanded) tokens; else the body token itself.
+			 * Place all but its last token, and keep the last one to paste with the right operand's first. */
+			Tok *lastl;
+			if (pi >= 0) {
+				Tok *lcopy = (pi < nargs) ? copy_noeof(args[pi]) : NULL;   /* TEOF-free, so last() is a real token */
+				Tok *lt = last(lcopy);
+				while (lcopy && lcopy != lt) { cur = cur->next = lcopy; lcopy = lcopy->next; }
+				lastl = lt;                                               /* NULL if the argument was empty */
+			} else {
+				lastl = copytok(t);
+			}
+			/* RIGHT operand: first token pastes onto lastl; the rest follow verbatim. */
 			Tok *rhs = t->next->next;
 			int ri = -1; if (rhs && rhs->kind == TIDENT) for (int i = 0; i < m->nparams; i++) if (!strcmp(rhs->text, m->params[i])) ri = i;
-			Tok *rfirst; Tok *rrest;
-			if (ri >= 0 && ri < nargs) { Tok *rc = copy_body(args[ri], NULL); rfirst = rc; rrest = rc ? rc->next : NULL; }
+			Tok *rfirst, *rrest;
+			if (ri >= 0 && ri < nargs) { Tok *rc = copy_noeof(args[ri]); rfirst = rc; rrest = rc ? rc->next : NULL; }
 			else { rfirst = rhs ? copytok(rhs) : NULL; rrest = NULL; }
-			Tok *lastl = (pi >= 0) ? ltail : copytok(t);
-			cur = cur->next = paste(lastl ? lastl : t, rfirst);
-			for (Tok *x = rrest; x; x = x->next) cur = cur->next = copytok(x);
-			t = t->next->next->next;   /* skip lhs? no: skip '##' and rhs token */
+			Tok *pasted = paste(lastl, rfirst);
+			if (pasted) cur = cur->next = pasted;
+			for (Tok *x = rrest; x; x = x->next) cur = cur->next = copytok(x);   /* rrest is already TEOF-free */
+			t = t->next->next->next;   /* advance past the '##' and the right-operand body token */
 			continue;
 		}
 		if (pi >= 0 && pi < nargs) {                                 /* a parameter: splice its EXPANDED argument */
