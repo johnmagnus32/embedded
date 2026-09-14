@@ -215,6 +215,12 @@ static void gen_stmt(Node *n) {
 		return;
 	}
 	case ND_CASE: fprintf(o, ".L%d:\n", n->offset); return;  /* label placed inline in the switch body */
+	case ND_ASM: {   /* load each register-pinned operand into its register, emit the template, store outputs */
+		for (Node *a = n->args; a; a = a->next) if (a->reg[0]) fprintf(o, "\tldr %s, [r11, #%d]\n", a->reg, a->offset);
+		fprintf(o, "\t%s\n", n->name);
+		int i = 0; for (Node *a = n->args; a && i < n->val; a = a->next, i++) if (a->reg[0]) fprintf(o, "\tstr %s, [r11, #%d]\n", a->reg, a->offset);
+		return;
+	}
 	case ND_GOTO:  fprintf(o, "\tb .L%d\n", clabel_id(n->name)); return;
 	case ND_LABEL: fprintf(o, ".L%d:\n", clabel_id(n->name)); return;
 	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;

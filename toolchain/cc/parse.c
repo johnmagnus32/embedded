@@ -21,13 +21,14 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
                                    strncpy(out, tk->text, 63); out[63] = 0; tk = tk->next; }
 
 /* ---- locals (per function) ----------------------------------------------------------------------- */
-static struct { char name[64]; int offset; Type *type; } locals[1024];
+static struct { char name[64]; int offset; Type *type; char reg[8]; } locals[1024];
 static int nlocals, local_bytes;   /* local_bytes = total frame bytes used by locals+params so far */
 /* Lookups scan newest-first, so a redeclared name (a different block, no true block scoping here) or a
  * local shadowing a param resolves to the most recent binding — correct for disjoint/nested blocks; we
  * just never reclaim an inner block's frame space. */
 static int local_offset(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].offset; return 0; }
 static Type *local_type(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].type; return ty_int; }
+static const char *local_reg(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].reg; return ""; }
 static int local_exists(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return 1; return 0; }
 static int add_local(const char *name, Type *ty) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
@@ -187,7 +188,7 @@ static Node *primary(void) {
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
 			expect(")"); n->args = argh.next; return n;
 		}
-		if (local_exists(name)) { Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); n->type = local_type(name); return n; }
+		if (local_exists(name)) { Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); n->type = local_type(name); strncpy(n->reg, local_reg(name), 7); return n; }
 		Gvar *g = global_find(name);                         /* locals shadow globals */
 		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; return n; }
 		long ev; if (enum_find(name, &ev)) return num(ev);   /* enum constant -> integer literal */
@@ -338,6 +339,17 @@ static Node *stmt(void) {
 		Node *n = node(ND_CASE); n->is_default = 1; n->case_next = cur_switch->case_list; cur_switch->case_list = n; return n; }
 	if (consume("break"))    { expect(";"); return node(ND_BREAK); }
 	if (consume("continue")) { expect(";"); return node(ND_CONTINUE); }
+	if (is("__asm__") || is("asm")) {                        /* __asm__ volatile("tmpl" : outs : ins : clobbers); */
+		tk = tk->next; consume("volatile"); consume("__volatile__");
+		expect("("); Node *n = node(ND_ASM); strncpy(n->name, tk->text, 63); tk = tk->next;   /* template string */
+		Node oh = {0}, *oc = &oh; int nouts = 0;
+		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; expect("("); oc = oc->next = assign(); expect(")"); nouts++; if (!consume(",")) break; }
+		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; expect("("); oc = oc->next = assign(); expect(")"); if (!consume(",")) break; }
+		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; if (!consume(",")) break; }   /* clobbers — ignored */
+		expect(")"); expect(";");
+		n->args = oh.next; n->val = nouts;                   /* operands: outputs first, then inputs; val = #outputs */
+		return n;
+	}
 	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
 		Node *n = node(ND_LABEL); ident(n->name); expect(":"); return n;
@@ -362,7 +374,8 @@ static Node *stmt(void) {
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
 		do {
 			char nm[64]; Type *ty = declarator(base, nm); int off = add_local(nm, ty);
-			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty;
+			if (consume("__asm__")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var */
+			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{")) bc = bc->next = init_of(v, ty);              /* aggregate initializer */
 				else bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, assign())); }
 		} while (consume(","));

@@ -51,7 +51,7 @@ typedef enum {
 	ND_COND, ND_CAST, ND_COMMA,                                  /* c?a:b ; (type)expr ; (a, b)       */
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
-	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_BLOCK, ND_EXPRSTMT /* switch/case, goto/label, block/expr */
+	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, inline asm, block */
 } NodeKind;
 
 typedef struct Node {
@@ -59,7 +59,8 @@ typedef struct Node {
 	Type *type;                  /* result type (filled by add_type); drives ptr scaling + load width */
 	struct Node *lhs, *rhs;      /* binary/unary operands                                        */
 	long val;                    /* ND_NUM                                                       */
-	char name[64];               /* ND_VAR / ND_CALL name                                        */
+	char name[64];               /* ND_VAR / ND_CALL name ; ND_ASM template                     */
+	char reg[8];                 /* ND_VAR pinned to a hard register (`register x __asm__("r7")`)*/
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
 	struct Node *init, *inc;         /* ND_FOR: initializer statement + per-iteration step expr    */
