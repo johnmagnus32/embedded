@@ -24,6 +24,7 @@ void add_type(Node *n) {
 	if (!n || n->type) return;
 	add_type(n->lhs); add_type(n->rhs);
 	add_type(n->cond); add_type(n->then); add_type(n->els);
+	add_type(n->init); add_type(n->inc);
 	for (Node *c = n->body; c; c = c->next) add_type(c);
 	for (Node *a = n->args; a; a = a->next) add_type(a);
 

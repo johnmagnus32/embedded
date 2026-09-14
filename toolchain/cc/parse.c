@@ -32,6 +32,12 @@ static int add_local(const char *name, Type *ty) {
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 	return off;
 }
+/* Bind a name to an explicit offset without allocating frame space — for params 5+ that live in the
+ * CALLER's frame (above our saved r11/lr), at [r11, #8 + 4*(i-4)]. */
+static void add_local_at(const char *name, Type *ty, int off) {
+	if (local_exists(name)) die("parse: redeclaration of '%s'", name);
+	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
+}
 
 /* type = ("int"|"char") "*"* name ("[" num "]")* ; declarator reads the name and any array suffix. */
 static Type *declspec(void) { if (consume("int")) return ty_int; if (consume("char")) return ty_char; die("parse: expected a type (line %d)", tk->line); return NULL; }
@@ -133,6 +139,14 @@ static Node *stmt(void) {
 	if (consume("return")) { Node *n = unary(ND_RETURN, expr()); expect(";"); return n; }
 	if (consume("if")) { Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt(); return n; }
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
+	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
+		Node *n = node(ND_FOR); expect("(");
+		if (is("int") || is("char")) n->init = stmt();       /* declaration eats its own ; */
+		else if (!consume(";")) { n->init = unary(ND_EXPRSTMT, expr()); expect(";"); }
+		if (!consume(";")) { n->cond = expr(); expect(";"); }
+		if (!is(")")) n->inc = expr();
+		expect(")"); n->body = stmt(); return n;
+	}
 	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
 	if (is("int") || is("char")) {                           /* `T *…* name [= expr];` local declaration */
 		char name[64]; Type *ty = declarator(declspec(), name); int off = add_local(name, ty);
@@ -150,7 +164,10 @@ static Func *function_tail(const char *name) {
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63);
 	nlocals = 0; local_bytes = 0;
 	expect("(");
-	if (!is(")") && !is("void")) { do { char p[64]; Type *ty = declarator(declspec(), p); add_local(p, ty); f->nparams++; } while (consume(",")); }
+	if (!is(")") && !is("void")) { do { char p[64]; Type *ty = declarator(declspec(), p);
+		if (f->nparams < 4) add_local(p, ty);                /* first 4 arrive in r0..r3 (spilled in prologue) */
+		else add_local_at(p, ty, 8 + 4 * (f->nparams - 4));  /* rest passed on the caller's stack */
+		f->nparams++; } while (consume(",")); }
 	else consume("void");
 	expect(")");
 	expect("{");

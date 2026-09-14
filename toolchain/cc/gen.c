@@ -44,7 +44,10 @@ static void store(Type *ty) { fprintf(o, ty->size == 1 ? "\tstrb r0, [r1]\n" : "
 /* Put the ADDRESS of an lvalue in r0. A variable's address is fp+offset; *p's address is p's value. */
 static void gen_addr(Node *n) {
 	switch (n->kind) {
-	case ND_VAR:   fprintf(o, "\tsub r0, r11, #%d\n", -n->offset); return;   /* offset is negative */
+	case ND_VAR:   /* fp-relative: locals are below fp (negative), stack params above it (positive) */
+		if (n->offset < 0) fprintf(o, "\tsub r0, r11, #%d\n", -n->offset);
+		else               fprintf(o, "\tadd r0, r11, #%d\n",  n->offset);
+		return;
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
 	case ND_GVAR: {                                                          /* address via the literal pool */
 		if (npool >= 64) die("cc: too many pooled addresses in one function");
@@ -86,11 +89,15 @@ static void gen_expr(Node *n) {
 		return;
 	}
 	case ND_CALL: {
-		int nargs = 0; for (Node *a = n->args; a; a = a->next) nargs++;
-		if (nargs > 4) die("cc: >4 arguments not supported yet (call to %s)", n->name);
-		for (Node *a = n->args; a; a = a->next) { gen_expr(a); fprintf(o, "\tpush {r0}\n"); }   /* eval L->R, stack them */
-		for (int i = nargs - 1; i >= 0; i--) fprintf(o, "\tpop {r%d}\n", i);                    /* into r0..r(n-1) */
-		fprintf(o, "\tbl %s\n", n->name);                                                       /* result in r0 */
+		Node *av[32]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 32) die("cc: too many args"); av[nargs++] = a; }
+		int stackn = nargs > 4 ? nargs - 4 : 0;             /* args beyond the 4th go on the stack   */
+		int pad = (stackn & 1) ? 4 : 0;                     /* keep sp 8-aligned at the bl (AAPCS)    */
+		if (pad) fprintf(o, "\tsub sp, sp, #4\n");
+		for (int i = nargs - 1; i >= 0; i--) { gen_expr(av[i]); fprintf(o, "\tpush {r0}\n"); }  /* arg0 ends on top */
+		int nreg = nargs < 4 ? nargs : 4;
+		for (int i = 0; i < nreg; i++) fprintf(o, "\tpop {r%d}\n", i);   /* r0..r3; sp then points at arg4 */
+		fprintf(o, "\tbl %s\n", n->name);                                /* result in r0 */
+		if (stackn || pad) fprintf(o, "\tadd sp, sp, #%d\n", 4 * stackn + pad);   /* drop stack args + padding */
 		return;
 	}
 	default: break;
@@ -140,6 +147,16 @@ static void gen_stmt(Node *n) {
 		gen_stmt(n->body); fprintf(o, "\tb .L%d\n.L%d:\n", begin, end);
 		return;
 	}
+	case ND_FOR: {
+		int begin = uniq(), end = uniq();
+		if (n->init) gen_stmt(n->init);
+		fprintf(o, ".L%d:\n", begin);
+		if (n->cond) { gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", end); }
+		gen_stmt(n->body);
+		if (n->inc) gen_expr(n->inc);
+		fprintf(o, "\tb .L%d\n.L%d:\n", begin, end);
+		return;
+	}
 	default: gen_expr(n); return;   /* a bare declaration compiles to an empty ND_BLOCK; other exprs run */
 	}
 }
@@ -149,7 +166,7 @@ static void gen_func(Func *f) {
 	fprintf(o, "\t.global %s\n\t.type %s, %%function\n%s:\n", f->name, f->name, f->name);
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);
-	for (int i = 0; i < f->nparams; i++) fprintf(o, "\tstr r%d, [r11, #%d]\n", i, -4 * (i + 1));   /* spill params */
+	for (int i = 0; i < f->nparams && i < 4; i++) fprintf(o, "\tstr r%d, [r11, #%d]\n", i, -4 * (i + 1));   /* spill register params (r0..r3) */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n\tbx lr\n", ret_label);   /* fall-through return */
 	if (npool) { fprintf(o, "\t.align 2\n");                                     /* address pool, past the code */

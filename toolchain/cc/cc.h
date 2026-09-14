@@ -46,7 +46,7 @@ typedef enum {
 	ND_AND, ND_OR,                                               /* && || (short-circuit)             */
 	ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR,              /* bitwise + shifts                  */
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
-	ND_RETURN, ND_IF, ND_WHILE, ND_BLOCK, ND_EXPRSTMT            /* statements                        */
+	ND_RETURN, ND_IF, ND_WHILE, ND_FOR, ND_BLOCK, ND_EXPRSTMT   /* statements                        */
 } NodeKind;
 
 typedef struct Node {
@@ -56,7 +56,8 @@ typedef struct Node {
 	long val;                    /* ND_NUM                                                       */
 	char name[64];               /* ND_VAR / ND_CALL name                                        */
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
-	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE (cond+then, els for if)                 */
+	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
+	struct Node *init, *inc;         /* ND_FOR: initializer statement + per-iteration step expr    */
 	struct Node *body;           /* ND_BLOCK: statement list (chained via ->next)                */
 	struct Node *args;           /* ND_CALL: argument list (chained via ->next)                  */
 	struct Node *next;           /* next statement / next argument in a list                     */
