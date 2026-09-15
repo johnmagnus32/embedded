@@ -19,7 +19,7 @@
 #            `make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox`); its
 #            name is selection-unique, so a not-built-yet case just SKIPs. INIT=shell = the
 #            minimal /bin/sh PID-1 (the kernel test uses it, NOT the C supervisor INIT=custom,
-#            which is mainline-only — see forge/providers/init/).
+#            which is mainline-only — see forge/recipes-core/ (virtual/init)).
 #   dynamic — the same, dynamically linked through musl's ld.so (add LINKAGE=dynamic
 #            to that rootfs build); SKIPs the same way. smoke/fault/orphan/preempt
 #            use built-in initramfs images and always run.
@@ -46,7 +46,7 @@ PROJ="${GV3_PRODUCT:-${REPO_ROOT}/projects/gameboy-v3}"
 # the QEMU virt build.
 BUILD="${KDIR}/build/virt"
 LOGDIR="${KDIR}/build/test"
-TOOLCHAIN_BIN="${PROJ}/build/toolchain/bin"
+TOOLCHAIN_BIN="${PROJ}/build/toolchain-gcc/bin"
 # gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it into the product's
 # host prefix); the kernel Makefile no longer owns it, so we pass its path into the
 # fixtures build. Provisioned by the product's `make toolchain` (below, if absent).
@@ -59,7 +59,7 @@ SMOKE_INITRD="${BUILD}/initramfs.cpio.gz"
 FAULT_INITRD="${BUILD}/faultramfs.cpio.gz"
 ORPHAN_INITRD="${BUILD}/orphanramfs.cpio.gz"
 PREEMPT_INITRD="${BUILD}/preemptramfs.cpio.gz"
-KIMG="${BUILD}/gv3kernel.bin"
+KIMG="${BUILD}/kernel.bin"
 
 # put the cross toolchain on PATH (the Makefile needs $(CROSS_COMPILE)gcc)
 case ":${PATH}:" in *":${TOOLCHAIN_BIN}:"*) : ;; *) PATH="${TOOLCHAIN_BIN}:${PATH}" ;; esac
@@ -305,7 +305,7 @@ busybox_case() {
   fi
   REQ=(
     'PID 1 is alive.'                                 # the single portable /init banner
-    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a (fed to the interactive shell)
+    'Linux gameboy-v3 0.9-gv3 kernel S10 armv7l GNU/Linux'   # uname -a (fed to the interactive shell)
     'sub: HI'                                         # $(echo hi | tr ...) over a pipe — busybox shell does cmd-subst
     '[kernel] last process exited; halting.'
   )
@@ -337,7 +337,7 @@ dynamic_case() {
     'pid 1 pc 0x2'                                    # PID 1 entered at ld.so (INTERP_BASE 0x20000000)
     '[dynamic]'                                        # kernel took the dynamic path
     'PID 1 is alive.'                                 # the single portable /init banner
-    'Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux'   # uname -a via a forked dynamic applet
+    'Linux gameboy-v3 0.9-gv3 kernel S10 armv7l GNU/Linux'   # uname -a via a forked dynamic applet
     'sub: HI'                                         # $(echo hi | tr ...) over a pipe
     '[kernel] last process exited; halting.'
   )
@@ -367,7 +367,7 @@ main() {
     fi
     # `all` = the kernel binary; `fixtures` = the four test initramfs images these
     # cases boot (the kernel Makefile split test scaffolding out of `all`, so name it).
-    if ! make -C "$KDIR" BOARD=virt GEN_INIT_CPIO="${GEN_INIT_CPIO}" all fixtures >>"${LOGDIR}/build.log" 2>&1; then
+    if ! make -C "$KDIR" BOARD=virt CROSS_COMPILE=arm-forge-linux-gnueabihf- GEN_INIT_CPIO="${GEN_INIT_CPIO}" all fixtures >>"${LOGDIR}/build.log" 2>&1; then
       red "BUILD FAILED (see ${LOGDIR}/build.log)"; tail -n 20 "${LOGDIR}/build.log"; exit 2
     fi
     grn "  build OK"

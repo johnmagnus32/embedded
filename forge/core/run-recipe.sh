@@ -112,6 +112,11 @@ set_node_env() {
   # applies `inherit base` then sources the recipe once this scaffolding exists.
   _INHERITED_CLASSES=""
   inherit() { _INHERITED_CLASSES="${_INHERITED_CLASSES} ${FORGE_CORE}/classes/$1.sh"; source "${FORGE_CORE}/classes/$1.sh"; }
+  # require() binds a shared INCLUDE by path (Yocto's `require`): recipe DATA two recipes share — e.g.
+  # SRC_URI/checksum pins — lives in a .inc, NOT a class (which is shared LOGIC/tasks). Recorded into
+  # _REQUIRED_INCS so compute_taskhash hashes it too, so a pin bump ripples like a recipe edit.
+  _REQUIRED_INCS=""
+  require() { _REQUIRED_INCS="${_REQUIRED_INCS} $1"; source "$1"; }
 }
 
 # skip_if_built — resolve what this node outputs + its content taskhash (both kept for mark_built),
@@ -190,6 +195,8 @@ compute_taskhash() {
       printf '=== recipe ===\n';  cat "${RECIPE}"
       printf '=== classes ===\n'
       for dep in ${_INHERITED_CLASSES}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
+      printf '=== includes ===\n'
+      for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       # The engine drives every build, so a run-recipe.sh code change must invalidate every node.
       # Hashed comment-stripped so a pure comment/whitespace edit doesn't rebuild the world.
       printf '=== engine ===\n'
@@ -217,6 +224,14 @@ compute_taskhash() {
   )"
 
   deps="${PKG_HOST_DEPENDS:-} ${PKG_DEPENDS:-}"
+  # A TARGET recipe that links libc is built by the rootfs toolchain — the implied compiler edge
+  # (matches resolve.mk _ndeps), so a toolchain change folds into its taskhash even though it declares
+  # no TC. Gated on class=target: a cross/native host tool (e.g. toolchain-gcc, which depends on libc
+  # for its --with-sysroot) is NOT built by virtual/cross-cc, and injecting it would self-cycle.
+  if [ "${PKG_CLASS:-target}" = target ]; then
+    case " ${PKG_DEPENDS:-} " in *" libc "*) deps="${deps} virtual/cross-cc" ;; esac
+  fi
+  deps="${deps//virtual\/cross-cc/${ROOTFS_TC}}"   # resolve toolchain virtuals to the concrete node (matches resolve.mk _vresolve), so its sig folds
   _taskhash="$(
     {
       printf '%s\n' "${base}"
@@ -251,11 +266,17 @@ _hash_source() {
 }
 
 # run_tasks — the uniform sequence (no branch on kind). Pure orchestration: a clean scratch dir, then
-# the three tasks. Each task reads the generic node env (NODE_SCRATCH + PKG_SRC_DIR from do_fetch) and
-# derives/defaults its own class-specific bits.
+# the tasks in Yocto's order. do_fetch downloads; do_unpack extracts + sets PKG_SRC_DIR; do_patch edits
+# the unpacked source; do_build compiles; do_install stages. Each task reads the generic node env
+# (NODE_SCRATCH + PKG_SRC_DIR from do_fetch/do_unpack) and derives/defaults its own class-specific bits.
+# base.sh supplies working defaults for fetch/unpack (git|local|tarball) + no-op patch, so a recipe
+# binds only what differs (usually do_build/do_install; a source-patching or multi-tarball recipe also
+# overrides do_patch/do_unpack).
 run_tasks() {
   rm -rf "${NODE_SCRATCH}"; mkdir -p "${NODE_SCRATCH}"
   do_fetch
+  do_unpack
+  do_patch
   do_build
   do_install
 }

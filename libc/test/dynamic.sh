@@ -40,10 +40,10 @@ REPO_ROOT="$(cd "${HERE}/../.." && pwd)"          # repo root (libc/ is a top-le
 PROJ="${REPO_ROOT}/projects/gameboy-v3"           # the product
 BUILD="${PROJ}/build/dynbed"                      # this harness's own scratch dir (ref case)
 LOGDIR="${PROJ}/build/test"
-MUSL_BIN="${PROJ}/build/toolchain-musl/bin"
-GLIBC_BIN="${PROJ}/build/toolchain/bin"
+MUSL_BIN="${PROJ}/build/toolchain-gcc/bin"
+GLIBC_BIN="${PROJ}/build/toolchain-gcc/bin"
 HOSTMAKE_BIN="${PROJ}/build/hostmake/bin"        # GNU Make >=4 (kernel needs it)
-# gen_init_cpio: an engine HOST PACKAGE (forge/hostpackages/gen_init_cpio) — forge fetches +
+# gen_init_cpio: an engine HOST PACKAGE (forge/recipes-devtools/gen_init_cpio) — forge fetches +
 # compiles it into build/hosttools/bin/ as part of `make toolchain`. pack_initrd provisions it
 # via `make toolchain` if absent. (This harness still needs build/linux too, but for its
 # REFERENCE KERNEL — see below — not for the cpio writer.)
@@ -54,8 +54,8 @@ REFKERNEL="${PROJ}/build/refkernel/virt-zImage"
 KSRC="${PROJ}/build/linux"                        # the (dirty, in-tree) sunxi build
 WORKTREE="${PROJ}/build/refkernel/linux-src"      # clean worktree for the virt build
 
-MUSL_PREFIX="arm-buildroot-linux-musleabihf-"
-GLIBC_PREFIX="arm-buildroot-linux-gnueabihf-"
+MUSL_PREFIX="arm-forge-linux-gnueabihf-"
+GLIBC_PREFIX="arm-forge-linux-gnueabihf-"
 QEMU="${QEMU:-qemu-system-arm}"
 
 red() { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -142,9 +142,11 @@ build_ref_initrd() {
 int main(int argc, char **argv){ printf("refdyn: dynamic-linked OK, argc=%d\n", argc); return 0; }
 EOF
   "$cc" "${BUILD}/refdyn.c" -o "${stage}/init" || die "refdyn build failed"
-  cp "${sysroot}/lib/libc.so" "${stage}/lib/libc.so"
-  cp -P "${sysroot}/lib/ld-musl-armhf.so.1" "${stage}/lib/" 2>/dev/null \
-    || cp "${sysroot}/lib/ld-musl-armhf.so.1" "${stage}/lib/"
+  # from-source musl sysroot layout: the lib is usr/lib/libc.so, and musl's loader IS libc.so
+  # (/lib/ld-musl-armhf.so.1 is a symlink to it). Flatten both into the initramfs /lib as real files:
+  # ld-musl-armhf.so.1 (PT_INTERP) + libc.so (DT_NEEDED) — same file.
+  cp "${sysroot}/usr/lib/libc.so" "${stage}/lib/libc.so"
+  cp "${sysroot}/usr/lib/libc.so" "${stage}/lib/ld-musl-armhf.so.1"
   pack_initrd "${stage}" "${BUILD}/reftest.cpio.gz"
 }
 
@@ -198,14 +200,14 @@ if [ "${1:-}" = "--gv3" ]; then
   # `rootfs` (not `image`) is the minimal target: we boot our own reference kernel, so no
   # zImage/bootloader/DTB is needed. rm the target first so a stale same-named artifact can't
   # boot as a false pass (the earlier hardcoded name silently booted a stale image).
-  gv3_rootfs="${PROJ}/build/output/initramfs-custom-shell-coreutils-dynamic.cpio.gz"
-  rm -f "${gv3_rootfs}"
+  rootfs="${PROJ}/build/output/initramfs-custom-shell-coreutils-dynamic.cpio.gz"
+  rm -f "${rootfs}"
   make -C "${PROJ}" rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt PACKAGES=coreutils \
     || die "our dynamic rootfs failed to build"
   # our init.sh is a shebang script; the mainline kernel needs /bin/sh to be OUR
   # dynamic shell, loaded by OUR ld.so.1. PASS = the loader mapped libc.so,
   # relocated, and reached the interactive shell prompt ('gv3$').
-  run_case gv3 "${gv3_rootfs}" "gv3\$"
+  run_case gv3 "${rootfs}" "gv3\$"
 fi
 
 # ---- summary ----------------------------------------------------------------

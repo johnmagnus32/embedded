@@ -3,9 +3,10 @@
 # run-recipe.sh `inherit base` for EVERY node BEFORE sourcing the recipe, so both the default do_*
 # tasks AND the fetch helpers below are universally in scope — for the recipe and for every class it
 # later inherits (host classes call forge_fetch_file directly). A recipe (or a class it inherits)
-# overrides any do_* last-definition-wins. do_build/do_install have no universal default (a recipe
-# always binds them via a class or inline), so base leaves them unset — an unbound do_build is a
-# recipe bug, surfaced by the shell.
+# overrides any do_* last-definition-wins. base defaults the SOURCE-side tasks — do_fetch (fetch per
+# PKG_FETCH), do_unpack (extract a tarball), do_patch (no-op) — so most recipes bind only do_build. There
+# is NO default do_build/do_install (a recipe always binds them via a class or inline), so base leaves
+# them unset — an unbound do_build is a recipe bug, surfaced by the shell.
 #
 # WHY THE FETCH MECHANISM LIVES HERE (not in run-recipe.sh): the runner is the ORCHESTRATOR — it
 # keeps only what it needs before `inherit base` (recipe_get, log/die, _prepend_path, inherit). The
@@ -96,6 +97,17 @@ forge_fetch_file() {
   printf '%s' "${dest}"
 }
 
+# pkg_src <name> — the local path of a PKG_SOURCES entry that do_fetch already fetched+verified into
+# DOWNLOAD_DIR. Lets a do_build read its inputs by LOGICAL NAME instead of re-deriving URLs — the
+# "what do we fetch" list lives declaratively in the recipe (PKG_SOURCES + PKG_SRC_<name>), the
+# framework fetches it, do_build just consumes `pkg_src <name>`. <name> must be listed in PKG_SOURCES.
+pkg_src() {
+  local n="$1" var="PKG_SRC_$1" url
+  url="${!var:-}"
+  : "${url:?pkg_src: PKG_SRC_${n} unset (is '${n}' in PKG_SOURCES?)}"
+  printf '%s' "${DOWNLOAD_DIR}/${url##*/}"
+}
+
 # do_fetch — the DEFAULT fetch task: resolve THIS node's recipe source onto disk per PKG_FETCH and
 # set PKG_SRC_DIR (run_tasks exports it for do_build). This IS the fetch mechanism. Overridden to no-op
 # by recipes/classes whose source needs no forge fetch — host classes self-fetch a file/tarball into
@@ -138,19 +150,56 @@ do_fetch() {
       PKG_SRC_DIR="${src}" ;;
 
     tarball)
-      : "${NODE_SCRATCH:?do_fetch: NODE_SCRATCH unset (tarball extract dir)}"
+      # DOWNLOAD + verify only — EXTRACTION is do_unpack's job (Yocto's fetch/unpack split). Hand the
+      # verified tarball path to the default do_unpack via PKG_TARBALL (it extracts + sets PKG_SRC_DIR).
       name="$(recipe_get "${RECIPE}" PKG_SOURCE)"
       : "${name:?do_fetch: ${RECIPE} PKG_SOURCE unset (tarball fetch)}"
-      tb="$(forge_fetch_file "${name}" "$(recipe_get "${RECIPE}" PKG_SITE)" \
+      PKG_TARBALL="$(forge_fetch_file "${name}" "$(recipe_get "${RECIPE}" PKG_SITE)" \
               "$(recipe_get "${RECIPE}" PKG_SHA256)" \
               "$(recipe_get "${RECIPE}" PKG_SITE_MIRROR)" \
               "$(recipe_get "${RECIPE}" PKG_SOURCE_QUERY)")" \
-        || die "do_fetch: fetch/verify failed for ${RECIPE}"
-      src="${NODE_SCRATCH}/src"; mkdir -p "${src}"
-      tar -xf "${tb}" -C "${src}" --strip-components=1
-      PKG_SRC_DIR="${src}" ;;
+        || die "do_fetch: fetch/verify failed for ${RECIPE}" ;;
 
     *)
       die "do_fetch: unknown PKG_FETCH '${fetch}' in ${RECIPE} (want local|prebuilt|git|tarball|none)" ;;
   esac
+
+  # Extra SHA-pinned source tarballs (Yocto SRC_URI-style, declarative). The recipe lists logical
+  # names in PKG_SOURCES, each with PKG_SRC_<name>=<url> + PKG_SHA_<name>=<sha256>; the FRAMEWORK
+  # fetches + verifies them here (into DOWNLOAD_DIR via forge_fetch_file), so a do_build never
+  # hand-rolls downloads — it reads each by name with `pkg_src <name>`. This is orthogonal to
+  # PKG_FETCH above (a node can be PKG_FETCH=local for its own source AND pull extra tarballs, e.g.
+  # the from-source toolchain: PKG_SOURCE=libc for the taskhash + gcc/binutils/gmp/... as sources).
+  # Empty PKG_SOURCES (every non-toolchain recipe) is a no-op.
+  # Optional per-source PKG_MIRROR_<name> (a fallback site dir) + PKG_QUERY_<name> (a URL query the
+  # fetch needs but the saved basename must not, e.g. cgit's ?h=<tag>) — both forwarded to
+  # forge_fetch_file, which already takes them. Empty when unset (the common case).
+  local _s _sv _hv _mv _qv _url _sha _mir _qry
+  for _s in ${PKG_SOURCES:-}; do
+    _sv="PKG_SRC_${_s}"; _hv="PKG_SHA_${_s}"; _mv="PKG_MIRROR_${_s}"; _qv="PKG_QUERY_${_s}"
+    _url="${!_sv:-}"; _sha="${!_hv:-}"; _mir="${!_mv:-}"; _qry="${!_qv:-}"
+    : "${_url:?do_fetch: PKG_SOURCES lists '${_s}' but PKG_SRC_${_s} (url) unset (${RECIPE})}"
+    : "${_sha:?do_fetch: PKG_SRC_${_s} set but PKG_SHA_${_s} (sha256) unset (${RECIPE})}"
+    forge_fetch_file "${_url##*/}" "${_url%/*}" "${_sha}" "${_mir}" "${_qry}" >/dev/null \
+      || die "do_fetch: fetch/verify failed for source '${_s}' (${_url})"
+  done
 }
+
+# do_unpack — the DEFAULT unpack task (Yocto's do_unpack): extract the PKG_FETCH=tarball source that
+# do_fetch downloaded to DOWNLOAD_DIR (path handed over in PKG_TARBALL) into the node scratch, and set
+# PKG_SRC_DIR for do_build. For git|local the clone/checkout IS the unpack (do_fetch already set
+# PKG_SRC_DIR); prebuilt|none have no source — so with PKG_TARBALL unset this is a no-op. Overridden by
+# recipes/classes that unpack their own PKG_SOURCES tarballs (host-autotools, the from-source toolchain).
+do_unpack() {
+  [ -n "${PKG_TARBALL:-}" ] || return 0
+  : "${NODE_SCRATCH:?do_unpack: NODE_SCRATCH unset (tarball extract dir)}"
+  local src="${NODE_SCRATCH}/src"; mkdir -p "${src}"
+  tar -xf "${PKG_TARBALL}" -C "${src}" --strip-components=1
+  PKG_SRC_DIR="${src}"
+}
+
+# do_patch — the DEFAULT patch task (Yocto's do_patch): no-op. A recipe/class overrides it to edit the
+# UNPACKED source before do_build (e.g. the from-source toolchain repoints gcc's default loader path).
+# Build-time config edits (kconfig .config tweaks, defconfig fragments) are NOT patches — they belong in
+# do_build, since they operate on generated build artifacts, not the pristine source tree.
+do_patch() { :; }
