@@ -8,7 +8,6 @@
 #   make KERNEL=mainline # our rootfs on a mainline kernel (bug isolation)
 #   make console         # the canvas console flavor (mainline + musl + the console package)
 #   make flash           # build a NOR bundle + flash + FEL-boot on the rig
-#   make print-config    # show the resolved selection (no build)
 #   make test            # kernel golden QEMU tests
 #   make clean
 
@@ -16,7 +15,7 @@ PRODUCT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT   := $(abspath $(PRODUCT_DIR)/../..)
 
 include config.mk
-include $(REPO_ROOT)/forge/core/rules.mk
+include $(REPO_ROOT)/forge/engine/engine.mk
 
 # --- product-specific targets ------------------------------------------------
 # flash + test deploy/verify on OUR bench, so they live here, not in the generic engine.

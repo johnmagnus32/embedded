@@ -17,7 +17,7 @@
 #   LIBC_STAGE_DIR      output dir (crt0.S.o / libc.a / libc.so / ld.so.1)
 #   STAGE_INC           where to stage the kernel UAPI headers
 #   ROOTFS_TARGET       t113 | virt (the arch/board target, passed to the ld/ sub-make as BOARD=)
-#   REPO_ROOT ROOTFS_CROSS_COMPILE   (from the build env)
+#   REPO_ROOT CROSS_COMPILE   (from the build env)
 
 LIBC_PROVIDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KERNEL_UAPI_DIR="${REPO_ROOT}/kernel/include/uapi"
@@ -29,7 +29,7 @@ mkdir -p "${LIBC_STAGE_DIR}" "${STAGE_INC}"
 
 # 1. stage the kernel UAPI snapshot (syscall numbers + ABI structs) the libc + its
 #    consumers compile against — the `make headers_install` model.
-for h in gv3_syscalls.h gv3_abi.h; do
+for h in syscalls.h abi.h; do
   cp -f "${KERNEL_UAPI_DIR}/${h}" "${STAGE_INC}/${h}"
 done
 
@@ -48,7 +48,7 @@ done
 # 4. archive (static) and/or shared lib + the dynamic linker (dynamic).
 if [ "${PKG_LINK}" = dynamic ]; then
   "${PKG_CC}" ${PKG_CFLAGS} -fPIC -shared -nostdlib -Wl,--build-id=none \
-    -Wl,-soname,libc.so "${OBJS[@]}" -o "${LIBC_STAGE_DIR}/libc.so"
+    -Wl,-soname,libc.so "${OBJS[@]}" ${LIBGCC} -o "${LIBC_STAGE_DIR}/libc.so"
   # the from-scratch dynamic linker rides WITH the libc (ld/ Makefile), built into
   # the libc staging dir.
   make -C "${LIBC_PROVIDER_DIR}/ld" BUILD="${LIBC_STAGE_DIR}/ld-build" BOARD="${ROOTFS_TARGET}" >/dev/null 2>&1
@@ -58,6 +58,6 @@ if [ "${PKG_LINK}" = dynamic ]; then
   # INSTALLING them into the image's /lib is the ROOTFS assembler's job (§3f) — a producer
   # never writes $STAGE. The assembler reads these from LIBC_STAGE_DIR for a dynamic build.
 else
-  "${ROOTFS_CROSS_COMPILE}ar" rcs "${LIBC_STAGE_DIR}/libc.a" "${OBJS[@]}"
+  "${CROSS_COMPILE}ar" rcs "${LIBC_STAGE_DIR}/libc.a" "${OBJS[@]}"
   echo "  [libc] libc.a -> ${LIBC_STAGE_DIR}"
 fi

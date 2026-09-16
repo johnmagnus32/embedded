@@ -5,17 +5,24 @@ Same model as Buildroot/Yocto — a generic engine, per-board config, and compon
 recipes — rolled by hand because building it is the learning goal. Today's one product
 is [`projects/gameboy-v3/`](../projects/gameboy-v3/).
 
-The metaphor: **`forge/` is the whole workshop; `forge/core/` is the machinery inside it.**
+The metaphor: **`forge/` is the whole workshop; `forge/engine/` is the machinery, `forge/meta/` the parts
+catalog.** This mirrors Yocto's `poky/` split into `bitbake/` (the engine) + `meta/` (the core layer).
 
 ```
 forge/
-  core/            the ENGINE — Make orchestrator + the shell mechanism it drives
-  recipes-kernel/  linux, kernel-custom            (provide virtual/kernel)
-  recipes-bsp/     u-boot, bootloader-custom        (provide virtual/bootloader)
-  recipes-core/    musl, libc-custom (virtual/libc); init-* , runit (virtual/init);
-                   busybox, coreutils (additive packages); rootfs, image (build phases)
-  recipes-devtools/ toolchains (class=cross), make/genimage/gen_init_cpio/libconfuse/binman-venv (class=native)
+  engine/            the ENGINE — Make orchestrator + the shell mechanism it drives (resolve/rules/run-recipe)
+  meta/              the core LAYER (Yocto's poky/meta) — classes + recipe catalog:
+    classes-global/    classes auto-inherited by EVERY node (base); à la Yocto's classes-global/
+    classes-recipe/    classes a recipe opts into via `inherit <class>`; à la Yocto's classes-recipe/
+    recipes-kernel/    linux, kernel-custom            (provide virtual/kernel)
+    recipes-bsp/       u-boot, bootloader-custom        (provide virtual/bootloader)
+    recipes-core/      musl, libc-custom (virtual/libc); init-* , runit (virtual/init);
+                       busybox, coreutils (additive packages); rootfs, image (build phases)
+    recipes-devtools/  toolchains (class=cross), make/genimage/gen_init_cpio/libconfuse/binman-venv (class=native)
 ```
+
+The ENGINE (`forge/engine/`) is generic and product-agnostic; all metadata — classes AND recipes — lives
+in the LAYER (`forge/meta/`), exactly as Yocto keeps `.bbclass` and `.bb` files out of `bitbake/`.
 
 **Yocto-style flat catalog.** Recipes are grouped by DOMAIN (`recipes-<domain>/`, like Yocto's
 `recipes-core`/`recipes-devtools`/`recipes-kernel`/`recipes-bsp`), not by role-directory. A recipe's
@@ -28,7 +35,7 @@ ROLE is METADATA, not its folder:
 Adding an implementation = a new `recipes-<domain>/<name>/` dir with the right metadata; no engine edit.
 The PRODUCT is its own layer (its `recipes-*/` + `packages/` are searched first, overriding forge's).
 
-**Two addressing roots.** CATALOGS resolve under `FORGE_ROOT` (= `forge/`). Custom-provider
+**Two addressing roots.** CATALOGS resolve under `FORGE_META` (= `forge/meta/`, the layer). Custom-provider
 SOURCE (repo-root `kernel/ libc/ bootloader/ coreutils/` — software, not build-system)
 resolves under `REPO_ROOT` (the git root). A recipe's `PKG_FETCH=local` + `PKG_SOURCE=kernel`
 means `$REPO_ROOT/kernel`.
@@ -41,7 +48,7 @@ A product Makefile is thin:
 PRODUCT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT   := $(abspath $(PRODUCT_DIR)/../..)
 include config.mk                        # the SELECTION (providers + board + media)
-include $(REPO_ROOT)/forge/core/rules.mk # the engine
+include $(REPO_ROOT)/forge/engine/engine.mk # the engine
 ```
 
 `config.mk` picks an implementation for each layer along **independent axes**:
@@ -75,17 +82,15 @@ walker**. There is no per-layer makefile and no dispatch on provider identity.
 
 | file | role |
 |------|------|
-| `core/rules.mk`      | top-level targets + the dependency GRAPH. Host deps and target deps are both Make prerequisites (`host-<dep>` edges come from each recipe's `PKG_HOST_DEPENDS`). |
-| `core/resolve.mk`    | resolve the SELECTION → recipe paths, source paths, `CFG`, and `forge.conf`. Validates by recipe existence (adding a provider is a new dir, no edit here). One field reader (`_field`) for every recipe. |
-| `core/run-recipe.sh` | the ONE node runner (ORCHESTRATOR) + the shared build ENVIRONMENT. Loads the env (sources forge.conf + board.conf, sets PATH), defines only the primitives it needs before a class is inherited (`recipe_get`, `apply_dtsi_overlay`, `log`/`die`, `_prepend_path`, `inherit`), computes the content taskhash + skips up-to-date nodes, then sources a recipe and calls `do_fetch → do_build → do_install` BY NAME — no branch on kind or identity. The FETCH mechanism is NOT here — it's the default `do_fetch`, in `classes/base.sh`. |
-| `core/rules.mk` `toolchain:` | `make toolchain`: provision the base host-tool set (make + both cross toolchains + gen_init_cpio) as pure Make prerequisites over the base `host-<name>` nodes. |
-| `core/classes/`      | capabilities a recipe binds via `inherit <class>` (Yocto's `.bbclass`): `base` (the implicit default tasks + the FETCH MECHANISM every node gets — the default `do_fetch` dispatch per `PKG_FETCH` plus the shared download/clone primitives `fetch_verify`/`git_clone_pinned`/`clone_or_reuse_pinned`/`forge_fetch_file` that host classes also call — à la `base.bbclass`) + task DEFAULTS (`compile-c`, `make-c`, `libc`, host `host-cc`/`host-autotools`/`host-pyvenv`/`host-tarball-bin`) or a shared MECHANISM (`kconfig` = the defconfig→fixup→normalize functions, à la Yocto's `cml1`). The libc's CC/link contract lives with the libc (`recipes-core/<libc>/cc-profile.sh`), sourced directly — the engine has no per-libc CC code. |
-| `core/defaults/`     | engine defaults (`rootfs.devs`, host config fragments). |
+| `engine/engine.mk`     | the Make engine in two phases: RESOLUTION (selection → recipe paths + `forge.conf`; validated by recipe existence, so adding a provider is a new dir with no edit here; one field reader `_field`) then TARGETS+GRAPH (one `_node_rule` per node — host and target deps are both Make prerequisites, `host-<dep>` edges from each recipe's `PKG_HOST_DEPENDS`). |
+| `engine/run-recipe.sh` | the ONE node runner (ORCHESTRATOR) + the shared build ENVIRONMENT. Loads the env (sources forge.conf + board.conf, scrubs PATH to the HOSTTOOLS allowlist), defines only the primitives it needs before a class is inherited (`recipe_get`, `apply_dtsi_overlay`, `log`/`die`, `inherit`), computes the content taskhash + skips up-to-date nodes, then sources a recipe and calls `do_fetch → do_build → do_install` BY NAME — no branch on kind or identity. The FETCH mechanism is NOT here — it's the default `do_fetch`, in `meta/classes-global/base.sh`. |
+| `meta/classes-global/` | classes auto-inherited by EVERY node (Yocto's `classes-global/`): `base` — the implicit default tasks + the FETCH MECHANISM every node gets (the default `do_fetch` dispatch per `PKG_FETCH` plus the shared download/clone primitives `fetch_verify`/`git_clone_pinned`/`clone_or_reuse_pinned`/`forge_fetch_file` that host classes also call — à la `base.bbclass`). |
+| `meta/classes-recipe/` | capabilities a recipe opts into via `inherit <class>` (Yocto's `classes-recipe/`, `.bbclass`): task DEFAULTS (`compile-c`, `make-c`, `libc`, host `host-cc`/`host-autotools`/`host-pyvenv`/`host-tarball-bin`/`host-toolchain-gcc`, `devicetree`) or a shared MECHANISM (`kconfig` = the defconfig→fixup→normalize functions, à la Yocto's `cml1`). The libc's CC/link contract lives with the libc (`meta/recipes-core/<libc>/cc-profile.sh`), sourced directly — the engine has no per-libc CC code. || `core/defaults/`     | engine defaults (`rootfs.devs`, host config fragments). |
 
 ### A recipe
 
 A recipe is bare `KEY=value` facts + a class binding + optional inline task overrides. It
-is read two ways: `resolve.mk` scrapes keys with `awk`; `run-recipe.sh` and the classes
+is read two ways: `engine.mk` scrapes keys with `awk`; `run-recipe.sh` and the classes
 `source` it as bash. (Hence `recipe.sh`, not `.mk` — it is bash, never Make-included.)
 
 ```sh
@@ -118,7 +123,7 @@ no sibling `build.sh`.
 
 ### forge.conf — the resolved config the backends read
 
-`resolve.mk` resolves the whole selection once and `rules.mk` writes it to
+`engine.mk` resolves the whole selection and writes it to
 `$(BUILD)/forge.conf` (regenerated every build; `cat` it to see exactly what was
 resolved). `run-recipe.sh` `source`s it at the top of every node — instead of threading
 ~15 vars through recursive `$(MAKE)` calls. (Make itself doesn't read it back; it's a
@@ -147,8 +152,7 @@ only its own `config.mk` + `board/`.
 ```
 make image        # default: build for MEDIA (nor bundle | sd .img)
 make flash        # image (nor) + flash + FEL-boot on the rig
-make kernel|bootloader|libc|rootfs|toolchain   # one layer
-make print-config # resolved selection, no build
+make kernel|bootloader|libc|rootfs   # one layer
 make test         # kernel golden QEMU tests
 make clean
 ```

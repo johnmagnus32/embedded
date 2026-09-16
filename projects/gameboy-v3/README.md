@@ -111,11 +111,11 @@ rabbit hole). Everything else we build.
 shared engine [`forge/`](../../forge/) (at the repo root, reused by any product),
 not per-product scripts. `make image` from here resolves this product's selection
 ([config.mk](config.mk)) + board inputs and orchestrates the generic build
-backends in [`forge/core/`](../../forge/core/) (the idempotent fetch/build
+backends in [`forge/engine/`](../../forge/engine/) (the idempotent fetch/build
 recipes — the old `NN-*.sh`, now engine-owned). Pins split by tier:
-- **Engine** ([`forge/core/resolve.mk`](../../forge/core/resolve.mk)) — the
+- **Engine** ([`forge/engine/engine.mk`](../../forge/engine/engine.mk)) — the
   HOST-constrained cross-toolchain / arch pins (chosen by the build host, not this
-  product); the build mechanism itself lives in [`forge/core/run-recipe.sh`](../../forge/core/run-recipe.sh).
+  product); the build mechanism itself lives in [`forge/engine/run-recipe.sh`](../../forge/engine/run-recipe.sh).
 - **Product** ([`versions.env`](versions.env)) — the OSS component pins (kernel /
   U-Boot / BusyBox tags + checksums), as data. Bump a version here.
 - **Board** ([`boards/t113-gameboy/`](boards/t113-gameboy/)) — `board.conf`, the
@@ -161,7 +161,7 @@ host's own make if new enough, otherwise builds a pinned one into `build/hostmak
   syscall surface — both a size win now and groundwork for a hand-written kernel.
 
 ```bash
-make toolchain                     # idempotent; provisions the base host-tool set (pure Make)
+make host-toolchain-gcc host-gen_init_cpio   # provision the cross toolchain + cpio writer (also built on demand by any `make image`)
 ```
 
 - Pinned: `armv7-eabihf--glibc--stable-2021.11-1` (GCC 10.3.0), verified against
@@ -176,8 +176,8 @@ make toolchain                     # idempotent; provisions the base host-tool s
   `forge/hostpackages/toolchain-*` recipes (toolchain pins are engine-tier — host-constrained).
 - Installs to `build/toolchain/`; `CROSS_COMPILE=arm-buildroot-linux-gnueabihf-`
   (Bootlin builds their toolchains with Buildroot, hence the `buildroot` triple).
-- [`forge/core/run-recipe.sh`](../../forge/core/run-recipe.sh) loads the build env at
-  every node, which puts both cross toolchains + make on PATH — set once, per build.
+- [`forge/engine/run-recipe.sh`](../../forge/engine/run-recipe.sh) loads the build env at
+  every node, which scrubs PATH to the cross toolchain + make + the HOSTTOOLS allowlist — set once, per build.
 
 ### Step 1 — U-Boot (SPL + U-Boot proper) ✅ implemented
 
@@ -268,7 +268,7 @@ make rootfs KERNEL=mainline LIBC=musl PACKAGES=busybox   # runs forge/steps/root
 ```
 
 - **Pinned BusyBox 1.36.1** (last upstream "stable"-labeled release), SHA256-verified.
-- **Built with the musl toolchain** (`ROOTFS_CROSS_COMPILE`), not glibc: the
+- **Built with the musl toolchain** (`CROSS_COMPILE`), not glibc: the
   static binary is 1.38 MB vs 2.08 MB, so the initramfs is **792 KB vs 1.15 MB
   (31% smaller)**. Selected via BusyBox's `CONFIG_CROSS_COMPILER_PREFIX` **and**
   `CROSS_COMPILE=` on both the build and `make install` lines — the install step
@@ -871,10 +871,9 @@ script._
 How to put the built image on a microSD, wire up the serial console, and boot
 the T113-S3 on the t113-breakout board to a shell prompt.
 
-Build the SD image (toolchain once, then one command):
+Build the SD image (one command — the toolchain builds as a dependency):
 
 ```bash
-make toolchain                 # once
 make image MEDIA=sd               # → build/output/gameboy-v3-<cfg>-sd.img
 # defaults to custom+linux+busybox; add BOOTLOADER=uboot / KERNEL=... / ROOTFS=... to vary
 ```

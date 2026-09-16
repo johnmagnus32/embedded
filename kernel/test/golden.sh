@@ -19,7 +19,7 @@
 #            `make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox`); its
 #            name is selection-unique, so a not-built-yet case just SKIPs. INIT=shell = the
 #            minimal /bin/sh PID-1 (the kernel test uses it, NOT the C supervisor INIT=custom,
-#            which is mainline-only — see forge/recipes-core/ (virtual/init)).
+#            which is mainline-only — see forge/meta/recipes-core/ (virtual/init)).
 #   dynamic — the same, dynamically linked through musl's ld.so (add LINKAGE=dynamic
 #            to that rootfs build); SKIPs the same way. smoke/fault/orphan/preempt
 #            use built-in initramfs images and always run.
@@ -49,7 +49,7 @@ LOGDIR="${KDIR}/build/test"
 TOOLCHAIN_BIN="${PROJ}/build/toolchain-gcc/bin"
 # gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it into the product's
 # host prefix); the kernel Makefile no longer owns it, so we pass its path into the
-# fixtures build. Provisioned by the product's `make toolchain` (below, if absent).
+# fixtures build. Provisioned by the product's `make host-gen_init_cpio` (below, if absent).
 GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
 # The rootfs artifact is now named by (rootfs-tag + link) so selections/linkages don't clobber
 # in build/output/ — these are the musl-busybox static/dynamic names (see resolve.mk INITRAMFS_IMAGE).
@@ -359,11 +359,11 @@ main() {
   if [ "${NO_BUILD:-0}" != 1 ]; then
     printf '=== building (BOARD=virt) ===\n'
     # gen_init_cpio is engine-provisioned (fetched + compiled into the product host prefix).
-    # Provision it if missing (the product's `make toolchain` runs the host subsystem), then
+    # Provision it if missing (build the gen_init_cpio host node directly), then
     # pass its path to the fixtures build — the kernel Makefile doesn't build the tool itself.
     if [ ! -x "${GEN_INIT_CPIO}" ]; then
-      printf '  provisioning gen_init_cpio (make toolchain) ...\n'
-      make -C "${PROJ}" toolchain >>"${LOGDIR}/build.log" 2>&1 || true
+      printf '  provisioning gen_init_cpio (make host-gen_init_cpio) ...\n'
+      make -C "${PROJ}" host-gen_init_cpio >>"${LOGDIR}/build.log" 2>&1 || true
     fi
     # `all` = the kernel binary; `fixtures` = the four test initramfs images these
     # cases boot (the kernel Makefile split test scaffolding out of `all`, so name it).
