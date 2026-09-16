@@ -139,7 +139,7 @@ load_env() {
 setup_build_env() {
   load_build_env
   setup_host_env        # farm + sanity while PATH is still the host's
-  setup_path            # then scrub PATH
+  setup_path
   set_recipe_env
 }
 
@@ -277,24 +277,16 @@ _artifact_path() {
 # Yocto trusting bitbake-core): its build-affecting logic — env setup + task order — changes rarely and
 # is a "clean the world" edit; the orchestration that changes often doesn't affect a recipe's output.
 compute_recipehash() {
-  local basehash dep deps
-  basehash="$(
+  local this_recipe_hash dependency_recipe_hashes dep
+  this_recipe_hash="$(
     {
-      # the recipe's own inputs — recipe dir (recipe.sh + siblings: cc-profile.sh, *.config, …) +
-      # inherited classes + required .incs + local source + declared config/board. Each section
-      # self-delimits by line format (sha256sum "<hash> path", "# class", "var:", "file:").
+      # recipe source
       ( cd "${RECIPE_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
       for dep in ${_INHERITED_CLASSES}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
-      # the local source tree, build/ outputs excluded. git/tarball/prebuilt fetch nothing to hash here:
-      # the pin (PKG_VERSION/PKG_SHA256/PKG_GIT_URL) lives in recipe.sh/.inc (already hashed) and the
-      # fetched content is deterministic given that pin.
       [ "${PKG_FETCH:-local}" = local ] \
         && ( cd "${REPO_ROOT}" && find "${PKG_SOURCE}" -type f -not -path '*/build/*' -exec sha256sum {} + 2>/dev/null | sort )
-      # Config VALUES + out-of-tree FILES the recipe declares it reads — the engine names none of them
-      # (Yocto's vardeps / file-checksums). A link-sensitive libc sets PKG_VARDEPS="PKG_LINK"; a
-      # board-dependent recipe sets PKG_FILEDEPS="${BOARD_DIR}". Neither is caught by the hashes above:
-      # PKG_LINK is a build-time value in no file, and board files live outside the recipe dir + source.
+      # config values
       for dep in ${PKG_VARDEPS:-};  do printf 'var:%s=%s\n' "${dep}" "${!dep:-}"; done
       for dep in ${PKG_FILEDEPS:-}; do
         [ -e "${dep}" ] || continue
@@ -305,13 +297,15 @@ compute_recipehash() {
     } | sha256sum | cut -d' ' -f1
   )"
 
-  deps="$(recipe_deps "${RECIPE}")"   # same resolver the graph edges use (incl PKG_HOST_DEPENDS_<MEDIA>)
+  dependency_recipe_hashes="$(
+    for dep in $(recipe_deps "${RECIPE}"); do
+      [ -f "${OS_SIGS}/${dep}.recipehash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.recipehash")"
+    done
+  )"
   _recipehash="$(
     {
-      printf '%s\n' "${basehash}"
-      for dep in ${deps}; do
-        [ -f "${OS_SIGS}/${dep}.recipehash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.recipehash")"
-      done
+      printf '%s\n' "${this_recipe_hash}"
+      printf '%s\n' "${dependency_recipe_hashes}"
     } | sha256sum | cut -d' ' -f1
   )"
 
