@@ -8,11 +8,11 @@ PKG_PROVIDES=virtual/init
 PKG_FETCH=local
 PKG_SOURCE=init                        # top-level init/ (relative to REPO_ROOT)
 PKG_DEPENDS=virtual/libc                       # link the selected libc + rebuild on its change
-PKG_ARTIFACT=stage:                    # artifact = this node's pkgstage dir (cacheable)
+PKG_ARTIFACT=stage:                    # artifact = this recipe's pkgstage dir (cacheable)
 
 do_build() {
   : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${RECIPE_SCRATCH:?}"
-  : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (node env)}"
+  : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (recipe env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
   local O="${RECIPE_SCRATCH}/build"; mkdir -p "${O}"

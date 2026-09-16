@@ -38,7 +38,7 @@ do_build() {
   make install DESTDIR="${LIBC_STAGE_DIR}" >"${RECIPE_SCRATCH}/musl-install.log" 2>&1 || { tail -15 "${RECIPE_SCRATCH}/musl-install.log"; die "musl: install failed"; }
   [ -e "${LIBC_STAGE_DIR}/usr/lib/crt1.o" ] || die "musl: sysroot incomplete (no crt1.o) at ${LIBC_STAGE_DIR}"
   # add the sanitized Linux UAPI headers (linux/*, asm/*, …) alongside musl's own — a from-source libc
-  # sysroot needs them for real userland (busybox's <linux/kd.h>); the linux-libc-headers node staged them.
+  # sysroot needs them for real userland (busybox's <linux/kd.h>); the linux-libc-headers recipe staged them.
   local UAPI="${BUILD_DIR}/linux-libc-headers/include"
   [ -d "${UAPI}/linux" ] || die "musl: linux-libc-headers not staged at ${UAPI} (host-dep must build first)"
   cp -a "${UAPI}/." "${LIBC_STAGE_DIR}/usr/include/"

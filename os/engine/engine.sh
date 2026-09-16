@@ -64,11 +64,11 @@ resolve() {
   esac
 }
 
-# node_deps <recipe-path> -> its resolved prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
+# recipe_deps <recipe-path> -> its resolved prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
 # PKG_HOST_DEPENDS_<MEDIA> (recipe_get expands ${PACKAGES}) + the implied compiler edge for a target
 # that links libc, each virtual/<x> resolved. No `make` barrier — that's a Make-ordering edge, added by
 # resolve-dependencies. Used by BOTH resolve-dependencies (graph edges) + compute_recipehash (hash fold).
-node_deps() {
+recipe_deps() {
   local path="$1" raw tok out=""
   raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
   if [ "$(recipe_get "${path}" PKG_CLASS target)" = target ]; then
@@ -78,12 +78,12 @@ node_deps() {
   printf '%s' "${out# }"
 }
 
-# resolve-dependencies <recipe> -> node_deps + the `make` barrier (all nodes but make itself).
+# resolve-dependencies <recipe> -> recipe_deps + the `make` barrier (all recipes but make itself).
 resolve_dependencies() {
   load_config
   local recipe="$1" path deps
   path="$(byname "${recipe}")" || return 0
-  deps="$(node_deps "${path}")"
+  deps="$(recipe_deps "${path}")"
   [ "${recipe}" = make ] && printf '%s\n' "${deps}" || printf 'make %s\n' "${deps}"
 }
 
@@ -147,7 +147,7 @@ load_build_env() {
   load_env
   RECIPE="$(byname "${LAYER}" || true)"; export RECIPE
   [ -n "${RECIPE}" ] && [ -f "${RECIPE}" ] \
-    || die "no recipe for node '${LAYER}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
+    || die "no recipe for '${LAYER}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
 }
 
 build_hosttools_farm() {
@@ -305,7 +305,7 @@ compute_recipehash() {
     } | sha256sum | cut -d' ' -f1
   )"
 
-  deps="$(node_deps "${RECIPE}")"   # same resolver the graph edges use (incl PKG_HOST_DEPENDS_<MEDIA>)
+  deps="$(recipe_deps "${RECIPE}")"   # same resolver the graph edges use (incl PKG_HOST_DEPENDS_<MEDIA>)
   _recipehash="$(
     {
       printf '%s\n' "${basehash}"

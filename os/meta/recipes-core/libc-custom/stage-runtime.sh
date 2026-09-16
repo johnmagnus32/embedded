@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # providers/libc/custom/stage-runtime.sh — the from-scratch libc's DYNAMIC-RUNTIME staging (sourced
 # by the rootfs step when LINK=dynamic; static builds never call this). WHERE /lib/{libc.so,ld.so.1}
-# come from depends on the TOOLCHAIN axis (from the node env):
-#   TOOLCHAIN=source  — the libc node built them into its conforming sysroot (LIBC_STAGE_DIR), which
+# come from depends on the TOOLCHAIN axis (from the recipe env):
+#   TOOLCHAIN=source  — the libc recipe built them into its conforming sysroot (LIBC_STAGE_DIR), which
 #                       IS the final toolchain-gcc's --with-sysroot; fetch via the compiler itself
 #                       (-print-file-name / -print-sysroot both resolve back to that sysroot).
 #   TOOLCHAIN=prebuilt— the bare -nostdlib build put them in LIBC_STAGE_DIR; copy from there.
 #
 # In scope (rootfs step env): STAGE, LIBC_STAGE_DIR, CROSS_COMPILE, log(), die().
-: "${TOOLCHAIN:?stage-runtime: TOOLCHAIN unset (from the node env)}"
+: "${TOOLCHAIN:?stage-runtime: TOOLCHAIN unset (from the recipe env)}"
 if [ "${TOOLCHAIN}" = gcc ]; then
   local libc_so sysroot
   libc_so="$(${CROSS_COMPILE}gcc -print-file-name=libc.so)"

@@ -1,5 +1,5 @@
 # steps/rootfs/recipe.sh — the rootfs engine step: pack the initramfs. PACKAGES are their own
-# graph nodes (built + staged first); this step only assembles + packs them. (Yocto's do_rootfs.)
+# recipes (built + staged first); this step only assembles + packs them. (Yocto's do_rootfs.)
 PKG_NAME=rootfs
 PKG_CLASS=image
 
@@ -64,7 +64,7 @@ _rootfs_pack() {
 # adding a libc is a new hook, not an edit here.
 _stage_libc_runtime() {
   [ "${PKG_LINK:-static}" = dynamic ] || return 0
-  : "${PROVIDER_libc:?rootfs _stage_libc_runtime: PROVIDER_libc unset (from the node env)}"
+  : "${PROVIDER_libc:?rootfs _stage_libc_runtime: PROVIDER_libc unset (from the recipe env)}"
   local hook; hook="$(dirname "${PROVIDER_libc}")/stage-runtime.sh"
   [ -f "${hook}" ] || die "libc '${LIBC:-}' has no stage-runtime.sh (needed for a dynamic rootfs): ${hook}"
   mkdir -p "${STAGE}/lib"
@@ -75,7 +75,7 @@ _stage_libc_runtime() {
 do_build() {
   : "${STAGE:?rootfs do_build: STAGE unset}"; : "${OUTPUT_DIR:?}"
   : "${BUILD_DIR:?rootfs do_build: BUILD_DIR unset}"; : "${PACKAGES:?rootfs do_build: PACKAGES unset}"
-  # INITRAMFS_IMAGE (node env) is keyed by ROOTFS_TAG+link, so static and dynamic land at
+  # INITRAMFS_IMAGE (recipe env) is keyed by ROOTFS_TAG+link, so static and dynamic land at
   # distinct names — no per-linkage rename needed here.
   local OUT_CPIO="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
   log "packing rootfs: LIBC=${LIBC:-} PACKAGES='${PACKAGES:-}' (LINK=${PKG_LINK:-static}, BOARD=${BOARD_NAME:-})"
@@ -91,7 +91,7 @@ do_build() {
   done
 
   # The selected INIT provider staged /init (+ its config) into pkgstage/init; merge it in.
-  [ -d "${PKGSTAGE}/init" ] || die "rootfs: init staged nothing at ${PKGSTAGE}/init (init node failed?)"
+  [ -d "${PKGSTAGE}/init" ] || die "rootfs: init staged nothing at ${PKGSTAGE}/init (init recipe failed?)"
   cp -a "${PKGSTAGE}/init/." "${STAGE}/"
   [ -e "${STAGE}/init" ] || die "rootfs: the INIT provider did not install /init"
 

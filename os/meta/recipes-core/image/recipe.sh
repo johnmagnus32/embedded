@@ -120,9 +120,9 @@ emit_sd_img() {
 }
 
 do_build() {
-  # Every selector + derived tag comes from the node env (engine.sh); this recipe only ever runs via
+  # Every selector + derived tag comes from the recipe env (engine.sh); this recipe only ever runs via
   # engine.sh, which sources it — so require them, never guess a default.
-  : "${BOOTLOADER:?image: BOOTLOADER unset (from the node env)}"
+  : "${BOOTLOADER:?image: BOOTLOADER unset (from the recipe env)}"
   : "${KERNEL:?image: KERNEL unset}"
   : "${LIBC:?image: LIBC unset}"
   : "${PACKAGES:?image: PACKAGES unset}"
@@ -132,9 +132,9 @@ do_build() {
   OUT="${OUT:-${BUILD_DIR}/bundle}"   # the NOR bundle dir (fixed path; override with OUT=)
 
   # PROVIDER_kernel / PROVIDER_bootloader are resolved by engine.sh (virtual/* + PREFERRED_PROVIDER) and put into
-  # the node env, so the composer just reads them — no path knowledge of the recipe catalog here.
-  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset (from the node env)}"
-  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (from the node env)}"
+  # the recipe env, so the composer just reads them — no path knowledge of the recipe catalog here.
+  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset (from the recipe env)}"
+  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (from the recipe env)}"
   export PROVIDER_kernel PROVIDER_bootloader
 
   log "compose: BOOTLOADER=$BOOTLOADER  KERNEL=$KERNEL  ROOTFS=$ROOTFS_TAG  MEDIA=$MEDIA  ($CFG)"

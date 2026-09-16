@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # classes/base.sh — the BASE class every recipe implicitly inherits (Yocto's base.bbclass).
-# engine.sh `inherit base` for EVERY node BEFORE sourcing the recipe, so both the default do_*
+# engine.sh `inherit base` for EVERY recipe BEFORE sourcing the recipe, so both the default do_*
 # tasks AND the fetch helpers below are universally in scope — for the recipe and for every class it
 # later inherits (host classes call os_fetch_file directly). A recipe (or a class it inherits)
 # overrides any do_* last-definition-wins. base defaults the SOURCE-side tasks — do_fetch (fetch per
@@ -108,7 +108,7 @@ pkg_src() {
   printf '%s' "${DOWNLOAD_DIR}/${url##*/}"
 }
 
-# do_fetch — the DEFAULT fetch task: resolve THIS node's recipe source onto disk per PKG_FETCH and
+# do_fetch — the DEFAULT fetch task: resolve THIS recipe's source onto disk per PKG_FETCH and
 # set PKG_SRC_DIR (run_tasks exports it for do_build). This IS the fetch mechanism. Overridden to no-op
 # by recipes/classes whose source needs no os fetch — host classes self-fetch a file/tarball into
 # their prefix; prebuilt/none have nothing to fetch. Idempotent.
@@ -168,7 +168,7 @@ do_fetch() {
   # names in PKG_SOURCES, each with PKG_SRC_<name>=<url> + PKG_SHA_<name>=<sha256>; the FRAMEWORK
   # fetches + verifies them here (into DOWNLOAD_DIR via os_fetch_file), so a do_build never
   # hand-rolls downloads — it reads each by name with `pkg_src <name>`. This is orthogonal to
-  # PKG_FETCH above (a node can be PKG_FETCH=local for its own source AND pull extra tarballs, e.g.
+  # PKG_FETCH above (a recipe can be PKG_FETCH=local for its own source AND pull extra tarballs, e.g.
   # the from-source toolchain: PKG_SOURCE=libc for the recipehash + gcc/binutils/gmp/... as sources).
   # Empty PKG_SOURCES (every non-toolchain recipe) is a no-op.
   # Optional per-source PKG_MIRROR_<name> (a fallback site dir) + PKG_QUERY_<name> (a URL query the
@@ -186,7 +186,7 @@ do_fetch() {
 }
 
 # do_unpack — the DEFAULT unpack task (Yocto's do_unpack): extract the PKG_FETCH=tarball source that
-# do_fetch downloaded to DOWNLOAD_DIR (path handed over in PKG_TARBALL) into the node scratch, and set
+# do_fetch downloaded to DOWNLOAD_DIR (path handed over in PKG_TARBALL) into the recipe scratch, and set
 # PKG_SRC_DIR for do_build. For git|local the clone/checkout IS the unpack (do_fetch already set
 # PKG_SRC_DIR); prebuilt|none have no source — so with PKG_TARBALL unset this is a no-op. Overridden by
 # recipes/classes that unpack their own PKG_SOURCES tarballs (host-autotools, the from-source toolchain).

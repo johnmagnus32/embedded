@@ -30,7 +30,7 @@ do_build() {
   done
 
   # extract (normalize the dir name so the on-PATH layout is stable). ALWAYS re-extract when this
-  # runs: the uniform recipehash cache (engine.sh) already skipped the whole node when the tree
+  # runs: the uniform recipehash cache (engine.sh) already skipped the whole recipe when the tree
   # was up to date, so reaching here means a (re)provision is wanted — and a stale tree from a
   # prior version must NOT be kept.
   local cc_bin="${dest}/bin/${prefix}gcc"

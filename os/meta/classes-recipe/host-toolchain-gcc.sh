@@ -7,7 +7,7 @@
 #
 #   toolchain-gcc-initial  do_build: binutils(own empty sysroot) + gcc PASS-1 (C only, --without-headers,
 #                                    static libgcc, inhibit_libc: no libc deps)
-#         │ the libc node then compiles REPO_ROOT/libc WITH the initial gcc into a conforming SYSROOT
+#         │ the libc recipe then compiles REPO_ROOT/libc WITH the initial gcc into a conforming SYSROOT
 #         ▼ (crt1/crti/crtn + libc.a/.so + /lib/ld.so.1) — see libc/build-sysroot.sh
 #   toolchain-gcc          do_build: binutils(--with-sysroot=that libc) + gcc PASS-2, inhibit_libc OFF
 #                                    (full libgcc + unwinder vs the libc) + the normal-link sanity check
@@ -75,10 +75,10 @@ do_unpack() {
 
 # do_patch — point gcc's ARM dynamic-linker default at the SELECTED libc's loader (so a normal
 # `gcc hello.c` emits the right PT_INTERP with no flags): our custom libc => /lib/ld.so.1; musl =>
-# /lib/ld-musl-armhf.so.1. LIBC comes from the node env (the node env).
+# /lib/ld-musl-armhf.so.1. LIBC comes from the recipe env (the recipe env).
 do_patch() {
   local eabi="${W}/src/gcc/gcc/config/arm/linux-eabi.h"
-  : "${LIBC:?${PKG_NAME}: LIBC unset (from the node env)}"
+  : "${LIBC:?${PKG_NAME}: LIBC unset (from the recipe env)}"
   local loader="/lib/ld.so.1"
   [ "${LIBC}" = musl ] && loader="/lib/ld-musl-armhf.so.1"
   sed -i -e "s#\"/lib/ld-linux\.so\.3\"#\"${loader}\"#" \

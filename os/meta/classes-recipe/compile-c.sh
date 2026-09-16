@@ -10,7 +10,7 @@
 # libc (via cc-profile) into a static/dynamic ELF, installed into the staging rootfs.
 # (Buildroot's generic-package analogue.)
 #
-# Contract (generic node env — from the runner + base's do_fetch): PKG_NAME, PKG_SRC_DIR (the
+# Contract (generic recipe env — from the runner + base's do_fetch): PKG_NAME, PKG_SRC_DIR (the
 #   source dir base's do_fetch resolved), RECIPE_SCRATCH (this class derives its obj dir under it),
 #   PKG_DEST (this package's own staging dir), PKG_INSTALL (a recipe fact, defaulted to /bin here),
 #   LIBC/PKG_LINK/REPO_ROOT + (custom) LIBC_STAGE_DIR/STAGE_INC. do_build sources cc-profile.sh for
@@ -21,12 +21,12 @@
 do_build() {
   : "${PKG_NAME:?}"; : "${PKG_SRC_DIR:?compile-c do_build: PKG_SRC_DIR unset (base do_fetch sets it)}"
   : "${RECIPE_SCRATCH:?compile-c do_build: RECIPE_SCRATCH unset}"
-  local PKG_BUILD_DIR="${RECIPE_SCRATCH}/obj"   # this class's scratch obj dir, derived from the node scratch
+  local PKG_BUILD_DIR="${RECIPE_SCRATCH}/obj"   # this class's scratch obj dir, derived from the recipe scratch
   # cc-profile gives PKG_CC/PKG_CFLAGS/PKG_LDFLAGS + LIBC_CRT/LIBC_LIB for the SELECTED
   # libc — the libc threads in as a build-config input, not a per-pkg branch. The contract
-  # lives beside the selected libc's recipe (PROVIDER_libc from the node env); sourced directly,
+  # lives beside the selected libc's recipe (PROVIDER_libc from the recipe env); sourced directly,
   # with no per-libc knowledge of its own.
-  : "${PROVIDER_libc:?compile-c do_build: PROVIDER_libc unset (from the node env)}"
+  : "${PROVIDER_libc:?compile-c do_build: PROVIDER_libc unset (from the recipe env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
   mkdir -p "${PKG_BUILD_DIR}"

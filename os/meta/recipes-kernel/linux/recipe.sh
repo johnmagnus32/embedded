@@ -37,7 +37,7 @@ do_build() {
     [ -f "/usr/include/${h}" ] || log "WARN: ${h} not found; kernel gcc-plugin build needs gmp/mpfr/mpc dev headers (apt: libgmp-dev libmpfr-dev libmpc-dev)"
   done
 
-  # The kernel Makefile requires GNU Make >= 4.0; the host-make node provides it on an old host.
+  # The kernel Makefile requires GNU Make >= 4.0; the host-make recipe provides it on an old host.
   local MAKE_VER
   MAKE_VER="$(make --version 2>/dev/null | sed -n '1s/.*GNU Make //p')"
   case "${MAKE_VER}" in

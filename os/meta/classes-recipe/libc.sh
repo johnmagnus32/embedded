@@ -4,7 +4,7 @@
 # libc name, so the engine stays libc-agnostic:
 #   * custom libc + TOOLCHAIN=gcc: build a CONFORMING SYSROOT (crt1/crti/crtn + libc.a/.so + /lib/ld.so.1
 #       + headers) with the STAGE-1 gcc (libc/build-sysroot.sh). The STAGE-2 toolchain-gcc then builds
-#       --with-sysroot=that (Yocto's glibc-between-the-two-gcc-stages shape; no no-op node).
+#       --with-sysroot=that (Yocto's glibc-between-the-two-gcc-stages shape; no no-op recipe).
 #   * custom libc + TOOLCHAIN=custom: our own cc/as/ld build libc.a + crt0 via the bare -nostdlib
 #       profile + build.sh (no stage split — our cc isn't bootstrapped).
 #   (musl builds itself FROM SOURCE via its own recipe do_build, so it never reaches this class.)
@@ -25,9 +25,9 @@ do_build() {
   fi
   : "${REPO_ROOT:?}"; : "${LIBC_STAGE_DIR:?}"; : "${STAGE_INC:?}"
 
-  : "${TOOLCHAIN:?libc do_build: TOOLCHAIN unset (from the node env)}"
+  : "${TOOLCHAIN:?libc do_build: TOOLCHAIN unset (from the recipe env)}"
   # TOOLCHAIN=gcc: build the libc into a conforming sysroot with the stage-1 gcc (LIBC_TC_DIR). The
-  # stage-2 toolchain-gcc is then built --with-sysroot=LIBC_STAGE_DIR (it PKG_DEPENDS on this node), so
+  # stage-2 toolchain-gcc is then built --with-sysroot=LIBC_STAGE_DIR (it PKG_DEPENDS on this recipe), so
   # a package cross-link pulls crt+libc+headers straight from here. build-sysroot.sh rides WITH the libc.
   if [ "${TOOLCHAIN}" = gcc ]; then
     local sysroot_build="${PKG_SRC_DIR}/build-sysroot.sh"
@@ -40,7 +40,7 @@ do_build() {
   # TOOLCHAIN=custom: our own cpp/cc/as/ar/ld build the libc (libc.a + crt0) via the bare -nostdlib
   # profile. cc-profile gives PKG_CC (the forge-cc driver) / PKG_CFLAGS; the provider's build.sh is
   # sourced so it inherits them. The selected libc's own CC/link contract lives beside its recipe.
-  : "${PROVIDER_libc:?libc do_build: PROVIDER_libc unset (from the node env)}"
+  : "${PROVIDER_libc:?libc do_build: PROVIDER_libc unset (from the recipe env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
   # shellcheck source=/dev/null

@@ -1,6 +1,6 @@
 # os/engine/engine.mk — the Make engine: a pure dependency-graph walker. All config + resolution
 # live in bash (engine.sh, reading the product's local.conf); Make globs the recipes, asks engine.sh
-# to resolve-dependencies for each, then to execute-recipe per node.
+# to resolve-dependencies for each, then to execute-recipe per recipe.
 PRODUCT_DIR ?= $(CURDIR)
 OS_DIR   := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 

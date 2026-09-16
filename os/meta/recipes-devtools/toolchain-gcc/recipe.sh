@@ -1,5 +1,5 @@
 # hostpackages/toolchain-gcc/recipe.sh — STAGE 2 (final) of our from-source arm cross toolchain:
-# binutils + gcc pass-2, --with-sysroot=<the libc node's conforming sysroot> (LIBC_STAGE_DIR), so
+# binutils + gcc pass-2, --with-sysroot=<the libc recipe's conforming sysroot> (LIBC_STAGE_DIR), so
 # `arm-forge-…-gcc hello.c` is a NORMAL cross-link against the selected libc (musl or our custom libc;
 # --with-sysroot + --dynamic-linker are libc-aware). Stock GCC 13.3.0 + GNU binutils 2.42 — what is
 # "ours" is that WE build it (from source, no prebuilt downloads), targeting the selected libc. The
@@ -15,7 +15,7 @@ require ${OS_META}/recipes-devtools/toolchain-gcc-sources.inc     # shared DATA 
 PKG_FETCH=none                 # sources come from PKG_SOURCES (in the .inc), fetched by base.sh
 PKG_VERSION=gcc13.3.0-binutils2.42
 
-# PKG_DEPENDS=libc: the final gcc's --with-sysroot IS the libc node's staged sysroot, so (a) engine.mk
+# PKG_DEPENDS=libc: the final gcc's --with-sysroot IS the libc recipe's staged sysroot, so (a) engine.mk
 # adds the `host-toolchain-gcc: libc` Make edge, and (b) compute_recipehash folds the libc recipehash (+
 # link mode, since PKG_DEPENDS=libc), so a libc/cc-profile edit rebuilds this gcc. The initial→libc→
 # packages ripple (via the shared class body's source pins) covers gcc/binutils version bumps.
@@ -26,10 +26,10 @@ PKG_DEPENDS=virtual/libc
 PKG_HOST_DEST=${BUILD_DIR}/toolchain-gcc
 
 do_build() {
-  # the sysroot IS the libc node's staged conforming sysroot (the libc built first — Make edge above).
-  : "${LIBC_STAGE_DIR:?${PKG_NAME}: LIBC_STAGE_DIR unset = the libc node sysroot}"
+  # the sysroot IS the libc recipe's staged conforming sysroot (the libc built first — Make edge above).
+  : "${LIBC_STAGE_DIR:?${PKG_NAME}: LIBC_STAGE_DIR unset = the libc recipe sysroot}"
   local SYSROOT="${LIBC_STAGE_DIR}"
-  [ -e "${SYSROOT}/usr/lib/crt1.o" ] || die "${PKG_NAME}: libc sysroot incomplete at ${SYSROOT} — the libc node must build first"
+  [ -e "${SYSROOT}/usr/lib/crt1.o" ] || die "${PKG_NAME}: libc sysroot incomplete at ${SYSROOT} — the libc recipe must build first"
 
   # do_unpack (class) already extracted the source + ran tc_setup, so triple/TC/W/jobs/cfg_arch are set.
   tc_binutils "${SYSROOT}"                        # class: binutils(--with-sysroot=libc) + PATH
@@ -52,7 +52,7 @@ do_build() {
   # shellcheck disable=SC2086  (arch is a multi-flag string — MUST word-split, not be one arg)
   "${triple}-gcc" ${arch} -o "${TMP}/t.dyn" "${TMP}/t.c" \
     || { rm -rf "${TMP}"; die "${PKG_NAME}: sanity normal-link failed"; }
-  : "${LIBC:?${PKG_NAME}: LIBC unset (from the node env)}"
+  : "${LIBC:?${PKG_NAME}: LIBC unset (from the recipe env)}"
   local F NEEDED INTERP LOADER="/lib/ld.so.1"
   [ "${LIBC}" = musl ] && LOADER="/lib/ld-musl-armhf.so.1"
   F="$(file "${TMP}/t.dyn" 2>/dev/null || true)"

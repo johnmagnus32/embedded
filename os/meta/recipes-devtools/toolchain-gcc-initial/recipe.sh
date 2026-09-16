@@ -1,6 +1,6 @@
 # hostpackages/toolchain-gcc-initial/recipe.sh — STAGE 1 of our from-source arm cross toolchain:
 # binutils + gcc pass-1 (C only, --without-headers, static libgcc, inhibit_libc). NO libc yet — the
-# libc node then compiles REPO_ROOT/libc WITH this gcc into a conforming sysroot (libc/build-sysroot.sh),
+# libc recipe then compiles REPO_ROOT/libc WITH this gcc into a conforming sysroot (libc/build-sysroot.sh),
 # and toolchain-gcc (stage 2) rebuilds gcc --with-sysroot=that. The SHARED bits (source pins, fetch/
 # extract/patch, binutils, sanity check) live in the host-toolchain-gcc class; the STAGE-SPECIFIC gcc
 # pass-1 is do_build HERE, in the recipe that owns it.
@@ -15,7 +15,7 @@ PKG_FETCH=none                 # sources come from PKG_SOURCES (in the .inc), fe
 PKG_VERSION=gcc13.3.0-binutils2.42
 
 # Self-identifying dest: this host package owns build/toolchain-gcc-initial (the arm-os stage-1 gcc
-# the libc node builds with, via LIBC_TC_DIR in the node env).
+# the libc recipe builds with, via LIBC_TC_DIR in the recipe env).
 PKG_HOST_DEST=${BUILD_DIR}/toolchain-gcc-initial
 
 do_build() {
@@ -36,5 +36,5 @@ do_build() {
       && make install-gcc install-target-libgcc ) >"${W}/01-gcc-pass1.log" 2>&1 \
     || die "${PKG_NAME}: gcc pass-1 failed (see ${W}/01-gcc-pass1.log)"
   rm -rf "${W}/src" "${W}/build"
-  log "${PKG_NAME}: ok -> stage-1 gcc $("${triple}-gcc" --version | head -1); the libc node builds the sysroot next"
+  log "${PKG_NAME}: ok -> stage-1 gcc $("${triple}-gcc" --version | head -1); the libc recipe builds the sysroot next"
 }
