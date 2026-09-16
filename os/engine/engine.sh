@@ -64,19 +64,27 @@ resolve() {
   esac
 }
 
-# resolve-dependencies <recipe> -> its prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
-# PKG_HOST_DEPENDS_<MEDIA> (${PACKAGES} expanded), + the implied compiler edge for a target that links
-# libc, each virtual/<x> resolved, + the `make` barrier (all but make itself).
-resolve_dependencies() {
-  load_config
-  local recipe="$1" path raw tok out=""
-  path="$(byname "${recipe}")" || return 0
+# node_deps <recipe-path> -> its resolved prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
+# PKG_HOST_DEPENDS_<MEDIA> (recipe_get expands ${PACKAGES}) + the implied compiler edge for a target
+# that links libc, each virtual/<x> resolved. No `make` barrier — that's a Make-ordering edge, added by
+# resolve-dependencies. Used by BOTH resolve-dependencies (graph edges) + compute_taskhash (hash fold).
+node_deps() {
+  local path="$1" raw tok out=""
   raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
   if [ "$(recipe_get "${path}" PKG_CLASS target)" = target ]; then
     case " $(recipe_get "${path}" PKG_DEPENDS) " in *" virtual/libc "*) raw="${raw} virtual/cross-cc" ;; esac
   fi
   for tok in ${raw}; do out="${out} $(resolve "${tok}")"; done
-  [ "${recipe}" = make ] && printf '%s\n' "${out}" || printf 'make%s\n' "${out}"
+  printf '%s' "${out# }"
+}
+
+# resolve-dependencies <recipe> -> node_deps + the `make` barrier (all nodes but make itself).
+resolve_dependencies() {
+  load_config
+  local recipe="$1" path deps
+  path="$(byname "${recipe}")" || return 0
+  deps="$(node_deps "${path}")"
+  [ "${recipe}" = make ] && printf '%s\n' "${deps}" || printf 'make %s\n' "${deps}"
 }
 
 # load_env — the FULL build environment (from local.conf + board.conf), for execute-recipe. Sets the
@@ -298,13 +306,7 @@ compute_taskhash() {
     } | sha256sum | cut -d' ' -f1
   )"
 
-  deps="${PKG_HOST_DEPENDS:-} ${PKG_DEPENDS:-}"
-  # A target recipe that links virtual/libc gets the implied compiler edge (matches engine.mk).
-  if [ "${PKG_CLASS:-target}" = target ]; then
-    case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) deps="${deps} virtual/cross-cc" ;; esac
-  fi
-  _rdeps=""; for dep in ${deps}; do _rdeps="${_rdeps} $(resolve "${dep}")"; done   # virtual/* -> provider name
-  deps="${_rdeps}"
+  deps="$(node_deps "${RECIPE}")"   # same resolver the graph edges use (incl PKG_HOST_DEPENDS_<MEDIA>)
   _taskhash="$(
     {
       printf '%s\n' "${base}"
