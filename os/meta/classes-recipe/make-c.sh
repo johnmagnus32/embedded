@@ -5,9 +5,9 @@
 # bootloader, whose OWN Makefiles do everything. Only DEFINES the default do_build/
 # do_install a recipe gets via `inherit make-c`; the generic runner calls them by name.
 #
-# The cross toolchain is already on PATH (run-recipe.sh adds it by presence; the engine
+# The cross toolchain is already on PATH (engine.sh adds it by presence; the engine
 # provisioned PKG_HOST_DEPENDS before this node ran). Inputs the tasks read (from the
-# runner + os-env + board.conf): PKG_SRC_DIR (the `make -C` target), LAYER
+# runner + engine.sh + board.conf): PKG_SRC_DIR (the `make -C` target), LAYER
 # (kernel|bootloader — selects the kernel's BOARD= pass), KERNEL_TARGET, PKG_MAKE_GOALS ("all fel"),
 # OUTPUT_DIR/KERNEL_DTB/KERNEL_DTB_OVERLAYS/UBOOT_BOARD_DT/BOARD_DIR (kernel DTB step).
 

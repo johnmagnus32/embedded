@@ -1,9 +1,133 @@
 #!/usr/bin/env bash
-# run-recipe.sh — the one node runner: resolve the env (os-env.sh), source the recipe, gate on the
-# content cache, then do_fetch -> do_build -> do_install by name. In: node NAME ($1) + PRODUCT_DIR (env).
+# engine.sh — the OS build engine (bash half; engine.mk is the Make graph-walker). Two subcommands,
+# each taking a recipe NAME + the seed PRODUCT_DIR (env); all config/resolution reads the product's
+# local.conf, so Make never sees a config value:
+#   engine.sh resolve-dependencies <recipe>  -> its resolved prerequisite recipe names (the Make prereqs)
+#   engine.sh execute-recipe        <recipe>  -> build it: resolve the env, source the recipe, cache-gate,
+#                                                then do_fetch -> do_build -> do_install by name.
 set -euo pipefail
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/os-env.sh"   # recipe_get, log/die, os_load_env, os_byname
-LAYER="${1:?run-recipe.sh: need a node name}"; export LAYER
+
+log() { printf '\033[1;34m[%s]\033[0m %s\n' "${LAYER:-os}" "$*"; }
+die() { printf '\033[1;31m[%s] ERROR:\033[0m %s\n' "${LAYER:-os}" "$*" >&2; exit 1; }
+
+# recipe_get <recipe> <KEY> [default] -> bare value of the last KEY=, ${VAR}-expanded (env in scope).
+recipe_get() {
+  local file="$1" key="$2" def="${3:-}" raw
+  raw="$(sed -n "s/^${key}=//p" "${file}" 2>/dev/null | tail -n1 | sed 's/[[:space:]]*#.*$//' | tr '\t' ' ' | tr -s ' ')"
+  read -r raw <<<"${raw}"
+  case "${raw}" in
+    '"'*'"') raw="${raw#\"}"; raw="${raw%\"}" ;;
+    "'"*"'") raw="${raw#\'}"; raw="${raw%\'}" ;;
+  esac
+  [ -n "${raw}" ] || { printf '%s' "${def}"; return 0; }
+  eval "printf '%s' \"${raw}\""
+}
+
+# locate — the engine's own dirs, from this file's path.
+locate() {
+  OS_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  OS_META="$(cd "${OS_ENGINE}/../meta" && pwd)"
+  REPO_ROOT="$(cd "${OS_ENGINE}/../.." && pwd)"
+  export OS_ENGINE OS_META REPO_ROOT
+}
+
+# load_config — the product SELECTION: source local.conf (knobs + OS_VIRTUALS + os_preferred_provider).
+load_config() {
+  locate
+  : "${PRODUCT_DIR:?os: PRODUCT_DIR unset (Make injects it)}"
+  # shellcheck source=/dev/null
+  source "${PRODUCT_DIR}/local.conf"
+}
+
+# byname <name> -> its recipe.sh path (product recipes-*/ + packages/ shadow os/meta).
+byname() {
+  local n="$1" r
+  for r in "${PRODUCT_DIR}"/recipes-*/"${n}"/recipe.sh "${PRODUCT_DIR}"/packages/"${n}"/recipe.sh "${OS_META}"/recipes-*/"${n}"/recipe.sh; do
+    [ -f "${r}" ] && { printf '%s' "${r}"; return 0; }
+  done
+  return 1
+}
+
+# resolve <token> -> a virtual/<x> becomes its verified preferred provider NAME; else passes through.
+resolve() {
+  case "$1" in
+    virtual/*)
+      local name path
+      name="$(os_preferred_provider "$1")" || die "no preferred provider for $1 (local.conf os_preferred_provider)"
+      path="$(byname "${name}")" || die "preferred provider $1=${name}: no such recipe"
+      case " $(recipe_get "${path}" PKG_PROVIDES) " in
+        *" $1 "*) : ;;
+        *) die "preferred provider $1=${name}: recipe does not provide $1" ;;
+      esac
+      printf '%s' "${name}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# resolve-dependencies <recipe> -> its prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
+# PKG_HOST_DEPENDS_<MEDIA> (${PACKAGES} expanded), + the implied compiler edge for a target that links
+# libc, each virtual/<x> resolved, + the `make` barrier (all but make itself).
+resolve_dependencies() {
+  load_config
+  local recipe="$1" path raw tok out=""
+  path="$(byname "${recipe}")" || return 0
+  raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
+  if [ "$(recipe_get "${path}" PKG_CLASS target)" = target ]; then
+    case " $(recipe_get "${path}" PKG_DEPENDS) " in *" virtual/libc "*) raw="${raw} virtual/cross-cc" ;; esac
+  fi
+  for tok in ${raw}; do out="${out} $(resolve "${tok}")"; done
+  [ "${recipe}" = make ] && printf '%s\n' "${out}" || printf 'make%s\n' "${out}"
+}
+
+# load_env — the FULL build environment (from local.conf + board.conf), for execute-recipe. Sets the
+# same variable names recipes/classes read.
+load_env() {
+  load_config
+  BUILD_DIR="${PRODUCT_DIR}/build"
+  BOARD_NAME="${BOARD}"; BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
+  # shellcheck source=/dev/null
+  [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
+  : "${KERNEL_TARGET:?boards/${BOARD}/board.conf must set KERNEL_TARGET}"
+  ROOTFS_TARGET="${ROOTFS_TARGET:-${KERNEL_TARGET}}"
+
+  # resolved providers — PROVIDER_<x> path per virtual (bash-safe key: virtual/cross-cc -> cross_cc)
+  local v key
+  for v in ${OS_VIRTUALS}; do
+    key="PROVIDER_${v#virtual/}"; key="${key//-/_}"
+    printf -v "${key}" '%s' "$(byname "$(resolve "${v}")")"
+    export "${key?}"
+  done
+
+  # toolchain scalars (the compiler is cross-cutting — CROSS_COMPILE threads into every compile)
+  ARCH="${ARCH:-arm}"
+  CROSS_COMPILE="${CROSS_COMPILE:-$(recipe_get "${PROVIDER_cross_cc}" PKG_HOST_CC_PREFIX)}"
+  [ -n "${CROSS_COMPILE}" ] || die "CROSS_COMPILE empty: virtual/cross-cc provider has no PKG_HOST_CC_PREFIX"
+  TOOLCHAIN_DIR="${BUILD_DIR}/$(basename "$(dirname "${PROVIDER_cross_cc}")")"
+  LIBC_TC_DIR="${BUILD_DIR}/$(basename "$(dirname "${PROVIDER_cross_cc_initial}")")"
+
+  # derived paths (all a fixed function of BUILD_DIR)
+  DOWNLOAD_DIR="${BUILD_DIR}/downloads"; OUTPUT_DIR="${BUILD_DIR}/output"
+  PYENV_DIR="${BUILD_DIR}/pyenv"; HOSTMAKE_DIR="${BUILD_DIR}/hostmake"; HOSTTOOLS_DIR="${BUILD_DIR}/hosttools"
+  OS_STAMPS="${BUILD_DIR}/.os/stamps"; OS_SIGS="${BUILD_DIR}/.os/sigs"
+  HOSTTOOLS_FARM="${BUILD_DIR}/.os/hosttools-farm"; OVERLAY_DIR="${PRODUCT_DIR}/overlay"
+
+  # libc staging (link-keyed — the producer + consumers agree here)
+  local link="${LINKAGE:-${PKG_LINK:-static}}"
+  LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${LIBC:-custom}-${link}"
+  STAGE_INC="${BUILD_DIR}/libc/include"
+
+  # host-tool policy (Yocto HOSTTOOLS / ASSUME_PROVIDED / sanity) — engine policy, not per-product
+  HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc git grep gzip head install ld ln ls mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
+  HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
+  ASSUME_PROVIDED="make"
+  SANITY_REQUIRED="make:3.81 gcc:4.8 python3:3.6 git:1.8"
+
+  export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ROOTFS_TARGET ARCH CROSS_COMPILE \
+         TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
+         OS_STAMPS OS_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
+         HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
+         KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
+}
 
 setup_build_env() {
   load_build_env
@@ -13,8 +137,8 @@ setup_build_env() {
 }
 
 load_build_env() {
-  os_load_env
-  RECIPE="$(os_byname "${LAYER}" || true)"; export RECIPE
+  load_env
+  RECIPE="$(byname "${LAYER}" || true)"; export RECIPE
   [ -n "${RECIPE}" ] && [ -f "${RECIPE}" ] \
     || die "no recipe for node '${LAYER}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
 }
@@ -154,7 +278,7 @@ compute_taskhash() {
       for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       # Engine hashed comment-stripped, so a comment/whitespace edit doesn't rebuild the world.
       printf '=== engine ===\n'
-      for _e in run-recipe.sh os-env.sh; do grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/${_e}" 2>/dev/null; done
+      grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/engine.sh" 2>/dev/null
       printf '=== siblings ===\n'
       ( cd "${RECIPE_DIR}" && find . -type f ! -name recipe.sh -exec sha256sum {} + 2>/dev/null | sort )
       printf '=== source ===\n';  _hash_source
@@ -165,7 +289,7 @@ compute_taskhash() {
       # Target builds fold the cross-toolchain + arch + board; host classes opt out via PKG_TARGET_INDEPENDENT.
       if [ "${PKG_TARGET_INDEPENDENT:-0}" != 1 ]; then
         printf '=== toolchain/arch ===\n'
-        printf '%s|%s|%s\n' "${CROSS_COMPILE:-}" "${ARCH:-}" "${TC_ARCH:-}"
+        printf '%s|%s\n' "${CROSS_COMPILE:-}" "${ARCH:-}"
         if [ -d "${BOARD_DIR:-/nonexistent}" ]; then
           printf '=== board ===\n'
           ( cd "${BOARD_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
@@ -175,11 +299,11 @@ compute_taskhash() {
   )"
 
   deps="${PKG_HOST_DEPENDS:-} ${PKG_DEPENDS:-}"
-  # A target recipe that links virtual/libc gets the implied compiler edge (matches engine.mk _ndeps).
+  # A target recipe that links virtual/libc gets the implied compiler edge (matches engine.mk).
   if [ "${PKG_CLASS:-target}" = target ]; then
     case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) deps="${deps} virtual/cross-cc" ;; esac
   fi
-  _rdeps=""; for dep in ${deps}; do _rdeps="${_rdeps} $(os_resolve "${dep}")"; done   # virtual/* -> provider name
+  _rdeps=""; for dep in ${deps}; do _rdeps="${_rdeps} $(resolve "${dep}")"; done   # virtual/* -> provider name
   deps="${_rdeps}"
   _taskhash="$(
     {
@@ -225,7 +349,8 @@ mark_built() {
   if [ -n "${_output}" ]; then mkdir -p "${OS_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; fi
 }
 
-main() {
+# execute-recipe: build one recipe end to end.
+execute_recipe() {
   setup_build_env
   inherit base
   # shellcheck disable=SC1090
@@ -234,4 +359,13 @@ main() {
   run_tasks
   mark_built
 }
-main
+
+# CLI dispatch (only when executed, not sourced)
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  cmd="${1:?engine.sh: need a subcommand (resolve-dependencies|execute-recipe)}"; shift
+  case "${cmd}" in
+    resolve-dependencies) resolve_dependencies "$@" ;;
+    execute-recipe)       LAYER="${1:?engine.sh execute-recipe: need a recipe name}"; export LAYER; execute_recipe ;;
+    *)                    die "engine.sh: unknown subcommand '${cmd}' (resolve-dependencies|execute-recipe)" ;;
+  esac
+fi

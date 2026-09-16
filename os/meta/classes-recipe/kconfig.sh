@@ -8,7 +8,7 @@
 # per-package *_BUILD_CMDS). This class deliberately defines NO do_build/do_install: it is pure
 # mechanism, so every inheritor overrides the tasks with its own inline do_build.
 #
-# Sourced into the node shell by `inherit kconfig` (run-recipe.sh's inherit()), which runs when
+# Sourced into the node shell by `inherit kconfig` (engine.sh's inherit()), which runs when
 # the recipe is sourced — BEFORE do_build. The functions are then in scope for the recipe's
 # inline do_build (busybox, and kernel/u-boot alike). export -f is belt-and-suspenders for any
 # child bash that do_build might spawn.

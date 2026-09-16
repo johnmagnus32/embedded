@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # classes/base.sh — the BASE class every recipe implicitly inherits (Yocto's base.bbclass).
-# run-recipe.sh `inherit base` for EVERY node BEFORE sourcing the recipe, so both the default do_*
+# engine.sh `inherit base` for EVERY node BEFORE sourcing the recipe, so both the default do_*
 # tasks AND the fetch helpers below are universally in scope — for the recipe and for every class it
 # later inherits (host classes call os_fetch_file directly). A recipe (or a class it inherits)
 # overrides any do_* last-definition-wins. base defaults the SOURCE-side tasks — do_fetch (fetch per
@@ -8,7 +8,7 @@
 # is NO default do_build/do_install (a recipe always binds them via a class or inline), so base leaves
 # them unset — an unbound do_build is a recipe bug, surfaced by the shell.
 #
-# WHY THE FETCH MECHANISM LIVES HERE (not in run-recipe.sh): the runner is the ORCHESTRATOR — it
+# WHY THE FETCH MECHANISM LIVES HERE (not in engine.sh): the runner is the ORCHESTRATOR — it
 # keeps only what it needs before `inherit base` (recipe_get, log/die, inherit). The
 # fetch mechanism is the default do_fetch's IMPLEMENTATION, so it belongs with the task, in the base
 # class — the base-class model (override do_fetch to fetch differently). It is first used in
