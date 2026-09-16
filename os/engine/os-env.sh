@@ -121,13 +121,6 @@ os_load_env() {
   LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${LIBC:-custom}-${link}"
   STAGE_INC="${BUILD_DIR}/libc/include"
 
-  # product artifact/bundle tags
-  local libctag
-  [ "${LIBC}" = custom ] && libctag="${LIBC}-${TOOLCHAIN}" || libctag="${LIBC}"
-  ROOTFS_TAG="${libctag}-${INIT}-$(echo ${PACKAGES} | tr ' ' '+')"
-  CFG="${BOOTLOADER}-${KERNEL}-${ROOTFS_TAG}"
-  INITRAMFS_IMAGE="initramfs-${ROOTFS_TAG}-${link}.cpio.gz"
-
   # host-tool policy (Yocto HOSTTOOLS / ASSUME_PROVIDED / sanity) — engine policy, not per-product
   HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc git grep gzip head install ld ln ls mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
   HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
@@ -137,7 +130,7 @@ os_load_env() {
   export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ROOTFS_TARGET TC_ARCH ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
-         ROOTFS_TAG CFG INITRAMFS_IMAGE HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
+         HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
 

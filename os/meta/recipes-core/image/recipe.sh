@@ -8,6 +8,7 @@ PKG_HOST_DEPENDS=
 PKG_HOST_DEPENDS_sd=genimage
 PKG_DEPENDS="virtual/kernel virtual/bootloader rootfs"
 PKG_FETCH=none
+require ${OS_META}/recipes-core/image-naming.inc   # CFG + ROOTFS_TAG + INITRAMFS_IMAGE (shared with rootfs)
 
 note() { printf '\033[1;36m  note:\033[0m %s\n' "$*"; }
 

@@ -10,6 +10,7 @@ PKG_CLASS=image
 PKG_DEPENDS="virtual/init ${PACKAGES}"
 PKG_FETCH=none
 PKG_HOST_DEPENDS=gen_init_cpio          # the newc-cpio writer
+require ${OS_META}/recipes-core/image-naming.inc   # ROOTFS_TAG + INITRAMFS_IMAGE (shared with image)
 
 # Overlay files are copied verbatim to their relative paths (Buildroot's BR2_ROOTFS_OVERLAY).
 # /init comes from the selected INIT provider (staged via pkgstage/init), not the overlay.
