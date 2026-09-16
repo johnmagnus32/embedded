@@ -276,7 +276,7 @@ _artifact_path() {
 # _taskhash + _stamp: hash the recipe dir + classes + includes + engine + source + link + toolchain,
 # then fold each dep's recorded taskhash so a bump ripples.
 compute_taskhash() {
-  local base dep deps _linksens
+  local base dep deps
   base="$(
     {
       # the whole recipe dir: recipe.sh + its siblings (cc-profile.sh, *.config, stage-runtime.sh, …)
@@ -290,18 +290,14 @@ compute_taskhash() {
       printf '=== engine ===\n'
       grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/engine.sh" 2>/dev/null
       printf '=== source ===\n';  _hash_source
-      _linksens=0
-      [ "${PKG_LINKSENS:-0}" = 1 ] && _linksens=1
-      case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) _linksens=1 ;; esac
-      [ "${_linksens}" = 1 ] && printf 'link:%s\n' "${PKG_LINK:-static}"
-      # Target builds fold the cross-toolchain + arch + board; host classes opt out via PKG_TARGET_INDEPENDENT.
-      if [ "${PKG_TARGET_INDEPENDENT:-0}" != 1 ]; then
-        printf '=== toolchain/arch ===\n'
-        printf '%s|%s\n' "${CROSS_COMPILE:-}" "${ARCH:-}"
-        if [ -d "${BOARD_DIR:-/nonexistent}" ]; then
-          printf '=== board ===\n'
-          ( cd "${BOARD_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
-        fi
+      # Link mode: only the libc's output differs static/dynamic (PKG_LINKSENS); packages inherit it
+      # via the libc dep, and host tools / the kernel don't link libc, so they skip it.
+      [ "${PKG_LINKSENS:-0}" = 1 ] && printf 'link:%s\n' "${PKG_LINK:-static}"
+      # Board files (DT overlays / genimage.cfg) are a target input, not source or a dep; host classes
+      # (PKG_TARGET_INDEPENDENT) build for the host and opt out. CROSS_COMPILE/ARCH ride the toolchain dep.
+      if [ "${PKG_TARGET_INDEPENDENT:-0}" != 1 ] && [ -d "${BOARD_DIR:-/nonexistent}" ]; then
+        printf '=== board ===\n'
+        ( cd "${BOARD_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
       fi
     } | sha256sum | cut -d' ' -f1
   )"
