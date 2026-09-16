@@ -24,12 +24,11 @@ include $(REPO_ROOT)/os/engine/engine.mk
 canvas:
 	@KERNEL=mainline LIBC=musl PACKAGES="busybox console" $(MAKE) image
 
-# flash: BUNDLE + MEDIA are resolved by the engine (os-env), not Make — pull them for the tool.
-flash: image
-	@eval "$$(PRODUCT_DIR=$(PRODUCT_DIR) $(OS_DIR)/os-env.sh print BUNDLE MEDIA)"; \
-	  if [ "$$MEDIA" != nor ]; then \
-	    echo "make flash needs MEDIA=nor (SD is a manual dd of build/output/*-sd.img)"; exit 1; fi; \
-	  $(REPO_ROOT)/tools/flash.sh "$$BUNDLE" nor
+# flash: build the NOR bundle + flash + FEL-boot it on the rig. This product is NOR-only (an SD image
+# is a manual dd of build/output/*-sd.img), so force MEDIA=nor and hand flash.sh the fixed bundle path.
+flash:
+	@MEDIA=nor $(MAKE) image
+	@$(REPO_ROOT)/tools/flash.sh $(PRODUCT_DIR)/build/bundle nor
 
 test:
 	@$(REPO_ROOT)/kernel/test/golden.sh

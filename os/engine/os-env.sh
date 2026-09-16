@@ -2,9 +2,8 @@
 # os-env.sh — the engine's config + resolution brain (bash). All config and provider resolution
 # live here; engine.mk is just a graph walker. Two entry points:
 #   * SOURCED by run-recipe.sh  -> os_load_env sets the whole build environment.
-#   * EXECUTED by engine.mk / the product Makefile:
-#       os-env.sh deps  <recipe>  -> that recipe's resolved prerequisite recipe names (Make prereqs)
-#       os-env.sh print <VAR>...  -> `VAR=value` lines (for the product Makefile's flash target)
+#   * EXECUTED by engine.mk:  os-env.sh deps <recipe> -> that recipe's resolved prerequisite
+#     recipe names (the Make prerequisites for its rule).
 # Config is the product's local.conf (plain bash, env-overridable); providers are resolved via the
 # os_preferred_provider() it defines. Make never sees a config value — only PRODUCT_DIR (the seed).
 set -euo pipefail
@@ -128,7 +127,6 @@ os_load_env() {
   ROOTFS_TAG="${libctag}-${INIT}-$(echo ${PACKAGES} | tr ' ' '+')"
   CFG="${BOOTLOADER}-${KERNEL}-${ROOTFS_TAG}"
   INITRAMFS_IMAGE="initramfs-${ROOTFS_TAG}-${link}.cpio.gz"
-  BUNDLE="${BUILD_DIR}/bundles/${CFG}"
 
   # host-tool policy (Yocto HOSTTOOLS / ASSUME_PROVIDED / sanity) — engine policy, not per-product
   HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc git grep gzip head install ld ln ls mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
@@ -139,16 +137,15 @@ os_load_env() {
   export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ROOTFS_TARGET TC_ARCH ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
-         ROOTFS_TAG CFG INITRAMFS_IMAGE BUNDLE HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
+         ROOTFS_TAG CFG INITRAMFS_IMAGE HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
 
 # CLI dispatch (only when executed, not sourced)
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  cmd="${1:?os-env.sh: need a subcommand (deps|print)}"; shift
+  cmd="${1:?os-env.sh: need a subcommand (deps)}"; shift
   case "${cmd}" in
-    deps)  os_deps "$@" ;;
-    print) os_load_env; for v in "$@"; do printf '%s=%q\n' "${v}" "${!v}"; done ;;
-    *)     die "os-env.sh: unknown subcommand '${cmd}' (deps|print)" ;;
+    deps) os_deps "$@" ;;
+    *)    die "os-env.sh: unknown subcommand '${cmd}' (deps)" ;;
   esac
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# flash.sh — flash a os-built BUNDLE to the T113-breakout and FEL-boot it, in one go.
+# flash.sh — flash an os-built BUNDLE to the T113-breakout and FEL-boot it, in one go.
 #
 #   tools/flash.sh <bundle-dir> <media>   (or: make flash  from the product dir)
 #     <bundle-dir>  a directory produced by `make image` (os) (has manifest.env + components)

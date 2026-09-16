@@ -127,7 +127,7 @@ do_build() {
   : "${MEDIA:?image: MEDIA unset}"
   : "${ROOTFS_TAG:?image: ROOTFS_TAG unset}"
   : "${CFG:?image: CFG unset}"
-  OUT="${OUT:-${BUNDLE:-${BUILD_DIR}/bundles/${CFG}}}"   # output path: overridable, else the per-CFG bundle dir
+  OUT="${OUT:-${BUILD_DIR}/bundle}"   # the NOR bundle dir (fixed path; override with OUT=)
 
   # PROVIDER_kernel / PROVIDER_bootloader are resolved by os-env (virtual/* + PREFERRED_PROVIDER) and put into
   # the node env, so the composer just reads them — no path knowledge of the recipe catalog here.
