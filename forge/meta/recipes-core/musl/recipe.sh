@@ -32,10 +32,10 @@ do_build() {
   cd "${PKG_SRC_DIR}"
   echo "  [libc] musl ${PKG_VERSION}: configure + build from source (stage-1 gcc)"
   ./configure --host=arm-forge-linux-gnueabihf --prefix=/usr \
-      CC="${CC}" CFLAGS="-mcpu=cortex-a7 -marm -O2" >"${NODE_SCRATCH}/musl-configure.log" 2>&1 \
-    || { tail -15 "${NODE_SCRATCH}/musl-configure.log"; die "musl: configure failed"; }
-  make -j"$(nproc)"                       >"${NODE_SCRATCH}/musl-make.log"    2>&1 || { tail -20 "${NODE_SCRATCH}/musl-make.log"; die "musl: make failed"; }
-  make install DESTDIR="${LIBC_STAGE_DIR}" >"${NODE_SCRATCH}/musl-install.log" 2>&1 || { tail -15 "${NODE_SCRATCH}/musl-install.log"; die "musl: install failed"; }
+      CC="${CC}" CFLAGS="-mcpu=cortex-a7 -marm -O2" >"${RECIPE_SCRATCH}/musl-configure.log" 2>&1 \
+    || { tail -15 "${RECIPE_SCRATCH}/musl-configure.log"; die "musl: configure failed"; }
+  make -j"$(nproc)"                       >"${RECIPE_SCRATCH}/musl-make.log"    2>&1 || { tail -20 "${RECIPE_SCRATCH}/musl-make.log"; die "musl: make failed"; }
+  make install DESTDIR="${LIBC_STAGE_DIR}" >"${RECIPE_SCRATCH}/musl-install.log" 2>&1 || { tail -15 "${RECIPE_SCRATCH}/musl-install.log"; die "musl: install failed"; }
   [ -e "${LIBC_STAGE_DIR}/usr/lib/crt1.o" ] || die "musl: sysroot incomplete (no crt1.o) at ${LIBC_STAGE_DIR}"
   # add the sanitized Linux UAPI headers (linux/*, asm/*, …) alongside musl's own — a from-source libc
   # sysroot needs them for real userland (busybox's <linux/kd.h>); the linux-libc-headers node staged them.

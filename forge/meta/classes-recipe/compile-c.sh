@@ -11,7 +11,7 @@
 # (Buildroot's generic-package analogue.)
 #
 # Contract (generic node env — from the runner + base's do_fetch): PKG_NAME, PKG_SRC_DIR (the
-#   source dir base's do_fetch resolved), NODE_SCRATCH (this class derives its obj dir under it),
+#   source dir base's do_fetch resolved), RECIPE_SCRATCH (this class derives its obj dir under it),
 #   PKG_DEST (this package's own staging dir), PKG_INSTALL (a recipe fact, defaulted to /bin here),
 #   LIBC/PKG_LINK/REPO_ROOT + (custom) LIBC_STAGE_DIR/STAGE_INC. do_build sources cc-profile.sh for
 #   PKG_CC/CFLAGS/LDFLAGS + LIBC_CRT/LIBC_LIB. do_fetch is left as base's default.
@@ -20,8 +20,8 @@
 # staging into the rootfs is do_install's job).
 do_build() {
   : "${PKG_NAME:?}"; : "${PKG_SRC_DIR:?compile-c do_build: PKG_SRC_DIR unset (base do_fetch sets it)}"
-  : "${NODE_SCRATCH:?compile-c do_build: NODE_SCRATCH unset}"
-  local PKG_BUILD_DIR="${NODE_SCRATCH}/obj"   # this class's scratch obj dir, derived from the node scratch
+  : "${RECIPE_SCRATCH:?compile-c do_build: RECIPE_SCRATCH unset}"
+  local PKG_BUILD_DIR="${RECIPE_SCRATCH}/obj"   # this class's scratch obj dir, derived from the node scratch
   # cc-profile gives PKG_CC/PKG_CFLAGS/PKG_LDFLAGS + LIBC_CRT/LIBC_LIB for the SELECTED
   # libc — the libc threads in as a build-config input, not a per-pkg branch. The contract
   # lives beside the selected libc's recipe (PROVIDER_libc from the node env); sourced directly,
@@ -47,8 +47,8 @@ do_build() {
 # (Buildroot's per-package model), so a package produces a durable, cacheable artifact instead of
 # racing into a shared tree. Wipe PKG_DEST first so a rebuild never keeps a stale/renamed binary.
 do_install() {
-  : "${PKG_NAME:?}"; : "${PKG_DEST:?compile-c do_install: PKG_DEST unset}"; : "${NODE_SCRATCH:?}"
-  local PKG_BUILD_DIR="${NODE_SCRATCH}/obj" dest="${PKG_INSTALL:-/bin}"
+  : "${PKG_NAME:?}"; : "${PKG_DEST:?compile-c do_install: PKG_DEST unset}"; : "${RECIPE_SCRATCH:?}"
+  local PKG_BUILD_DIR="${RECIPE_SCRATCH}/obj" dest="${PKG_INSTALL:-/bin}"
   rm -rf "${PKG_DEST}"; mkdir -p "${PKG_DEST}${dest}"
   local out name installed=0
   for out in "${PKG_BUILD_DIR}"/*; do

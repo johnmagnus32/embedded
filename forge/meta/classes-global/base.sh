@@ -14,7 +14,7 @@
 # class — the base-class model (override do_fetch to fetch differently). It is first used in
 # run_tasks -> do_fetch, which runs after `inherit base`, so nothing pins it to the runner.
 #
-# Sourced into the node shell with the env set_node_env established: RECIPE, NODE_SCRATCH, REPO_ROOT,
+# Sourced into the recipe shell with the env set_recipe_env established: RECIPE, RECIPE_SCRATCH, REPO_ROOT,
 # BUILD_DIR, DOWNLOAD_DIR, recipe_get, log/die.
 
 # ---- fetch primitives (content pinned by SHA/tag; the URL is just availability) ---------------
@@ -112,7 +112,7 @@ pkg_src() {
 # set PKG_SRC_DIR (run_tasks exports it for do_build). This IS the fetch mechanism. Overridden to no-op
 # by recipes/classes whose source needs no forge fetch — host classes self-fetch a file/tarball into
 # their prefix; prebuilt/none have nothing to fetch. Idempotent.
-#   local -> $REPO_ROOT/$PKG_SOURCE | prebuilt|none -> "" | git -> $BUILD_DIR/$PKG_GIT_CHECKOUT | tarball -> $NODE_SCRATCH/src
+#   local -> $REPO_ROOT/$PKG_SOURCE | prebuilt|none -> "" | git -> $BUILD_DIR/$PKG_GIT_CHECKOUT | tarball -> $RECIPE_SCRATCH/src
 do_fetch() {
   local fetch src ver primary mirror checkout tb name
   fetch="$(recipe_get "${RECIPE}" PKG_FETCH)"
@@ -192,8 +192,8 @@ do_fetch() {
 # recipes/classes that unpack their own PKG_SOURCES tarballs (host-autotools, the from-source toolchain).
 do_unpack() {
   [ -n "${PKG_TARBALL:-}" ] || return 0
-  : "${NODE_SCRATCH:?do_unpack: NODE_SCRATCH unset (tarball extract dir)}"
-  local src="${NODE_SCRATCH}/src"; mkdir -p "${src}"
+  : "${RECIPE_SCRATCH:?do_unpack: RECIPE_SCRATCH unset (tarball extract dir)}"
+  local src="${RECIPE_SCRATCH}/src"; mkdir -p "${src}"
   tar -xf "${PKG_TARBALL}" -C "${src}" --strip-components=1
   PKG_SRC_DIR="${src}"
 }

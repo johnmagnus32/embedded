@@ -24,10 +24,10 @@ PKG_ARTIFACT=stage:                    # artifact = this package's pkgstage dir 
 
 do_build() {
   : "${PKG_SRC_DIR:?console do_build: PKG_SRC_DIR unset}"
-  : "${NODE_SCRATCH:?}"; : "${PROVIDER_libc:?console do_build: PROVIDER_libc unset (node env)}"
+  : "${RECIPE_SCRATCH:?}"; : "${PROVIDER_libc:?console do_build: PROVIDER_libc unset (node env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc
-  local O="${NODE_SCRATCH}/build"; mkdir -p "${O}"
+  local O="${RECIPE_SCRATCH}/build"; mkdir -p "${O}"
   echo "  [console] make (LIBC=${LIBC}/${PKG_LINK:-static})"
   # SOUND_BACKEND=alsa: the device audio server drives the T113 codec (the Makefile default is
   # `file`, a host-test sink). CANVAS_BACKEND stays the Makefile default (drm) for the device.
@@ -36,11 +36,11 @@ do_build() {
 }
 
 do_install() {
-  : "${PKG_DEST:?console do_install: PKG_DEST unset}"; : "${NODE_SCRATCH:?}"; : "${PKG_SRC_DIR:?}"
+  : "${PKG_DEST:?console do_install: PKG_DEST unset}"; : "${RECIPE_SCRATCH:?}"; : "${PKG_SRC_DIR:?}"
   : "${PROVIDER_libc:?}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
-  local O="${NODE_SCRATCH}/build"
+  local O="${RECIPE_SCRATCH}/build"
   rm -rf "${PKG_DEST}"; mkdir -p "${PKG_DEST}"
   make --no-print-directory -C "${PKG_SRC_DIR}" O="${O}" install SOUND_BACKEND=alsa \
        CC="${PKG_CC}" CFLAGS="${PKG_CFLAGS}" LDFLAGS="${PKG_LDFLAGS}" \

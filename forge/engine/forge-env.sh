@@ -3,7 +3,7 @@
 # live here; engine.mk is just a graph walker. Two entry points:
 #   * SOURCED by run-recipe.sh  -> forge_load_env sets the whole build environment.
 #   * EXECUTED by engine.mk / the product Makefile:
-#       forge-env.sh deps  <node>    -> that node's resolved prerequisite node names (Make prereqs)
+#       forge-env.sh deps  <recipe>  -> that recipe's resolved prerequisite recipe names (Make prereqs)
 #       forge-env.sh print <VAR>...  -> `VAR=value` lines (for the product Makefile's flash target)
 # Config is the product's local.conf (plain bash, env-overridable); providers are resolved via the
 # forge_preferred_provider() it defines. Make never sees a config value — only PRODUCT_DIR (the seed).
@@ -70,19 +70,19 @@ forge_resolve() {
   esac
 }
 
-# forge_deps <node> -> its resolved prerequisite node names. Reads PKG_DEPENDS + PKG_HOST_DEPENDS +
+# forge_deps <recipe> -> its resolved prerequisite recipe names. Reads PKG_DEPENDS + PKG_HOST_DEPENDS +
 # PKG_HOST_DEPENDS_<MEDIA> (recipe_get expands ${PACKAGES}); adds the implied compiler edge for a
 # target that links libc; resolves each virtual/<x>; prepends the `make` barrier (all but make itself).
 forge_deps() {
   forge_load_config
-  local node="$1" recipe raw tok out=""
-  recipe="$(forge_byname "${node}")" || return 0   # unknown node: no prereqs (run-recipe errors at build)
-  raw="$(recipe_get "${recipe}" PKG_DEPENDS) $(recipe_get "${recipe}" PKG_HOST_DEPENDS) $(recipe_get "${recipe}" "PKG_HOST_DEPENDS_${MEDIA}")"
-  if [ "$(recipe_get "${recipe}" PKG_CLASS target)" = target ]; then
-    case " $(recipe_get "${recipe}" PKG_DEPENDS) " in *" virtual/libc "*) raw="${raw} virtual/cross-cc" ;; esac
+  local recipe="$1" path raw tok out=""
+  path="$(forge_byname "${recipe}")" || return 0   # unknown recipe: no prereqs (run-recipe errors at build)
+  raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
+  if [ "$(recipe_get "${path}" PKG_CLASS target)" = target ]; then
+    case " $(recipe_get "${path}" PKG_DEPENDS) " in *" virtual/libc "*) raw="${raw} virtual/cross-cc" ;; esac
   fi
   for tok in ${raw}; do out="${out} $(forge_resolve "${tok}")"; done
-  [ "${node}" = make ] && printf '%s\n' "${out}" || printf 'make%s\n' "${out}"
+  [ "${recipe}" = make ] && printf '%s\n' "${out}" || printf 'make%s\n' "${out}"
 }
 
 # forge_load_env — the FULL build environment (what forge.conf used to carry, now derived). Sets the

@@ -21,7 +21,7 @@ setup_build_env() {
   load_build_env
   setup_host_env        # build the HOSTTOOLS farm + sanity-check the host — while PATH is still the host's
   setup_path            # THEN scrub PATH to {forge's built tools}:{farm}
-  set_node_env
+  set_recipe_env
 }
 
 # load_build_env — the resolved build environment: forge-env.sh derives it from local.conf + board.conf
@@ -101,9 +101,9 @@ setup_path() {
   PATH="$p"; export PATH
 }
 
-# set_node_env — per-node env + class scaffolding: define inherit() (main applies `inherit base`,
+# set_recipe_env — per-node env + class scaffolding: define inherit() (main applies `inherit base`,
 # then sources the recipe, so the recipe's own inherit/do_* override the base defaults, last-wins).
-set_node_env() {
+set_recipe_env() {
   export PKG_LINK="${PKG_LINK:-${LINKAGE:-static}}"
 
   # RECIPE + LAYER are Make-injected + engine.mk-validated; set -u aborts below if either is unset,
@@ -116,7 +116,7 @@ set_node_env() {
   export REPO_ROOT ROOTFS_TARGET
   while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)   # cc-profile reads arch tuning
 
-  NODE_SCRATCH="${BUILD_DIR}/nodes/${LAYER}"   # per-node scratch (tarball extract / compile obj)
+  RECIPE_SCRATCH="${BUILD_DIR}/scratch/${LAYER}"   # per-node scratch (tarball extract / compile obj)
   export PROVIDER_RECIPE="${RECIPE}"           # kconfig providers read their own facts via recipe_get
 
   # inherit() binds a class — DEFINED here (chicken/egg: it's what sources classes) and records each into
@@ -292,12 +292,12 @@ _hash_source() {
 # run_tasks — the uniform sequence (no branch on kind). Pure orchestration: a clean scratch dir, then
 # the tasks in Yocto's order. do_fetch downloads; do_unpack extracts + sets PKG_SRC_DIR; do_patch edits
 # the unpacked source; do_build compiles; do_install stages. Each task reads the generic node env
-# (NODE_SCRATCH + PKG_SRC_DIR from do_fetch/do_unpack) and derives/defaults its own class-specific bits.
+# (RECIPE_SCRATCH + PKG_SRC_DIR from do_fetch/do_unpack) and derives/defaults its own class-specific bits.
 # base.sh supplies working defaults for fetch/unpack (git|local|tarball) + no-op patch, so a recipe
 # binds only what differs (usually do_build/do_install; a source-patching or multi-tarball recipe also
 # overrides do_patch/do_unpack).
 run_tasks() {
-  rm -rf "${NODE_SCRATCH}"; mkdir -p "${NODE_SCRATCH}"
+  rm -rf "${RECIPE_SCRATCH}"; mkdir -p "${RECIPE_SCRATCH}"
   do_fetch
   do_unpack
   do_patch

@@ -11,11 +11,11 @@ PKG_DEPENDS=virtual/libc                       # link the selected libc + rebuil
 PKG_ARTIFACT=stage:                    # artifact = this node's pkgstage dir (cacheable)
 
 do_build() {
-  : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${NODE_SCRATCH:?}"
+  : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${RECIPE_SCRATCH:?}"
   : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (node env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
-  local O="${NODE_SCRATCH}/build"; mkdir -p "${O}"
+  local O="${RECIPE_SCRATCH}/build"; mkdir -p "${O}"
   echo "  [init] make (LIBC=${LIBC}/${PKG_LINK:-static})"
   # LIBC_CRT/LIBC_LIB are empty on musl (it supplies crt+libc); on the custom -nostdlib
   # libc they are crt0.S.o + libc.a, which the Makefile links (crt0 before, libc.a after).
@@ -25,9 +25,9 @@ do_build() {
 }
 
 do_install() {
-  : "${PKG_DEST:?init do_install: PKG_DEST unset}"; : "${NODE_SCRATCH:?}"; : "${PKG_SRC_DIR:?}"
+  : "${PKG_DEST:?init do_install: PKG_DEST unset}"; : "${RECIPE_SCRATCH:?}"; : "${PKG_SRC_DIR:?}"
   rm -rf "${PKG_DEST}"                  # pkgstage/init is shared across init providers — start clean
-  local O="${NODE_SCRATCH}/build"
+  local O="${RECIPE_SCRATCH}/build"
   # Installs /init (the binary) — the initramfs entry point. NOT /sbin/init: busybox owns that as a
   # symlink to itself, and merging a real file over it would deref + clobber busybox.
   make --no-print-directory -C "${PKG_SRC_DIR}" O="${O}" install DESTDIR="${PKG_DEST}"

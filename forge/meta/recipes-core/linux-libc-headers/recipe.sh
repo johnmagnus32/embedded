@@ -27,8 +27,8 @@ do_build() {
   rm -rf "${PKG_HOST_DEST}"; mkdir -p "${PKG_HOST_DEST}"
   log "linux-libc-headers: make headers_install ARCH=arm (${PKG_VERSION})"
   make --no-print-directory -C "${PKG_SRC_DIR}" ARCH=arm INSTALL_HDR_PATH="${PKG_HOST_DEST}" headers_install \
-    >"${NODE_SCRATCH}/headers_install.log" 2>&1 \
-    || { tail -15 "${NODE_SCRATCH}/headers_install.log"; die "linux-libc-headers: headers_install failed"; }
+    >"${RECIPE_SCRATCH}/headers_install.log" 2>&1 \
+    || { tail -15 "${RECIPE_SCRATCH}/headers_install.log"; die "linux-libc-headers: headers_install failed"; }
   [ -f "${PKG_HOST_DEST}/include/linux/kd.h" ] || die "linux-libc-headers: install incomplete (no linux/kd.h)"
   echo "  [linux-libc-headers] UAPI headers -> ${PKG_HOST_DEST}/include"
 }
