@@ -8,8 +8,6 @@
 # Recipe facts: PKG_SOURCES="<name>" + PKG_SRC_<name>=<url> + PKG_SHA_<name> (the .c), PKG_HOST_BIN
 #   (output path). do_install is a no-op; do_fetch is base's (declarative PKG_SOURCES).
 
-PKG_TARGET_INDEPENDENT=1   # built with host cc: omit cross-toolchain/arch/board from the taskhash
-
 do_install() { :; }
 
 do_build() {

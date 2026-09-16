@@ -12,8 +12,6 @@
 # do_fetch/do_install: a host tool self-fetches inside do_build (via os_fetch_file) and
 # installs into its host prefix there — so these are no-ops (the uniform contract still calls them).
 
-PKG_TARGET_INDEPENDENT=1   # built with host cc: omit cross-toolchain/arch/board from the taskhash
-
 do_fetch()   { :; }
 do_install() { :; }
 

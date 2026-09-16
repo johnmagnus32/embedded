@@ -6,7 +6,7 @@
 PKG_NAME=musl
 PKG_CLASS=target
 PKG_PROVIDES=virtual/libc
-PKG_LINKSENS=1                 # its sysroot is built static+shared; keyed on link mode like the custom libc
+PKG_VARDEPS="PKG_LINK"         # its sysroot is built static+shared; hash keyed on PKG_LINK like the custom libc
 
 PKG_FETCH=tarball
 PKG_VERSION=1.2.5

@@ -6,6 +6,7 @@
 PKG_NAME=linux
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
+PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf (defconfig/console/DTB) — a build input the taskhash must catch
 
 PKG_FETCH=git
 PKG_GIT_URL=https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git

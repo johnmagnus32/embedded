@@ -25,10 +25,8 @@
 # DATA (triple, cpu/fpu, SRC_URI/checksum pins) — that data lives in the .inc, NOT here (a class carries
 # LOGIC, not SRC_URI). The final recipe also sets PKG_DEPENDS=libc (fold the libc taskhash + the
 # host-toolchain-gcc: libc Make edge in engine.mk — its --with-sysroot IS that libc). do_install: no-op.
-# do_fetch: base's (declarative PKG_SOURCES, from the .inc). PKG_TARGET_INDEPENDENT: built for a fixed
-# triple, not the selected board (the .inc's hard-float VFP baseline serves every board).
-
-PKG_TARGET_INDEPENDENT=1
+# do_fetch: base's (declarative PKG_SOURCES, from the .inc). Built for a fixed triple, not the selected
+# board (the .inc's hard-float VFP baseline serves every board), so it declares no board file-dep.
 
 do_install() { :; }
 

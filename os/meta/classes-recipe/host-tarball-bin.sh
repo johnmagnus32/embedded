@@ -9,8 +9,6 @@
 #   PKG_HOST_DEST (extract dir), PKG_HOST_CC_PREFIX (the <triple>- to check <triple>gcc).
 # do_install is a no-op; do_fetch is base's (declarative PKG_SOURCES).
 
-PKG_TARGET_INDEPENDENT=1   # built with host cc: omit cross-toolchain/arch/board from the taskhash
-
 do_install() { :; }
 
 do_build() {

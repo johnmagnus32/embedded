@@ -9,7 +9,6 @@
 # the host (class=native): headers are arch-parameterized (ARCH=arm) but board- and toolchain-independent.
 PKG_NAME=linux-libc-headers
 PKG_CLASS=native
-PKG_TARGET_INDEPENDENT=1
 PKG_FETCH=git
 PKG_GIT_URL=https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
 PKG_GIT_URL_MIRROR=https://github.com/gregkh/linux.git

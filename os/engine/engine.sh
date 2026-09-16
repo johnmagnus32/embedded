@@ -96,7 +96,6 @@ load_env() {
   # shellcheck source=/dev/null
   [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
   : "${KERNEL_TARGET:?boards/${BOARD}/board.conf must set KERNEL_TARGET}"
-  ROOTFS_TARGET="${ROOTFS_TARGET:-${KERNEL_TARGET}}"
 
   # resolved providers — PROVIDER_<x> path per virtual (bash-safe key: virtual/cross-cc -> cross_cc)
   local v key
@@ -130,7 +129,7 @@ load_env() {
   ASSUME_PROVIDED="make"
   SANITY_REQUIRED="make:3.81 gcc:4.8 python3:3.6 git:1.8"
 
-  export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ROOTFS_TARGET ARCH CROSS_COMPILE \
+  export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
          HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
@@ -203,7 +202,7 @@ set_recipe_env() {
   RECIPE_DIR="$(cd "$(dirname "${RECIPE}")" && pwd)"; export RECIPE_DIR
   export STAGE="${BUILD_DIR}/rootfs/stage"
   export PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${LAYER}"
-  export LIBC REPO_ROOT ROOTFS_TARGET
+  export LIBC REPO_ROOT
   while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)
   RECIPE_SCRATCH="${BUILD_DIR}/scratch/${LAYER}"
   export PROVIDER_RECIPE="${RECIPE}"
@@ -273,8 +272,8 @@ _artifact_path() {
   esac
 }
 
-# _taskhash + _stamp: hash the recipe dir + classes + includes + engine + source + link + toolchain,
-# then fold each dep's recorded taskhash so a bump ripples.
+# _taskhash + _stamp: hash the recipe dir + classes + includes + engine + source + the recipe's declared
+# var/file deps, then fold each dep's recorded taskhash so a bump ripples.
 compute_taskhash() {
   local base dep deps
   base="$(
@@ -290,15 +289,17 @@ compute_taskhash() {
       printf '=== engine ===\n'
       grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/engine.sh" 2>/dev/null
       printf '=== source ===\n';  _hash_source
-      # Link mode: only the libc's output differs static/dynamic (PKG_LINKSENS); packages inherit it
-      # via the libc dep, and host tools / the kernel don't link libc, so they skip it.
-      [ "${PKG_LINKSENS:-0}" = 1 ] && printf 'link:%s\n' "${PKG_LINK:-static}"
-      # Board files (DT overlays / genimage.cfg) are a target input, not source or a dep; host classes
-      # (PKG_TARGET_INDEPENDENT) build for the host and opt out. CROSS_COMPILE/ARCH ride the toolchain dep.
-      if [ "${PKG_TARGET_INDEPENDENT:-0}" != 1 ] && [ -d "${BOARD_DIR:-/nonexistent}" ]; then
-        printf '=== board ===\n'
-        ( cd "${BOARD_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
-      fi
+      # Config VALUES + out-of-tree FILES the recipe declares it reads — the engine names none of them
+      # (Yocto's vardeps / file-checksums). A link-sensitive libc sets PKG_VARDEPS="PKG_LINK"; a
+      # board-dependent recipe sets PKG_FILEDEPS="${BOARD_DIR}". Neither is caught by the hashes above:
+      # PKG_LINK is a build-time value in no file, and board files live outside the recipe dir + source.
+      for dep in ${PKG_VARDEPS:-};  do printf 'var:%s=%s\n' "${dep}" "${!dep:-}"; done
+      for dep in ${PKG_FILEDEPS:-}; do
+        [ -e "${dep}" ] || continue
+        printf 'file:%s\n' "${dep##*/}"
+        if [ -d "${dep}" ]; then ( cd "${dep}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
+        else sha256sum "${dep}" 2>/dev/null; fi
+      done
     } | sha256sum | cut -d' ' -f1
   )"
 

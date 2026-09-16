@@ -9,8 +9,6 @@
 #   env prefix so a dep's headers/libs resolve), PKG_HOST_VERIFY_BIN (a binary that must exist after).
 # do_install is a no-op; do_fetch is base's (declarative PKG_SOURCES); do_patch defaults to base's no-op.
 
-PKG_TARGET_INDEPENDENT=1   # built with host cc: omit cross-toolchain/arch/board from the taskhash
-
 do_install() { :; }
 
 # do_unpack — extract the (base-fetched, SHA-verified) tarball into a work dir, set PKG_SRC_DIR. Overrides

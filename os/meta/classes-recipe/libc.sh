@@ -14,7 +14,7 @@
 # LINK-SENSITIVE OUTPUT: the from-source libc is built static OR dynamic, so its staging dir + taskhash
 # vary by PKG_LINK. Declaring it here (not a PKG_ROLE=libc test in the engine) keeps the orchestrator
 # libc-agnostic; packages get the same via PKG_DEPENDS=libc. (Prebuilt musl inherits it harmlessly.)
-PKG_LINKSENS=1
+PKG_VARDEPS="PKG_LINK"
 
 do_build() {
   : "${LIBC:?libc do_build: LIBC unset}"

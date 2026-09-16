@@ -78,7 +78,7 @@ do_build() {
   # INITRAMFS_IMAGE (node env) is keyed by ROOTFS_TAG+link, so static and dynamic land at
   # distinct names — no per-linkage rename needed here.
   local OUT_CPIO="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
-  log "packing rootfs: LIBC=${LIBC:-} PACKAGES='${PACKAGES:-}' (LINK=${PKG_LINK:-static}, BOARD=${ROOTFS_TARGET:-})"
+  log "packing rootfs: LIBC=${LIBC:-} PACKAGES='${PACKAGES:-}' (LINK=${PKG_LINK:-static}, BOARD=${BOARD_NAME:-})"
   mkdir -p "${OUTPUT_DIR}"
 
   # Assemble STAGE from each selected package's per-package dir. Wipe first + merge only the
