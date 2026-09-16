@@ -15,7 +15,7 @@ PKG_FETCH=none                 # sources come from PKG_SOURCES (in the .inc), fe
 PKG_VERSION=gcc13.3.0-binutils2.42
 
 # Self-identifying dest: this host package owns build/toolchain-gcc-initial (the arm-forge stage-1 gcc
-# the libc node builds with, via LIBC_TC/LIBC_TC_DIR in forge.conf).
+# the libc node builds with, via LIBC_TC_DIR in the node env).
 PKG_HOST_DEST=${BUILD_DIR}/toolchain-gcc-initial
 
 do_build() {

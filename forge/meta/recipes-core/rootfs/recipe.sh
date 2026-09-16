@@ -63,7 +63,7 @@ _rootfs_pack() {
 # adding a libc is a new hook, not an edit here.
 _stage_libc_runtime() {
   [ "${PKG_LINK:-static}" = dynamic ] || return 0
-  : "${PROVIDER_libc:?rootfs _stage_libc_runtime: PROVIDER_libc unset (from forge.conf)}"
+  : "${PROVIDER_libc:?rootfs _stage_libc_runtime: PROVIDER_libc unset (from the node env)}"
   local hook; hook="$(dirname "${PROVIDER_libc}")/stage-runtime.sh"
   [ -f "${hook}" ] || die "libc '${LIBC:-}' has no stage-runtime.sh (needed for a dynamic rootfs): ${hook}"
   mkdir -p "${STAGE}/lib"
@@ -74,7 +74,7 @@ _stage_libc_runtime() {
 do_build() {
   : "${STAGE:?rootfs do_build: STAGE unset}"; : "${OUTPUT_DIR:?}"
   : "${BUILD_DIR:?rootfs do_build: BUILD_DIR unset}"; : "${PACKAGES:?rootfs do_build: PACKAGES unset}"
-  # INITRAMFS_IMAGE (forge.conf) is keyed by ROOTFS_TAG+link, so static and dynamic land at
+  # INITRAMFS_IMAGE (node env) is keyed by ROOTFS_TAG+link, so static and dynamic land at
   # distinct names — no per-linkage rename needed here.
   local OUT_CPIO="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
   log "packing rootfs: LIBC=${LIBC:-} PACKAGES='${PACKAGES:-}' (LINK=${PKG_LINK:-static}, BOARD=${ROOTFS_TARGET:-})"

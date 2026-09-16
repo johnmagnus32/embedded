@@ -1,36 +1,35 @@
-# Makefile — gameboy-v3 PRODUCT entry point (thin).
+# Makefile — gameboy-v3 PRODUCT entry point (thin). The selection lives in local.conf (bash, read by
+# the forge scripts); the shared engine (forge/) turns it into an image. Override knobs as env vars:
 #
-# A product is mostly configuration: config.mk declares which provider implements
-# each layer + the board; the shared engine (forge/) turns that into an image.
-#
-#   make                 # build per config.mk (default: full custom stack, MEDIA=nor)
-#   make KERNEL=mainline LIBC=musl PACKAGES=busybox BOOTLOADER=uboot    # all-OSS reference
-#   make KERNEL=mainline # our rootfs on a mainline kernel (bug isolation)
+#   make                 # build per local.conf (default: mainline + musl + busybox + console, MEDIA=nor)
+#   NB: override via the ENVIRONMENT (`LIBC=custom make …`), NOT `make LIBC=custom` — a command-line
+#       make-var doesn't reach the resolver (engine warns if you try). local.conf holds the defaults.
+#   KERNEL=mainline LIBC=musl PACKAGES=busybox BOOTLOADER=uboot make image   # all-OSS reference
+#   KERNEL=mainline make image                                               # our rootfs on a mainline kernel
 #   make canvas          # the canvas console flavor (mainline + musl + the console package)
-#   make console         # build just the console package node (canvasd/appletd/…)
+#   make <recipe>        # build one node by its recipe name: linux, musl, busybox, toolchain-gcc, rootfs, …
 #   make flash           # build a NOR bundle + flash + FEL-boot on the rig
 #   make test            # kernel golden QEMU tests
 #   make clean
 
 PRODUCT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT   := $(abspath $(PRODUCT_DIR)/../..)
-
-include config.mk
 include $(REPO_ROOT)/forge/engine/engine.mk
 
-# --- product-specific targets ------------------------------------------------
-# flash + test deploy/verify on OUR bench, so they live here, not in the generic engine.
+# --- product-specific targets (deploy/verify on OUR bench, so not in the generic engine) ---------
 .PHONY: flash test canvas
-# canvas: the console flavor — mainline kernel + musl libc + the product-local `console` package
-# (canvasd/appletd/launcher/…) alongside busybox. A named selection so you don't retype the axes;
-# override MEDIA=sd for an SD image. (`make console` builds just the console package node.)
+# canvas: the console flavor — mainline + musl + the product-local `console` package alongside busybox.
+# A named selection so you don't retype the knobs; override MEDIA=sd for an SD image. (`make console`
+# builds just the console package node.)
 canvas:
-	@$(MAKE) image KERNEL=mainline LIBC=musl PACKAGES="busybox console"
+	@KERNEL=mainline LIBC=musl PACKAGES="busybox console" $(MAKE) image
 
+# flash: BUNDLE + MEDIA are resolved by the engine (forge-env), not Make — pull them for the tool.
 flash: image
-	@if [ "$(MEDIA)" != nor ]; then \
-	  echo "make flash needs MEDIA=nor (SD is a manual dd of build/output/*-sd.img)"; exit 1; fi
-	@$(REPO_ROOT)/tools/flash.sh $(BUNDLE) nor
+	@eval "$$($(_SEED) $(FORGE_DIR)/forge-env.sh print BUNDLE MEDIA)"; \
+	  if [ "$$MEDIA" != nor ]; then \
+	    echo "make flash needs MEDIA=nor (SD is a manual dd of build/output/*-sd.img)"; exit 1; fi; \
+	  $(REPO_ROOT)/tools/flash.sh "$$BUNDLE" nor
 
 test:
 	@$(REPO_ROOT)/kernel/test/golden.sh

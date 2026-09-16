@@ -101,7 +101,7 @@ after this refactor, something regressed — it is a structural change, not a be
 
 ### 0.5 Hard constraints (carried forward)
 
-- **GNU Make 3.82** on the product-parse host (no `$(file >)`; recipe-write for forge.conf).
+- **GNU Make 3.82** on the product-parse host (engine.mk uses only `define`/`eval` + `$(shell)`/`$(wildcard)`; no `$(file >)`). Config + resolution are bash (forge-env.sh), so there is no generated config file to write.
 - **`FORGE_BUILD`, never `BUILD`** on recursive `$(MAKE)` lines (the toolchain-wipe collision).
 - **Dual-read recipes** (verified §1.2): a recipe must stay awk-readable for bare `PKG_*` facts
   (Make builds the graph at parse time) AND bash-sourceable for the `do_*` functions. The test

@@ -1,5 +1,5 @@
 # providers/libc/custom/cc-profile.sh — the from-scratch libc's COMPILE/LINK contract (sourced by a
-# compile class). Its SHAPE depends on the TOOLCHAIN axis (from forge.conf):
+# compile class). Its SHAPE depends on the TOOLCHAIN axis (from the node env):
 #
 #   TOOLCHAIN=source  — the from-source toolchain-gcc carries our libc as its REAL sysroot, so
 #                       a NORMAL cross-link works (like musl): no -nostdlib/-nostdinc, no linker
@@ -14,7 +14,7 @@
 #                       to the libc source, so it lives THERE (libc/libc-profile.sh) beside the code.
 #
 # Out (all modes): PKG_CC, PKG_CFLAGS, PKG_LDFLAGS, LIBC_CRT, LIBC_LIB.
-: "${TOOLCHAIN:?custom cc-profile: TOOLCHAIN unset (should come from forge.conf)}"
+: "${TOOLCHAIN:?custom cc-profile: TOOLCHAIN unset (from the node env)}"
 if [ "${TOOLCHAIN}" = gcc ]; then
   : "${CROSS_COMPILE:?custom cc-profile (gcc): CROSS_COMPILE unset}"
   : "${ROOTFS_ARCH_FLAGS:?custom cc-profile (gcc): ROOTFS_ARCH_FLAGS unset in board.conf (arch tuning is a board fact)}"

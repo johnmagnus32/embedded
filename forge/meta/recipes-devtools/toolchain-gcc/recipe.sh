@@ -52,7 +52,7 @@ do_build() {
   # shellcheck disable=SC2086  (arch is a multi-flag string — MUST word-split, not be one arg)
   "${triple}-gcc" ${arch} -o "${TMP}/t.dyn" "${TMP}/t.c" \
     || { rm -rf "${TMP}"; die "${PKG_NAME}: sanity normal-link failed"; }
-  : "${LIBC:?${PKG_NAME}: LIBC unset (should come from forge.conf)}"
+  : "${LIBC:?${PKG_NAME}: LIBC unset (from the node env)}"
   local F NEEDED INTERP LOADER="/lib/ld.so.1"
   [ "${LIBC}" = musl ] && LOADER="/lib/ld-musl-armhf.so.1"
   F="$(file "${TMP}/t.dyn" 2>/dev/null || true)"

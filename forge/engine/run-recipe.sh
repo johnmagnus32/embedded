@@ -1,41 +1,21 @@
 #!/usr/bin/env bash
 # run-recipe.sh — the ONE node runner (orchestrator). Builds ANY recipe with no branch on identity:
 # prepare the env, source the recipe (binds tasks via `inherit <class>` + inline do_* overrides),
-# gate on the content cache, then do_fetch -> do_build -> do_install BY NAME. In: RECIPE, LAYER, and
-# the bootstrap seed PRODUCT_DIR; everything else (BOARD, layout, pins) from forge.conf + board.conf.
-# Make is the only entry point (forge.conf must already exist).
+# gate on the content cache, then do_fetch -> do_build -> do_install BY NAME. In: the node NAME ($1)
+# + the seed PRODUCT_DIR (env). forge-env.sh resolves everything else from the product's local.conf —
+# no forge.conf, no shared state; Make just says which node to build.
 set -euo pipefail
 
-# Self-location (BASH_SOURCE is this file): FORGE_ENGINE = forge/engine/ (the engine). The class dirs
-# live in the LAYER, forge/meta/ (FORGE_META, from forge.conf), beside recipes-*/ — Yocto's poky layout.
-FORGE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; export FORGE_ENGINE
-
-# ---- shared helpers (in scope for every recipe / class this runner sources) ------------------
-# The FETCH mechanism is NOT here — it's the default do_fetch in classes-global/base.sh (inherited first),
-# with the shared fetch primitives host classes also call.
-
-log()  { printf '\033[1;34m[%s]\033[0m %s\n' "${LAYER:-recipe}" "$*"; }
-die()  { printf '\033[1;31m[%s] ERROR:\033[0m %s\n' "${LAYER:-recipe}" "$*" >&2; exit 1; }
-
-# recipe_get <recipe> <KEY> [default] -> bare value of the last KEY=, ${VAR}-expanded. Normalization
-# MUST match Make's reader (engine.mk _field): strip inline `# comment`, trim, collapse runs, strip
-# one quote layer, then eval.
-recipe_get() {
-  local file="$1" key="$2" def="${3:-}" raw
-  raw="$(sed -n "s/^${key}=//p" "${file}" 2>/dev/null | tail -n1 | sed 's/[[:space:]]*#.*$//' | tr '\t' ' ' | tr -s ' ')"
-  read -r raw <<<"${raw}"
-  case "${raw}" in
-    '"'*'"') raw="${raw#\"}"; raw="${raw%\"}" ;;
-    "'"*"'") raw="${raw#\'}"; raw="${raw%\'}" ;;
-  esac
-  [ -n "${raw}" ] || { printf '%s' "${def}"; return 0; }
-  eval "printf '%s' \"${raw}\""
-}
+# forge-env.sh (sourced): the config + resolution brain — recipe_get, log/die, forge_load_env (the
+# whole build environment from local.conf + board.conf), forge_byname, FORGE_ENGINE/FORGE_META. The
+# FETCH mechanism is NOT here — it's the default do_fetch in classes-global/base.sh (inherited first).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/forge-env.sh"
+LAYER="${1:?run-recipe.sh: need a node name}"; export LAYER
 
 # ---- node lifecycle (in the order main runs it) ----------------------------------------------
 
 # setup_build_env — build the node's environment before the recipe is sourced: the resolved env
-# (forge.conf + board.conf), the provisioned tools on PATH, and the per-node scaffolding (which
+# (from local.conf + board.conf via forge-env), the provisioned tools on PATH, and the scaffolding (which
 # DEFINES inherit()). main then does `inherit base` + `source ${RECIPE}` to bind behaviour.
 setup_build_env() {
   load_build_env
@@ -44,35 +24,14 @@ setup_build_env() {
   set_node_env
 }
 
-# load_build_env — resolve the node's build environment as a pipeline: validate the one bootstrap
-# input, source forge.conf (layout/pins/selection from engine.mk), then the board BSP, then derive
-# the cache + libc-staging paths. forge.conf FIRST: it defines BOARD_DIR, which the board step needs
-# (order is fixed by data flow). Bad/unset inputs are caught by set -euo pipefail + engine.mk's
-# parse-time checks; only the board-dir guard (a silent case set -e wouldn't catch) is asserted here.
+# load_build_env — the resolved build environment: forge-env.sh derives it from local.conf + board.conf
+# (layout, providers, toolchain scalars, tags — everything the old forge.conf carried), then find this
+# node's recipe by name. A node name matching no recipe fails clearly here (not on a later `source ""`).
 load_build_env() {
-  # 1. bootstrap seed -> build tree (set -u aborts if Make didn't inject PRODUCT_DIR)
-  BUILD_DIR="${PRODUCT_DIR}/build"
-
-  # 2. resolved selection + layout + tool pins (engine.mk -> forge.conf; set -e aborts if missing)
-  # shellcheck disable=SC1091
-  source "${BUILD_DIR}/forge.conf"
-  export CROSS_COMPILE ARCH               # sub-makes (kbuild) read these from the env
-
-  # 3. board BSP (forge.conf just set BOARD_DIR)
-  [ -d "${BOARD_DIR}" ] || die "board dir '${BOARD_DIR}' not found (BOARD_NAME=${BOARD_NAME})"
-  [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
-
-  # 4. paths derived from the resolved env (the `:-`/`:=` defaults also cover a standalone run)
-  FORGE_STAMPS="${FORGE_STAMPS:-${BUILD_DIR}/.forge/stamps}"   # per-<LAYER> last-built taskhash
-  FORGE_SIGS="${FORGE_SIGS:-${BUILD_DIR}/.forge/sigs}"         # .taskhash sig a dependent reads (ripple)
-  HOSTTOOLS_FARM="${BUILD_DIR}/.forge/hosttools-farm"; export HOSTTOOLS_FARM  # HOSTTOOLS allowlist symlink farm
-  # libc staging is keyed on link mode (unknown to engine.mk) — computed here, where the producer
-  # (libc class) + consumers (cc-profile, rootfs) agree.
-  LIBC_BUILD_DIR="${BUILD_DIR}/libc"
-  _libc_link="${LINKAGE:-${PKG_LINK:-static}}"
-  : "${LIBC_STAGE_DIR:=${LIBC_BUILD_DIR}/stage-${LIBC:-custom}-${_libc_link}}"
-  : "${STAGE_INC:=${LIBC_BUILD_DIR}/include}"
-  export LIBC_STAGE_DIR STAGE_INC
+  forge_load_env
+  RECIPE="$(forge_byname "${LAYER}" || true)"; export RECIPE
+  [ -n "${RECIPE}" ] && [ -f "${RECIPE}" ] \
+    || die "no recipe for node '${LAYER}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
 }
 
 # --- host build environment (Yocto HOSTTOOLS / ASSUME_PROVIDED / sanity) ----------------------
@@ -163,7 +122,7 @@ set_node_env() {
   # inherit() binds a class — DEFINED here (chicken/egg: it's what sources classes) and records each into
   # _INHERITED_CLASSES so compute_taskhash hashes class bodies. main applies `inherit base` then sources
   # the recipe once this scaffolding exists. Search order = classes-global/ then classes-recipe/ (Yocto's
-  # classes*/ search), both under FORGE_META (forge/meta/, the layer), sourced from forge.conf just above.
+  # classes*/ search), both under FORGE_META (forge/meta/, the layer), set by forge-env when it loaded.
   _INHERITED_CLASSES=""
   inherit() {
     local _c
@@ -259,10 +218,10 @@ compute_taskhash() {
       for dep in ${_INHERITED_CLASSES}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       printf '=== includes ===\n'
       for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
-      # The engine drives every build, so a run-recipe.sh code change must invalidate every node.
-      # Hashed comment-stripped so a pure comment/whitespace edit doesn't rebuild the world.
+      # The engine drives every build, so an engine code change must invalidate every node — hash both
+      # run-recipe.sh + forge-env.sh, comment-stripped so a pure comment/whitespace edit doesn't rebuild.
       printf '=== engine ===\n'
-      grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${FORGE_ENGINE}/run-recipe.sh" 2>/dev/null
+      for _e in run-recipe.sh forge-env.sh; do grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${FORGE_ENGINE}/${_e}" 2>/dev/null; done
       printf '=== siblings ===\n'
       ( cd "${RECIPE_DIR}" && find . -type f ! -name recipe.sh -exec sha256sum {} + 2>/dev/null | sort )
       printf '=== source ===\n';  _hash_source
@@ -293,16 +252,9 @@ compute_taskhash() {
   if [ "${PKG_CLASS:-target}" = target ]; then
     case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) deps="${deps} virtual/cross-cc" ;; esac
   fi
-  # Resolve every virtual/<x> dep to its provider recipe NAME via forge.conf's PROVIDER_<x> path
-  # (matches engine.mk's _vresolve), so a provider change folds into this node's taskhash.
-  _rdeps=""
-  for dep in ${deps}; do
-    case "${dep}" in
-      virtual/*) _k="PROVIDER_${dep#virtual/}"; _k="${_k//-/_}"; _p="${!_k:-}"
-                 [ -n "${_p}" ] && dep="$(basename "$(dirname "${_p}")")" ;;
-    esac
-    _rdeps="${_rdeps} ${dep}"
-  done
+  # Resolve every virtual/<x> dep to its provider recipe NAME (forge_resolve — the SAME resolver the
+  # graph edges use), so a provider change folds into this node's taskhash.
+  _rdeps=""; for dep in ${deps}; do _rdeps="${_rdeps} $(forge_resolve "${dep}")"; done
   deps="${_rdeps}"
   _taskhash="$(
     {
@@ -360,10 +312,7 @@ mark_built() {
 }
 
 main() {
-  # A node name matching no recipe arrives with an empty/bogus RECIPE (e.g. a PACKAGES typo); fail
-  # clearly here rather than cryptically on `source ""` below.
-  [ -n "${RECIPE:-}" ] && [ -f "${RECIPE}" ] || die "no recipe for node '${LAYER:-?}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
-  setup_build_env       # resolved env + PATH + per-node scaffolding (defines inherit())
+  setup_build_env       # resolved env (forge-env from local.conf) + PATH + scaffolding (RECIPE + inherit())
   inherit base          # default tasks (do_fetch); the recipe's inherit/do_* override, last-wins
   # shellcheck disable=SC1090
   source "${RECIPE}"    # recipe facts as vars + inherit(s) + inline do_* overrides

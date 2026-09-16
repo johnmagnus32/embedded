@@ -16,7 +16,7 @@
 #            ALWAYS available. Exercises fs + mem syscalls + fork/exec/wait.
 #   busybox — the real musl BusyBox rootfs, driven with a fixed command script to
 #            an interactive prompt. Runs only if that rootfs is present (built by
-#            `make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox`); its
+#            `KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox make rootfs`); its
 #            name is selection-unique, so a not-built-yet case just SKIPs. INIT=shell = the
 #            minimal /bin/sh PID-1 (the kernel test uses it, NOT the C supervisor INIT=custom,
 #            which is mainline-only — see forge/meta/recipes-core/ (virtual/init)).
@@ -292,7 +292,7 @@ preempt_case() {
 
 busybox_case() {
   # The rebuild command that produces this artifact (also the SKIP hint).
-  local mk="make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox (from projects/gameboy-v3)"
+  local mk="KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox make rootfs (from projects/gameboy-v3)"
   if [ ! -f "$BUSYBOX_INITRD" ]; then
     ylw "=== case: busybox === SKIPPED (not built yet — run: ${mk})"
     return 0
@@ -322,7 +322,7 @@ dynamic_case() {
   # (ET_DYN load bias, PT_INTERP -> /lib/ld-musl-armhf.so.1, full auxv, file-backed
   # + MAP_FIXED mmap2). Same shell interactions as busybox, but the whole chain
   # runs THROUGH ld.so. Built by the package-model assembler with LINKAGE=dynamic.
-  local mk="make rootfs KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox LINKAGE=dynamic (from projects/gameboy-v3)"
+  local mk="KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox LINKAGE=dynamic make rootfs (from projects/gameboy-v3)"
   if [ ! -f "$DYNAMIC_INITRD" ]; then
     ylw "=== case: dynamic === SKIPPED (not built yet — run: ${mk})"
     return 0

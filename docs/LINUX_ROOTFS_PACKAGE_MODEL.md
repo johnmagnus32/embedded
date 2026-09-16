@@ -140,7 +140,7 @@ not a role-heavy variant and a lean variant; the base userland is just a package
 the set.
 
 ```makefile
-# in the product's config.mk (illustrative)
+# in the product's local.conf (illustrative)
 LIBC     ?= custom       # SUBSTRATE (custom | musl) — the C library ALL packages link against
 PACKAGES ?= coreutils    # the install set (plain, additive): the base userland lives
                          #   HERE (coreutils | busybox | coreutils busybox), plus adds
@@ -212,7 +212,7 @@ PKG_BUILD   := $(FORGE)/backends/build-c-pkg.sh    # generic recipe: compile *.c
 PKG_INSTALL := /bin                                # where its binaries go in the rootfs
 ```
 
-The product's `config.mk` gains the **install set** (Buildroot's `IMAGE_INSTALL`):
+The product's `local.conf` gains the **install set** (Buildroot's `IMAGE_INSTALL`):
 
 ```makefile
 LIBC     ?= custom         # the libc EVERY package links against (the substrate; custom|musl)
@@ -293,7 +293,7 @@ discipline applied to libc symbols). Grow libc package-by-package.
 - **`ioctl`/UAPI structs — copy, don't invent:** when a package needs
   `struct mtd_info_user` + `MEMGETINFO`, copy them verbatim from the kernel UAPI
   (`<mtd/mtd-abi.h>`) into our UAPI headers — exactly as we copied syscall numbers
-  and `struct stat` into `gv3_abi.h`. Bounded and mechanical; grows the UAPI too.
+  and `struct stat` into `abi.h`. Bounded and mechanical; grows the UAPI too.
 - **Deep (icebergs — a decision, not an auto-fill):** buffered `stdio` (`FILE`,
   `fopen`/`fread`/`ungetc`/seeking) is a real subsystem; **locales**, **wchar**,
   **dlopen**, **threads** drag in large machinery; and some deps aren't libc at all

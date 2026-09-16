@@ -77,10 +77,10 @@ do_unpack() {
 
 # do_patch — point gcc's ARM dynamic-linker default at the SELECTED libc's loader (so a normal
 # `gcc hello.c` emits the right PT_INTERP with no flags): our custom libc => /lib/ld.so.1; musl =>
-# /lib/ld-musl-armhf.so.1. LIBC comes from forge.conf (the node env).
+# /lib/ld-musl-armhf.so.1. LIBC comes from the node env (the node env).
 do_patch() {
   local eabi="${W}/src/gcc/gcc/config/arm/linux-eabi.h"
-  : "${LIBC:?${PKG_NAME}: LIBC unset (should come from forge.conf)}"
+  : "${LIBC:?${PKG_NAME}: LIBC unset (from the node env)}"
   local loader="/lib/ld.so.1"
   [ "${LIBC}" = musl ] && loader="/lib/ld-musl-armhf.so.1"
   sed -i -e "s#\"/lib/ld-linux\.so\.3\"#\"${loader}\"#" \

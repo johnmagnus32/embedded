@@ -25,7 +25,7 @@ do_build() {
   fi
   : "${REPO_ROOT:?}"; : "${LIBC_STAGE_DIR:?}"; : "${STAGE_INC:?}"
 
-  : "${TOOLCHAIN:?libc do_build: TOOLCHAIN unset (should come from forge.conf)}"
+  : "${TOOLCHAIN:?libc do_build: TOOLCHAIN unset (from the node env)}"
   # TOOLCHAIN=gcc: build the libc into a conforming sysroot with the stage-1 gcc (LIBC_TC_DIR). The
   # stage-2 toolchain-gcc is then built --with-sysroot=LIBC_STAGE_DIR (it PKG_DEPENDS on this node), so
   # a package cross-link pulls crt+libc+headers straight from here. build-sysroot.sh rides WITH the libc.
@@ -40,7 +40,7 @@ do_build() {
   # TOOLCHAIN=custom: our own cpp/cc/as/ar/ld build the libc (libc.a + crt0) via the bare -nostdlib
   # profile. cc-profile gives PKG_CC (the forge-cc driver) / PKG_CFLAGS; the provider's build.sh is
   # sourced so it inherits them. The selected libc's own CC/link contract lives beside its recipe.
-  : "${PROVIDER_libc:?libc do_build: PROVIDER_libc unset (from forge.conf)}"
+  : "${PROVIDER_libc:?libc do_build: PROVIDER_libc unset (from the node env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
   # shellcheck source=/dev/null

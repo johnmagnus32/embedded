@@ -202,7 +202,7 @@ if [ "${1:-}" = "--gv3" ]; then
   # boot as a false pass (the earlier hardcoded name silently booted a stale image).
   rootfs="${PROJ}/build/output/initramfs-custom-shell-coreutils-dynamic.cpio.gz"
   rm -f "${rootfs}"
-  make -C "${PROJ}" rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt PACKAGES=coreutils \
+  LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt PACKAGES=coreutils make -C "${PROJ}" rootfs \
     || die "our dynamic rootfs failed to build"
   # our init.sh is a shebang script; the mainline kernel needs /bin/sh to be OUR
   # dynamic shell, loaded by OUR ld.so.1. PASS = the loader mapped libc.so,

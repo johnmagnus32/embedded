@@ -12,7 +12,7 @@ PKG_ARTIFACT=stage:                    # artifact = this node's pkgstage dir (ca
 
 do_build() {
   : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${NODE_SCRATCH:?}"
-  : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (forge.conf)}"
+  : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (node env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
   local O="${NODE_SCRATCH}/build"; mkdir -p "${O}"

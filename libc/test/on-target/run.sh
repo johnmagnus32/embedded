@@ -31,7 +31,7 @@ command -v "${XPREFIX}gcc" >/dev/null 2>&1 || die "musl cross toolchain missing 
 # (Re)build the STATIC custom libc so libc.a picks up any libc/src changes (content-hashed;
 # a no-op if unchanged). This stages crt0.S.o + libc.a into ${STAGE}.
 echo "### staging static custom libc ###"
-make -C "${PROJ}" rootfs LIBC=custom INIT=shell LINKAGE=static BOARD=virt PACKAGES=coreutils >/dev/null 2>&1 \
+LIBC=custom INIT=shell LINKAGE=static BOARD=virt PACKAGES=coreutils make -C "${PROJ}" rootfs >/dev/null 2>&1 \
   || die "static custom-libc build failed"
 [ -f "${STAGE}/libc.a" ] && [ -f "${STAGE}/crt0.S.o" ] || die "static libc not staged at ${STAGE}"
 [ -x "${GEN_INIT_CPIO}" ] || { make -C "${PROJ}" gen_init_cpio >/dev/null 2>&1 || true; }

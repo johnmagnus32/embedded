@@ -118,9 +118,9 @@ emit_sd_img() {
 }
 
 do_build() {
-  # Every selector + derived tag comes from forge.conf (engine.mk); this recipe only ever runs via
+  # Every selector + derived tag comes from the node env (forge-env); this recipe only ever runs via
   # run-recipe.sh, which sources it — so require them, never guess a default.
-  : "${BOOTLOADER:?image: BOOTLOADER unset (should come from forge.conf)}"
+  : "${BOOTLOADER:?image: BOOTLOADER unset (from the node env)}"
   : "${KERNEL:?image: KERNEL unset}"
   : "${LIBC:?image: LIBC unset}"
   : "${PACKAGES:?image: PACKAGES unset}"
@@ -129,10 +129,10 @@ do_build() {
   : "${CFG:?image: CFG unset}"
   OUT="${OUT:-${BUNDLE:-${BUILD_DIR}/bundles/${CFG}}}"   # output path: overridable, else the per-CFG bundle dir
 
-  # PROVIDER_kernel / PROVIDER_bootloader are resolved by engine.mk (virtual/* + PREFERRED_PROVIDER) and emitted into
-  # forge.conf, so the composer just reads them — no path knowledge of the recipe catalog here.
-  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset (should come from forge.conf)}"
-  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (should come from forge.conf)}"
+  # PROVIDER_kernel / PROVIDER_bootloader are resolved by forge-env (virtual/* + PREFERRED_PROVIDER) and put into
+  # the node env, so the composer just reads them — no path knowledge of the recipe catalog here.
+  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset (from the node env)}"
+  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (from the node env)}"
   export PROVIDER_kernel PROVIDER_bootloader
 
   log "compose: BOOTLOADER=$BOOTLOADER  KERNEL=$KERNEL  ROOTFS=$ROOTFS_TAG  MEDIA=$MEDIA  ($CFG)"

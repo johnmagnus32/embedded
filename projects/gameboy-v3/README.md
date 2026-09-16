@@ -110,7 +110,7 @@ rabbit hole). Everything else we build.
 **Reproducibility & structure (forge refactor):** the build is driven by the
 shared engine [`forge/`](../../forge/) (at the repo root, reused by any product),
 not per-product scripts. `make image` from here resolves this product's selection
-([config.mk](config.mk)) + board inputs and orchestrates the generic build
+([local.conf](local.conf)) + board inputs and orchestrates the generic build
 backends in [`forge/engine/`](../../forge/engine/) (the idempotent fetch/build
 recipes — the old `NN-*.sh`, now engine-owned). Pins split by tier:
 - **Engine** ([`forge/engine/engine.mk`](../../forge/engine/engine.mk)) — the

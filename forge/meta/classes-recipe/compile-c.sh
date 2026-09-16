@@ -24,9 +24,9 @@ do_build() {
   local PKG_BUILD_DIR="${NODE_SCRATCH}/obj"   # this class's scratch obj dir, derived from the node scratch
   # cc-profile gives PKG_CC/PKG_CFLAGS/PKG_LDFLAGS + LIBC_CRT/LIBC_LIB for the SELECTED
   # libc — the libc threads in as a build-config input, not a per-pkg branch. The contract
-  # lives beside the selected libc's recipe (PROVIDER_libc from forge.conf); sourced directly,
+  # lives beside the selected libc's recipe (PROVIDER_libc from the node env); sourced directly,
   # with no per-libc knowledge of its own.
-  : "${PROVIDER_libc:?compile-c do_build: PROVIDER_libc unset (from forge.conf)}"
+  : "${PROVIDER_libc:?compile-c do_build: PROVIDER_libc unset (from the node env)}"
   # shellcheck source=/dev/null
   source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
   mkdir -p "${PKG_BUILD_DIR}"
