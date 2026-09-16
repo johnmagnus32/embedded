@@ -1,12 +1,11 @@
 # recipes-core/musl/recipe.sh — musl libc, built FROM SOURCE (Yocto's musl recipe analogue). Part of the
 # same gcc bootstrap as our custom libc: gcc-cross-initial → musl (this) → gcc-cross (--with-sysroot=this).
-# musl is built with the stage-1 gcc (LIBC_TC) into a conforming sysroot (headers + crt1/crti/crtn +
+# musl is built with the stage-1 gcc (virtual/cross-cc-initial) into a conforming sysroot (headers + crt1/crti/crtn +
 # libc.a/.so + ld-musl), which toolchain-gcc then targets so packages cross-link NORMALLY against musl.
 # Only the from-source `gcc` toolchain can build musl (our custom `cc` is a C subset — see cc-profile.sh).
 PKG_NAME=musl
 PKG_CLASS=target
 PKG_PROVIDES=virtual/libc
-PKG_ALIAS=musl
 PKG_LINKSENS=1                 # its sysroot is built static+shared; keyed on link mode like the custom libc
 
 PKG_FETCH=tarball
@@ -14,7 +13,7 @@ PKG_VERSION=1.2.5
 PKG_SITE=https://musl.libc.org/releases
 PKG_SOURCE=musl-1.2.5.tar.gz
 PKG_SHA256=a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4
-PKG_HOST_DEPENDS="${LIBC_TC} linux-libc-headers"   # stage-1 gcc builds it; UAPI headers go into its sysroot
+PKG_HOST_DEPENDS="virtual/cross-cc-initial linux-libc-headers"   # stage-1 gcc builds it; UAPI headers go into its sysroot
 PKG_ARTIFACT=libcstage:        # the conforming sysroot; cacheable, link-keyed
 
 do_install() { :; }
@@ -28,7 +27,7 @@ do_build() {
   : "${PKG_SRC_DIR:?musl do_build: PKG_SRC_DIR unset}"; : "${LIBC_STAGE_DIR:?}"; : "${LIBC_TC_DIR:?}"
   : "${CROSS_COMPILE:?}"
   local CC="${LIBC_TC_DIR}/bin/${CROSS_COMPILE}gcc"
-  [ -x "${CC}" ] || die "musl: stage-1 gcc missing: ${CC} (LIBC_TC must build first)"
+  [ -x "${CC}" ] || die "musl: stage-1 gcc missing: ${CC} (virtual/cross-cc-initial must build first)"
   rm -rf "${LIBC_STAGE_DIR}"; mkdir -p "${LIBC_STAGE_DIR}"
   cd "${PKG_SRC_DIR}"
   echo "  [libc] musl ${PKG_VERSION}: configure + build from source (stage-1 gcc)"

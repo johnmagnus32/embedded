@@ -7,7 +7,6 @@
 PKG_NAME=toolchain-gcc-initial
 PKG_CLASS=cross
 PKG_PROVIDES=virtual/cross-cc-initial                            # the stage-1 compiler the libc builds with (Yocto's virtual/${TARGET_PREFIX}gcc-initial)
-PKG_ALIAS=gcc                                                    # TOOLCHAIN=gcc selects this provider
 PKG_HOST_CC_PREFIX=arm-forge-linux-gnueabihf-                    # cross triple; MUST match toolchain-gcc (byte-identical stages)
 inherit host-toolchain-gcc                                       # shared LOGIC (do_unpack/do_patch/tc_binutils/…)
 require ${FORGE_META}/recipes-devtools/toolchain-gcc-sources.inc     # shared DATA (triple, cpu/fpu, SRC pins)

@@ -5,17 +5,16 @@
 PKG_NAME=init
 PKG_CLASS=target
 PKG_PROVIDES=virtual/init
-PKG_ALIAS=custom
 PKG_FETCH=local
 PKG_SOURCE=init                        # top-level init/ (relative to REPO_ROOT)
-PKG_DEPENDS=libc                       # link the selected libc + rebuild on its change
+PKG_DEPENDS=virtual/libc                       # link the selected libc + rebuild on its change
 PKG_ARTIFACT=stage:                    # artifact = this node's pkgstage dir (cacheable)
 
 do_build() {
   : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${NODE_SCRATCH:?}"
-  : "${LIBC_CC_PROFILE:?init do_build: LIBC_CC_PROFILE unset (forge.conf)}"
+  : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (forge.conf)}"
   # shellcheck source=/dev/null
-  source "${LIBC_CC_PROFILE}"          # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
+  source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
   local O="${NODE_SCRATCH}/build"; mkdir -p "${O}"
   echo "  [init] make (LIBC=${LIBC}/${PKG_LINK:-static})"
   # LIBC_CRT/LIBC_LIB are empty on musl (it supplies crt+libc); on the custom -nostdlib

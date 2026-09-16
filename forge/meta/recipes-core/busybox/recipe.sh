@@ -7,7 +7,7 @@ PKG_VERSION=1.36.1
 PKG_SITE=https://busybox.net/downloads
 PKG_SOURCE=busybox-1.36.1.tar.bz2
 PKG_SHA256=b8cc24c9574d809e7279c3be349795c5d5ceb6fdf19ca709f80cde50e47de314
-PKG_DEPENDS=libc
+PKG_DEPENDS=virtual/libc
 
 # CONFIG_TC uses TCA_CBQ_MAX, removed in kernel headers >=6.8 and unfixed upstream.
 PKG_KCONFIG_DEFCONFIG=defconfig

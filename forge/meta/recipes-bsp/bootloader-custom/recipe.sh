@@ -2,7 +2,6 @@
 PKG_NAME=bootloader
 PKG_CLASS=target
 PKG_PROVIDES=virtual/bootloader
-PKG_ALIAS=custom
 
 PKG_FETCH=local
 PKG_SOURCE=bootloader

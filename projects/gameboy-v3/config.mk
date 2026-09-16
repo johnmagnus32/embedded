@@ -29,7 +29,40 @@ PACKAGES   ?= busybox console
 #   INIT       custom -> C supervisor (init/, mainline-only) | shell -> minimal /bin/sh PID-1 | runit -> fetched
 #              (the from-scratch/custom-kernel stack uses INIT=shell; the C supervisor needs signalfd/epoll)
 #   PACKAGES   coreutils -> repo-root coreutils/ | busybox -> fetched OSS (space-separated)
-# Version pins live in each recipe (forge/providers|packages/*/recipe.sh).
+# Version pins live in each recipe (forge/meta/recipes-*/*/recipe.sh).
+$(foreach v,KERNEL BOOTLOADER LIBC INIT TOOLCHAIN,$(eval override $(v) := $$(strip $$($(v)))))
+
+# --- map the axis knobs to the provider recipe the engine resolves (Yocto's DISTRO/MACHINE role:
+# high-level selection -> PREFERRED_PROVIDER_virtual/<x>). The engine reads ONLY these — it never
+# sees KERNEL/LIBC/… — so adding a provider is a recipe + a knob value here, no engine edit. ------
+PREFERRED_PROVIDER_virtual/kernel           := $(if $(filter mainline,$(KERNEL)),linux,kernel-custom)
+PREFERRED_PROVIDER_virtual/bootloader       := $(if $(filter uboot,$(BOOTLOADER)),u-boot,bootloader-custom)
+PREFERRED_PROVIDER_virtual/libc             := $(if $(filter custom,$(LIBC)),libc-custom,$(LIBC))
+PREFERRED_PROVIDER_virtual/init             := $(if $(filter runit,$(INIT)),runit,init-$(INIT))
+PREFERRED_PROVIDER_virtual/cross-cc         := toolchain-$(TOOLCHAIN)
+PREFERRED_PROVIDER_virtual/cross-cc-initial := $(if $(filter gcc,$(TOOLCHAIN)),toolchain-gcc-initial,toolchain-$(TOOLCHAIN))
+
+# --- artifact/bundle naming (the product's tag scheme — which axes, what order) -----------------
+_space          := $(subst ,, )
+_LIBC_TAG       := $(if $(filter custom,$(LIBC)),$(LIBC)-$(TOOLCHAIN),$(LIBC))
+ROOTFS_TAG      := $(_LIBC_TAG)-$(INIT)-$(subst $(_space),+,$(PACKAGES))
+CFG             := $(BOOTLOADER)-$(KERNEL)-$(ROOTFS_TAG)
+_LINK           := $(if $(filter dynamic,$(LINKAGE) $(PKG_LINK)),dynamic,static)
+INITRAMFS_IMAGE := initramfs-$(ROOTFS_TAG)-$(_LINK).cpio.gz
+
+# --- the product labels the recipes read from forge.conf (semantic axis values + tags). The engine
+# emits its structural vars + the resolved PROVIDER_<x> paths; this is the product's contribution. ---
+define PRODUCT_FORGE_CONF
+KERNEL=$(KERNEL)
+BOOTLOADER=$(BOOTLOADER)
+LIBC=$(LIBC)
+INIT=$(INIT)
+TOOLCHAIN=$(TOOLCHAIN)
+CFG=$(CFG)
+ROOTFS_TAG=$(ROOTFS_TAG)
+INITRAMFS_IMAGE=$(INITRAMFS_IMAGE)
+endef
+export PRODUCT_FORGE_CONF
 
 # --- board + media ------------------------------------------------------------
 BOARD      ?= t113-gameboy

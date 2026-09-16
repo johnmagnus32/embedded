@@ -49,7 +49,7 @@ LOGDIR="${KDIR}/build/test"
 TOOLCHAIN_BIN="${PROJ}/build/toolchain-gcc/bin"
 # gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it into the product's
 # host prefix); the kernel Makefile no longer owns it, so we pass its path into the
-# fixtures build. Provisioned by the product's `make host-gen_init_cpio` (below, if absent).
+# fixtures build. Provisioned by the product's `make gen_init_cpio` (below, if absent).
 GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
 # The rootfs artifact is now named by (rootfs-tag + link) so selections/linkages don't clobber
 # in build/output/ — these are the musl-busybox static/dynamic names (see resolve.mk INITRAMFS_IMAGE).
@@ -362,8 +362,8 @@ main() {
     # Provision it if missing (build the gen_init_cpio host node directly), then
     # pass its path to the fixtures build — the kernel Makefile doesn't build the tool itself.
     if [ ! -x "${GEN_INIT_CPIO}" ]; then
-      printf '  provisioning gen_init_cpio (make host-gen_init_cpio) ...\n'
-      make -C "${PROJ}" host-gen_init_cpio >>"${LOGDIR}/build.log" 2>&1 || true
+      printf '  provisioning gen_init_cpio (make gen_init_cpio) ...\n'
+      make -C "${PROJ}" gen_init_cpio >>"${LOGDIR}/build.log" 2>&1 || true
     fi
     # `all` = the kernel binary; `fixtures` = the four test initramfs images these
     # cases boot (the kernel Makefile split test scaffolding out of `all`, so name it).

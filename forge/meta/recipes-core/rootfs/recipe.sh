@@ -7,7 +7,7 @@ PKG_CLASS=image
 # matches. The rootfs is a compose step (no PKG_ARTIFACT) so it never caches — this is graph parity,
 # not a cache edge. Quoted: PACKAGES may be several space-separated names, and an unquoted RHS would
 # run all but the first as a command.
-PKG_DEPENDS="init ${PACKAGES}"
+PKG_DEPENDS="virtual/init ${PACKAGES}"
 PKG_FETCH=none
 PKG_HOST_DEPENDS=gen_init_cpio          # the newc-cpio writer
 
@@ -63,8 +63,8 @@ _rootfs_pack() {
 # adding a libc is a new hook, not an edit here.
 _stage_libc_runtime() {
   [ "${PKG_LINK:-static}" = dynamic ] || return 0
-  : "${LIBC_RECIPE:?rootfs _stage_libc_runtime: LIBC_RECIPE unset (from forge.conf)}"
-  local hook; hook="$(dirname "${LIBC_RECIPE}")/stage-runtime.sh"
+  : "${PROVIDER_libc:?rootfs _stage_libc_runtime: PROVIDER_libc unset (from forge.conf)}"
+  local hook; hook="$(dirname "${PROVIDER_libc}")/stage-runtime.sh"
   [ -f "${hook}" ] || die "libc '${LIBC:-}' has no stage-runtime.sh (needed for a dynamic rootfs): ${hook}"
   mkdir -p "${STAGE}/lib"
   # shellcheck source=/dev/null

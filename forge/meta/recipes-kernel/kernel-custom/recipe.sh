@@ -3,7 +3,6 @@
 PKG_NAME=kernel
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
-PKG_ALIAS=custom
 
 PKG_FETCH=local
 PKG_SOURCE=kernel

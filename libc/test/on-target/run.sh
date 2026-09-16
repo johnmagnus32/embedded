@@ -26,7 +26,7 @@ die(){ red "ERROR: $*"; exit 1; }
 
 # ---- prerequisites --------------------------------------------------------
 [ -f "${REFKERNEL}" ] || die "reference kernel missing — run ./test/dynamic.sh once (it builds ${REFKERNEL#${PROJ}/})"
-command -v "${XPREFIX}gcc" >/dev/null 2>&1 || die "musl cross toolchain missing — run 'make -C ${PROJ} host-toolchain-gcc'"
+command -v "${XPREFIX}gcc" >/dev/null 2>&1 || die "musl cross toolchain missing — run 'make -C ${PROJ} toolchain-gcc'"
 
 # (Re)build the STATIC custom libc so libc.a picks up any libc/src changes (content-hashed;
 # a no-op if unchanged). This stages crt0.S.o + libc.a into ${STAGE}.
@@ -34,8 +34,8 @@ echo "### staging static custom libc ###"
 make -C "${PROJ}" rootfs LIBC=custom INIT=shell LINKAGE=static BOARD=virt PACKAGES=coreutils >/dev/null 2>&1 \
   || die "static custom-libc build failed"
 [ -f "${STAGE}/libc.a" ] && [ -f "${STAGE}/crt0.S.o" ] || die "static libc not staged at ${STAGE}"
-[ -x "${GEN_INIT_CPIO}" ] || { make -C "${PROJ}" host-gen_init_cpio >/dev/null 2>&1 || true; }
-[ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing (run 'make -C ${PROJ} host-gen_init_cpio')"
+[ -x "${GEN_INIT_CPIO}" ] || { make -C "${PROJ}" gen_init_cpio >/dev/null 2>&1 || true; }
+[ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing (run 'make -C ${PROJ} gen_init_cpio')"
 
 # Mirror libc/libc-profile.sh's static contract: hermetic (-nostdinc + only the compiler's
 # freestanding headers), and link crt0 + libc.a + libgcc in a group (they're mutually recursive:

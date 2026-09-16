@@ -6,7 +6,7 @@ PKG_CLASS=image
 
 PKG_HOST_DEPENDS=
 PKG_HOST_DEPENDS_sd=genimage
-PKG_DEPENDS="kernel bootloader rootfs"
+PKG_DEPENDS="virtual/kernel virtual/bootloader rootfs"
 PKG_FETCH=none
 
 note() { printf '\033[1;36m  note:\033[0m %s\n' "$*"; }
@@ -15,12 +15,12 @@ note() { printf '\033[1;36m  note:\033[0m %s\n' "$*"; }
 # runner's _artifact_path / _recipe_src_dir), rather than hardcoding. No existence check — the
 # graph built these, and the cp-by-full-path in emit_*() fails loud under set -e.
 resolve_artifacts() {
-  : "${KERNEL_RECIPE:?resolve_artifacts: KERNEL_RECIPE unset}"
-  : "${BOOTLOADER_RECIPE:?resolve_artifacts: BOOTLOADER_RECIPE unset}"
+  : "${PROVIDER_kernel:?resolve_artifacts: PROVIDER_kernel unset}"
+  : "${PROVIDER_bootloader:?resolve_artifacts: PROVIDER_bootloader unset}"
 
-  KERNEL_ARTIFACT="$(_artifact_path "${KERNEL_RECIPE}" PKG_ARTIFACT)"
-  BL_ARTIFACT="$(_artifact_path "${BOOTLOADER_RECIPE}" PKG_ARTIFACT)"      # SD path: raw @8 KiB
-  BL_FEL="$(_artifact_path "${BOOTLOADER_RECIPE}" PKG_ARTIFACT_FEL)"       # NOR path: FEL-loaded image
+  KERNEL_ARTIFACT="$(_artifact_path "${PROVIDER_kernel}" PKG_ARTIFACT)"
+  BL_ARTIFACT="$(_artifact_path "${PROVIDER_bootloader}" PKG_ARTIFACT)"      # SD path: raw @8 KiB
+  BL_FEL="$(_artifact_path "${PROVIDER_bootloader}" PKG_ARTIFACT_FEL)"       # NOR path: FEL-loaded image
 
   # Not provider-resolved like the four above: the kernel layer stages the DTB into OUTPUT_DIR and
   # the rootfs recipe always emits the canonical initramfs name, so both are fixed paths.
@@ -97,7 +97,7 @@ emit_sd_img() {
   cp -f "$INITRD_ARTIFACT" "${ROOT}/${INITRAMFS_IMAGE}"
   if [ "$BOOTLOADER" = uboot ]; then
     # U-Boot's distro_bootcmd auto-runs /boot.scr (the custom loader ignores it, so stage only here).
-    local MKIMAGE="$(_recipe_src_dir "${BOOTLOADER_RECIPE}")/tools/mkimage"
+    local MKIMAGE="$(_recipe_src_dir "${PROVIDER_bootloader}")/tools/mkimage"
     "$MKIMAGE" -C none -A arm -T script -d "${BOARD_DIR}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
   fi
 
@@ -129,11 +129,11 @@ do_build() {
   : "${CFG:?image: CFG unset}"
   OUT="${OUT:-${BUNDLE:-${BUILD_DIR}/bundles/${CFG}}}"   # output path: overridable, else the per-CFG bundle dir
 
-  # KERNEL_RECIPE / BOOTLOADER_RECIPE are resolved by engine.mk (virtual/* + PKG_ALIAS) and emitted into
+  # PROVIDER_kernel / PROVIDER_bootloader are resolved by engine.mk (virtual/* + PREFERRED_PROVIDER) and emitted into
   # forge.conf, so the composer just reads them — no path knowledge of the recipe catalog here.
-  : "${KERNEL_RECIPE:?image: KERNEL_RECIPE unset (should come from forge.conf)}"
-  : "${BOOTLOADER_RECIPE:?image: BOOTLOADER_RECIPE unset (should come from forge.conf)}"
-  export KERNEL_RECIPE BOOTLOADER_RECIPE
+  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset (should come from forge.conf)}"
+  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (should come from forge.conf)}"
+  export PROVIDER_kernel PROVIDER_bootloader
 
   log "compose: BOOTLOADER=$BOOTLOADER  KERNEL=$KERNEL  ROOTFS=$ROOTFS_TAG  MEDIA=$MEDIA  ($CFG)"
   resolve_artifacts

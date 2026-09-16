@@ -33,7 +33,7 @@ set -u
 # ---- locate ourselves + project dirs ----------------------------------------
 # This test lives at libc/test/ (a repo-root PROVIDER). The gv3 case's dynamic rootfs is
 # built by the forge ENGINE proper — `make -C <product> rootfs LIBC=custom LINKAGE=dynamic`
-# walks the graph (libc -> pkg-coreutils -> pack), so this harness no longer
+# walks the graph (libc -> coreutils -> pack), so this harness no longer
 # hand-runs any engine internals; it just invokes make and boots the result.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${HERE}/../.." && pwd)"          # repo root (libc/ is a top-level provider)
@@ -45,7 +45,7 @@ GLIBC_BIN="${PROJ}/build/toolchain-gcc/bin"
 HOSTMAKE_BIN="${PROJ}/build/hostmake/bin"        # GNU Make >=4 (kernel needs it)
 # gen_init_cpio: an engine HOST PACKAGE (forge/meta/recipes-devtools/gen_init_cpio) — forge fetches +
 # compiles it into build/hosttools/bin/. pack_initrd provisions it
-# via `make host-gen_init_cpio` if absent. (This harness still needs build/linux too, but for its
+# via `make gen_init_cpio` if absent. (This harness still needs build/linux too, but for its
 # REFERENCE KERNEL — see below — not for the cpio writer.)
 GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
 
@@ -69,8 +69,8 @@ mkdir -p "${LOGDIR}"
 # ---- 1. reference kernel: build once if missing -----------------------------
 build_ref_kernel() {
   command -v "${GLIBC_BIN}/${GLIBC_PREFIX}gcc" >/dev/null 2>&1 \
-    || die "from-source gcc cross toolchain missing — run 'make -C ${PROJ} host-toolchain-gcc'"
-  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run 'make -C ${PROJ} host-make'"
+    || die "from-source gcc cross toolchain missing — run 'make -C ${PROJ} toolchain-gcc'"
+  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run 'make -C ${PROJ} make'"
   [ -d "${KSRC}/.git" ] || die "${KSRC} is not a git checkout (need it for a worktree)"
 
   ylw "building the mainline reference virt kernel (one-time, ~minutes) ..."
@@ -109,9 +109,9 @@ pack_initrd() {
   # gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it). Provision it
   # by building the gen_init_cpio host node if this tree hasn't yet — no vendored copy.
   if [ ! -x "${GEN_INIT_CPIO}" ]; then
-    info "provisioning gen_init_cpio (make host-gen_init_cpio) ..."
-    make -C "${PROJ}" host-gen_init_cpio >/dev/null 2>&1 || true
-    [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing at ${GEN_INIT_CPIO} — run 'make -C ${PROJ} host-gen_init_cpio'"
+    info "provisioning gen_init_cpio (make gen_init_cpio) ..."
+    make -C "${PROJ}" gen_init_cpio >/dev/null 2>&1 || true
+    [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing at ${GEN_INIT_CPIO} — run 'make -C ${PROJ} gen_init_cpio'"
   fi
   {
     echo 'dir /dev 0755 0 0'
@@ -134,7 +134,7 @@ build_ref_initrd() {
   local stage="${BUILD}/reftest"
   rm -rf "${stage}"; mkdir -p "${stage}/lib"
   local cc="${MUSL_BIN}/${MUSL_PREFIX}gcc"
-  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run 'make -C ${PROJ} host-toolchain-gcc'"
+  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run 'make -C ${PROJ} toolchain-gcc'"
   local sysroot; sysroot="$("$cc" -print-sysroot)"
   # a trivial DYNAMIC program (normal link -> PT_INTERP + DT_NEEDED=libc.so)
   cat > "${BUILD}/refdyn.c" <<'EOF'
@@ -185,7 +185,7 @@ if [ "${1:-}" = "--gv3" ]; then
   info "building OUR dynamic rootfs (make rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt) ..."
   # Drive the forge ENGINE, not its internals: `make rootfs` walks the graph
   #   libc (builds libc + ld.so.1 into LIBC_STAGE_DIR)
-  #     -> pkg-coreutils (links against that libc)
+  #     -> coreutils (links against that libc)
   #     -> rootfs (packs the artifact, named by libc-init-packages-link).
   # The `rootfs: libc` edge guarantees the libc is built before the packages link,
   # so we don't sequence it by hand anymore. Knobs:

@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # recipe-scan.sh — read recipe metadata for the engine. engine.mk calls this via $(shell ...) at parse
 # time; it's the ONE place recipe.sh files get parsed on the Make side. A recipe is plain `KEY=value`
-# lines. Three queries:
+# lines. Two queries:
 #
-#   recipe-scan.sh field <recipe> <KEY>     -> the value of KEY (last wins), one field
-#   recipe-scan.sh providers <recipe>...    -> a "virtual@alias@recipe" line per virtual each provides
-#   recipe-scan.sh classes   <recipe>...    -> a "name|PKG_CLASS" line per recipe (name = dir basename)
+#   recipe-scan.sh field     <recipe> <KEY>   -> the value of KEY (last wins), one field
+#   recipe-scan.sh providers  <recipe>...     -> a "virtual/x@name" line per virtual each recipe provides
 #
 # `field` mirrors run-recipe.sh's recipe_get NORMALIZATION (last KEY=, strip a trailing `# comment`,
 # strip one surrounding quote layer) but does NOT expand ${VARS} — Make expands those later.
@@ -23,23 +22,13 @@ field() {
   ' "$1" 2>/dev/null
 }
 
-# one "virtual@alias@recipe" line per (virtual, alias) a recipe declares. PKG_PROVIDES may list several
-# virtuals (space-separated); PKG_ALIAS is the single selector value they're chosen by.
+# one "virtual/x@name" line per virtual a recipe provides (name = its dir basename) — the index the
+# engine matches PREFERRED_PROVIDER against. PKG_PROVIDES may list several virtuals; each yields a line.
 providers() {
-  local r v alias provides
+  local r v name
   for r in "$@"; do
-    provides=$(field "$r" PKG_PROVIDES)
-    alias=$(field "$r" PKG_ALIAS)
-    [ -n "$provides" ] && [ -n "$alias" ] || continue
-    for v in $provides; do echo "$v@$alias@$r"; done
-  done
-}
-
-# one "name|PKG_CLASS" line per recipe — the name is the recipe's directory basename.
-classes() {
-  local r
-  for r in "$@"; do
-    echo "$(basename "$(dirname "$r")")|$(field "$r" PKG_CLASS)"
+    name="$(basename "$(dirname "$r")")"
+    for v in $(field "$r" PKG_PROVIDES); do echo "${v}@${name}"; done
   done
 }
 

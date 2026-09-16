@@ -39,10 +39,10 @@ do_build() {
 
   # TOOLCHAIN=custom: our own cpp/cc/as/ar/ld build the libc (libc.a + crt0) via the bare -nostdlib
   # profile. cc-profile gives PKG_CC (the forge-cc driver) / PKG_CFLAGS; the provider's build.sh is
-  # sourced so it inherits them. LIBC_CC_PROFILE (from forge.conf) is the selected libc's own contract.
-  : "${LIBC_CC_PROFILE:?libc do_build: LIBC_CC_PROFILE unset (from forge.conf)}"
+  # sourced so it inherits them. The selected libc's own CC/link contract lives beside its recipe.
+  : "${PROVIDER_libc:?libc do_build: PROVIDER_libc unset (from forge.conf)}"
   # shellcheck source=/dev/null
-  source "${LIBC_CC_PROFILE}"
+  source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
   # shellcheck source=/dev/null
   source "${libc_build}"
 }

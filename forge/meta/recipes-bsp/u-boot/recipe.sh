@@ -6,7 +6,6 @@
 PKG_NAME=uboot
 PKG_CLASS=target
 PKG_PROVIDES=virtual/bootloader
-PKG_ALIAS=uboot
 
 PKG_FETCH=git
 PKG_GIT_URL=https://source.denx.de/u-boot/u-boot.git

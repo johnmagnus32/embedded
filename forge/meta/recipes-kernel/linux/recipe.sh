@@ -6,7 +6,6 @@
 PKG_NAME=linux
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
-PKG_ALIAS=mainline
 
 PKG_FETCH=git
 PKG_GIT_URL=https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git

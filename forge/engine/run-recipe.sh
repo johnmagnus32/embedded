@@ -133,7 +133,7 @@ setup_path() {
   # LIBC_TC_DIR/bin (the stage-1 toolchain) is on PATH too, AFTER the stage-2 dirs: the libc node builds
   # before stage-2 exists and its Makefile invokes the cross ar/ranlib by BARE name, so they must resolve
   # from stage-1 — but once stage-2 is built it comes first and wins. (For TOOLCHAIN=custom, LIBC_TC_DIR
-  # == ROOTFS_TC, so the dedup below collapses it.)
+  # == TOOLCHAIN_DIR, so the dedup below collapses it.)
   local d p=""
   for d in "${HOSTMAKE_DIR}/bin" "${TOOLCHAIN_DIR}/bin" "${LIBC_TC_DIR:+${LIBC_TC_DIR}/bin}" "${HOSTTOOLS_FARM}"; do
     [ -n "$d" ] && [ -d "$d" ] || continue
@@ -269,7 +269,7 @@ compute_taskhash() {
       # Fold link mode only where the output differs by it: libc (PKG_LINKSENS) + its linkers (PKG_DEPENDS).
       _linksens=0
       [ "${PKG_LINKSENS:-0}" = 1 ] && _linksens=1
-      case " ${PKG_DEPENDS:-} " in *" libc "*) _linksens=1 ;; esac
+      case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) _linksens=1 ;; esac
       [ "${_linksens}" = 1 ] && printf 'link:%s\n' "${PKG_LINK:-static}"
       # Cross-toolchain + arch SELECTION (CROSS_COMPILE/TC_ARCH/ARCH — forge.conf config no dep edge
       # carries) + board dir: inputs to TARGET builds only. Host classes opt OUT via PKG_TARGET_INDEPENDENT.
@@ -291,9 +291,19 @@ compute_taskhash() {
   # no TC. Gated on class=target: a cross/native host tool (e.g. toolchain-gcc, which depends on libc
   # for its --with-sysroot) is NOT built by virtual/cross-cc, and injecting it would self-cycle.
   if [ "${PKG_CLASS:-target}" = target ]; then
-    case " ${PKG_DEPENDS:-} " in *" libc "*) deps="${deps} virtual/cross-cc" ;; esac
+    case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) deps="${deps} virtual/cross-cc" ;; esac
   fi
-  deps="${deps//virtual\/cross-cc/${ROOTFS_TC}}"   # resolve toolchain virtuals to the concrete node (matches engine.mk _vresolve), so its sig folds
+  # Resolve every virtual/<x> dep to its provider recipe NAME via forge.conf's PROVIDER_<x> path
+  # (matches engine.mk's _vresolve), so a provider change folds into this node's taskhash.
+  _rdeps=""
+  for dep in ${deps}; do
+    case "${dep}" in
+      virtual/*) _k="PROVIDER_${dep#virtual/}"; _k="${_k//-/_}"; _p="${!_k:-}"
+                 [ -n "${_p}" ] && dep="$(basename "$(dirname "${_p}")")" ;;
+    esac
+    _rdeps="${_rdeps} ${dep}"
+  done
+  deps="${_rdeps}"
   _taskhash="$(
     {
       printf '%s\n' "${base}"

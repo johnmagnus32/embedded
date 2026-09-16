@@ -6,7 +6,8 @@
 #   make                 # build per config.mk (default: full custom stack, MEDIA=nor)
 #   make KERNEL=mainline LIBC=musl PACKAGES=busybox BOOTLOADER=uboot    # all-OSS reference
 #   make KERNEL=mainline # our rootfs on a mainline kernel (bug isolation)
-#   make console         # the canvas console flavor (mainline + musl + the console package)
+#   make canvas          # the canvas console flavor (mainline + musl + the console package)
+#   make console         # build just the console package node (canvasd/appletd/…)
 #   make flash           # build a NOR bundle + flash + FEL-boot on the rig
 #   make test            # kernel golden QEMU tests
 #   make clean
@@ -19,11 +20,11 @@ include $(REPO_ROOT)/forge/engine/engine.mk
 
 # --- product-specific targets ------------------------------------------------
 # flash + test deploy/verify on OUR bench, so they live here, not in the generic engine.
-.PHONY: flash test console
-# console: the "canvas" console flavor — mainline kernel + musl libc + the product-local
-# `console` package (canvasd/appletd/launcher/…) alongside busybox. A named selection so you
-# don't retype the axes; override MEDIA=sd for an SD image.
-console:
+.PHONY: flash test canvas
+# canvas: the console flavor — mainline kernel + musl libc + the product-local `console` package
+# (canvasd/appletd/launcher/…) alongside busybox. A named selection so you don't retype the axes;
+# override MEDIA=sd for an SD image. (`make console` builds just the console package node.)
+canvas:
 	@$(MAKE) image KERNEL=mainline LIBC=musl PACKAGES="busybox console"
 
 flash: image
