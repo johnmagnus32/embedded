@@ -6,7 +6,7 @@
 PKG_NAME=uboot
 PKG_CLASS=target
 PKG_PROVIDES=virtual/bootloader
-PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf fragments — a build input the taskhash must catch
+PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf fragments — a build input the recipehash must catch
 
 PKG_FETCH=git
 PKG_GIT_URL=https://source.denx.de/u-boot/u-boot.git

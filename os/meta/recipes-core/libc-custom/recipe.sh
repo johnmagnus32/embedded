@@ -14,9 +14,9 @@ PKG_SOURCE=libc
 # TOOLCHAIN=custom (our own cc builds the libc directly, no stage split). NB the gcc path DIVERGES the
 # two toolchains: the libc builds with the stage-1 compiler but packages compile with virtual/cross-cc
 # (the final), which PKG_DEPENDS on this libc. The virtual edge makes a stage-1 bump RIPPLE into libc's
-# taskhash (and, via PKG_DEPENDS=virtual/libc on packages, into the final gcc + every package).
+# recipehash (and, via PKG_DEPENDS=virtual/libc on packages, into the final gcc + every package).
 PKG_HOST_DEPENDS=virtual/cross-cc-initial
 
-PKG_ARTIFACT=libcstage:       # the link-keyed libc staging dir; skips on an unchanged taskhash
+PKG_ARTIFACT=libcstage:       # the link-keyed libc staging dir; skips on an unchanged recipehash
 
 inherit libc

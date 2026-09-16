@@ -28,7 +28,7 @@ locate() {
   OS_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   OS_META="$(cd "${OS_ENGINE}/../meta" && pwd)"
   REPO_ROOT="$(cd "${OS_ENGINE}/../.." && pwd)"
-  export OS_ENGINE OS_META REPO_ROOT
+  export OS_META REPO_ROOT
 }
 
 # load_config — the product SELECTION: source local.conf (knobs + OS_VIRTUALS + os_preferred_provider).
@@ -67,7 +67,7 @@ resolve() {
 # node_deps <recipe-path> -> its resolved prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
 # PKG_HOST_DEPENDS_<MEDIA> (recipe_get expands ${PACKAGES}) + the implied compiler edge for a target
 # that links libc, each virtual/<x> resolved. No `make` barrier — that's a Make-ordering edge, added by
-# resolve-dependencies. Used by BOTH resolve-dependencies (graph edges) + compute_taskhash (hash fold).
+# resolve-dependencies. Used by BOTH resolve-dependencies (graph edges) + compute_recipehash (hash fold).
 node_deps() {
   local path="$1" raw tok out=""
   raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
@@ -207,7 +207,7 @@ set_recipe_env() {
   RECIPE_SCRATCH="${BUILD_DIR}/scratch/${LAYER}"
   export PROVIDER_RECIPE="${RECIPE}"
 
-  # inherit <class>: source classes-global/ then classes-recipe/, recording each for the taskhash.
+  # inherit <class>: source classes-global/ then classes-recipe/, recording each for the recipehash.
   _INHERITED_CLASSES=""
   inherit() {
     local _c
@@ -218,23 +218,23 @@ set_recipe_env() {
     done
     die "inherit: class '$1' not found in classes-global/ or classes-recipe/"
   }
-  # require <path>: source a shared .inc (Yocto's require), recording it for the taskhash.
+  # require <path>: source a shared .inc (Yocto's require), recording it for the recipehash.
   _REQUIRED_INCS=""
   require() { _REQUIRED_INCS="${_REQUIRED_INCS} $1"; source "$1"; }
 }
 
 skip_if_built() {
   resolve_output
-  compute_taskhash
+  compute_recipehash
   if [ -n "${_output}" ] && [ "${FORCE:-0}" != 1 ] && [ -f "${_stamp}" ] \
-       && [ "$(cat "${_stamp}" 2>/dev/null)" = "${_taskhash}" ] && [ -e "${_output}" ]; then
-    log "cached — up to date (taskhash ${_taskhash:0:12})"; exit 0
+       && [ "$(cat "${_stamp}" 2>/dev/null)" = "${_recipehash}" ] && [ -e "${_output}" ]; then
+    log "cached — up to date (recipehash ${_recipehash:0:12})"; exit 0
   fi
   [ -n "${_output}" ] && [ -f "${_stamp}" ] && [ ! -e "${_output}" ] \
     && log "stamp present but artifact missing (${_output}) — rebuilding"
   if [ -n "${PKG_HOST_SKIP_IF:-}" ] && eval "${PKG_HOST_SKIP_IF}" >/dev/null 2>&1; then
     log "satisfied by the host already (PKG_HOST_SKIP_IF) — skipping build"
-    mkdir -p "${OS_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; exit 0
+    mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; exit 0
   fi
 }
 
@@ -272,23 +272,25 @@ _artifact_path() {
   esac
 }
 
-# _taskhash + _stamp: hash the recipe dir + classes + includes + engine + source + the recipe's declared
-# var/file deps, then fold each dep's recorded taskhash so a bump ripples.
-compute_taskhash() {
-  local base dep deps
-  base="$(
+# _recipehash + _stamp: hash the recipe dir + classes + includes + source + the recipe's declared var/file
+# deps, then fold each dep's recorded recipehash so a bump ripples. The engine itself is NOT hashed (like
+# Yocto trusting bitbake-core): its build-affecting logic — env setup + task order — changes rarely and
+# is a "clean the world" edit; the orchestration that changes often doesn't affect a recipe's output.
+compute_recipehash() {
+  local basehash dep deps
+  basehash="$(
     {
-      # the whole recipe dir: recipe.sh + its siblings (cc-profile.sh, *.config, stage-runtime.sh, …)
-      printf '=== recipe ===\n'
+      # the recipe's own inputs — recipe dir (recipe.sh + siblings: cc-profile.sh, *.config, …) +
+      # inherited classes + required .incs + local source + declared config/board. Each section
+      # self-delimits by line format (sha256sum "<hash> path", "# class", "var:", "file:").
       ( cd "${RECIPE_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
-      printf '=== classes ===\n'
       for dep in ${_INHERITED_CLASSES}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
-      printf '=== includes ===\n'
       for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
-      # Engine hashed comment-stripped, so a comment/whitespace edit doesn't rebuild the world.
-      printf '=== engine ===\n'
-      grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/engine.sh" 2>/dev/null
-      printf '=== source ===\n';  _hash_source
+      # the local source tree, build/ outputs excluded. git/tarball/prebuilt fetch nothing to hash here:
+      # the pin (PKG_VERSION/PKG_SHA256/PKG_GIT_URL) lives in recipe.sh/.inc (already hashed) and the
+      # fetched content is deterministic given that pin.
+      [ "${PKG_FETCH:-local}" = local ] \
+        && ( cd "${REPO_ROOT}" && find "${PKG_SOURCE}" -type f -not -path '*/build/*' -exec sha256sum {} + 2>/dev/null | sort )
       # Config VALUES + out-of-tree FILES the recipe declares it reads — the engine names none of them
       # (Yocto's vardeps / file-checksums). A link-sensitive libc sets PKG_VARDEPS="PKG_LINK"; a
       # board-dependent recipe sets PKG_FILEDEPS="${BOARD_DIR}". Neither is caught by the hashes above:
@@ -304,35 +306,18 @@ compute_taskhash() {
   )"
 
   deps="$(node_deps "${RECIPE}")"   # same resolver the graph edges use (incl PKG_HOST_DEPENDS_<MEDIA>)
-  _taskhash="$(
+  _recipehash="$(
     {
-      printf '%s\n' "${base}"
+      printf '%s\n' "${basehash}"
       for dep in ${deps}; do
-        [ -f "${OS_SIGS}/${dep}.taskhash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.taskhash")"
+        [ -f "${OS_SIGS}/${dep}.recipehash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.recipehash")"
       done
     } | sha256sum | cut -d' ' -f1
   )"
 
   mkdir -p "${OS_SIGS}"
-  printf '%s' "${_taskhash}" > "${OS_SIGS}/${LAYER}.taskhash"
+  printf '%s' "${_recipehash}" > "${OS_SIGS}/${LAYER}.recipehash"
   _stamp="${OS_STAMPS}/${LAYER}"
-}
-
-_hash_source() {
-  case "${PKG_FETCH:-local}" in
-    local)
-      if git -C "${REPO_ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
-        ( cd "${REPO_ROOT}" \
-          && { git ls-files -z -- "${PKG_SOURCE}"; git ls-files -z --others --exclude-standard -- "${PKG_SOURCE}"; } \
-          | sort -z | xargs -0 -r sha256sum 2>/dev/null )
-      else
-        ( cd "${REPO_ROOT}" && find "${PKG_SOURCE}" -type f -not -path '*/build/*' -exec sha256sum {} + 2>/dev/null | sort )
-      fi ;;
-    git)      printf 'git:%s@%s\n' "${PKG_GIT_URL:-}" "${PKG_VERSION:-}" ;;
-    tarball)  printf 'tar:%s#%s\n'  "${PKG_VERSION:-}" "${PKG_SHA256:-}" ;;
-    prebuilt) printf 'pre:%s#%s\n'  "${PKG_VERSION:-}" "${PKG_SHA256:-}" ;;
-    none|*)   : ;;
-  esac
 }
 
 run_tasks() {
@@ -345,7 +330,7 @@ run_tasks() {
 }
 
 mark_built() {
-  if [ -n "${_output}" ]; then mkdir -p "${OS_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; fi
+  if [ -n "${_output}" ]; then mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; fi
 }
 
 # execute-recipe: build one recipe end to end.

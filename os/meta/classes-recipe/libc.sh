@@ -11,7 +11,7 @@
 # do_install is a no-op: artifacts already land in LIBC_STAGE_DIR, read directly by the rootfs step +
 # cc-profile / the final toolchain's --with-sysroot.
 
-# LINK-SENSITIVE OUTPUT: the from-source libc is built static OR dynamic, so its staging dir + taskhash
+# LINK-SENSITIVE OUTPUT: the from-source libc is built static OR dynamic, so its staging dir + recipehash
 # vary by PKG_LINK. Declaring it here (not a PKG_ROLE=libc test in the engine) keeps the orchestrator
 # libc-agnostic; packages get the same via PKG_DEPENDS=libc. (Prebuilt musl inherits it harmlessly.)
 PKG_VARDEPS="PKG_LINK"

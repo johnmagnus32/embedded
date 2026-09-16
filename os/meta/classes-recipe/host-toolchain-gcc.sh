@@ -16,14 +16,14 @@
 # -nostdlib/-nostdinc gymnastics (contrast host-tarball-bin's prebuilt Bootlin toolchains, and
 # LIBC=custom+TOOLCHAIN=prebuilt which rides a foreign gcc bare). This mirrors Yocto's
 # gcc-cross-initial → glibc → gcc-cross split. The shared source pins live in toolchain-gcc-sources.inc
-# (Yocto's gcc-${PV}.inc), `require`d by both stages; compute_taskhash hashes the .inc, so a version
+# (Yocto's gcc-${PV}.inc), `require`d by both stages; compute_recipehash hashes the .inc, so a version
 # bump there re-hashes BOTH stages, then (initial → libc → packages) ripples everywhere.
 #
 # A recipe sets: PKG_NAME, PKG_HOST_DEST (install prefix), PKG_VERSION (for the banner) + its own
 # do_build (which runs after this class's do_unpack+do_patch, so triple/TC/W/jobs/cfg_arch — set by
 # tc_setup in do_unpack — are already in scope), and `require`s toolchain-gcc-sources.inc for the SHARED
 # DATA (triple, cpu/fpu, SRC_URI/checksum pins) — that data lives in the .inc, NOT here (a class carries
-# LOGIC, not SRC_URI). The final recipe also sets PKG_DEPENDS=libc (fold the libc taskhash + the
+# LOGIC, not SRC_URI). The final recipe also sets PKG_DEPENDS=libc (fold the libc recipehash + the
 # host-toolchain-gcc: libc Make edge in engine.mk — its --with-sysroot IS that libc). do_install: no-op.
 # do_fetch: base's (declarative PKG_SOURCES, from the .inc). Built for a fixed triple, not the selected
 # board (the .inc's hard-float VFP baseline serves every board), so it declares no board file-dep.

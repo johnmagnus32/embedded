@@ -3,7 +3,7 @@
 # by engine.mk, so laziness is declared, not an inline `if MEDIA=sd`.
 PKG_NAME=image
 PKG_CLASS=image
-PKG_FILEDEPS="${BOARD_DIR}"   # genimage.cfg + boot.cmd + board.conf (NOR/DRAM/console) — build inputs the taskhash must catch
+PKG_FILEDEPS="${BOARD_DIR}"   # genimage.cfg + boot.cmd + board.conf (NOR/DRAM/console) — build inputs the recipehash must catch
 
 PKG_HOST_DEPENDS=
 PKG_HOST_DEPENDS_sd=genimage

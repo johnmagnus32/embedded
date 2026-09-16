@@ -8,7 +8,7 @@ inherit host-pyvenv
 PKG_PYMODULES="setuptools pyelftools pyyaml importlib_resources"
 PKG_HOST_DEST=${PYENV_DIR}
 # Cache output is the venv's python3 (a symlink to the host base python), NOT the venv dir: the venv
-# EMBEDS the host interpreter, which the taskhash can't see (host env is deliberately not hashed), so
+# EMBEDS the host interpreter, which the recipehash can't see (host env is deliberately not hashed), so
 # if that base python moves/upgrades the venv silently breaks. `[ -e ]` follows the symlink, so a
 # vanished base python fails the check + forces a rebuild; a bare dir would wrongly pass.
 PKG_HOST_VERIFY_BIN=python3

@@ -31,7 +31,7 @@ do_build() {
     make -s -C "${src}/${tool}" >/dev/null || die "toolchain-custom: build failed for ${tool}"
   done
 
-  # Fresh stage (a rebuild reaching here wants a re-provision — the taskhash cache already skipped us
+  # Fresh stage (a rebuild reaching here wants a re-provision — the recipehash cache already skipped us
   # if nothing changed). Raw tools under forge- names; the driver locates them by its own dir.
   rm -rf "${dest}"; mkdir -p "${bin}"
   install -m0755 "${src}/cpp/build/cpp" "${bin}/forge-cpp"

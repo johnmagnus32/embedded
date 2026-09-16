@@ -16,7 +16,7 @@ PKG_FETCH=none                 # sources come from PKG_SOURCES (in the .inc), fe
 PKG_VERSION=gcc13.3.0-binutils2.42
 
 # PKG_DEPENDS=libc: the final gcc's --with-sysroot IS the libc node's staged sysroot, so (a) engine.mk
-# adds the `host-toolchain-gcc: libc` Make edge, and (b) compute_taskhash folds the libc taskhash (+
+# adds the `host-toolchain-gcc: libc` Make edge, and (b) compute_recipehash folds the libc recipehash (+
 # link mode, since PKG_DEPENDS=libc), so a libc/cc-profile edit rebuilds this gcc. The initial→libc→
 # packages ripple (via the shared class body's source pins) covers gcc/binutils version bumps.
 PKG_DEPENDS=virtual/libc

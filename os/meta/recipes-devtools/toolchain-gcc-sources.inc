@@ -3,7 +3,7 @@
 # so the pins + triple + arch tuning live ONCE: the two stages MUST build byte-identical gcc/binutils
 # (stage-2's libgcc links a libc that stage-1's gcc compiled — a version skew is an ABI landmine).
 # This is DATA, so it lives in a .inc, not the host-toolchain-gcc CLASS (which holds shared LOGIC).
-# require records it for compute_taskhash, so a bump here re-hashes both stages → libc → packages.
+# require records it for compute_recipehash, so a bump here re-hashes both stages → libc → packages.
 # To bump a component: change its PKG_SRC_<name> URL + PKG_SHA_<name> (content is pinned by SHA256;
 # the URL is just availability).
 

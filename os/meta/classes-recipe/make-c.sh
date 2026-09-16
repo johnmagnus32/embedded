@@ -12,7 +12,7 @@
 # OUTPUT_DIR/KERNEL_DTB/KERNEL_DTB_OVERLAYS/UBOOT_BOARD_DT/BOARD_DIR (kernel DTB step).
 
 # Board files (DTB overlays + board.conf targets) are a build input outside the recipe dir + source, so
-# declare them for the taskhash (Yocto file-checksums) — the engine names no board.
+# declare them for the recipehash (Yocto file-checksums) — the engine names no board.
 PKG_FILEDEPS="${BOARD_DIR}"
 
 # do_build — one `make -C PKG_SRC_DIR` per goal (empty goal list => default goal). Passes

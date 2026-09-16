@@ -169,7 +169,7 @@ do_fetch() {
   # fetches + verifies them here (into DOWNLOAD_DIR via os_fetch_file), so a do_build never
   # hand-rolls downloads — it reads each by name with `pkg_src <name>`. This is orthogonal to
   # PKG_FETCH above (a node can be PKG_FETCH=local for its own source AND pull extra tarballs, e.g.
-  # the from-source toolchain: PKG_SOURCE=libc for the taskhash + gcc/binutils/gmp/... as sources).
+  # the from-source toolchain: PKG_SOURCE=libc for the recipehash + gcc/binutils/gmp/... as sources).
   # Empty PKG_SOURCES (every non-toolchain recipe) is a no-op.
   # Optional per-source PKG_MIRROR_<name> (a fallback site dir) + PKG_QUERY_<name> (a URL query the
   # fetch needs but the saved basename must not, e.g. cgit's ?h=<tag>) — both forwarded to
