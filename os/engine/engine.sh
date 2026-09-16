@@ -273,13 +273,15 @@ _artifact_path() {
   esac
 }
 
-# _taskhash + _stamp: hash the recipe + classes + includes + engine + siblings + source + link + toolchain,
+# _taskhash + _stamp: hash the recipe dir + classes + includes + engine + source + link + toolchain,
 # then fold each dep's recorded taskhash so a bump ripples.
 compute_taskhash() {
   local base dep deps _linksens
   base="$(
     {
-      printf '=== recipe ===\n';  cat "${RECIPE}"
+      # the whole recipe dir: recipe.sh + its siblings (cc-profile.sh, *.config, stage-runtime.sh, …)
+      printf '=== recipe ===\n'
+      ( cd "${RECIPE_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
       printf '=== classes ===\n'
       for dep in ${_INHERITED_CLASSES}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       printf '=== includes ===\n'
@@ -287,8 +289,6 @@ compute_taskhash() {
       # Engine hashed comment-stripped, so a comment/whitespace edit doesn't rebuild the world.
       printf '=== engine ===\n'
       grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/engine.sh" 2>/dev/null
-      printf '=== siblings ===\n'
-      ( cd "${RECIPE_DIR}" && find . -type f ! -name recipe.sh -exec sha256sum {} + 2>/dev/null | sort )
       printf '=== source ===\n';  _hash_source
       _linksens=0
       [ "${PKG_LINKSENS:-0}" = 1 ] && _linksens=1
