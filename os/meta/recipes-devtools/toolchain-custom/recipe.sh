@@ -2,7 +2,7 @@
 # driver), as a HOST PACKAGE. Selected by TOOLCHAIN=custom (with LIBC=custom): the rootfs libc — and any
 # compile-c package — is built with OUR tools instead of a GNU cross-gcc. Unlike the prebuilt/source
 # toolchains (a foreign gcc), this one is FIVE small programs we build from the repo's toolchain/ tree,
-# then expose behind a gcc-shaped front end so forge's compile classes drive it unchanged.
+# then expose behind a gcc-shaped front end so os's compile classes drive it unchanged.
 #
 # Layout it stages under build/toolchain-custom/bin (on PATH via TOOLCHAIN_DIR):
 #   forge-cpp forge-cc1 forge-as forge-ld forge-ar   the raw tools (the driver finds them as siblings)

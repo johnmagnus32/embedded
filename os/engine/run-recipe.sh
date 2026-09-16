@@ -2,34 +2,34 @@
 # run-recipe.sh — the ONE node runner (orchestrator). Builds ANY recipe with no branch on identity:
 # prepare the env, source the recipe (binds tasks via `inherit <class>` + inline do_* overrides),
 # gate on the content cache, then do_fetch -> do_build -> do_install BY NAME. In: the node NAME ($1)
-# + the seed PRODUCT_DIR (env). forge-env.sh resolves everything else from the product's local.conf —
-# no forge.conf, no shared state; Make just says which node to build.
+# + the seed PRODUCT_DIR (env). os-env.sh resolves everything else from the product's local.conf —
+# no shared config file, no shared state; Make just says which node to build.
 set -euo pipefail
 
-# forge-env.sh (sourced): the config + resolution brain — recipe_get, log/die, forge_load_env (the
-# whole build environment from local.conf + board.conf), forge_byname, FORGE_ENGINE/FORGE_META. The
+# os-env.sh (sourced): the config + resolution brain — recipe_get, log/die, os_load_env (the
+# whole build environment from local.conf + board.conf), os_byname, OS_ENGINE/OS_META. The
 # FETCH mechanism is NOT here — it's the default do_fetch in classes-global/base.sh (inherited first).
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/forge-env.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/os-env.sh"
 LAYER="${1:?run-recipe.sh: need a node name}"; export LAYER
 
 # ---- node lifecycle (in the order main runs it) ----------------------------------------------
 
 # setup_build_env — build the node's environment before the recipe is sourced: the resolved env
-# (from local.conf + board.conf via forge-env), the provisioned tools on PATH, and the scaffolding (which
+# (from local.conf + board.conf via os-env), the provisioned tools on PATH, and the scaffolding (which
 # DEFINES inherit()). main then does `inherit base` + `source ${RECIPE}` to bind behaviour.
 setup_build_env() {
   load_build_env
   setup_host_env        # build the HOSTTOOLS farm + sanity-check the host — while PATH is still the host's
-  setup_path            # THEN scrub PATH to {forge's built tools}:{farm}
+  setup_path            # THEN scrub PATH to {os's built tools}:{farm}
   set_recipe_env
 }
 
-# load_build_env — the resolved build environment: forge-env.sh derives it from local.conf + board.conf
-# (layout, providers, toolchain scalars, tags — everything the old forge.conf carried), then find this
+# load_build_env — the resolved build environment: os-env.sh derives it from local.conf + board.conf
+# (layout, providers, toolchain scalars, tags — everything os_load_env derives), then find this
 # node's recipe by name. A node name matching no recipe fails clearly here (not on a later `source ""`).
 load_build_env() {
-  forge_load_env
-  RECIPE="$(forge_byname "${LAYER}" || true)"; export RECIPE
+  os_load_env
+  RECIPE="$(os_byname "${LAYER}" || true)"; export RECIPE
   [ -n "${RECIPE}" ] && [ -f "${RECIPE}" ] \
     || die "no recipe for node '${LAYER}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
 }
@@ -40,8 +40,8 @@ load_build_env() {
 # built there once and every later node early-returns (no per-node cost, no -j race).
 
 # build_hosttools_farm — realise the HOSTTOOLS allowlist as a symlink farm; setup_path then scrubs PATH
-# to ONLY this farm + forge's built-tool dirs, so a recipe reaches a host binary IFF it is listed.
-# HOSTTOOLS are fatal (missing -> abort with an apt hint); HOSTTOOLS_NONFATAL + ASSUME_PROVIDED (forge
+# to ONLY this farm + os's built-tool dirs, so a recipe reaches a host binary IFF it is listed.
+# HOSTTOOLS are fatal (missing -> abort with an apt hint); HOSTTOOLS_NONFATAL + ASSUME_PROVIDED (os
 # rebuilds those) are linked only when present. Stamped on the list contents (rebuild on any change).
 build_hosttools_farm() {
   local key keyfile t p missing=""
@@ -69,7 +69,7 @@ build_hosttools_farm() {
 sanity_check() {
   local stamp key spec tool min have
   key="$(printf '%s' "${SANITY_REQUIRED}" | sha256sum | cut -d' ' -f1)"
-  stamp="${BUILD_DIR}/.forge/.sanity-ok"
+  stamp="${BUILD_DIR}/.os/.sanity-ok"
   [ "$(cat "${stamp}" 2>/dev/null || true)" = "${key}" ] && return 0
   for spec in ${SANITY_REQUIRED}; do
     tool="${spec%%:*}"; min="${spec#*:}"
@@ -79,13 +79,13 @@ sanity_check() {
     [ "$(printf '%s\n%s\n' "${min}" "${have}" | sort -V | head -n1)" = "${min}" ] \
       || die "sanity: ${tool} ${have} is older than the required ${min}"
   done
-  mkdir -p "${BUILD_DIR}/.forge"; printf '%s' "${key}" > "${stamp}"
+  mkdir -p "${BUILD_DIR}/.os"; printf '%s' "${key}" > "${stamp}"
 }
 
 setup_host_env() { build_hosttools_farm; sanity_check; }
 
-# setup_path — SCRUB PATH to forge's provisioned tool dirs + the HOSTTOOLS farm, and NOTHING else. Built
-# dirs first so a forge-built tool (make-native, the cross gcc) always shadows any host copy. After this
+# setup_path — SCRUB PATH to os's provisioned tool dirs + the HOSTTOOLS farm, and NOTHING else. Built
+# dirs first so a os-built tool (make-native, the cross gcc) always shadows any host copy. After this
 # a recipe can reach a host binary IFF it is in the farm (the allowlist). A recipe may still prepend its
 # own provisioned dir afterward (e.g. U-Boot's binman venv) — that stacks on top of the scrubbed PATH.
 setup_path() {
@@ -122,11 +122,11 @@ set_recipe_env() {
   # inherit() binds a class — DEFINED here (chicken/egg: it's what sources classes) and records each into
   # _INHERITED_CLASSES so compute_taskhash hashes class bodies. main applies `inherit base` then sources
   # the recipe once this scaffolding exists. Search order = classes-global/ then classes-recipe/ (Yocto's
-  # classes*/ search), both under FORGE_META (forge/meta/, the layer), set by forge-env when it loaded.
+  # classes*/ search), both under OS_META (os/meta/, the layer), set by os-env when it loaded.
   _INHERITED_CLASSES=""
   inherit() {
     local _c
-    for _c in "${FORGE_META}/classes-global/$1.sh" "${FORGE_META}/classes-recipe/$1.sh"; do
+    for _c in "${OS_META}/classes-global/$1.sh" "${OS_META}/classes-recipe/$1.sh"; do
       [ -f "${_c}" ] || continue
       _INHERITED_CLASSES="${_INHERITED_CLASSES} ${_c}"
       source "${_c}"; return 0
@@ -156,7 +156,7 @@ skip_if_built() {
     && log "stamp present but artifact missing (${_output}) — rebuilding"
   if [ -n "${PKG_HOST_SKIP_IF:-}" ] && eval "${PKG_HOST_SKIP_IF}" >/dev/null 2>&1; then
     log "satisfied by the host already (PKG_HOST_SKIP_IF) — skipping build"
-    mkdir -p "${FORGE_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; exit 0
+    mkdir -p "${OS_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; exit 0
   fi
 }
 
@@ -219,9 +219,9 @@ compute_taskhash() {
       printf '=== includes ===\n'
       for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       # The engine drives every build, so an engine code change must invalidate every node — hash both
-      # run-recipe.sh + forge-env.sh, comment-stripped so a pure comment/whitespace edit doesn't rebuild.
+      # run-recipe.sh + os-env.sh, comment-stripped so a pure comment/whitespace edit doesn't rebuild.
       printf '=== engine ===\n'
-      for _e in run-recipe.sh forge-env.sh; do grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${FORGE_ENGINE}/${_e}" 2>/dev/null; done
+      for _e in run-recipe.sh os-env.sh; do grep -vE '^[[:space:]]*#|^[[:space:]]*$' "${OS_ENGINE}/${_e}" 2>/dev/null; done
       printf '=== siblings ===\n'
       ( cd "${RECIPE_DIR}" && find . -type f ! -name recipe.sh -exec sha256sum {} + 2>/dev/null | sort )
       printf '=== source ===\n';  _hash_source
@@ -230,7 +230,7 @@ compute_taskhash() {
       [ "${PKG_LINKSENS:-0}" = 1 ] && _linksens=1
       case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) _linksens=1 ;; esac
       [ "${_linksens}" = 1 ] && printf 'link:%s\n' "${PKG_LINK:-static}"
-      # Cross-toolchain + arch SELECTION (CROSS_COMPILE/TC_ARCH/ARCH — forge.conf config no dep edge
+      # Cross-toolchain + arch SELECTION (CROSS_COMPILE/TC_ARCH/ARCH — resolved config, no dep edge
       # carries) + board dir: inputs to TARGET builds only. Host classes opt OUT via PKG_TARGET_INDEPENDENT.
       # An opt-out (small closed set) fails safe: forgetting it over-invalidates, never reuses stale.
       if [ "${PKG_TARGET_INDEPENDENT:-0}" != 1 ]; then
@@ -252,22 +252,22 @@ compute_taskhash() {
   if [ "${PKG_CLASS:-target}" = target ]; then
     case " ${PKG_DEPENDS:-} " in *" virtual/libc "*) deps="${deps} virtual/cross-cc" ;; esac
   fi
-  # Resolve every virtual/<x> dep to its provider recipe NAME (forge_resolve — the SAME resolver the
+  # Resolve every virtual/<x> dep to its provider recipe NAME (os_resolve — the SAME resolver the
   # graph edges use), so a provider change folds into this node's taskhash.
-  _rdeps=""; for dep in ${deps}; do _rdeps="${_rdeps} $(forge_resolve "${dep}")"; done
+  _rdeps=""; for dep in ${deps}; do _rdeps="${_rdeps} $(os_resolve "${dep}")"; done
   deps="${_rdeps}"
   _taskhash="$(
     {
       printf '%s\n' "${base}"
       for dep in ${deps}; do
-        [ -f "${FORGE_SIGS}/${dep}.taskhash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${FORGE_SIGS}/${dep}.taskhash")"
+        [ -f "${OS_SIGS}/${dep}.taskhash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.taskhash")"
       done
     } | sha256sum | cut -d' ' -f1
   )"
 
-  mkdir -p "${FORGE_SIGS}"
-  printf '%s' "${_taskhash}" > "${FORGE_SIGS}/${LAYER}.taskhash"   # for dependents (written every run)
-  _stamp="${FORGE_STAMPS}/${LAYER}"
+  mkdir -p "${OS_SIGS}"
+  printf '%s' "${_taskhash}" > "${OS_SIGS}/${LAYER}.taskhash"   # for dependents (written every run)
+  _stamp="${OS_STAMPS}/${LAYER}"
 }
 
 # _hash_source — stable digest of THIS recipe's source, by PKG_FETCH: local = git ls-files content
@@ -308,11 +308,11 @@ run_tasks() {
 # mark_built — record the taskhash just built (so the next run with an unchanged taskhash skips).
 # Only if the recipe declares an output.
 mark_built() {
-  if [ -n "${_output}" ]; then mkdir -p "${FORGE_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; fi
+  if [ -n "${_output}" ]; then mkdir -p "${OS_STAMPS}"; printf '%s' "${_taskhash}" > "${_stamp}"; fi
 }
 
 main() {
-  setup_build_env       # resolved env (forge-env from local.conf) + PATH + scaffolding (RECIPE + inherit())
+  setup_build_env       # resolved env (os-env from local.conf) + PATH + scaffolding (RECIPE + inherit())
   inherit base          # default tasks (do_fetch); the recipe's inherit/do_* override, last-wins
   # shellcheck disable=SC1090
   source "${RECIPE}"    # recipe facts as vars + inherit(s) + inline do_* overrides

@@ -9,7 +9,7 @@
 #
 # Inputs (recipe facts, exported by host.sh): PKG_NAME, PKG_PYMODULES, PKG_HOST_DEST (venv
 #   dir), TOOLCHAIN_DIR (to exclude its bundled python).
-# do_fetch/do_install: a host tool self-fetches inside do_build (via forge_fetch_file) and
+# do_fetch/do_install: a host tool self-fetches inside do_build (via os_fetch_file) and
 # installs into its host prefix there — so these are no-ops (the uniform contract still calls them).
 
 PKG_TARGET_INDEPENDENT=1   # built with host cc: omit cross-toolchain/arch/board from the taskhash

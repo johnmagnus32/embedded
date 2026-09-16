@@ -1,4 +1,4 @@
-# forge/steps/rootfs/rootfs.devs — the rootfs step's BASE device table, applied to EVERY
+# os/steps/rootfs/rootfs.devs — the rootfs step's BASE device table, applied to EVERY
 # product's initramfs (the always-present bootstrap nodes). Lives WITH the rootfs step (its
 # only consumer, the rootfs recipe), like a provider's build data lives with the provider.
 #

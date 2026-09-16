@@ -1,8 +1,8 @@
 # projects/gameboy-v3/packages/console/recipe.sh — the gameboy-v3 "canvas" console
 # userspace (compositor canvasd + appletd + launcher + powerd + native games) as a
-# PRODUCT-LOCAL package. It lives HERE, not in forge/packages/ — forge finds it via the
-# product-package search path (engine.mk _pkg_recipe: product-first, then the forge
-# catalog — forge's bblayers / BR2_EXTERNAL equivalent). Built from projects/gameboy-v3/src/
+# PRODUCT-LOCAL package. It lives HERE, not in os/packages/ — os finds it via the
+# product-package search path (engine.mk _pkg_recipe: product-first, then the os
+# catalog — os's bblayers / BR2_EXTERNAL equivalent). Built from projects/gameboy-v3/src/
 # by its own Makefile, cross-compiled against the SELECTED libc, installed into /usr/bin.
 #
 # Needs a COMPLETE libc + mainline drivers (DRM/evdev/ALSA), so build the console flavor:
@@ -10,7 +10,7 @@
 #   make image KERNEL=mainline LIBC=musl PACKAGES="busybox console"
 #
 # Inline do_build/do_install (no dedicated class yet — extract a `make-install` class if a
-# SECOND such package appears; forge's uboot recipe likewise carries inline do_*).
+# SECOND such package appears; os's uboot recipe likewise carries inline do_*).
 PKG_NAME=console
 PKG_CLASS=target
 

@@ -2,7 +2,7 @@
 # classes/base.sh — the BASE class every recipe implicitly inherits (Yocto's base.bbclass).
 # run-recipe.sh `inherit base` for EVERY node BEFORE sourcing the recipe, so both the default do_*
 # tasks AND the fetch helpers below are universally in scope — for the recipe and for every class it
-# later inherits (host classes call forge_fetch_file directly). A recipe (or a class it inherits)
+# later inherits (host classes call os_fetch_file directly). A recipe (or a class it inherits)
 # overrides any do_* last-definition-wins. base defaults the SOURCE-side tasks — do_fetch (fetch per
 # PKG_FETCH), do_unpack (extract a tarball), do_patch (no-op) — so most recipes bind only do_build. There
 # is NO default do_build/do_install (a recipe always binds them via a class or inline), so base leaves
@@ -19,7 +19,7 @@
 
 # ---- fetch primitives (content pinned by SHA/tag; the URL is just availability) ---------------
 # Shared by do_fetch's dispatch below AND by host classes that self-fetch a file/tarball into their
-# own prefix (they override do_fetch to no-op and call forge_fetch_file from do_build). Since base is
+# own prefix (they override do_fetch to no-op and call os_fetch_file from do_build). Since base is
 # inherited first, these are in scope for every recipe/class.
 
 # fetch_verify <url> <sha256> <dest_tarball> — download (cached; re-verified), no extraction.
@@ -78,22 +78,22 @@ clone_or_reuse_pinned() {
   fi
 }
 
-# forge_fetch_file <basename> <site> <sha256> [mirror] [url-query] — download+verify ONE artifact
+# os_fetch_file <basename> <site> <sha256> [mirror] [url-query] — download+verify ONE artifact
 # into DOWNLOAD_DIR (site then mirror); echo the cached path (no extract). Arg-driven so both
 # callers share it (do_fetch's tarball arm + host classes). Logs to stderr; stdout = the path.
-forge_fetch_file() {
+os_fetch_file() {
   local name="$1" site="$2" sha="$3" mirror="${4:-}" q="${5:-}"
-  : "${name:?forge_fetch_file: basename unset}"
-  : "${site:?forge_fetch_file: site url unset (${name})}"
-  : "${sha:?forge_fetch_file: sha256 unset (${name})}"
+  : "${name:?os_fetch_file: basename unset}"
+  : "${site:?os_fetch_file: site url unset (${name})}"
+  : "${sha:?os_fetch_file: sha256 unset (${name})}"
   local dest="${DOWNLOAD_DIR}/${name}"
   if fetch_verify "${site}/${name}${q}" "${sha}" "${dest}" >&2; then
     printf '%s' "${dest}"; return 0
   fi
-  [ -n "${mirror}" ] || { echo "forge_fetch_file: ${name} fetch failed (no mirror). If you bumped the version, update PKG_SHA256 in its recipe." >&2; return 1; }
-  echo "forge_fetch_file: ${name} primary failed; trying mirror" >&2
+  [ -n "${mirror}" ] || { echo "os_fetch_file: ${name} fetch failed (no mirror). If you bumped the version, update PKG_SHA256 in its recipe." >&2; return 1; }
+  echo "os_fetch_file: ${name} primary failed; trying mirror" >&2
   fetch_verify "${mirror}/${name}${q}" "${sha}" "${dest}" >&2 \
-    || { echo "forge_fetch_file: ${name} fetch failed from primary AND mirror. If you bumped the version, update PKG_SHA256." >&2; return 1; }
+    || { echo "os_fetch_file: ${name} fetch failed from primary AND mirror. If you bumped the version, update PKG_SHA256." >&2; return 1; }
   printf '%s' "${dest}"
 }
 
@@ -110,7 +110,7 @@ pkg_src() {
 
 # do_fetch — the DEFAULT fetch task: resolve THIS node's recipe source onto disk per PKG_FETCH and
 # set PKG_SRC_DIR (run_tasks exports it for do_build). This IS the fetch mechanism. Overridden to no-op
-# by recipes/classes whose source needs no forge fetch — host classes self-fetch a file/tarball into
+# by recipes/classes whose source needs no os fetch — host classes self-fetch a file/tarball into
 # their prefix; prebuilt/none have nothing to fetch. Idempotent.
 #   local -> $REPO_ROOT/$PKG_SOURCE | prebuilt|none -> "" | git -> $BUILD_DIR/$PKG_GIT_CHECKOUT | tarball -> $RECIPE_SCRATCH/src
 do_fetch() {
@@ -154,7 +154,7 @@ do_fetch() {
       # verified tarball path to the default do_unpack via PKG_TARBALL (it extracts + sets PKG_SRC_DIR).
       name="$(recipe_get "${RECIPE}" PKG_SOURCE)"
       : "${name:?do_fetch: ${RECIPE} PKG_SOURCE unset (tarball fetch)}"
-      PKG_TARBALL="$(forge_fetch_file "${name}" "$(recipe_get "${RECIPE}" PKG_SITE)" \
+      PKG_TARBALL="$(os_fetch_file "${name}" "$(recipe_get "${RECIPE}" PKG_SITE)" \
               "$(recipe_get "${RECIPE}" PKG_SHA256)" \
               "$(recipe_get "${RECIPE}" PKG_SITE_MIRROR)" \
               "$(recipe_get "${RECIPE}" PKG_SOURCE_QUERY)")" \
@@ -166,21 +166,21 @@ do_fetch() {
 
   # Extra SHA-pinned source tarballs (Yocto SRC_URI-style, declarative). The recipe lists logical
   # names in PKG_SOURCES, each with PKG_SRC_<name>=<url> + PKG_SHA_<name>=<sha256>; the FRAMEWORK
-  # fetches + verifies them here (into DOWNLOAD_DIR via forge_fetch_file), so a do_build never
+  # fetches + verifies them here (into DOWNLOAD_DIR via os_fetch_file), so a do_build never
   # hand-rolls downloads — it reads each by name with `pkg_src <name>`. This is orthogonal to
   # PKG_FETCH above (a node can be PKG_FETCH=local for its own source AND pull extra tarballs, e.g.
   # the from-source toolchain: PKG_SOURCE=libc for the taskhash + gcc/binutils/gmp/... as sources).
   # Empty PKG_SOURCES (every non-toolchain recipe) is a no-op.
   # Optional per-source PKG_MIRROR_<name> (a fallback site dir) + PKG_QUERY_<name> (a URL query the
   # fetch needs but the saved basename must not, e.g. cgit's ?h=<tag>) — both forwarded to
-  # forge_fetch_file, which already takes them. Empty when unset (the common case).
+  # os_fetch_file, which already takes them. Empty when unset (the common case).
   local _s _sv _hv _mv _qv _url _sha _mir _qry
   for _s in ${PKG_SOURCES:-}; do
     _sv="PKG_SRC_${_s}"; _hv="PKG_SHA_${_s}"; _mv="PKG_MIRROR_${_s}"; _qv="PKG_QUERY_${_s}"
     _url="${!_sv:-}"; _sha="${!_hv:-}"; _mir="${!_mv:-}"; _qry="${!_qv:-}"
     : "${_url:?do_fetch: PKG_SOURCES lists '${_s}' but PKG_SRC_${_s} (url) unset (${RECIPE})}"
     : "${_sha:?do_fetch: PKG_SRC_${_s} set but PKG_SHA_${_s} (sha256) unset (${RECIPE})}"
-    forge_fetch_file "${_url##*/}" "${_url%/*}" "${_sha}" "${_mir}" "${_qry}" >/dev/null \
+    os_fetch_file "${_url##*/}" "${_url%/*}" "${_sha}" "${_mir}" "${_qry}" >/dev/null \
       || die "do_fetch: fetch/verify failed for source '${_s}' (${_url})"
   done
 }

@@ -32,7 +32,7 @@ set -u
 
 # ---- locate ourselves + project dirs ----------------------------------------
 # This test lives at libc/test/ (a repo-root PROVIDER). The gv3 case's dynamic rootfs is
-# built by the forge ENGINE proper — `make -C <product> rootfs LIBC=custom LINKAGE=dynamic`
+# built by the os ENGINE proper — `make -C <product> rootfs LIBC=custom LINKAGE=dynamic`
 # walks the graph (libc -> coreutils -> pack), so this harness no longer
 # hand-runs any engine internals; it just invokes make and boots the result.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +43,7 @@ LOGDIR="${PROJ}/build/test"
 MUSL_BIN="${PROJ}/build/toolchain-gcc/bin"
 GLIBC_BIN="${PROJ}/build/toolchain-gcc/bin"
 HOSTMAKE_BIN="${PROJ}/build/hostmake/bin"        # GNU Make >=4 (kernel needs it)
-# gen_init_cpio: an engine HOST PACKAGE (forge/meta/recipes-devtools/gen_init_cpio) — forge fetches +
+# gen_init_cpio: an engine HOST PACKAGE (os/meta/recipes-devtools/gen_init_cpio) — os fetches +
 # compiles it into build/hosttools/bin/. pack_initrd provisions it
 # via `make gen_init_cpio` if absent. (This harness still needs build/linux too, but for its
 # REFERENCE KERNEL — see below — not for the cpio writer.)
@@ -103,10 +103,10 @@ fi
 
 # ---- 2. assemble a dynamic-capable initramfs from a staging tree ------------
 # Walks the tree (dir/file/slink) + appends /dev nodes, like the engine's rootfs pack
-# (forge/steps/rootfs/recipe.sh). $1 = staging dir, $2 = output cpio.gz.
+# (os/steps/rootfs/recipe.sh). $1 = staging dir, $2 = output cpio.gz.
 pack_initrd() {
   local stage="$1" out="$2"
-  # gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it). Provision it
+  # gen_init_cpio is an engine HOST PACKAGE (os fetches + compiles it). Provision it
   # by building the gen_init_cpio host node if this tree hasn't yet — no vendored copy.
   if [ ! -x "${GEN_INIT_CPIO}" ]; then
     info "provisioning gen_init_cpio (make gen_init_cpio) ..."
@@ -183,7 +183,7 @@ run_case ref "${BUILD}/reftest.cpio.gz" "refdyn: dynamic-linked OK"
 # ---- case: gv3 (our dynamic rootfs; the dev target) -------------------------
 if [ "${1:-}" = "--gv3" ]; then
   info "building OUR dynamic rootfs (make rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt) ..."
-  # Drive the forge ENGINE, not its internals: `make rootfs` walks the graph
+  # Drive the os ENGINE, not its internals: `make rootfs` walks the graph
   #   libc (builds libc + ld.so.1 into LIBC_STAGE_DIR)
   #     -> coreutils (links against that libc)
   #     -> rootfs (packs the artifact, named by libc-init-packages-link).

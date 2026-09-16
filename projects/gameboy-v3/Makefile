@@ -1,9 +1,9 @@
 # Makefile — gameboy-v3 PRODUCT entry point (thin). The selection lives in local.conf (bash, read by
-# the forge scripts); the shared engine (forge/) turns it into an image. Override knobs as env vars:
+# the os scripts); the shared engine (os/) turns it into an image. Override knobs as env vars:
 #
 #   make                 # build per local.conf (default: mainline + musl + busybox + console, MEDIA=nor)
 #   NB: override via the ENVIRONMENT (`LIBC=custom make …`), NOT `make LIBC=custom` — a command-line
-#       make-var doesn't reach the resolver (engine warns if you try). local.conf holds the defaults.
+#       make-var doesn't reach the resolver. local.conf holds the defaults.
 #   KERNEL=mainline LIBC=musl PACKAGES=busybox BOOTLOADER=uboot make image   # all-OSS reference
 #   KERNEL=mainline make image                                               # our rootfs on a mainline kernel
 #   make canvas          # the canvas console flavor (mainline + musl + the console package)
@@ -14,7 +14,7 @@
 
 PRODUCT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT   := $(abspath $(PRODUCT_DIR)/../..)
-include $(REPO_ROOT)/forge/engine/engine.mk
+include $(REPO_ROOT)/os/engine/engine.mk
 
 # --- product-specific targets (deploy/verify on OUR bench, so not in the generic engine) ---------
 .PHONY: flash test canvas
@@ -24,9 +24,9 @@ include $(REPO_ROOT)/forge/engine/engine.mk
 canvas:
 	@KERNEL=mainline LIBC=musl PACKAGES="busybox console" $(MAKE) image
 
-# flash: BUNDLE + MEDIA are resolved by the engine (forge-env), not Make — pull them for the tool.
+# flash: BUNDLE + MEDIA are resolved by the engine (os-env), not Make — pull them for the tool.
 flash: image
-	@eval "$$($(_SEED) $(FORGE_DIR)/forge-env.sh print BUNDLE MEDIA)"; \
+	@eval "$$(PRODUCT_DIR=$(PRODUCT_DIR) $(OS_DIR)/os-env.sh print BUNDLE MEDIA)"; \
 	  if [ "$$MEDIA" != nor ]; then \
 	    echo "make flash needs MEDIA=nor (SD is a manual dd of build/output/*-sd.img)"; exit 1; fi; \
 	  $(REPO_ROOT)/tools/flash.sh "$$BUNDLE" nor

@@ -10,7 +10,7 @@ PKG_CLASS=cross
 PKG_PROVIDES=virtual/cross-cc                                    # the rootfs/package compiler (Yocto's virtual/${TARGET_PREFIX}gcc)
 PKG_HOST_CC_PREFIX=arm-forge-linux-gnueabihf-                    # cross triple; MUST match toolchain-gcc-initial (byte-identical stages)
 inherit host-toolchain-gcc                                       # shared LOGIC (do_unpack/do_patch/tc_binutils/…)
-require ${FORGE_META}/recipes-devtools/toolchain-gcc-sources.inc     # shared DATA (triple, cpu/fpu, SRC pins)
+require ${OS_META}/recipes-devtools/toolchain-gcc-sources.inc     # shared DATA (triple, cpu/fpu, SRC pins)
 
 PKG_FETCH=none                 # sources come from PKG_SOURCES (in the .inc), fetched by base.sh
 PKG_VERSION=gcc13.3.0-binutils2.42
@@ -21,7 +21,7 @@ PKG_VERSION=gcc13.3.0-binutils2.42
 # packages ripple (via the shared class body's source pins) covers gcc/binutils version bumps.
 PKG_DEPENDS=virtual/libc
 
-# Self-identifying dest/prefix: owns build/toolchain-gcc + the arm-forge triple. TOOLCHAIN_DIR /
+# Self-identifying dest/prefix: owns build/toolchain-gcc + the arm-os triple. TOOLCHAIN_DIR /
 # CROSS_COMPILE resolve to these when TOOLCHAIN=gcc.
 PKG_HOST_DEST=${BUILD_DIR}/toolchain-gcc
 

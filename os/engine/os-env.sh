@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# forge-env.sh — the engine's config + resolution brain (bash). All config and provider resolution
+# os-env.sh — the engine's config + resolution brain (bash). All config and provider resolution
 # live here; engine.mk is just a graph walker. Two entry points:
-#   * SOURCED by run-recipe.sh  -> forge_load_env sets the whole build environment.
+#   * SOURCED by run-recipe.sh  -> os_load_env sets the whole build environment.
 #   * EXECUTED by engine.mk / the product Makefile:
-#       forge-env.sh deps  <recipe>  -> that recipe's resolved prerequisite recipe names (Make prereqs)
-#       forge-env.sh print <VAR>...  -> `VAR=value` lines (for the product Makefile's flash target)
+#       os-env.sh deps  <recipe>  -> that recipe's resolved prerequisite recipe names (Make prereqs)
+#       os-env.sh print <VAR>...  -> `VAR=value` lines (for the product Makefile's flash target)
 # Config is the product's local.conf (plain bash, env-overridable); providers are resolved via the
-# forge_preferred_provider() it defines. Make never sees a config value — only PRODUCT_DIR (the seed).
+# os_preferred_provider() it defines. Make never sees a config value — only PRODUCT_DIR (the seed).
 set -euo pipefail
 
-log() { printf '\033[1;34m[%s]\033[0m %s\n' "${LAYER:-forge}" "$*"; }
-die() { printf '\033[1;31m[%s] ERROR:\033[0m %s\n' "${LAYER:-forge}" "$*" >&2; exit 1; }
+log() { printf '\033[1;34m[%s]\033[0m %s\n' "${LAYER:-os}" "$*"; }
+die() { printf '\033[1;31m[%s] ERROR:\033[0m %s\n' "${LAYER:-os}" "$*" >&2; exit 1; }
 
 # recipe_get <recipe> <KEY> [default] -> bare value of the last KEY=, ${VAR}-expanded (env in scope).
 # Normalization: strip inline `# comment`, trim, collapse runs, strip one quote layer, then eval.
@@ -26,41 +26,41 @@ recipe_get() {
   eval "printf '%s' \"${raw}\""
 }
 
-# forge_locate — the engine's own dirs, from this file's path (no config needed).
-forge_locate() {
-  FORGE_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  FORGE_META="$(cd "${FORGE_ENGINE}/../meta" && pwd)"
-  REPO_ROOT="$(cd "${FORGE_ENGINE}/../.." && pwd)"
-  export FORGE_ENGINE FORGE_META REPO_ROOT
+# os_locate — the engine's own dirs, from this file's path (no config needed).
+os_locate() {
+  OS_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  OS_META="$(cd "${OS_ENGINE}/../meta" && pwd)"
+  REPO_ROOT="$(cd "${OS_ENGINE}/../.." && pwd)"
+  export OS_ENGINE OS_META REPO_ROOT
 }
 
-# forge_load_config — the product SELECTION: source local.conf (knobs with env-override defaults +
-# FORGE_VIRTUALS + forge_preferred_provider()). PRODUCT_DIR is the one required seed (from the env).
-forge_load_config() {
-  forge_locate
-  : "${PRODUCT_DIR:?forge: PRODUCT_DIR unset (Make injects it)}"
+# os_load_config — the product SELECTION: source local.conf (knobs with env-override defaults +
+# OS_VIRTUALS + os_preferred_provider()). PRODUCT_DIR is the one required seed (from the env).
+os_load_config() {
+  os_locate
+  : "${PRODUCT_DIR:?os: PRODUCT_DIR unset (Make injects it)}"
   # shellcheck source=/dev/null
   source "${PRODUCT_DIR}/local.conf"
 }
 
-# forge_byname <name> -> its recipe.sh path. Product recipes-*/ + packages/ shadow forge/meta.
-forge_byname() {
+# os_byname <name> -> its recipe.sh path. Product recipes-*/ + packages/ shadow os/meta.
+os_byname() {
   local n="$1" r
-  for r in "${PRODUCT_DIR}"/recipes-*/"${n}"/recipe.sh "${PRODUCT_DIR}"/packages/"${n}"/recipe.sh "${FORGE_META}"/recipes-*/"${n}"/recipe.sh; do
+  for r in "${PRODUCT_DIR}"/recipes-*/"${n}"/recipe.sh "${PRODUCT_DIR}"/packages/"${n}"/recipe.sh "${OS_META}"/recipes-*/"${n}"/recipe.sh; do
     [ -f "${r}" ] && { printf '%s' "${r}"; return 0; }
   done
   return 1
 }
 
-# forge_resolve <token> -> a virtual/<x> becomes its VERIFIED preferred provider NAME (fail loud if the
+# os_resolve <token> -> a virtual/<x> becomes its VERIFIED preferred provider NAME (fail loud if the
 # preference is unset, names no recipe, or names one that doesn't provide it); anything else passes
 # through. Used for graph edges (deps) and the taskhash dep keys.
-forge_resolve() {
+os_resolve() {
   case "$1" in
     virtual/*)
       local name path
-      name="$(forge_preferred_provider "$1")" || die "no preferred provider for $1 (local.conf forge_preferred_provider)"
-      path="$(forge_byname "${name}")" || die "preferred provider $1=${name}: no such recipe"
+      name="$(os_preferred_provider "$1")" || die "no preferred provider for $1 (local.conf os_preferred_provider)"
+      path="$(os_byname "${name}")" || die "preferred provider $1=${name}: no such recipe"
       case " $(recipe_get "${path}" PKG_PROVIDES) " in
         *" $1 "*) : ;;
         *) die "preferred provider $1=${name}: recipe does not provide $1" ;;
@@ -70,25 +70,25 @@ forge_resolve() {
   esac
 }
 
-# forge_deps <recipe> -> its resolved prerequisite recipe names. Reads PKG_DEPENDS + PKG_HOST_DEPENDS +
+# os_deps <recipe> -> its resolved prerequisite recipe names. Reads PKG_DEPENDS + PKG_HOST_DEPENDS +
 # PKG_HOST_DEPENDS_<MEDIA> (recipe_get expands ${PACKAGES}); adds the implied compiler edge for a
 # target that links libc; resolves each virtual/<x>; prepends the `make` barrier (all but make itself).
-forge_deps() {
-  forge_load_config
+os_deps() {
+  os_load_config
   local recipe="$1" path raw tok out=""
-  path="$(forge_byname "${recipe}")" || return 0   # unknown recipe: no prereqs (run-recipe errors at build)
+  path="$(os_byname "${recipe}")" || return 0   # unknown recipe: no prereqs (run-recipe errors at build)
   raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
   if [ "$(recipe_get "${path}" PKG_CLASS target)" = target ]; then
     case " $(recipe_get "${path}" PKG_DEPENDS) " in *" virtual/libc "*) raw="${raw} virtual/cross-cc" ;; esac
   fi
-  for tok in ${raw}; do out="${out} $(forge_resolve "${tok}")"; done
+  for tok in ${raw}; do out="${out} $(os_resolve "${tok}")"; done
   [ "${recipe}" = make ] && printf '%s\n' "${out}" || printf 'make%s\n' "${out}"
 }
 
-# forge_load_env — the FULL build environment (what forge.conf used to carry, now derived). Sets the
+# os_load_env — the FULL build environment (derived here from local.conf + board.conf). Sets the
 # same variable names recipes/classes read, so they are unchanged. Sourced by run-recipe.sh.
-forge_load_env() {
-  forge_load_config
+os_load_env() {
+  os_load_config
   BUILD_DIR="${PRODUCT_DIR}/build"
   BOARD_NAME="${BOARD}"; BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
   # shellcheck source=/dev/null
@@ -98,9 +98,9 @@ forge_load_env() {
 
   # resolved providers — PROVIDER_<x> path for each virtual (bash-safe key: virtual/cross-cc -> cross_cc)
   local v key
-  for v in ${FORGE_VIRTUALS}; do
+  for v in ${OS_VIRTUALS}; do
     key="PROVIDER_${v#virtual/}"; key="${key//-/_}"
-    printf -v "${key}" '%s' "$(forge_byname "$(forge_resolve "${v}")")"
+    printf -v "${key}" '%s' "$(os_byname "$(os_resolve "${v}")")"
     export "${key?}"
   done
 
@@ -114,8 +114,8 @@ forge_load_env() {
   # derived paths (all a fixed function of BUILD_DIR)
   DOWNLOAD_DIR="${BUILD_DIR}/downloads"; OUTPUT_DIR="${BUILD_DIR}/output"
   PYENV_DIR="${BUILD_DIR}/pyenv"; HOSTMAKE_DIR="${BUILD_DIR}/hostmake"; HOSTTOOLS_DIR="${BUILD_DIR}/hosttools"
-  FORGE_STAMPS="${BUILD_DIR}/.forge/stamps"; FORGE_SIGS="${BUILD_DIR}/.forge/sigs"
-  HOSTTOOLS_FARM="${BUILD_DIR}/.forge/hosttools-farm"; OVERLAY_DIR="${PRODUCT_DIR}/overlay"
+  OS_STAMPS="${BUILD_DIR}/.os/stamps"; OS_SIGS="${BUILD_DIR}/.os/sigs"
+  HOSTTOOLS_FARM="${BUILD_DIR}/.os/hosttools-farm"; OVERLAY_DIR="${PRODUCT_DIR}/overlay"
 
   # libc staging (link-keyed — the producer + consumers agree here)
   local link="${LINKAGE:-${PKG_LINK:-static}}"
@@ -138,17 +138,17 @@ forge_load_env() {
 
   export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ROOTFS_TARGET TC_ARCH ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
-         FORGE_STAMPS FORGE_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
+         OS_STAMPS OS_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
          ROOTFS_TAG CFG INITRAMFS_IMAGE BUNDLE HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
 
 # CLI dispatch (only when executed, not sourced)
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
-  cmd="${1:?forge-env.sh: need a subcommand (deps|print)}"; shift
+  cmd="${1:?os-env.sh: need a subcommand (deps|print)}"; shift
   case "${cmd}" in
-    deps)  forge_deps "$@" ;;
-    print) forge_load_env; for v in "$@"; do printf '%s=%q\n' "${v}" "${!v}"; done ;;
-    *)     die "forge-env.sh: unknown subcommand '${cmd}' (deps|print)" ;;
+    deps)  os_deps "$@" ;;
+    print) os_load_env; for v in "$@"; do printf '%s=%q\n' "${v}" "${!v}"; done ;;
+    *)     die "os-env.sh: unknown subcommand '${cmd}' (deps|print)" ;;
   esac
 fi

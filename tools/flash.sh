@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# flash.sh — flash a forge-built BUNDLE to the T113-breakout and FEL-boot it, in one go.
+# flash.sh — flash a os-built BUNDLE to the T113-breakout and FEL-boot it, in one go.
 #
 #   tools/flash.sh <bundle-dir> <media>   (or: make flash  from the product dir)
-#     <bundle-dir>  a directory produced by `make image` (forge) (has manifest.env + components)
+#     <bundle-dir>  a directory produced by `make image` (os) (has manifest.env + components)
 #     <media>       nor            (SD/eMMC: see the clear error below)
 #
 # It runs the whole remote loop against the rig (the NUC that has the board + xfel):
@@ -26,7 +26,7 @@ die()  { printf '\033[1;31m[flash] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 BUNDLE="${1:-}"; MEDIA="${2:-}"
 [ -n "$BUNDLE" ] && [ -n "$MEDIA" ] || die "usage: $0 <bundle-dir> <media:nor>"
 [ -d "$BUNDLE" ] || die "bundle dir not found: $BUNDLE"
-[ -f "$BUNDLE/manifest.env" ] || die "no manifest.env in $BUNDLE — is it a forge bundle?"
+[ -f "$BUNDLE/manifest.env" ] || die "no manifest.env in $BUNDLE — is it a os bundle?"
 
 # Media gate — be explicit about what is/isn't remotely flashable.
 case "$MEDIA" in

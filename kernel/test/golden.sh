@@ -19,7 +19,7 @@
 #            `KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox make rootfs`); its
 #            name is selection-unique, so a not-built-yet case just SKIPs. INIT=shell = the
 #            minimal /bin/sh PID-1 (the kernel test uses it, NOT the C supervisor INIT=custom,
-#            which is mainline-only — see forge/meta/recipes-core/ (virtual/init)).
+#            which is mainline-only — see os/meta/recipes-core/ (virtual/init)).
 #   dynamic — the same, dynamically linked through musl's ld.so (add LINKAGE=dynamic
 #            to that rootfs build); SKIPs the same way. smoke/fault/orphan/preempt
 #            use built-in initramfs images and always run.
@@ -36,7 +36,7 @@ set -u
 
 # ---- locate ourselves + the kernel dir --------------------------------------
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KDIR="$(cd "${HERE}/.." && pwd)"                 # <repo>/kernel (a top-level PROVIDER since the forge refactor)
+KDIR="$(cd "${HERE}/.." && pwd)"                 # <repo>/kernel (a top-level PROVIDER since the os refactor)
 REPO_ROOT="$(cd "${KDIR}/.." && pwd)"            # <repo> (= 'embedded/')
 # The kernel is now a top-level provider, but the golden test still consumes a
 # PRODUCT's build artifacts (toolchain + busybox initramfs). Point at the
@@ -47,7 +47,7 @@ PROJ="${GV3_PRODUCT:-${REPO_ROOT}/projects/gameboy-v3}"
 BUILD="${KDIR}/build/virt"
 LOGDIR="${KDIR}/build/test"
 TOOLCHAIN_BIN="${PROJ}/build/toolchain-gcc/bin"
-# gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it into the product's
+# gen_init_cpio is an engine HOST PACKAGE (os fetches + compiles it into the product's
 # host prefix); the kernel Makefile no longer owns it, so we pass its path into the
 # fixtures build. Provisioned by the product's `make gen_init_cpio` (below, if absent).
 GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
