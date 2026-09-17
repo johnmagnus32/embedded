@@ -110,7 +110,8 @@ load_env() {
   [ -n "${RECIPE_PATH}" ] && [ -f "${RECIPE_PATH}" ] \
     || die "no recipe for '${RECIPE}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
   BUILD_DIR="${PRODUCT_DIR}/build"
-  BOARD_NAME="${BOARD}"; BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
+  BOARD_NAME="${BOARD}"
+  BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
   # shellcheck source=/dev/null
   [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
   : "${KERNEL_TARGET:?boards/${BOARD}/board.conf must set KERNEL_TARGET}"
@@ -118,7 +119,8 @@ load_env() {
   # resolved providers — PROVIDER_<x> path per virtual (bash-safe key: virtual/cross-cc -> cross_cc)
   local v key
   for v in ${OS_VIRTUALS}; do
-    key="PROVIDER_${v#virtual/}"; key="${key//-/_}"
+    key="PROVIDER_${v#virtual/}"
+    key="${key//-/_}"
     printf -v "${key}" '%s' "$(byname "$(resolve "${v}")")"
     export "${key?}"
   done
@@ -131,9 +133,13 @@ load_env() {
   LIBC_TC_DIR="${BUILD_DIR}/$(basename "$(dirname "${PROVIDER_cross_cc_initial}")")"
 
   # derived paths (all a fixed function of BUILD_DIR)
-  DOWNLOAD_DIR="${BUILD_DIR}/downloads"; OUTPUT_DIR="${BUILD_DIR}/output"
-  PYENV_DIR="${BUILD_DIR}/pyenv"; HOSTMAKE_DIR="${BUILD_DIR}/hostmake"; HOSTTOOLS_DIR="${BUILD_DIR}/hosttools"
-  OS_STAMPS="${BUILD_DIR}/.os/stamps"; OS_SIGS="${BUILD_DIR}/.os/sigs"
+  DOWNLOAD_DIR="${BUILD_DIR}/downloads"
+  OUTPUT_DIR="${BUILD_DIR}/output"
+  PYENV_DIR="${BUILD_DIR}/pyenv"
+  HOSTMAKE_DIR="${BUILD_DIR}/hostmake"
+  HOSTTOOLS_DIR="${BUILD_DIR}/hosttools"
+  OS_STAMPS="${BUILD_DIR}/.os/stamps"
+  OS_SIGS="${BUILD_DIR}/.os/sigs"
   HOSTTOOLS_FARM="${BUILD_DIR}/.os/hosttools-farm"
 
   # libc staging (link-keyed — the producer + consumers agree here)
@@ -151,7 +157,8 @@ load_env() {
   # export board.conf's ROOTFS_ARCH_FLAGS[_*] (read by classes); reset the inherit/require accumulators
   # for this recipe (they feed compute_recipehash).
   while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)
-  _INHERITED_CLASSES="" _REQUIRED_INCS=""
+  _INHERITED_CLASSES=""
+  _REQUIRED_INCS=""
 
   # host-tool policy (Yocto HOSTTOOLS): a required allowlist + a nonfatal (config-specific) one. A
   # `name:min` entry also version-gates the host tool (build_hosttools_farm). Engine policy, not per-product.
