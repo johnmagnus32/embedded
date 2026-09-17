@@ -3,10 +3,9 @@
 PKG_NAME=rootfs
 PKG_CLASS=image
 
-# Mirrors the Make prerequisites (engine.mk: `rootfs: init pkg-<packages>`) so the declared dep graph
-# matches. The rootfs is a compose step (no PKG_ARTIFACT) so it never caches — this is graph parity,
-# not a cache edge. Quoted: PACKAGES may be several space-separated names, and an unquoted RHS would
-# run all but the first as a command.
+# PKG_DEPENDS mirrors what the rootfs assembles (init + the selected PACKAGES), so the dep graph +
+# recipehash fold match. Quoted: PACKAGES may be several space-separated names, and an unquoted RHS
+# would run all but the first as a command.
 PKG_DEPENDS="virtual/init ${PACKAGES}"
 PKG_FETCH=none
 PKG_HOST_DEPENDS=gen_init_cpio          # the newc-cpio writer

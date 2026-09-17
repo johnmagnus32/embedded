@@ -13,7 +13,6 @@ PKG_DEPENDS=virtual/libc
 PKG_KCONFIG_DEFCONFIG=defconfig
 PKG_KCONFIG_DISABLE=CONFIG_TC
 
-PKG_ARTIFACT=stage:
 
 inherit kconfig
 

@@ -7,4 +7,3 @@ PKG_SOURCE=coreutils
 PKG_DEPENDS=virtual/libc
 inherit compile-c
 PKG_INSTALL=/bin
-PKG_ARTIFACT=stage:

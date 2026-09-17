@@ -13,21 +13,15 @@ require ${OS_META}/recipes-core/image-naming.inc   # CFG + ROOTFS_TAG + INITRAMF
 
 note() { printf '\033[1;36m  note:\033[0m %s\n' "$*"; }
 
-# Map each component to its on-disk path by asking the selected provider's recipe (via the
-# runner's _artifact_path / _recipe_src_dir), rather than hardcoding. No existence check — the
-# graph built these, and the cp-by-full-path in emit_*() fails loud under set -e.
+# Every component deploys into OUTPUT_DIR under a fixed name (Yocto's deploy dir); the composer reads
+# them by convention — no querying the provider recipes. No existence check — the graph built these,
+# and the cp-by-full-path in emit_*() fails loud under set -e.
 resolve_artifacts() {
-  : "${PROVIDER_kernel:?resolve_artifacts: PROVIDER_kernel unset}"
-  : "${PROVIDER_bootloader:?resolve_artifacts: PROVIDER_bootloader unset}"
-
-  KERNEL_ARTIFACT="$(_artifact_path "${PROVIDER_kernel}" PKG_ARTIFACT)"
-  BL_ARTIFACT="$(_artifact_path "${PROVIDER_bootloader}" PKG_ARTIFACT)"      # SD path: raw @8 KiB
-  BL_FEL="$(_artifact_path "${PROVIDER_bootloader}" PKG_ARTIFACT_FEL)"       # NOR path: FEL-loaded image
-
-  # Not provider-resolved like the four above: the kernel layer stages the DTB into OUTPUT_DIR and
-  # the rootfs recipe always emits the canonical initramfs name, so both are fixed paths.
+  KERNEL_ARTIFACT="${OUTPUT_DIR}/zImage"
   DTB_ARTIFACT="${OUTPUT_DIR}/${KERNEL_DTB}"
   INITRD_ARTIFACT="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
+  BL_ARTIFACT="${OUTPUT_DIR}/bootloader.bin"   # SD path: raw @8 KiB
+  BL_FEL="${OUTPUT_DIR}/fel-loader.bin"        # NOR path: FEL-loaded image
 }
 
 # MEDIA=nor: a self-contained bundle dir (components + loader + manifest) that tools/flash.sh
@@ -99,7 +93,7 @@ emit_sd_img() {
   cp -f "$INITRD_ARTIFACT" "${ROOT}/${INITRAMFS_IMAGE}"
   if [ "$BOOTLOADER" = uboot ]; then
     # U-Boot's distro_bootcmd auto-runs /boot.scr (the custom loader ignores it, so stage only here).
-    local MKIMAGE="$(_recipe_src_dir "${PROVIDER_bootloader}")/tools/mkimage"
+    local MKIMAGE="${OUTPUT_DIR}/mkimage"
     "$MKIMAGE" -C none -A arm -T script -d "${BOARD_DIR}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
   fi
 
@@ -130,12 +124,6 @@ do_build() {
   : "${ROOTFS_TAG:?image: ROOTFS_TAG unset}"
   : "${CFG:?image: CFG unset}"
   OUT="${OUT:-${BUILD_DIR}/bundle}"   # the NOR bundle dir (fixed path; override with OUT=)
-
-  # PROVIDER_kernel / PROVIDER_bootloader are resolved by engine.sh (virtual/* + PREFERRED_PROVIDER) and put into
-  # the recipe env, so the composer just reads them — no path knowledge of the recipe catalog here.
-  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset (from the recipe env)}"
-  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (from the recipe env)}"
-  export PROVIDER_kernel PROVIDER_bootloader
 
   log "compose: BOOTLOADER=$BOOTLOADER  KERNEL=$KERNEL  ROOTFS=$ROOTFS_TAG  MEDIA=$MEDIA  ($CFG)"
   resolve_artifacts

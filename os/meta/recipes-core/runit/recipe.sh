@@ -14,7 +14,6 @@ PKG_SITE=http://smarden.org/runit
 PKG_SOURCE=runit-2.1.2.tar.gz
 PKG_SHA256=6fd0160cb0cf1207de4e66754b6d39750cff14bb0aa66ab49490992c0c47ba18
 PKG_DEPENDS=virtual/libc
-PKG_ARTIFACT=stage:
 
 # The tarball extracts to admin/runit-<ver>/ (base do_fetch strips one component -> runit-<ver>/).
 _runit_src() { echo "${PKG_SRC_DIR}/runit-${PKG_VERSION}/src"; }

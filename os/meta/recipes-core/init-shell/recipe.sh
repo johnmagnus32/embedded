@@ -7,7 +7,6 @@ PKG_NAME=shell-init
 PKG_CLASS=target
 PKG_PROVIDES=virtual/init
 PKG_FETCH=none
-PKG_ARTIFACT=stage:      # its pkgstage (build/rootfs/pkgstage/init); skips on an unchanged recipehash
 
 do_build() { :; }
 

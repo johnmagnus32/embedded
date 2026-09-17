@@ -10,6 +10,5 @@ inherit make-c
 PKG_MAKE_GOALS="all fel"      # default `all`, then `fel` for the FEL-loadable @0x28000 image
 PKG_HOST_DEPENDS=virtual/cross-cc
 
-# SD-boot eGON; the FEL image is a secondary the NOR bundle also needs.
-PKG_ARTIFACT=src:build/bootloader.egon.bin
-PKG_ARTIFACT_FEL=src:build/bootloader-fel-0x28000.egon.bin
+# Deploy both eGON images into OUTPUT_DIR: the SD-boot loader + the FEL image the NOR bundle needs.
+PKG_DEPLOY="build/bootloader.egon.bin:bootloader.bin build/bootloader-fel-0x28000.egon.bin:fel-loader.bin"

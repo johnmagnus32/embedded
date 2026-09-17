@@ -17,12 +17,6 @@ PKG_VERSION=v2026.04
 # Declared only here → the python venv is provisioned iff U-Boot is in the build.
 PKG_HOST_DEPENDS="virtual/cross-cc binman-venv"
 
-# PKG_ARTIFACT = combined SPL+U-Boot image (the SD path). PKG_ARTIFACT_FEL = U-Boot *proper*
-# (u-boot.bin), the image the NOR bundle FEL-loads — the same key the custom loader declares, so
-# the image composer reads one key for either bootloader.
-PKG_ARTIFACT=out:u-boot-sunxi-with-spl.bin
-PKG_ARTIFACT_FEL=src:u-boot.bin
-
 inherit kconfig
 inherit devicetree
 
@@ -46,11 +40,11 @@ do_build() {
   python3 -c 'import setuptools, elftools, yaml' 2>/dev/null \
     || die "build venv missing binman deps (setuptools/pyelftools/pyyaml) — run via 'make bootloader BOOTLOADER=uboot'"
 
-  # Our own facts (PKG_VERSION, PKG_ARTIFACT) are already shell vars — set at the top of this recipe,
-  # which the runner sourced before calling do_build — so use them directly, don't re-parse the file.
+  # Our own facts (PKG_VERSION) are already shell vars — set at the top of this recipe, which the
+  # runner sourced before calling do_build — so use them directly, don't re-parse the file.
   # Only UBOOT_DEFCONFIG needs a guard: it's a board.conf fact, not declared here.
   : "${UBOOT_DEFCONFIG:?recipe: UBOOT_DEFCONFIG missing from board.conf}"
-  local UBOOT_TAG="${PKG_VERSION}" UBOOT_IMAGE="${PKG_ARTIFACT#out:}"
+  local UBOOT_TAG="${PKG_VERSION}" UBOOT_IMAGE=u-boot-sunxi-with-spl.bin
 
   local BOARD_DTS_REL="dts/upstream/src/arm/allwinner/${UBOOT_BOARD_DT}.dts"
   local BOARD_DTS_DIR_REL="dts/upstream/src/arm/allwinner"
@@ -95,12 +89,14 @@ do_build() {
 
   [ -f "${UBOOT_IMAGE}" ] || die "build finished but ${UBOOT_IMAGE} not found"
   mkdir -p "${OUTPUT_DIR}"
-  cp -f "${UBOOT_IMAGE}" "${OUTPUT_DIR}/${UBOOT_IMAGE}"
+  cp -f "${UBOOT_IMAGE}" "${OUTPUT_DIR}/bootloader.bin"   # SD-boot image (raw @8 KiB)
+  cp -f u-boot.bin       "${OUTPUT_DIR}/fel-loader.bin"   # NOR path: FEL-loaded U-Boot proper
+  cp -f tools/mkimage    "${OUTPUT_DIR}/mkimage"          # the image step builds boot.scr with it (SD)
 
-  local SIZE; SIZE="$(du -h "${OUTPUT_DIR}/${UBOOT_IMAGE}" | cut -f1)"
+  local SIZE; SIZE="$(du -h "${OUTPUT_DIR}/bootloader.bin" | cut -f1)"
   printf '\n\033[1;32m[uboot] DONE\033[0m  %s (%s)  ->  %s (%s)\n' \
-    "${UBOOT_TAG}" "${UBOOT_DEFCONFIG}" "${OUTPUT_DIR}/${UBOOT_IMAGE}" "${SIZE}"
-  printf '  SD (8 KiB offset): sudo dd if=%s of=/dev/sdX bs=1024 seek=8 conv=fsync\n' "${OUTPUT_DIR}/${UBOOT_IMAGE}"
+    "${UBOOT_TAG}" "${UBOOT_DEFCONFIG}" "${OUTPUT_DIR}/bootloader.bin" "${SIZE}"
+  printf '  SD (8 KiB offset): sudo dd if=%s of=/dev/sdX bs=1024 seek=8 conv=fsync\n' "${OUTPUT_DIR}/bootloader.bin"
 }
 
 do_install() { :; }

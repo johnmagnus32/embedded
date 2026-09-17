@@ -14,7 +14,6 @@ PKG_SITE=https://musl.libc.org/releases
 PKG_SOURCE=musl-1.2.5.tar.gz
 PKG_SHA256=a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4
 PKG_HOST_DEPENDS="virtual/cross-cc-initial linux-libc-headers"   # stage-1 gcc builds it; UAPI headers go into its sysroot
-PKG_ARTIFACT=libcstage:        # the conforming sysroot; cacheable, link-keyed
 
 do_install() { :; }
 

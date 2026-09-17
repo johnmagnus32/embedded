@@ -17,6 +17,5 @@ PKG_SOURCE=libc
 # recipehash (and, via PKG_DEPENDS=virtual/libc on packages, into the final gcc + every package).
 PKG_HOST_DEPENDS=virtual/cross-cc-initial
 
-PKG_ARTIFACT=libcstage:       # the link-keyed libc staging dir; skips on an unchanged recipehash
 
 inherit libc

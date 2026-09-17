@@ -15,7 +15,6 @@ PKG_GIT_CHECKOUT=linux
 PKG_VERSION=v6.12.95
 
 PKG_HOST_DEPENDS=virtual/cross-cc
-PKG_ARTIFACT=out:${KERNEL_IMAGE_TARGET}
 
 inherit kconfig
 inherit devicetree

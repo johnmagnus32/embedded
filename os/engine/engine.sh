@@ -232,30 +232,6 @@ skip_if_built() {
   fi
 }
 
-_recipe_src_dir() {
-  local recipe="$1"
-  case "$(recipe_get "${recipe}" PKG_FETCH local)" in
-    local) printf '%s' "${REPO_ROOT}/$(recipe_get "${recipe}" PKG_SOURCE)" ;;
-    git)   printf '%s' "${BUILD_DIR}/$(recipe_get "${recipe}" PKG_GIT_CHECKOUT)" ;;
-    *)     printf '' ;;
-  esac
-}
-
-# Resolve a recipe's <key> artifact spec (base:path) to an absolute path. base = out|src|stage|libcstage.
-_artifact_path() {
-  local recipe="$1" key="$2" spec base path
-  spec="$(recipe_get "${recipe}" "${key}")"
-  [ -n "${spec}" ] || { printf ''; return 0; }
-  base="${spec%%:*}"; path="${spec#*:}"
-  case "${base}" in
-    out)       printf '%s' "${OUTPUT_DIR}/${path}" ;;
-    src)       printf '%s' "$(_recipe_src_dir "${recipe}")/${path}" ;;
-    stage)     printf '%s' "${PKG_DEST}${path:+/${path}}" ;;
-    libcstage) printf '%s' "${LIBC_STAGE_DIR}${path:+/${path}}" ;;
-    *)         printf '%s' "${spec}" ;;
-  esac
-}
-
 # _recipehash + _stamp: hash the recipe dir + classes + includes + source + the recipe's declared var/file
 # deps, then fold each dep's recorded recipehash so a bump ripples. The engine itself is NOT hashed (like
 # Yocto trusting bitbake-core): its build-affecting logic — env setup + task order — changes rarely and

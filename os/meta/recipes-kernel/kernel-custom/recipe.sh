@@ -10,5 +10,5 @@ PKG_SOURCE=kernel
 inherit make-c
 PKG_HOST_DEPENDS=virtual/cross-cc
 
-# ${KERNEL_TARGET} is expanded by the composer (which knows the board target).
-PKG_ARTIFACT=src:build/${KERNEL_TARGET}/kernel.bin
+# Deploy the zImage-shaped kernel into OUTPUT_DIR under the convention image reads.
+PKG_DEPLOY="build/${KERNEL_TARGET}/kernel.bin:zImage"

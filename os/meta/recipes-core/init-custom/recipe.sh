@@ -8,7 +8,6 @@ PKG_PROVIDES=virtual/init
 PKG_FETCH=local
 PKG_SOURCE=init                        # top-level init/ (relative to REPO_ROOT)
 PKG_DEPENDS=virtual/libc                       # link the selected libc + rebuild on its change
-PKG_ARTIFACT=stage:                    # artifact = this recipe's pkgstage dir (cacheable)
 
 do_build() {
   : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${RECIPE_SCRATCH:?}"
