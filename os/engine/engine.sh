@@ -123,16 +123,15 @@ load_env() {
   LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${LIBC:-custom}-${link}"
   STAGE_INC="${BUILD_DIR}/libc/include"
 
-  # host-tool policy (Yocto HOSTTOOLS): required + nonfatal + assume-provided allowlists. A `name:min`
-  # entry also version-gates the host tool (build_hosttools_farm). Engine policy, not per-product.
-  HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc:4.8 git:1.8 grep gzip head install ld ln ls mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
+  # host-tool policy (Yocto HOSTTOOLS): a required allowlist + a nonfatal (config-specific) one. A
+  # `name:min` entry also version-gates the host tool (build_hosttools_farm). Engine policy, not per-product.
+  HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc:4.8 git:1.8 grep gzip head install ld ln ls make:3.81 mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
   HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3:3.6 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
-  ASSUME_PROVIDED="make:3.81"
 
   export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
-         HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED \
+         HOSTTOOLS HOSTTOOLS_NONFATAL \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
 
@@ -153,7 +152,7 @@ load_build_env() {
 build_hosttools_farm() {
   local key keyfile t min p missing=""
   # type -P, NOT command -v: a shell builtin (true/pwd/printf) makes command -v print a bare word -> ln -s true true self-loop.
-  key="$(printf 'farmv3|%s|%s|%s' "${HOSTTOOLS}" "${HOSTTOOLS_NONFATAL}" "${ASSUME_PROVIDED}" | sha256sum | cut -d' ' -f1)"
+  key="$(printf 'farmv4|%s|%s' "${HOSTTOOLS}" "${HOSTTOOLS_NONFATAL}" | sha256sum | cut -d' ' -f1)"
   keyfile="${HOSTTOOLS_FARM}/.key"
   [ "$(cat "${keyfile}" 2>/dev/null || true)" = "${key}" ] && return 0
   rm -rf "${HOSTTOOLS_FARM}"; mkdir -p "${HOSTTOOLS_FARM}"
@@ -165,8 +164,8 @@ build_hosttools_farm() {
   done
   [ -z "${missing}" ] || die "host is missing required tool(s):${missing}
   (Debian/Ubuntu: apt install build-essential binutils git curl xz-utils)"
-  # Optional (nonfatal + assume-provided): symlink if present; version-gate a present `name:min`.
-  for t in ${HOSTTOOLS_NONFATAL} ${ASSUME_PROVIDED}; do
+  # Optional (nonfatal, config-specific): symlink if present; version-gate a present `name:min`.
+  for t in ${HOSTTOOLS_NONFATAL}; do
     min=""; case "$t" in *:*) min="${t#*:}"; t="${t%%:*}" ;; esac
     if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; check_tool_version "$t" "$min"; fi
   done
