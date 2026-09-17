@@ -1,12 +1,14 @@
-# Makefile — gameboy-v3 PRODUCT entry point (thin). The selection lives in local.conf (key=value data,
-# parsed by the os engine); the shared engine (os/) turns it into an image. To switch a provider
-# (kernel/libc/bootloader/…), edit its PREFERRED_PROVIDER_virtual/<slot> in local.conf. PACKAGES /
-# MEDIA / LINKAGE are plain knobs, overridable as ENV vars:
+# Makefile — gameboy-v3 PRODUCT entry point (thin). The selection lives in local.conf (the default
+# config, key=value data) — or configs/<name>.conf, chosen with CONFIG=<name>, each getting its own
+# build/<name>/ cache (shared build/downloads). The shared engine (os/) turns a config into an image.
+# To switch a provider (kernel/libc/…), edit its PREFERRED_PROVIDER_virtual/<slot> in the config;
+# PACKAGES / MEDIA / LINKAGE are plain knobs, overridable as ENV vars:
 #
-#   make                 # build per local.conf (default: linux + musl + busybox + console, MEDIA=nor)
+#   make                          # build per local.conf (default: linux + musl + busybox + console, nor)
 #   NB: override via the ENVIRONMENT (`PACKAGES=busybox make …`), NOT `make PACKAGES=…` — a command-line
 #       make-var doesn't reach the engine. local.conf holds the defaults.
-#   MEDIA=sd make image  # an SD .img instead of the NOR bundle
+#   CONFIG=virt-musl make rootfs  # build a named config (configs/virt-musl.conf) in build/virt-musl/
+#   MEDIA=sd make image           # an SD .img instead of the NOR bundle
 #   make canvas          # the canvas console flavor (busybox + the console package)
 #   make <recipe>        # build one node by its recipe name: linux, musl, busybox, toolchain-gcc, rootfs, …
 #   make flash           # build a NOR bundle + flash + FEL-boot on the rig
