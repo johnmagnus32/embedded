@@ -123,22 +123,22 @@ load_env() {
   LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${LIBC:-custom}-${link}"
   STAGE_INC="${BUILD_DIR}/libc/include"
 
-  # host-tool policy (Yocto HOSTTOOLS / ASSUME_PROVIDED / sanity) — engine policy, not per-product
-  HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc git grep gzip head install ld ln ls mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
-  HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
-  ASSUME_PROVIDED="make"
-  SANITY_REQUIRED="make:3.81 gcc:4.8 python3:3.6 git:1.8"
+  # host-tool policy (Yocto HOSTTOOLS): required + nonfatal + assume-provided allowlists. A `name:min`
+  # entry also version-gates the host tool (build_hosttools_farm). Engine policy, not per-product.
+  HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc:4.8 git:1.8 grep gzip head install ld ln ls mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
+  HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3:3.6 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
+  ASSUME_PROVIDED="make:3.81"
 
   export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
-         HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
+         HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
 
 setup_build_env() {
   load_build_env
-  setup_host_env        # farm + sanity while PATH is still the host's
+  build_hosttools_farm  # provision + version-gate host tools while PATH is still the host's
   setup_path
   set_recipe_env
 }
@@ -151,40 +151,38 @@ load_build_env() {
 }
 
 build_hosttools_farm() {
-  local key keyfile t p missing=""
+  local key keyfile t min p missing=""
   # type -P, NOT command -v: a shell builtin (true/pwd/printf) makes command -v print a bare word -> ln -s true true self-loop.
-  key="$(printf 'farmv2|%s|%s|%s' "${HOSTTOOLS}" "${HOSTTOOLS_NONFATAL}" "${ASSUME_PROVIDED}" | sha256sum | cut -d' ' -f1)"
+  key="$(printf 'farmv3|%s|%s|%s' "${HOSTTOOLS}" "${HOSTTOOLS_NONFATAL}" "${ASSUME_PROVIDED}" | sha256sum | cut -d' ' -f1)"
   keyfile="${HOSTTOOLS_FARM}/.key"
   [ "$(cat "${keyfile}" 2>/dev/null || true)" = "${key}" ] && return 0
   rm -rf "${HOSTTOOLS_FARM}"; mkdir -p "${HOSTTOOLS_FARM}"
+  # Required: symlink each (die if missing); a `name:min` entry also version-gates the host tool.
   for t in ${HOSTTOOLS}; do
-    if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; else missing="${missing} $t"; fi
+    min=""; case "$t" in *:*) min="${t#*:}"; t="${t%%:*}" ;; esac
+    if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; check_tool_version "$t" "$min"
+    else missing="${missing} $t"; fi
   done
   [ -z "${missing}" ] || die "host is missing required tool(s):${missing}
   (Debian/Ubuntu: apt install build-essential binutils git curl xz-utils)"
+  # Optional (nonfatal + assume-provided): symlink if present; version-gate a present `name:min`.
   for t in ${HOSTTOOLS_NONFATAL} ${ASSUME_PROVIDED}; do
-    if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; fi
+    min=""; case "$t" in *:*) min="${t#*:}"; t="${t%%:*}" ;; esac
+    if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; check_tool_version "$t" "$min"; fi
   done
   printf '%s' "${key}" > "${keyfile}"
 }
 
-sanity_check() {
-  local stamp key spec tool min have
-  key="$(printf '%s' "${SANITY_REQUIRED}" | sha256sum | cut -d' ' -f1)"
-  stamp="${BUILD_DIR}/.os/.sanity-ok"
-  [ "$(cat "${stamp}" 2>/dev/null || true)" = "${key}" ] && return 0
-  for spec in ${SANITY_REQUIRED}; do
-    tool="${spec%%:*}"; min="${spec#*:}"
-    command -v "${tool}" >/dev/null 2>&1 || die "sanity: required host tool '${tool}' not found (need >= ${min})"
-    have="$("${tool}" --version 2>&1 | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1 || true)"
-    [ -n "${have}" ] || { log "sanity: could not read ${tool} version; assuming OK"; continue; }
-    [ "$(printf '%s\n%s\n' "${min}" "${have}" | sort -V | head -n1)" = "${min}" ] \
-      || die "sanity: ${tool} ${have} is older than the required ${min}"
-  done
-  mkdir -p "${BUILD_DIR}/.os"; printf '%s' "${key}" > "${stamp}"
+# check_tool_version <tool> <min> — die if the host tool's --version is older than min. No-op when min
+# is empty or the version can't be parsed (best-effort, like Yocto's sanity check).
+check_tool_version() {
+  local tool="$1" min="$2" have
+  [ -n "${min}" ] || return 0
+  have="$("${tool}" --version 2>&1 | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1 || true)"
+  [ -n "${have}" ] || { log "host: could not read ${tool} version; assuming OK"; return 0; }
+  [ "$(printf '%s\n%s\n' "${min}" "${have}" | sort -V | head -n1)" = "${min}" ] \
+    || die "host: ${tool} ${have} is older than the required ${min}"
 }
-
-setup_host_env() { build_hosttools_farm; sanity_check; }
 
 # Scrub PATH to os's built-tool dirs (first, so they shadow the host) + the HOSTTOOLS farm, nothing else.
 setup_path() {
