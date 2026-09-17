@@ -23,6 +23,21 @@ recipe_get() {
   eval "printf '%s' \"${raw}\""
 }
 
+# inherit <class> / require <path> — the class/include DSL (Yocto's `inherit`/`require` keywords, which
+# are engine-level, not class-defined — `inherit` bootstraps `inherit base` itself). Each records what it
+# pulled in (_INHERITED_CLASSES / _REQUIRED_INCS, reset per-recipe in load_env) so compute_recipehash
+# hashes it. Called while the recipe + its classes are sourced, after load_env set OS_META + the resets.
+inherit() {
+  local _c
+  for _c in "${OS_META}/classes-global/$1.sh" "${OS_META}/classes-recipe/$1.sh"; do
+    [ -f "${_c}" ] || continue
+    _INHERITED_CLASSES="${_INHERITED_CLASSES} ${_c}"
+    source "${_c}"; return 0
+  done
+  die "inherit: class '$1' not found in classes-global/ or classes-recipe/"
+}
+require() { _REQUIRED_INCS="${_REQUIRED_INCS} $1"; source "$1"; }
+
 # locate — the engine's own dirs, from this file's path.
 locate() {
   OS_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,6 +141,18 @@ load_env() {
   LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${LIBC:-custom}-${link}"
   STAGE_INC="${BUILD_DIR}/libc/include"
 
+  # this recipe's build context: paths keyed by RECIPE / RECIPE_PATH + the link mode
+  PKG_LINK="${PKG_LINK:-${LINKAGE:-static}}"
+  RECIPE_DIR="$(cd "$(dirname "${RECIPE_PATH}")" && pwd)"
+  STAGE="${BUILD_DIR}/rootfs/stage"
+  PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${RECIPE}"
+  RECIPE_SCRATCH="${BUILD_DIR}/scratch/${RECIPE}"
+  PROVIDER_RECIPE="${RECIPE_PATH}"
+  # export board.conf's ROOTFS_ARCH_FLAGS[_*] (read by classes); reset the inherit/require accumulators
+  # for this recipe (they feed compute_recipehash).
+  while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)
+  _INHERITED_CLASSES="" _REQUIRED_INCS=""
+
   # host-tool policy (Yocto HOSTTOOLS): a required allowlist + a nonfatal (config-specific) one. A
   # `name:min` entry also version-gates the host tool (build_hosttools_farm). Engine policy, not per-product.
   HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc:4.8 git:1.8 grep gzip head install ld ln ls make:3.81 mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
@@ -135,6 +162,7 @@ load_env() {
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
          HOSTTOOLS HOSTTOOLS_NONFATAL \
+         PKG_LINK RECIPE_DIR STAGE PKG_DEST PROVIDER_RECIPE \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
 
@@ -142,7 +170,6 @@ setup_build_env() {
   load_env
   build_hosttools_farm  # provision + version-gate host tools while PATH is still the host's
   setup_path
-  set_recipe_env
 }
 
 build_hosttools_farm() {
@@ -188,32 +215,6 @@ setup_path() {
     case ":$p:" in *":$d:"*) ;; *) p="${p:+$p:}$d" ;; esac
   done
   PATH="$p"; export PATH
-}
-
-set_recipe_env() {
-  export PKG_LINK="${PKG_LINK:-${LINKAGE:-static}}"
-  RECIPE_DIR="$(cd "$(dirname "${RECIPE_PATH}")" && pwd)"; export RECIPE_DIR
-  export STAGE="${BUILD_DIR}/rootfs/stage"
-  export PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${RECIPE}"
-  export LIBC REPO_ROOT
-  while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)
-  RECIPE_SCRATCH="${BUILD_DIR}/scratch/${RECIPE}"
-  export PROVIDER_RECIPE="${RECIPE_PATH}"
-
-  # inherit <class>: source classes-global/ then classes-recipe/, recording each for the recipehash.
-  _INHERITED_CLASSES=""
-  inherit() {
-    local _c
-    for _c in "${OS_META}/classes-global/$1.sh" "${OS_META}/classes-recipe/$1.sh"; do
-      [ -f "${_c}" ] || continue
-      _INHERITED_CLASSES="${_INHERITED_CLASSES} ${_c}"
-      source "${_c}"; return 0
-    done
-    die "inherit: class '$1' not found in classes-global/ or classes-recipe/"
-  }
-  # require <path>: source a shared .inc (Yocto's require), recording it for the recipehash.
-  _REQUIRED_INCS=""
-  require() { _REQUIRED_INCS="${_REQUIRED_INCS} $1"; source "$1"; }
 }
 
 # skip_if_built — cache gate: a recipe is up to date iff its stamp records the current recipehash.

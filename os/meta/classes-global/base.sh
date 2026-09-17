@@ -13,7 +13,7 @@
 # class — the base-class model (override do_fetch to fetch differently). It is first used in
 # run_tasks -> do_fetch, which runs after `inherit base`, so nothing pins it to the runner.
 #
-# Sourced into the recipe shell with the env set_recipe_env established: RECIPE_PATH, RECIPE_SCRATCH, REPO_ROOT,
+# Sourced into the recipe shell with the env load_env established: RECIPE_PATH, RECIPE_SCRATCH, REPO_ROOT,
 # BUILD_DIR, DOWNLOAD_DIR, recipe_get, log/die.
 
 # ---- fetch primitives (content pinned by SHA/tag; the URL is just availability) ---------------
