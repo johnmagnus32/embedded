@@ -1,5 +1,6 @@
-# providers/kernel/mainline/recipe.sh — mainline Linux (kconfig + pinned git). Board facts
-# (defconfig, DT overlays, console) live in board/<board>/machine.conf, so this stays board-agnostic.
+# providers/kernel/mainline/recipe.sh — mainline Linux (kconfig + pinned git). Machine facts (defconfig,
+# DT overlays, console) live in machine/<machine>/machine.conf, so this stays machine-agnostic; a machine
+# with no board DTB (e.g. QEMU -M virt, which is self-describing) leaves KERNEL_DTB unset -> zImage-only.
 #
 #   make kernel KERNEL=mainline           # build (idempotent)
 #   make kernel KERNEL=mainline CLEAN=1   # re-fetch the checkout from scratch, then rebuild
@@ -7,7 +8,7 @@ PKG_NAME=linux
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
 PKG_FILEDEPS="${MACHINE_DIR}"   # DT overlays + machine.conf (defconfig/console/DTB) — a build input the recipehash must catch
-PKG_DEPLOY="arch/arm/boot/zImage:zImage arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}:${KERNEL_DTB}"
+PKG_DEPLOY="arch/arm/boot/zImage:zImage"   # the board DTB (if any) is deployed by do_deploy below
 
 PKG_FETCH=git
 PKG_GIT_URL=https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
@@ -51,24 +52,15 @@ do_build() {
   : "${KERNEL_TAG:?recipe: PKG_VERSION missing from ${PROVIDER_RECIPE}}"
   : "${KERNEL_DEFCONFIG:?recipe: KERNEL_DEFCONFIG missing from machine.conf}"
 
-  local BOARD_DTS_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${UBOOT_BOARD_DT}.dts"
-  local BOARD_DTS_DIR_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}"
-  local BUILT_DTB_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}"
   local BUILT_ZIMAGE_REL="arch/arm/boot/zImage"
-
   : "${PKG_SRC_DIR:?kernel do_build: PKG_SRC_DIR unset — base do_fetch should have set it}"
   cd "${PKG_SRC_DIR}"
-  [ -f "${BOARD_DTS_REL}" ] || die "board DTS not found at ${BOARD_DTS_REL} (tag layout changed?)"
-
-  # Restore the pristine board DTS so overlay appends don't stack across re-runs.
-  log "restoring pristine board DTS"
-  git checkout -- "${BOARD_DTS_REL}"
 
   # kconfig_configure: `make <defconfig>` -> fixup -> olddefconfig. verify_config_fragment then
   # asserts each forced symbol stuck — olddefconfig can silently drop one.
   kfixup() {
     local f
-    for f in ${KERNEL_CONFIG_FRAGMENTS}; do
+    for f in ${KERNEL_CONFIG_FRAGMENTS:-}; do
       log "applying kernel config fragment: ${f#${REPO_ROOT}/}"
       apply_config_fragment "${f}" || return 1
     done
@@ -76,22 +68,43 @@ do_build() {
   log "make ${KERNEL_DEFCONFIG}${KERNEL_CONFIG_FRAGMENTS:+ + config fragments}"
   kconfig_configure "${KERNEL_DEFCONFIG}" kfixup
   local f
-  for f in ${KERNEL_CONFIG_FRAGMENTS}; do
+  for f in ${KERNEL_CONFIG_FRAGMENTS:-}; do
     verify_config_fragment "${f}" || die "kernel config fragment did not stick: ${f}"
   done
 
-  local ov
-  for ov in ${KERNEL_DTB_OVERLAYS}; do
-    log "applying kernel DT overlay: ${ov}"
-    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${MACHINE_DIR}" "${BOARD_DTS_DIR_REL}" \
-      || die "failed to apply DT overlay ${ov}"
-  done
-
   local JOBS; JOBS="$(nproc)"
-  log "building ${KERNEL_IMAGE_TARGET} + DTB (-j${JOBS}) ..."
-  make -j"${JOBS}" "${KERNEL_IMAGE_TARGET}" "${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}"
+  # DTB: only for machines with a board device tree. QEMU -M virt is self-describing (KERNEL_DTB unset),
+  # so there we build just the zImage and QEMU supplies the FDT at boot.
+  if [ -n "${KERNEL_DTB:-}" ]; then
+    local BOARD_DTS_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${UBOOT_BOARD_DT}.dts"
+    local BOARD_DTS_DIR_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}"
+    local BUILT_DTB_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}"
+    [ -f "${BOARD_DTS_REL}" ] || die "board DTS not found at ${BOARD_DTS_REL} (tag layout changed?)"
+    log "restoring pristine board DTS"          # so overlay appends don't stack across re-runs
+    git checkout -- "${BOARD_DTS_REL}"
+    local ov
+    for ov in ${KERNEL_DTB_OVERLAYS:-}; do
+      log "applying kernel DT overlay: ${ov}"
+      apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${MACHINE_DIR}" "${BOARD_DTS_DIR_REL}" \
+        || die "failed to apply DT overlay ${ov}"
+    done
+    log "building ${KERNEL_IMAGE_TARGET} + DTB (-j${JOBS}) ..."
+    make -j"${JOBS}" "${KERNEL_IMAGE_TARGET}" "${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}"
+    [ -f "${BUILT_DTB_REL}" ] || die "build finished but ${BUILT_DTB_REL} not found"
+  else
+    log "building ${KERNEL_IMAGE_TARGET} (-j${JOBS}, no DTB — self-describing machine) ..."
+    make -j"${JOBS}" "${KERNEL_IMAGE_TARGET}"
+  fi
 
   [ -f "${BUILT_ZIMAGE_REL}" ] || die "build finished but ${BUILT_ZIMAGE_REL} not found"
-  [ -f "${BUILT_DTB_REL}" ]    || die "build finished but ${BUILT_DTB_REL} not found"
   printf '\n\033[1;32m[kernel] built\033[0m  %s (%s), console %s\n' "${KERNEL_TAG}" "${KERNEL_DEFCONFIG}" "${KERNEL_CONSOLE}"
+}
+
+# do_deploy — zImage (via PKG_DEPLOY) + the board DTB for machines that have one. QEMU virt is
+# self-describing (KERNEL_DTB unset), so no DTB is deployed there.
+do_deploy() {
+  deploy_pkg_files
+  [ -n "${KERNEL_DTB:-}" ] || return 0
+  : "${OUTPUT_DIR:?}"; : "${PKG_SRC_DIR:?}"
+  cp -f "${PKG_SRC_DIR}/arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}" "${OUTPUT_DIR}/${KERNEL_DTB}"
 }

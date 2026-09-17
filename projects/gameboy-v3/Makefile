@@ -53,12 +53,10 @@ MUSL_DYNAMIC_INITRD   := $(VIRT_MUSL_DIR)/output/initramfs-musl-init-shell-busyb
 # virt-custom (libc-custom + init-shell + coreutils): our-ld.so dynamic rootfs
 CUSTOM_DYNAMIC_INITRD := $(VIRT_CUSTOM_DIR)/output/initramfs-libc-custom-toolchain-gcc-init-shell-coreutils-dynamic.cpio.gz
 #
-# run.sh + dynamic.sh boot a bootable MAINLINE virt zImage. The os does NOT build
-# one yet (the `virt` machine has no kernel defconfig), so this is a REQUIRED-but-
-# MISSING input: TODO — teach the engine a virt kernel target, then point this at
-# it. Until then those two harnesses are skipped. Override to enable:
-#   VIRT_REFKERNEL=/path/to/virt-zImage make test
-VIRT_REFKERNEL ?= <UNSET: os has no virt kernel build yet>
+# run.sh + dynamic.sh boot a MAINLINE virt zImage. The engine builds one — `CONFIG=virt-musl make
+# linux` (multi_v7_defconfig; -M virt is self-describing, so no DTB) deploys it here. Override to
+# boot a different kernel: `VIRT_REFKERNEL=/path/to/virt-zImage make test`.
+VIRT_REFKERNEL ?= $(VIRT_MUSL_DIR)/output/zImage
 
 test:
 	@echo "=== golden.sh: custom-kernel boot cases (fully wired) ==="
@@ -68,18 +66,14 @@ test:
 	    BUSYBOX_INITRD=$(MUSL_STATIC_INITRD) DYNAMIC_INITRD=$(MUSL_DYNAMIC_INITRD) \
 	    $(REPO_ROOT)/kernel/test/golden.sh
 	@echo
-	@if [ -f "$(VIRT_REFKERNEL)" ]; then \
-	    echo "=== run.sh: libc syscall-wrapper units ==="; \
-	    CONFIG=virt-custom $(MAKE) rootfs; \
-	    CROSS_COMPILE=$(CUSTOM_CROSS) GEN_INIT_CPIO=$(CUSTOM_GENCPIO) \
-	        KERNEL="$(VIRT_REFKERNEL)" \
-	        $(REPO_ROOT)/libc/test/on-target/run.sh; \
-	    echo "=== dynamic.sh: dynamic-linking boot test ==="; \
-	    CONFIG=virt-custom LINKAGE=dynamic $(MAKE) rootfs; \
-	    CROSS_COMPILE=$(MUSL_CROSS) GEN_INIT_CPIO=$(MUSL_GENCPIO) \
-	        REFKERNEL="$(VIRT_REFKERNEL)" DYNAMIC_INITRD=$(CUSTOM_DYNAMIC_INITRD) \
-	        $(REPO_ROOT)/libc/test/dynamic.sh; \
-	  else \
-	    echo "TODO: skipping run.sh + dynamic.sh — they need a bootable mainline virt zImage."; \
-	    echo "      The os has no virt kernel build yet; set VIRT_REFKERNEL=<path> to enable them."; \
-	  fi
+	@echo "=== building the mainline virt reference kernel (run.sh + dynamic.sh boot it) ==="
+	@CONFIG=virt-musl $(MAKE) linux
+	@echo "=== run.sh: libc syscall-wrapper units ==="
+	@CONFIG=virt-custom $(MAKE) rootfs
+	@CROSS_COMPILE=$(CUSTOM_CROSS) GEN_INIT_CPIO=$(CUSTOM_GENCPIO) KERNEL="$(VIRT_REFKERNEL)" \
+	    $(REPO_ROOT)/libc/test/on-target/run.sh
+	@echo "=== dynamic.sh: dynamic-linking boot test ==="
+	@CONFIG=virt-custom LINKAGE=dynamic $(MAKE) rootfs
+	@CROSS_COMPILE=$(MUSL_CROSS) GEN_INIT_CPIO=$(MUSL_GENCPIO) \
+	    REFKERNEL="$(VIRT_REFKERNEL)" DYNAMIC_INITRD=$(CUSTOM_DYNAMIC_INITRD) \
+	    $(REPO_ROOT)/libc/test/dynamic.sh
