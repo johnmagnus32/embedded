@@ -24,7 +24,11 @@ do_build() {
     || { echo "make-c: cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via virtual/cross-cc)" >&2; return 1; }
 
   local role="${RECIPE:-}"
-  local make_vars="" ; [ "${role}" = kernel ] && make_vars="BOARD=${KERNEL_TARGET}"
+  local make_vars=""
+  if [ "${role}" = kernel ]; then
+    : "${KERNEL_TARGET:?make-c: KERNEL_TARGET unset (boards/${BOARD}/board.conf)}"
+    make_vars="BOARD=${KERNEL_TARGET}"
+  fi
   local goals="$(recipe_get "${PROVIDER_RECIPE}" PKG_MAKE_GOALS)"
 
   # Word-split intentional: make_vars is one token (BOARD=t113), goals may be several ("all fel").
@@ -48,6 +52,7 @@ do_deploy() {
   deploy_pkg_files
   [ "${RECIPE:-}" = kernel ] || return 0
   : "${PKG_SRC_DIR:?}"; : "${OUTPUT_DIR:?make-c do_deploy: OUTPUT_DIR unset}"
+  : "${KERNEL_TARGET:?make-c do_deploy: KERNEL_TARGET unset (board.conf)}"
   : "${KERNEL_DTB:?make-c do_deploy: KERNEL_DTB unset (board.conf)}"
   mkdir -p "${OUTPUT_DIR}"
   local make_vars="BOARD=${KERNEL_TARGET}" dtb_overlays="" ov

@@ -48,10 +48,11 @@ locate() {
   export OS_ENGINE OS_META REPO_ROOT
 }
 
-# load_config — the product SELECTION (local.conf): parse KEY=value DATA (never sourced — the
-# PREFERRED_PROVIDER_virtual/<slot> keys hold a '/', not a legal shell name). Fills the PREFERRED_PROVIDER
+# load_config — the product CONFIG. Parse local.conf KEY=value DATA (never sourced — the
+# PREFERRED_PROVIDER_virtual/<slot> keys hold a '/', not a legal shell name) into the PREFERRED_PROVIDER
 # map (slot -> recipe name, read by resolve) + the plain knobs as env vars (an already-set env value wins,
-# so MEDIA=sd make still works).
+# so MEDIA=sd make still works); then source the SELECTED board's board.conf (BSP facts, in-shell for
+# recipes). Called by resolve_dependencies + load_env — like bitbake parsing local.conf + machine.conf together.
 declare -gA PREFERRED_PROVIDER
 load_config() {
   locate
@@ -69,6 +70,11 @@ load_config() {
       *) [ -n "${!key:-}" ] || printf -v "${key}" '%s' "${val}"; export "${key?}" ;;
     esac
   done < "${conf}"
+
+  # board.conf references ${BOARD_DIR}, so set it first. Not exported — recipes read it in-shell.
+  BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
+  # shellcheck source=/dev/null
+  [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
 }
 
 # byname <name> -> its recipe.sh path (product recipes-*/ + packages/ shadow os/meta).
@@ -117,11 +123,6 @@ load_env() {
   [ -n "${RECIPE_PATH}" ] && [ -f "${RECIPE_PATH}" ] \
     || die "no recipe for '${RECIPE}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
   BUILD_DIR="${PRODUCT_DIR}/build"
-  BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
-  # shellcheck source=/dev/null
-  [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
-  : "${KERNEL_TARGET:?boards/${BOARD}/board.conf must set KERNEL_TARGET}"
-  : "${ARCH:?boards/${BOARD}/board.conf must set ARCH}"
 
   # resolved providers — PROVIDER_<x> is the recipe NAME per virtual (bash-safe key: virtual/cross-cc
   # -> PROVIDER_cross_cc). Recipes test it ([ "${PROVIDER_libc}" = musl ]); a path is byname "$PROVIDER_x".
@@ -168,7 +169,7 @@ load_env() {
   _INHERITED_CLASSES=""
   _REQUIRED_INCS=""
 
-  export BUILD_DIR BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE RECIPE_PATH \
+  export BUILD_DIR CROSS_COMPILE RECIPE_PATH \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
          PKG_LINK RECIPE_DIR STAGE PKG_DEST PROVIDER_RECIPE

@@ -13,6 +13,12 @@
 # inline do_build (busybox, and kernel/u-boot alike). export -f is belt-and-suspenders for any
 # child bash that do_build might spawn.
 
+# ARCH is a kbuild input (selects arch/<ARCH>/): owned by the kbuild layer here (à la OE's
+# kernel-arch.bbclass), not the engine. Asserted + exported at inherit, so every kconfig recipe's
+# make sees it — read in-shell from the sourced board.conf.
+: "${ARCH:?kconfig: ARCH unset — boards/*/board.conf must set it}"
+export ARCH
+
 # kconfig_normalize [olddefconfig|oldconfig] — re-resolve .config after edits. olddefconfig
 # (default every NEW symbol) is the norm; BusyBox ships only interactive `oldconfig`, fed
 # EOF. stdin is /dev/null so a stray prompt can't hang the build.
