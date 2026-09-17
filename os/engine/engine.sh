@@ -230,10 +230,6 @@ skip_if_built() {
   if [ "$(cat "${_stamp}" 2>/dev/null)" = "${_recipehash}" ]; then
     log "cached — up to date (recipehash ${_recipehash:0:12})"; exit 0
   fi
-  if [ -n "${PKG_HOST_SKIP_IF:-}" ] && eval "${PKG_HOST_SKIP_IF}" >/dev/null 2>&1; then
-    log "satisfied by the host already (PKG_HOST_SKIP_IF) — skipping build"
-    mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; exit 0
-  fi
 }
 
 _recipe_src_dir() {
