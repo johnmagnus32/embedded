@@ -2,9 +2,8 @@
 # engine.sh — the OS build engine (bash half; engine.mk is the Make graph-walker). Two subcommands,
 # each taking a recipe NAME + the seed PRODUCT_DIR (env); all config/resolution reads the product's
 # local.conf, so Make never sees a config value:
-#   engine.sh resolve-dependencies <recipe>  -> its resolved prerequisite recipe names (the Make prereqs)
-#   engine.sh execute-recipe        <recipe>  -> build it: resolve the env, source the recipe, cache-gate,
-#                                                then do_fetch -> do_build -> do_install by name.
+#   engine.sh resolve-dependencies <recipe>  -> its resolved prerequisite recipe names (Make prereqs)
+#   engine.sh execute-recipe        <recipe>  -> build it: setup env, source recipe, cache-gate, run tasks
 set -euo pipefail
 
 log() { printf '\033[1;34m[%s]\033[0m %s\n' "${RECIPE:-os}" "$*"; }
@@ -23,10 +22,9 @@ recipe_get() {
   eval "printf '%s' \"${raw}\""
 }
 
-# inherit <class> / require <path> — the class/include DSL (Yocto's `inherit`/`require` keywords, which
-# are engine-level, not class-defined — `inherit` bootstraps `inherit base` itself). Each records what it
-# pulled in (_INHERITED_CLASSES / _REQUIRED_INCS, reset per-recipe in load_env) so compute_recipehash
-# hashes it. Called while the recipe + its classes are sourced, after load_env set OS_META + the resets.
+# inherit <class> / require <path> — the class/include DSL (Yocto's keywords; engine-level, not
+# class-defined — inherit bootstraps `inherit base`). Each records what it pulled in (reset per-recipe in
+# load_env) so compute_recipe_stamp hashes it.
 inherit() {
   local _c
   for _c in "${OS_META}/classes-global/$1.sh" "${OS_META}/classes-recipe/$1.sh"; do
@@ -36,20 +34,24 @@ inherit() {
   done
   die "inherit: class '$1' not found in classes-global/ or classes-recipe/"
 }
-require() { _REQUIRED_INCS="${_REQUIRED_INCS} $1"; source "$1"; }
+
+require() {
+  _REQUIRED_INCS="${_REQUIRED_INCS} $1"
+  source "$1"
+}
 
 # locate — the engine's own dirs, from this file's path.
 locate() {
   OS_ENGINE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   OS_META="$(cd "${OS_ENGINE}/../meta" && pwd)"
   REPO_ROOT="$(cd "${OS_ENGINE}/../.." && pwd)"
-  export OS_META REPO_ROOT
+  export OS_ENGINE OS_META REPO_ROOT
 }
 
 # load_config — the product SELECTION (local.conf): parse KEY=value DATA (never sourced — the
-# PREFERRED_PROVIDER_virtual/<slot> keys contain a '/', not a legal shell name). Fills the
-# PREFERRED_PROVIDER map (slot -> recipe name, read by resolve) + the plain knobs as env vars
-# (env-overridable: an already-set env value wins, so MEDIA=sd make still works).
+# PREFERRED_PROVIDER_virtual/<slot> keys hold a '/', not a legal shell name). Fills the PREFERRED_PROVIDER
+# map (slot -> recipe name, read by resolve) + the plain knobs as env vars (an already-set env value wins,
+# so MEDIA=sd make still works).
 declare -gA PREFERRED_PROVIDER
 load_config() {
   locate
@@ -57,9 +59,9 @@ load_config() {
   local conf="${PRODUCT_DIR}/local.conf" line key val
   [ -f "${conf}" ] || die "no local.conf at ${conf}"
   while IFS= read -r line || [ -n "${line}" ]; do
-    line="${line%%#*}"                        # strip comment
-    line="${line#"${line%%[![:space:]]*}"}"   # ltrim
-    line="${line%"${line##*[![:space:]]}"}"   # rtrim
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
     [ -z "${line}" ] && continue
     key="${line%%=*}"; val="${line#*=}"
     case "${key}" in
@@ -95,9 +97,8 @@ resolve() {
 }
 
 # recipe_deps <recipe-path> -> its resolved prerequisite recipe names: PKG_DEPENDS + PKG_HOST_DEPENDS +
-# PKG_HOST_DEPENDS_<MEDIA> (recipe_get expands ${PACKAGES}) + the implied compiler edge for a target
-# that links libc, each virtual/<x> resolved. No `make` barrier — that's a Make-ordering edge, added by
-# resolve-dependencies. Used by BOTH resolve-dependencies (graph edges) + compute_recipehash (hash fold).
+# PKG_HOST_DEPENDS_<MEDIA> + the implied compiler edge for a target that links libc, each virtual/<x>
+# resolved. Used by both resolve_dependencies (graph edges) + compute_recipe_stamp (hash fold).
 recipe_deps() {
   local path="$1" raw tok out=""
   raw="$(recipe_get "${path}" PKG_DEPENDS) $(recipe_get "${path}" PKG_HOST_DEPENDS) $(recipe_get "${path}" "PKG_HOST_DEPENDS_${MEDIA}")"
@@ -108,47 +109,36 @@ recipe_deps() {
   printf '%s' "${out# }"
 }
 
-# resolve-dependencies <recipe> -> recipe_deps + the `make` barrier (all recipes but make itself).
-resolve_dependencies() {
-  load_config
-  local recipe="$1" path deps
-  path="$(byname "${recipe}")" || return 0
-  deps="$(recipe_deps "${path}")"
-  [ "${recipe}" = make ] && printf '%s\n' "${deps}" || printf 'make %s\n' "${deps}"
-}
-
-# load_env — the FULL build environment for execute-recipe: source local.conf + board.conf, resolve the
-# recipe name (RECIPE) to its recipe.sh path (RECIPE_PATH), and set the vars recipes/classes read.
+# load_env — the FULL build environment for execute-recipe: parse local.conf + board.conf, resolve the
+# recipe name (RECIPE) to its path (RECIPE_PATH), and set the vars recipes/classes read.
 load_env() {
   load_config
   RECIPE_PATH="$(byname "${RECIPE}" || true)"
   [ -n "${RECIPE_PATH}" ] && [ -f "${RECIPE_PATH}" ] \
     || die "no recipe for '${RECIPE}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
   BUILD_DIR="${PRODUCT_DIR}/build"
-  BOARD_NAME="${BOARD}"
   BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
   # shellcheck source=/dev/null
   [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
   : "${KERNEL_TARGET:?boards/${BOARD}/board.conf must set KERNEL_TARGET}"
+  : "${ARCH:?boards/${BOARD}/board.conf must set ARCH}"
 
   # resolved providers — PROVIDER_<x> is the recipe NAME per virtual (bash-safe key: virtual/cross-cc
-  # -> PROVIDER_cross_cc). Recipes test it (e.g. [ "${PROVIDER_libc}" = musl ]); a path is byname "$PROVIDER_x".
+  # -> PROVIDER_cross_cc). Recipes test it ([ "${PROVIDER_libc}" = musl ]); a path is byname "$PROVIDER_x".
   local v key
   for v in ${OS_VIRTUALS}; do
-    key="PROVIDER_${v#virtual/}"
-    key="${key//-/_}"
+    key="PROVIDER_${v#virtual/}"; key="${key//-/_}"
     printf -v "${key}" '%s' "$(resolve "${v}")"
     export "${key?}"
   done
 
   # toolchain scalars (the compiler is cross-cutting — CROSS_COMPILE threads into every compile)
-  : "${ARCH:?boards/${BOARD}/board.conf must set ARCH}"
   CROSS_COMPILE="${CROSS_COMPILE:-$(recipe_get "$(byname "${PROVIDER_cross_cc}")" PKG_HOST_CC_PREFIX)}"
   [ -n "${CROSS_COMPILE}" ] || die "CROSS_COMPILE empty: virtual/cross-cc provider has no PKG_HOST_CC_PREFIX"
   TOOLCHAIN_DIR="${BUILD_DIR}/${PROVIDER_cross_cc}"
   LIBC_TC_DIR="${BUILD_DIR}/${PROVIDER_cross_cc_initial}"
 
-  # derived paths (all a fixed function of BUILD_DIR)
+  # derived paths (a fixed function of BUILD_DIR)
   DOWNLOAD_DIR="${BUILD_DIR}/downloads"
   OUTPUT_DIR="${BUILD_DIR}/output"
   PYENV_DIR="${BUILD_DIR}/pyenv"
@@ -158,69 +148,70 @@ load_env() {
   OS_SIGS="${BUILD_DIR}/.os/sigs"
   HOSTTOOLS_FARM="${BUILD_DIR}/.os/hosttools-farm"
 
-  # libc staging (link-keyed — the producer + consumers agree here)
+  # libc staging (link-keyed — producer + consumers agree here)
   local link="${LINKAGE:-${PKG_LINK:-static}}"
   LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${PROVIDER_libc}-${link}"
   STAGE_INC="${BUILD_DIR}/libc/include"
 
-  # this recipe's build context: paths keyed by RECIPE / RECIPE_PATH + the link mode
+  # this recipe's build context, keyed by RECIPE / RECIPE_PATH + the link mode
   PKG_LINK="${PKG_LINK:-${LINKAGE:-static}}"
   RECIPE_DIR="$(cd "$(dirname "${RECIPE_PATH}")" && pwd)"
   STAGE="${BUILD_DIR}/rootfs/stage"
   PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${RECIPE}"
   RECIPE_SCRATCH="${BUILD_DIR}/scratch/${RECIPE}"
   PROVIDER_RECIPE="${RECIPE_PATH}"
+
   # export board.conf's ROOTFS_ARCH_FLAGS[_*] (read by classes); reset the inherit/require accumulators
-  # for this recipe (they feed compute_recipehash).
+  # for this recipe (they feed compute_recipe_stamp).
+  local _v _
   while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)
   _INHERITED_CLASSES=""
   _REQUIRED_INCS=""
 
-  # host-tool policy (Yocto HOSTTOOLS): a required allowlist + a nonfatal (config-specific) one. A
-  # `name:min` entry also version-gates the host tool (build_hosttools_farm). Engine policy, not per-product.
-  HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc:4.8 git:1.8 grep gzip head install ld ln ls make:3.81 mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
-  HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3:3.6 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
-
-  export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE RECIPE_PATH \
+  export BUILD_DIR BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE RECIPE_PATH \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
-         HOSTTOOLS HOSTTOOLS_NONFATAL \
          PKG_LINK RECIPE_DIR STAGE PKG_DEST PROVIDER_RECIPE
-  # PACKAGES/BOARD/MEDIA/LINKAGE are exported by load_config (parsed knobs); the engine no longer
-  # enumerates the product's provider knobs — providers are the PREFERRED_PROVIDER map + PROVIDER_<x>.
+  # PACKAGES/BOARD/MEDIA/LINKAGE are exported by load_config; the engine enumerates no product knob.
 }
 
-setup_build_env() {
-  load_env
-  build_hosttools_farm  # provision + version-gate host tools while PATH is still the host's
-  setup_path
-}
-
+# build_hosttools_farm — provision the HOSTTOOLS allowlist (engine/hosttools.txt) into a farm of symlinks
+# (keyed by the file's hash, so an edit reprovisions). Required tools die if missing; optional ones are
+# symlinked only if present. A `name:min` entry also version-gates the tool (check_tool_version).
 build_hosttools_farm() {
-  local key keyfile t min p missing=""
-  # type -P, NOT command -v: a shell builtin (true/pwd/printf) makes command -v print a bare word -> ln -s true true self-loop.
-  key="$(printf 'farmv4|%s|%s' "${HOSTTOOLS}" "${HOSTTOOLS_NONFATAL}" | sha256sum | cut -d' ' -f1)"
+  local file="${OS_ENGINE}/hosttools.txt" key keyfile mode="" line t min p missing="" required="" optional=""
+  [ -f "${file}" ] || die "hosttools: ${file} not found"
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%%#*}"; line="${line//[[:space:]]/}"   # strip comment + whitespace (each tool is one token)
+    [ -z "${line}" ] && continue
+    case "${line}" in
+      '[required]') mode=required ;;
+      '[optional]') mode=optional ;;
+      *) [ "${mode}" = required ] && required="${required} ${line}" || optional="${optional} ${line}" ;;
+    esac
+  done < "${file}"
+
+  key="farmv5-$(sha256sum "${file}" | cut -d' ' -f1)"
   keyfile="${HOSTTOOLS_FARM}/.key"
   [ "$(cat "${keyfile}" 2>/dev/null || true)" = "${key}" ] && return 0
   rm -rf "${HOSTTOOLS_FARM}"; mkdir -p "${HOSTTOOLS_FARM}"
-  # Required: symlink each (die if missing); a `name:min` entry also version-gates the host tool.
-  for t in ${HOSTTOOLS}; do
+  # type -P, NOT command -v: a shell builtin (true/pwd/printf) makes command -v print a bare word -> ln -s true true self-loop.
+  for t in ${required}; do
     min=""; case "$t" in *:*) min="${t#*:}"; t="${t%%:*}" ;; esac
     if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; check_tool_version "$t" "$min"
     else missing="${missing} $t"; fi
   done
   [ -z "${missing}" ] || die "host is missing required tool(s):${missing}
   (Debian/Ubuntu: apt install build-essential binutils git curl xz-utils)"
-  # Optional (nonfatal, config-specific): symlink if present; version-gate a present `name:min`.
-  for t in ${HOSTTOOLS_NONFATAL}; do
+  for t in ${optional}; do
     min=""; case "$t" in *:*) min="${t#*:}"; t="${t%%:*}" ;; esac
     if p="$(type -P "$t" 2>/dev/null)"; then ln -s "$p" "${HOSTTOOLS_FARM}/$t"; check_tool_version "$t" "$min"; fi
   done
   printf '%s' "${key}" > "${keyfile}"
 }
 
-# check_tool_version <tool> <min> — die if the host tool's --version is older than min. No-op when min
-# is empty or the version can't be parsed (best-effort, like Yocto's sanity check).
+# check_tool_version <tool> <min> — die if the host tool's --version is older than min. No-op when min is
+# empty or unparseable (best-effort, like Yocto's sanity check).
 check_tool_version() {
   local tool="$1" min="$2" have
   [ -n "${min}" ] || return 0
@@ -230,7 +221,7 @@ check_tool_version() {
     || die "host: ${tool} ${have} is older than the required ${min}"
 }
 
-# Scrub PATH to os's built-tool dirs (first, so they shadow the host) + the HOSTTOOLS farm, nothing else.
+# setup_path — scrub PATH to os's built-tool dirs (first, so they shadow the host) + the HOSTTOOLS farm.
 setup_path() {
   # LIBC_TC_DIR/bin (stage-1) last: the libc builds before stage-2 exists + invokes cross-ar by bare name.
   local d p=""
@@ -241,30 +232,25 @@ setup_path() {
   PATH="$p"; export PATH
 }
 
-# skip_if_built — cache gate: a recipe is up to date iff its stamp records the current recipehash.
-# We trust the stamp (like Yocto's sigdata); a hand-deleted artifact isn't self-healed — run clean.
-skip_if_built() {
-  compute_recipehash
-  if [ "$(cat "${_stamp}" 2>/dev/null)" = "${_recipehash}" ]; then
-    log "cached — up to date (recipehash ${_recipehash:0:12})"; exit 0
-  fi
+setup_build_env() {
+  load_env
+  build_hosttools_farm  # provision + version-gate host tools while PATH is still the host's
+  setup_path
 }
 
-# _recipehash + _stamp: hash the recipe dir + classes + includes + source + the recipe's declared var/file
-# deps, then fold each dep's recorded recipehash so a bump ripples. The engine itself is NOT hashed (like
-# Yocto trusting bitbake-core): its build-affecting logic — env setup + task order — changes rarely and
-# is a "clean the world" edit; the orchestration that changes often doesn't affect a recipe's output.
-compute_recipehash() {
+# compute_recipe_stamp — hash the recipe dir + classes + includes + source + declared var/file deps, then
+# fold each dep's recorded stamp so a bump ripples. Sets _recipe_stamp (the value) + publishes it as this
+# recipe's sig (for dependents to fold). The engine itself is NOT hashed (like Yocto trusting bitbake-core):
+# its env-setup + task-order logic changes rarely and is a clean-the-world edit.
+compute_recipe_stamp() {
   local this_recipe_hash dependency_recipe_hashes dep
   this_recipe_hash="$(
     {
-      # recipe source
       ( cd "${RECIPE_DIR}" && find . -type f -exec sha256sum {} + 2>/dev/null | sort )
       for dep in ${_INHERITED_CLASSES}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       for dep in ${_REQUIRED_INCS}; do [ -f "${dep}" ] && { printf '# %s\n' "${dep##*/}"; cat "${dep}"; }; done
       [ "${PKG_FETCH:-local}" = local ] \
         && ( cd "${REPO_ROOT}" && find "${PKG_SOURCE}" -type f -not -path '*/build/*' -exec sha256sum {} + 2>/dev/null | sort )
-      # config values
       for dep in ${PKG_VARDEPS:-};  do printf 'var:%s=%s\n' "${dep}" "${!dep:-}"; done
       for dep in ${PKG_FILEDEPS:-}; do
         [ -e "${dep}" ] || continue
@@ -280,7 +266,7 @@ compute_recipehash() {
       [ -f "${OS_SIGS}/${dep}.recipehash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.recipehash")"
     done
   )"
-  _recipehash="$(
+  _recipe_stamp="$(
     {
       printf '%s\n' "${this_recipe_hash}"
       printf '%s\n' "${dependency_recipe_hashes}"
@@ -288,8 +274,21 @@ compute_recipehash() {
   )"
 
   mkdir -p "${OS_SIGS}"
-  printf '%s' "${_recipehash}" > "${OS_SIGS}/${RECIPE}.recipehash"
-  _stamp="${OS_STAMPS}/${RECIPE}"
+  printf '%s' "${_recipe_stamp}" > "${OS_SIGS}/${RECIPE}.recipehash"
+}
+
+# skip_if_built — cache gate: a recipe is up to date iff its stamp file records the current recipe stamp.
+# We trust the stamp (like Yocto's sigdata); a hand-deleted artifact isn't self-healed — run clean.
+skip_if_built() {
+  compute_recipe_stamp
+  if [ "$(cat "${OS_STAMPS}/${RECIPE}" 2>/dev/null)" = "${_recipe_stamp}" ]; then
+    log "cached — up to date (recipe stamp ${_recipe_stamp:0:12})"; exit 0
+  fi
+}
+
+mark_built() {
+  mkdir -p "${OS_STAMPS}"
+  printf '%s' "${_recipe_stamp}" > "${OS_STAMPS}/${RECIPE}"
 }
 
 run_tasks() {
@@ -302,9 +301,16 @@ run_tasks() {
   do_deploy
 }
 
-mark_built() { mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; }
+# resolve-dependencies <recipe> -> recipe_deps + the `make` barrier (all recipes but make itself).
+resolve_dependencies() {
+  load_config
+  local recipe="$1" path deps
+  path="$(byname "${recipe}")" || return 0
+  deps="$(recipe_deps "${path}")"
+  [ "${recipe}" = make ] && printf '%s\n' "${deps}" || printf 'make %s\n' "${deps}"
+}
 
-# execute-recipe: build one recipe end to end.
+# execute-recipe <recipe> -> build one recipe end to end.
 execute_recipe() {
   setup_build_env
   inherit base

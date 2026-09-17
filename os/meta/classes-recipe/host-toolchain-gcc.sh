@@ -16,7 +16,7 @@
 # -nostdlib/-nostdinc gymnastics (contrast host-tarball-bin's prebuilt Bootlin toolchains, and
 # LIBC=custom+TOOLCHAIN=prebuilt which rides a foreign gcc bare). This mirrors Yocto's
 # gcc-cross-initial → glibc → gcc-cross split. The shared source pins live in toolchain-gcc-sources.inc
-# (Yocto's gcc-${PV}.inc), `require`d by both stages; compute_recipehash hashes the .inc, so a version
+# (Yocto's gcc-${PV}.inc), `require`d by both stages; compute_recipe_stamp hashes the .inc, so a version
 # bump there re-hashes BOTH stages, then (initial → libc → packages) ripples everywhere.
 #
 # A recipe sets: PKG_NAME, PKG_HOST_DEST (install prefix), PKG_VERSION (for the banner) + its own
