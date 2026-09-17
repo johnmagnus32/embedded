@@ -126,7 +126,7 @@ load_env() {
   done
 
   # toolchain scalars (the compiler is cross-cutting — CROSS_COMPILE threads into every compile)
-  ARCH="${ARCH:-arm}"
+  : "${ARCH:?boards/${BOARD}/board.conf must set ARCH}"
   CROSS_COMPILE="${CROSS_COMPILE:-$(recipe_get "${PROVIDER_cross_cc}" PKG_HOST_CC_PREFIX)}"
   [ -n "${CROSS_COMPILE}" ] || die "CROSS_COMPILE empty: virtual/cross-cc provider has no PKG_HOST_CC_PREFIX"
   TOOLCHAIN_DIR="${BUILD_DIR}/$(basename "$(dirname "${PROVIDER_cross_cc}")")"
