@@ -11,7 +11,7 @@ catalog.** This mirrors Yocto's `poky/` split into `bitbake/` (the engine) + `me
 ```
 os/
   engine/            the ENGINE — a Make graph-walker (engine.mk) + the bash it drives (run-recipe.sh + os-env.sh)
-  meta/              the core LAYER (Yocto's poky/meta) — classes + recipe catalog:
+  meta/              the core RECIPE (Yocto's poky/meta) — classes + recipe catalog:
     classes-global/    classes auto-inherited by EVERY node (base); à la Yocto's classes-global/
     classes-recipe/    classes a recipe opts into via `inherit <class>`; à la Yocto's classes-recipe/
     recipes-kernel/    linux, kernel-custom            (provide virtual/kernel)
@@ -22,7 +22,7 @@ os/
 ```
 
 The ENGINE (`os/engine/`) is generic and product-agnostic; all metadata — classes AND recipes — lives
-in the LAYER (`os/meta/`), exactly as Yocto keeps `.bbclass` and `.bb` files out of `bitbake/`.
+in the RECIPE (`os/meta/`), exactly as Yocto keeps `.bbclass` and `.bb` files out of `bitbake/`.
 
 **Yocto-style flat catalog.** Recipes are grouped by DOMAIN (`recipes-<domain>/`, like Yocto's
 `recipes-core`/`recipes-devtools`/`recipes-kernel`/`recipes-bsp`), not by role-directory. A recipe's

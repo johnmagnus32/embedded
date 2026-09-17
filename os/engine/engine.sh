@@ -7,8 +7,8 @@
 #                                                then do_fetch -> do_build -> do_install by name.
 set -euo pipefail
 
-log() { printf '\033[1;34m[%s]\033[0m %s\n' "${LAYER:-os}" "$*"; }
-die() { printf '\033[1;31m[%s] ERROR:\033[0m %s\n' "${LAYER:-os}" "$*" >&2; exit 1; }
+log() { printf '\033[1;34m[%s]\033[0m %s\n' "${RECIPE:-os}" "$*"; }
+die() { printf '\033[1;31m[%s] ERROR:\033[0m %s\n' "${RECIPE:-os}" "$*" >&2; exit 1; }
 
 # recipe_get <recipe> <KEY> [default] -> bare value of the last KEY=, ${VAR}-expanded (env in scope).
 recipe_get() {
@@ -87,10 +87,13 @@ resolve_dependencies() {
   [ "${recipe}" = make ] && printf '%s\n' "${deps}" || printf 'make %s\n' "${deps}"
 }
 
-# load_env — the FULL build environment (from local.conf + board.conf), for execute-recipe. Sets the
-# same variable names recipes/classes read.
+# load_env — the FULL build environment for execute-recipe: source local.conf + board.conf, resolve the
+# recipe name (RECIPE) to its recipe.sh path (RECIPE_PATH), and set the vars recipes/classes read.
 load_env() {
   load_config
+  RECIPE_PATH="$(byname "${RECIPE}" || true)"
+  [ -n "${RECIPE_PATH}" ] && [ -f "${RECIPE_PATH}" ] \
+    || die "no recipe for '${RECIPE}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
   BUILD_DIR="${PRODUCT_DIR}/build"
   BOARD_NAME="${BOARD}"; BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
   # shellcheck source=/dev/null
@@ -128,7 +131,7 @@ load_env() {
   HOSTTOOLS="as awk basename bash cat cc cp curl cut dirname echo env false find gcc:4.8 git:1.8 grep gzip head install ld ln ls make:3.81 mkdir mktemp mv nproc pwd readlink rm rmdir sed sh sha256sum sleep sort tail tar tr true xargs xz"
   HOSTTOOLS_NONFATAL="addr2line ar bc bison bzip2 c++filt chmod cmp comm cpio cpp date dd diff du egrep expr fgrep file flex g++ gawk getconf gettext hostname id lz4 lzop m4 makeinfo msgfmt nm objcopy objdump od openssl patch perl pkg-config pod2html pod2man pod2text printf python3:3.6 ranlib readelf rsync seq size strings stat swig tee touch uname uniq wc whoami zstd"
 
-  export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE \
+  export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE RECIPE_PATH \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
          HOSTTOOLS HOSTTOOLS_NONFATAL \
@@ -136,17 +139,10 @@ load_env() {
 }
 
 setup_build_env() {
-  load_build_env
+  load_env
   build_hosttools_farm  # provision + version-gate host tools while PATH is still the host's
   setup_path
   set_recipe_env
-}
-
-load_build_env() {
-  load_env
-  RECIPE="$(byname "${LAYER}" || true)"; export RECIPE
-  [ -n "${RECIPE}" ] && [ -f "${RECIPE}" ] \
-    || die "no recipe for '${LAYER}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
 }
 
 build_hosttools_farm() {
@@ -196,13 +192,13 @@ setup_path() {
 
 set_recipe_env() {
   export PKG_LINK="${PKG_LINK:-${LINKAGE:-static}}"
-  RECIPE_DIR="$(cd "$(dirname "${RECIPE}")" && pwd)"; export RECIPE_DIR
+  RECIPE_DIR="$(cd "$(dirname "${RECIPE_PATH}")" && pwd)"; export RECIPE_DIR
   export STAGE="${BUILD_DIR}/rootfs/stage"
-  export PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${LAYER}"
+  export PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${RECIPE}"
   export LIBC REPO_ROOT
   while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)
-  RECIPE_SCRATCH="${BUILD_DIR}/scratch/${LAYER}"
-  export PROVIDER_RECIPE="${RECIPE}"
+  RECIPE_SCRATCH="${BUILD_DIR}/scratch/${RECIPE}"
+  export PROVIDER_RECIPE="${RECIPE_PATH}"
 
   # inherit <class>: source classes-global/ then classes-recipe/, recording each for the recipehash.
   _INHERITED_CLASSES=""
@@ -255,7 +251,7 @@ compute_recipehash() {
   )"
 
   dependency_recipe_hashes="$(
-    for dep in $(recipe_deps "${RECIPE}"); do
+    for dep in $(recipe_deps "${RECIPE_PATH}"); do
       [ -f "${OS_SIGS}/${dep}.recipehash" ] && printf 'dep:%s=%s\n' "${dep}" "$(cat "${OS_SIGS}/${dep}.recipehash")"
     done
   )"
@@ -267,8 +263,8 @@ compute_recipehash() {
   )"
 
   mkdir -p "${OS_SIGS}"
-  printf '%s' "${_recipehash}" > "${OS_SIGS}/${LAYER}.recipehash"
-  _stamp="${OS_STAMPS}/${LAYER}"
+  printf '%s' "${_recipehash}" > "${OS_SIGS}/${RECIPE}.recipehash"
+  _stamp="${OS_STAMPS}/${RECIPE}"
 }
 
 run_tasks() {
@@ -288,7 +284,7 @@ execute_recipe() {
   setup_build_env
   inherit base
   # shellcheck disable=SC1090
-  source "${RECIPE}"
+  source "${RECIPE_PATH}"
   skip_if_built
   run_tasks
   mark_built
@@ -299,7 +295,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   cmd="${1:?engine.sh: need a subcommand (resolve-dependencies|execute-recipe)}"; shift
   case "${cmd}" in
     resolve-dependencies) resolve_dependencies "$@" ;;
-    execute-recipe)       LAYER="${1:?engine.sh execute-recipe: need a recipe name}"; export LAYER; execute_recipe ;;
+    execute-recipe)       RECIPE="${1:?engine.sh execute-recipe: need a recipe name}"; export RECIPE; execute_recipe ;;
     *)                    die "engine.sh: unknown subcommand '${cmd}' (resolve-dependencies|execute-recipe)" ;;
   esac
 fi

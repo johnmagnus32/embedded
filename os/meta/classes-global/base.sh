@@ -3,10 +3,9 @@
 # engine.sh `inherit base` for EVERY recipe BEFORE sourcing the recipe, so both the default do_*
 # tasks AND the fetch helpers below are universally in scope — for the recipe and for every class it
 # later inherits (host classes call os_fetch_file directly). A recipe (or a class it inherits)
-# overrides any do_* last-definition-wins. base defaults the SOURCE-side tasks — do_fetch (fetch per
-# PKG_FETCH), do_unpack (extract a tarball), do_patch (no-op) — so most recipes bind only do_build. There
-# is NO default do_build/do_install (a recipe always binds them via a class or inline), so base leaves
-# them unset — an unbound do_build is a recipe bug, surfaced by the shell.
+# overrides any do_* last-definition-wins. base defaults do_fetch (per PKG_FETCH), do_unpack, do_patch
+# (no-op), do_install (no-op — override to install into the rootfs), and do_deploy (copy PKG_DEPLOY into
+# OUTPUT_DIR). Only do_build has no default — an unbound do_build is a recipe bug, surfaced by the shell.
 #
 # WHY THE FETCH MECHANISM LIVES HERE (not in engine.sh): the runner is the ORCHESTRATOR — it
 # keeps only what it needs before `inherit base` (recipe_get, log/die, inherit). The
@@ -14,7 +13,7 @@
 # class — the base-class model (override do_fetch to fetch differently). It is first used in
 # run_tasks -> do_fetch, which runs after `inherit base`, so nothing pins it to the runner.
 #
-# Sourced into the recipe shell with the env set_recipe_env established: RECIPE, RECIPE_SCRATCH, REPO_ROOT,
+# Sourced into the recipe shell with the env set_recipe_env established: RECIPE_PATH, RECIPE_SCRATCH, REPO_ROOT,
 # BUILD_DIR, DOWNLOAD_DIR, recipe_get, log/die.
 
 # ---- fetch primitives (content pinned by SHA/tag; the URL is just availability) ---------------
@@ -115,53 +114,53 @@ pkg_src() {
 #   local -> $REPO_ROOT/$PKG_SOURCE | prebuilt|none -> "" | git -> $BUILD_DIR/$PKG_GIT_CHECKOUT | tarball -> $RECIPE_SCRATCH/src
 do_fetch() {
   local fetch src ver primary mirror checkout tb name
-  fetch="$(recipe_get "${RECIPE}" PKG_FETCH)"
-  [ -z "${fetch}" ] && [ -n "$(recipe_get "${RECIPE}" PKG_SITE)" ] && fetch=tarball
-  : "${fetch:?do_fetch: ${RECIPE} has no PKG_FETCH (and no PKG_SITE to imply tarball)}"
+  fetch="$(recipe_get "${RECIPE_PATH}" PKG_FETCH)"
+  [ -z "${fetch}" ] && [ -n "$(recipe_get "${RECIPE_PATH}" PKG_SITE)" ] && fetch=tarball
+  : "${fetch:?do_fetch: ${RECIPE_PATH} has no PKG_FETCH (and no PKG_SITE to imply tarball)}"
 
   case "${fetch}" in
     local)
-      src="${REPO_ROOT}/$(recipe_get "${RECIPE}" PKG_SOURCE)"
-      [ -d "${src}" ] || die "do_fetch: local source not found: ${src} (${RECIPE})"
+      src="${REPO_ROOT}/$(recipe_get "${RECIPE_PATH}" PKG_SOURCE)"
+      [ -d "${src}" ] || die "do_fetch: local source not found: ${src} (${RECIPE_PATH})"
       PKG_SRC_DIR="${src}" ;;
 
     prebuilt) PKG_SRC_DIR="" ;;   # libc baked into the cross toolchain (musl); no source dir
     none)     PKG_SRC_DIR="" ;;   # an engine step (rootfs|image) composes built inputs; nothing to fetch
 
     git)
-      # The checkout dir is a RECIPE fact (PKG_GIT_CHECKOUT), not an engine role->var table — so a
+      # The checkout dir is a RECIPE_PATH fact (PKG_GIT_CHECKOUT), not an engine role->var table — so a
       # new git provider needs no edit here. Persistent under build/ (reused across builds).
-      checkout="$(recipe_get "${RECIPE}" PKG_GIT_CHECKOUT)"
-      : "${checkout:?do_fetch: ${RECIPE} PKG_FETCH=git needs PKG_GIT_CHECKOUT (checkout dir under build/)}"
+      checkout="$(recipe_get "${RECIPE_PATH}" PKG_GIT_CHECKOUT)"
+      : "${checkout:?do_fetch: ${RECIPE_PATH} PKG_FETCH=git needs PKG_GIT_CHECKOUT (checkout dir under build/)}"
       src="${BUILD_DIR}/${checkout}"
-      ver="$(recipe_get "${RECIPE}" PKG_VERSION)"
-      primary="$(recipe_get "${RECIPE}" PKG_GIT_URL)"
-      mirror="$(recipe_get "${RECIPE}" PKG_GIT_URL_MIRROR)"
-      : "${ver:?do_fetch: ${RECIPE} PKG_VERSION unset (git fetch)}"
-      : "${primary:?do_fetch: ${RECIPE} PKG_GIT_URL unset (git fetch)}"
+      ver="$(recipe_get "${RECIPE_PATH}" PKG_VERSION)"
+      primary="$(recipe_get "${RECIPE_PATH}" PKG_GIT_URL)"
+      mirror="$(recipe_get "${RECIPE_PATH}" PKG_GIT_URL_MIRROR)"
+      : "${ver:?do_fetch: ${RECIPE_PATH} PKG_VERSION unset (git fetch)}"
+      : "${primary:?do_fetch: ${RECIPE_PATH} PKG_GIT_URL unset (git fetch)}"
       # CLEAN=1 (a make command-line var, present in the recipe shell's env) forces a from-scratch
       # re-fetch: wipe the checkout before cloning. A FETCH concern, so it lives here ONCE for every
       # git recipe — not re-implemented in each provider's do_build.
       if [ "${CLEAN:-0}" = 1 ] && [ -d "${src}" ]; then
         log "CLEAN=1: removing ${src} for a fresh clone"; rm -rf "${src}"
       fi
-      clone_or_reuse_pinned "${src}" "${ver}" "${primary}" "${mirror}" "${LAYER}" \
-        || die "do_fetch: clone failed for ${RECIPE}"
+      clone_or_reuse_pinned "${src}" "${ver}" "${primary}" "${mirror}" "${RECIPE}" \
+        || die "do_fetch: clone failed for ${RECIPE_PATH}"
       PKG_SRC_DIR="${src}" ;;
 
     tarball)
       # DOWNLOAD + verify only — EXTRACTION is do_unpack's job (Yocto's fetch/unpack split). Hand the
       # verified tarball path to the default do_unpack via PKG_TARBALL (it extracts + sets PKG_SRC_DIR).
-      name="$(recipe_get "${RECIPE}" PKG_SOURCE)"
-      : "${name:?do_fetch: ${RECIPE} PKG_SOURCE unset (tarball fetch)}"
-      PKG_TARBALL="$(os_fetch_file "${name}" "$(recipe_get "${RECIPE}" PKG_SITE)" \
-              "$(recipe_get "${RECIPE}" PKG_SHA256)" \
-              "$(recipe_get "${RECIPE}" PKG_SITE_MIRROR)" \
-              "$(recipe_get "${RECIPE}" PKG_SOURCE_QUERY)")" \
-        || die "do_fetch: fetch/verify failed for ${RECIPE}" ;;
+      name="$(recipe_get "${RECIPE_PATH}" PKG_SOURCE)"
+      : "${name:?do_fetch: ${RECIPE_PATH} PKG_SOURCE unset (tarball fetch)}"
+      PKG_TARBALL="$(os_fetch_file "${name}" "$(recipe_get "${RECIPE_PATH}" PKG_SITE)" \
+              "$(recipe_get "${RECIPE_PATH}" PKG_SHA256)" \
+              "$(recipe_get "${RECIPE_PATH}" PKG_SITE_MIRROR)" \
+              "$(recipe_get "${RECIPE_PATH}" PKG_SOURCE_QUERY)")" \
+        || die "do_fetch: fetch/verify failed for ${RECIPE_PATH}" ;;
 
     *)
-      die "do_fetch: unknown PKG_FETCH '${fetch}' in ${RECIPE} (want local|prebuilt|git|tarball|none)" ;;
+      die "do_fetch: unknown PKG_FETCH '${fetch}' in ${RECIPE_PATH} (want local|prebuilt|git|tarball|none)" ;;
   esac
 
   # Extra SHA-pinned source tarballs (Yocto SRC_URI-style, declarative). The recipe lists logical
@@ -178,8 +177,8 @@ do_fetch() {
   for _s in ${PKG_SOURCES:-}; do
     _sv="PKG_SRC_${_s}"; _hv="PKG_SHA_${_s}"; _mv="PKG_MIRROR_${_s}"; _qv="PKG_QUERY_${_s}"
     _url="${!_sv:-}"; _sha="${!_hv:-}"; _mir="${!_mv:-}"; _qry="${!_qv:-}"
-    : "${_url:?do_fetch: PKG_SOURCES lists '${_s}' but PKG_SRC_${_s} (url) unset (${RECIPE})}"
-    : "${_sha:?do_fetch: PKG_SRC_${_s} set but PKG_SHA_${_s} (sha256) unset (${RECIPE})}"
+    : "${_url:?do_fetch: PKG_SOURCES lists '${_s}' but PKG_SRC_${_s} (url) unset (${RECIPE_PATH})}"
+    : "${_sha:?do_fetch: PKG_SRC_${_s} set but PKG_SHA_${_s} (sha256) unset (${RECIPE_PATH})}"
     os_fetch_file "${_url##*/}" "${_url%/*}" "${_sha}" "${_mir}" "${_qry}" >/dev/null \
       || die "do_fetch: fetch/verify failed for source '${_s}' (${_url})"
   done
