@@ -25,7 +25,7 @@ do_build() {
 
 do_install() {
   : "${PKG_DEST:?init do_install: PKG_DEST unset}"; : "${RECIPE_SCRATCH:?}"; : "${PKG_SRC_DIR:?}"
-  rm -rf "${PKG_DEST}"                  # pkgstage/init is shared across init providers — start clean
+  rm -rf "${PKG_DEST}"                  # its own pkgstage dir (pkgstage/<recipe>) — start clean
   local O="${RECIPE_SCRATCH}/build"
   # Installs /init (the binary) — the initramfs entry point. NOT /sbin/init: busybox owns that as a
   # symlink to itself, and merging a real file over it would deref + clobber busybox.

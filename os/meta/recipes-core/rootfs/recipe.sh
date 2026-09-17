@@ -75,9 +75,10 @@ do_build() {
     cp -a "${PKGSTAGE}/${p}/." "${STAGE}/"
   done
 
-  # The selected INIT provider staged /init (+ its config) into pkgstage/init; merge it in.
-  [ -d "${PKGSTAGE}/init" ] || die "rootfs: init staged nothing at ${PKGSTAGE}/init (init recipe failed?)"
-  cp -a "${PKGSTAGE}/init/." "${STAGE}/"
+  # The selected INIT provider staged /init (+ its config) into its own pkgstage dir; merge it in.
+  : "${PROVIDER_init:?rootfs: PROVIDER_init unset (from the recipe env)}"
+  [ -d "${PKGSTAGE}/${PROVIDER_init}" ] || die "rootfs: init provider '${PROVIDER_init}' staged nothing at ${PKGSTAGE}/${PROVIDER_init} (init recipe failed?)"
+  cp -a "${PKGSTAGE}/${PROVIDER_init}/." "${STAGE}/"
   [ -e "${STAGE}/init" ] || die "rootfs: the INIT provider did not install /init"
 
   _stage_libc_runtime

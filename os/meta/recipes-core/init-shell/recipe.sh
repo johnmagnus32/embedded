@@ -12,6 +12,6 @@ do_build() { :; }
 
 do_install() {
   : "${PKG_DEST:?shell-init do_install: PKG_DEST unset}"
-  rm -rf "${PKG_DEST}"                       # pkgstage/init is shared across init providers — start clean
+  rm -rf "${PKG_DEST}"                       # its own pkgstage dir (pkgstage/<recipe>) — start clean
   install -D -m 0755 "${RECIPE_DIR}/init" "${PKG_DEST}/init"
 }
