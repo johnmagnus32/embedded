@@ -12,26 +12,12 @@ PKG_FETCH=none
 PKG_HOST_DEPENDS=gen_init_cpio          # the newc-cpio writer
 require ${OS_META}/recipes-core/image-naming.inc   # ROOTFS_TAG + INITRAMFS_IMAGE (shared with image)
 
-# Overlay files are copied verbatim to their relative paths (Buildroot's BR2_ROOTFS_OVERLAY).
-# /init comes from the selected INIT provider (staged via pkgstage/init), not the overlay.
-_rootfs_overlay_merge() {
-  local stage="$1" overlay="$2"
-  [ -d "$overlay" ] || return 0
-  local f dst
-  for f in $(cd "$overlay" && find . -type f | sed 's|^\./||'); do
-    dst="$stage/$f"
-    mkdir -p "$(dirname "$dst")"
-    install -m 0755 "$overlay/$f" "$dst"
-  done
-}
-
 _rootfs_pack() {
   : "${STAGE:?}"; : "${DEVTABLE_DEFAULT:?}"; : "${OUT_CPIO:?}"; : "${HOSTTOOLS_DIR:?}"
   # gen_init_cpio is this step's host dep (PKG_HOST_DEPENDS); resolve its provisioned path here
   # (host tools aren't on PATH — invoked by full path, like the image step does with genimage).
   local GEN_INIT_CPIO="${HOSTTOOLS_DIR}/bin/gen_init_cpio"
   [ -x "${GEN_INIT_CPIO}" ] || die "rootfs: gen_init_cpio not provisioned at ${GEN_INIT_CPIO}"
-  _rootfs_overlay_merge "${STAGE}" "${OVERLAY_DIR:-}"
   local listing="${OUT_CPIO%.cpio.gz}.list"
   {
     # Device table: engine default then optional product augment — a later line wins on a

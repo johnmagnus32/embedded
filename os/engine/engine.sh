@@ -116,7 +116,7 @@ load_env() {
   DOWNLOAD_DIR="${BUILD_DIR}/downloads"; OUTPUT_DIR="${BUILD_DIR}/output"
   PYENV_DIR="${BUILD_DIR}/pyenv"; HOSTMAKE_DIR="${BUILD_DIR}/hostmake"; HOSTTOOLS_DIR="${BUILD_DIR}/hosttools"
   OS_STAMPS="${BUILD_DIR}/.os/stamps"; OS_SIGS="${BUILD_DIR}/.os/sigs"
-  HOSTTOOLS_FARM="${BUILD_DIR}/.os/hosttools-farm"; OVERLAY_DIR="${PRODUCT_DIR}/overlay"
+  HOSTTOOLS_FARM="${BUILD_DIR}/.os/hosttools-farm"
 
   # libc staging (link-keyed — the producer + consumers agree here)
   local link="${LINKAGE:-${PKG_LINK:-static}}"
@@ -131,7 +131,7 @@ load_env() {
 
   export BUILD_DIR BOARD_NAME BOARD_DIR KERNEL_TARGET ARCH CROSS_COMPILE \
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
-         OS_STAMPS OS_SIGS HOSTTOOLS_FARM OVERLAY_DIR LIBC_STAGE_DIR STAGE_INC \
+         OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
          HOSTTOOLS HOSTTOOLS_NONFATAL ASSUME_PROVIDED SANITY_REQUIRED \
          KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
 }
@@ -223,28 +223,16 @@ set_recipe_env() {
   require() { _REQUIRED_INCS="${_REQUIRED_INCS} $1"; source "$1"; }
 }
 
+# skip_if_built — cache gate: a recipe is up to date iff its stamp records the current recipehash.
+# We trust the stamp (like Yocto's sigdata); a hand-deleted artifact isn't self-healed — run clean.
 skip_if_built() {
-  resolve_output
   compute_recipehash
-  if [ -n "${_output}" ] && [ "${FORCE:-0}" != 1 ] && [ -f "${_stamp}" ] \
-       && [ "$(cat "${_stamp}" 2>/dev/null)" = "${_recipehash}" ] && [ -e "${_output}" ]; then
+  if [ "$(cat "${_stamp}" 2>/dev/null)" = "${_recipehash}" ]; then
     log "cached — up to date (recipehash ${_recipehash:0:12})"; exit 0
   fi
-  [ -n "${_output}" ] && [ -f "${_stamp}" ] && [ ! -e "${_output}" ] \
-    && log "stamp present but artifact missing (${_output}) — rebuilding"
   if [ -n "${PKG_HOST_SKIP_IF:-}" ] && eval "${PKG_HOST_SKIP_IF}" >/dev/null 2>&1; then
     log "satisfied by the host already (PKG_HOST_SKIP_IF) — skipping build"
     mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; exit 0
-  fi
-}
-
-# _output = the durable artifact this recipe declares; empty => never cacheable, always rebuilds.
-resolve_output() {
-  _output=""
-  if   [ -n "${PKG_HOST_BIN:-}" ];        then _output="${PKG_HOST_BIN}"
-  elif [ -n "${PKG_HOST_VERIFY_BIN:-}" ]; then _output="${PKG_HOST_DEST:-}/bin/${PKG_HOST_VERIFY_BIN}"
-  elif [ -n "${PKG_HOST_DEST:-}" ];       then _output="${PKG_HOST_DEST}"
-  elif [ -n "${PKG_ARTIFACT:-}" ];        then _output="$(_artifact_path "${RECIPE}" PKG_ARTIFACT)"
   fi
 }
 
@@ -323,9 +311,7 @@ run_tasks() {
   do_install
 }
 
-mark_built() {
-  if [ -n "${_output}" ]; then mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; fi
-}
+mark_built() { mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; }
 
 # execute-recipe: build one recipe end to end.
 execute_recipe() {

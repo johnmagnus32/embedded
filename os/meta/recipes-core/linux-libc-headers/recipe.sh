@@ -15,8 +15,7 @@ PKG_GIT_URL_MIRROR=https://github.com/gregkh/linux.git
 PKG_GIT_CHECKOUT=linux
 PKG_VERSION=v6.12.95
 PKG_HOST_DEPENDS=make                      # `make headers_install` needs GNU Make >= 4.0
-PKG_HOST_DEST=${BUILD_DIR}/linux-libc-headers   # staged headers root (its bin-less dir is the cache key)
-PKG_HOST_VERIFY_BIN=../include/linux/kd.h       # resolve_output => PKG_HOST_DEST/bin/../include/linux/kd.h
+PKG_HOST_DEST=${BUILD_DIR}/linux-libc-headers   # staged headers root
 
 do_install() { :; }
 
