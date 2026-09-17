@@ -11,59 +11,67 @@
 # exit code — the kernel halts in `wfi` and QEMU never exits on its own, so we
 # detect completion by a terminal marker and then kill QEMU).
 #
-# Two cases:
+# The CUSTOM kernel + its four fixture initramfs images are built here from the
+# kernel/ tree itself (self-contained; it just needs a cross toolchain). The
+# busybox/dynamic rootfs images, however, are external artifacts: this harness
+# takes them as PATHS and knows NOTHING about how they were built.
+#
+# Cases:
 #   smoke  — the built-in test initramfs (uinit): deterministic, needs NO input,
 #            ALWAYS available. Exercises fs + mem syscalls + fork/exec/wait.
-#   busybox — the real musl BusyBox rootfs, driven with a fixed command script to
-#            an interactive prompt. Runs only if that rootfs is present (built by
-#            `KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox make rootfs`); its
-#            name is selection-unique, so a not-built-yet case just SKIPs. INIT=shell = the
-#            minimal /bin/sh PID-1 (the kernel test uses it, NOT the C supervisor INIT=custom,
-#            which is mainline-only — see os/meta/recipes-core/ (virtual/init)).
-#   dynamic — the same, dynamically linked through musl's ld.so (add LINKAGE=dynamic
-#            to that rootfs build); SKIPs the same way. smoke/fault/orphan/preempt
-#            use built-in initramfs images and always run.
+#   fault/orphan/preempt — built-in fixture images; always run.
+#   busybox — a real musl BusyBox rootfs, driven with a fixed command script to an
+#            interactive prompt. Runs only if ${BUSYBOX_INITRD} is set AND exists;
+#            otherwise SKIPs.
+#   dynamic — the same, dynamically linked through musl's ld.so. Runs only if
+#            ${DYNAMIC_INITRD} is set AND exists; otherwise SKIPs.
+#
+# ---- INPUT CONTRACT (environment) -------------------------------------------
+#   CROSS_COMPILE   (required) cross-gcc prefix used to build the CUSTOM kernel via
+#                   kernel/'s own Makefile, e.g. /path/to/arm-forge-linux-gnueabihf- .
+#                   Its directory is put on PATH so the Makefile's $(CROSS_COMPILE)gcc resolves.
+#   GEN_INIT_CPIO   (required) path to a gen_init_cpio host binary (packs the fixtures).
+#   QEMU            (optional) qemu-system-arm binary. Default: qemu-system-arm.
+#   BUSYBOX_INITRD  (optional) path to a prebuilt static musl BusyBox rootfs cpio.gz.
+#   DYNAMIC_INITRD  (optional) path to a prebuilt dynamic  musl BusyBox rootfs cpio.gz.
+#   NO_BUILD=1      (optional) skip the kernel build, use existing artifacts.
 #
 # Usage:
-#   ./test/golden.sh                 # build (BOARD=virt) + run both cases
+#   ./test/golden.sh                 # build + run all applicable cases
 #   ./test/golden.sh smoke           # only the built-in smoke test (fast)
 #   ./test/golden.sh busybox         # only the real-BusyBox interactive test
 #   NO_BUILD=1 ./test/golden.sh      # skip the build, use existing artifacts
 #
-# Exit code: 0 iff every case that ran PASSED. Logs saved under build/test/.
+# Exit code: 0 iff every case that ran PASSED. Logs saved under kernel/build/test/.
 
 set -u
 
+: "${CROSS_COMPILE:?golden.sh: set CROSS_COMPILE=<cross-gcc prefix to build the kernel>}"
+: "${GEN_INIT_CPIO:?golden.sh: set GEN_INIT_CPIO=<path to a gen_init_cpio binary>}"
+
 # ---- locate ourselves + the kernel dir --------------------------------------
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KDIR="$(cd "${HERE}/.." && pwd)"                 # <repo>/kernel (a top-level PROVIDER since the os refactor)
-REPO_ROOT="$(cd "${KDIR}/.." && pwd)"            # <repo> (= 'embedded/')
-# The kernel is now a top-level provider, but the golden test still consumes a
-# PRODUCT's build artifacts (toolchain + busybox initramfs). Point at the
-# gameboy-v3 product. (Phase 4 would parameterize this; for now name it.)
-PROJ="${GV3_PRODUCT:-${REPO_ROOT}/projects/gameboy-v3}"
+KDIR="$(cd "${HERE}/.." && pwd)"                 # <repo>/kernel (a top-level PROVIDER)
 # The kernel builds per-board under build/<board>/; the golden test always runs
 # the QEMU virt build.
 BUILD="${KDIR}/build/virt"
 LOGDIR="${KDIR}/build/test"
-TOOLCHAIN_BIN="${PROJ}/build/toolchain-gcc/bin"
-# gen_init_cpio is an engine HOST PACKAGE (os fetches + compiles it into the product's
-# host prefix); the kernel Makefile no longer owns it, so we pass its path into the
-# fixtures build. Provisioned by the product's `make gen_init_cpio` (below, if absent).
-GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
-# The rootfs artifact is now named by (rootfs-tag + link) so selections/linkages don't clobber
-# in build/output/ — these are the musl-busybox static/dynamic names (see resolve.mk INITRAMFS_IMAGE).
-BUSYBOX_INITRD="${PROJ}/build/output/initramfs-musl-shell-busybox-static.cpio.gz"
-DYNAMIC_INITRD="${PROJ}/build/output/initramfs-musl-shell-busybox-dynamic.cpio.gz"
 SMOKE_INITRD="${BUILD}/initramfs.cpio.gz"
 FAULT_INITRD="${BUILD}/faultramfs.cpio.gz"
 ORPHAN_INITRD="${BUILD}/orphanramfs.cpio.gz"
 PREEMPT_INITRD="${BUILD}/preemptramfs.cpio.gz"
 KIMG="${BUILD}/kernel.bin"
 
-# put the cross toolchain on PATH (the Makefile needs $(CROSS_COMPILE)gcc)
-case ":${PATH}:" in *":${TOOLCHAIN_BIN}:"*) : ;; *) PATH="${TOOLCHAIN_BIN}:${PATH}" ;; esac
-export PATH
+# External rootfs images — optional inputs (empty => that case SKIPs).
+BUSYBOX_INITRD="${BUSYBOX_INITRD:-}"
+DYNAMIC_INITRD="${DYNAMIC_INITRD:-}"
+
+# put the cross toolchain's bin dir on PATH (the Makefile needs $(CROSS_COMPILE)gcc)
+case "${CROSS_COMPILE}" in
+  */*) TCDIR="$(cd "$(dirname "${CROSS_COMPILE}")" && pwd)"
+       case ":${PATH}:" in *":${TCDIR}:"*) : ;; *) PATH="${TCDIR}:${PATH}" ;; esac
+       export PATH ;;
+esac
 
 QEMU="${QEMU:-qemu-system-arm}"
 
@@ -144,7 +152,7 @@ run_case() {
   fi
 
   if [ "$bad" -eq 0 ]; then
-    grn "  PASS  (log: ${log#${PROJ}/})"
+    grn "  PASS  (log: ${log})"
   else
     red "  FAIL  (full transcript: ${log})"
     fail_count=$((fail_count + 1))
@@ -163,10 +171,8 @@ feed_busybox() {
 
 # ---- artifact fingerprint ---------------------------------------------------
 # rootfs_has <initrd.cpio.gz> <pattern> — true iff the cpio listing has an entry
-# matching <pattern>. The rootfs artifact name is now keyed by (rootfs-tag + link),
-# so only a musl-busybox build ever writes this path (no cross-selection clobber).
-# The fingerprint is kept as a cheap integrity check — a present-but-wrong-contents
-# artifact SKIPs with a rebuild hint rather than false-failing.
+# matching <pattern>. Kept as a cheap integrity check — a present-but-wrong-contents
+# artifact SKIPs with a hint rather than false-failing.
 rootfs_has() {
   zcat "$1" 2>/dev/null | cpio -t 2>/dev/null | grep -q -- "$2"
 }
@@ -291,16 +297,18 @@ preempt_case() {
 }
 
 busybox_case() {
-  # The rebuild command that produces this artifact (also the SKIP hint).
-  local mk="KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox make rootfs (from projects/gameboy-v3)"
-  if [ ! -f "$BUSYBOX_INITRD" ]; then
-    ylw "=== case: busybox === SKIPPED (not built yet — run: ${mk})"
+  if [ -z "$BUSYBOX_INITRD" ]; then
+    ylw "=== case: busybox === SKIPPED (BUSYBOX_INITRD not set)"
     return 0
   fi
-  # Integrity check: a BusyBox rootfs contains bin/busybox. (Selection-unique names mean nothing
-  # else writes this path, but a partial/failed build could leave it malformed — SKIP, don't fail.)
+  if [ ! -f "$BUSYBOX_INITRD" ]; then
+    ylw "=== case: busybox === SKIPPED (BUSYBOX_INITRD not found: ${BUSYBOX_INITRD})"
+    return 0
+  fi
+  # Integrity check: a BusyBox rootfs contains bin/busybox. (A partial/failed build
+  # could leave it malformed — SKIP, don't fail.)
   if ! rootfs_has "$BUSYBOX_INITRD" 'bin/busybox'; then
-    ylw "=== case: busybox === SKIPPED (${BUSYBOX_INITRD#${PROJ}/} not a valid BusyBox rootfs; rebuild: ${mk})"
+    ylw "=== case: busybox === SKIPPED (${BUSYBOX_INITRD} not a valid BusyBox rootfs)"
     return 0
   fi
   REQ=(
@@ -321,16 +329,18 @@ dynamic_case() {
   # DYNAMICALLY-linked musl BusyBox: proves the kernel's dynamic-linking support
   # (ET_DYN load bias, PT_INTERP -> /lib/ld-musl-armhf.so.1, full auxv, file-backed
   # + MAP_FIXED mmap2). Same shell interactions as busybox, but the whole chain
-  # runs THROUGH ld.so. Built by the package-model assembler with LINKAGE=dynamic.
-  local mk="KERNEL=mainline LIBC=musl INIT=shell PACKAGES=busybox LINKAGE=dynamic make rootfs (from projects/gameboy-v3)"
+  # runs THROUGH ld.so.
+  if [ -z "$DYNAMIC_INITRD" ]; then
+    ylw "=== case: dynamic === SKIPPED (DYNAMIC_INITRD not set)"
+    return 0
+  fi
   if [ ! -f "$DYNAMIC_INITRD" ]; then
-    ylw "=== case: dynamic === SKIPPED (not built yet — run: ${mk})"
+    ylw "=== case: dynamic === SKIPPED (DYNAMIC_INITRD not found: ${DYNAMIC_INITRD})"
     return 0
   fi
   # Integrity check: a DYNAMIC musl BusyBox rootfs carries the musl loader (lib/ld-musl-armhf.so.1).
-  # (Selection-unique names mean nothing else writes this path — SKIP on a malformed build.)
   if ! rootfs_has "$DYNAMIC_INITRD" 'lib/ld-musl-armhf.so.1'; then
-    ylw "=== case: dynamic === SKIPPED (${DYNAMIC_INITRD#${PROJ}/} not a valid dynamic musl BusyBox rootfs; rebuild: ${mk})"
+    ylw "=== case: dynamic === SKIPPED (${DYNAMIC_INITRD} not a valid dynamic musl BusyBox rootfs)"
     return 0
   fi
   REQ=(
@@ -354,20 +364,16 @@ dynamic_case() {
 # ---- main -------------------------------------------------------------------
 main() {
   command -v "$QEMU" >/dev/null 2>&1 || { red "error: ${QEMU} not on PATH"; exit 2; }
+  [ -x "${GEN_INIT_CPIO}" ] || { red "error: GEN_INIT_CPIO not executable: ${GEN_INIT_CPIO}"; exit 2; }
   mkdir -p "$LOGDIR"
 
   if [ "${NO_BUILD:-0}" != 1 ]; then
     printf '=== building (BOARD=virt) ===\n'
-    # gen_init_cpio is engine-provisioned (fetched + compiled into the product host prefix).
-    # Provision it if missing (build the gen_init_cpio host node directly), then
-    # pass its path to the fixtures build — the kernel Makefile doesn't build the tool itself.
-    if [ ! -x "${GEN_INIT_CPIO}" ]; then
-      printf '  provisioning gen_init_cpio (make gen_init_cpio) ...\n'
-      make -C "${PROJ}" gen_init_cpio >>"${LOGDIR}/build.log" 2>&1 || true
-    fi
     # `all` = the kernel binary; `fixtures` = the four test initramfs images these
     # cases boot (the kernel Makefile split test scaffolding out of `all`, so name it).
-    if ! make -C "$KDIR" BOARD=virt CROSS_COMPILE=arm-forge-linux-gnueabihf- GEN_INIT_CPIO="${GEN_INIT_CPIO}" all fixtures >>"${LOGDIR}/build.log" 2>&1; then
+    # BOARD=virt is the kernel Makefile's OWN var. GEN_INIT_CPIO is the host tool the
+    # fixtures build needs (the kernel Makefile doesn't build it itself).
+    if ! make -C "$KDIR" BOARD=virt CROSS_COMPILE="${CROSS_COMPILE}" GEN_INIT_CPIO="${GEN_INIT_CPIO}" all fixtures >>"${LOGDIR}/build.log" 2>&1; then
       red "BUILD FAILED (see ${LOGDIR}/build.log)"; tail -n 20 "${LOGDIR}/build.log"; exit 2
     fi
     grn "  build OK"

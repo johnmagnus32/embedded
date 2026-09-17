@@ -7,55 +7,40 @@
 # boots a MAINLINE ARM Linux kernel (full dynamic-linking support) under QEMU
 # `-M virt` and runs a dynamic ARM binary as init.
 #
-# It has two modes, sharing one boot+check path:
-#   ref  — a KNOWN-GOOD musl-dynamic binary (built with the normal musl toolchain,
-#          linked against musl's real libc.so + ld-musl). Proves the HARNESS
-#          itself is correct. Always available. This is the baseline you run
-#          first / whenever you doubt the test bed.
-#   gv3  — OUR dynamic rootfs (make LINK=dynamic) driven by OUR ld.so.1. This is
-#          the from-scratch loader under test: it maps /lib/libc.so, relocates, and
-#          hands off to an interactive /bin/sh (the 'gv3$' prompt is the marker).
-#          Skipped unless --gv3 is asked (it builds the dynamic rootfs via make).
+# It has two cases, sharing one boot+check path:
+#   ref  — a KNOWN-GOOD musl-dynamic binary, built INLINE here with the cross
+#          toolchain (${CROSS_COMPILE}) and linked against that toolchain's real
+#          libc.so + ld-musl. Proves the HARNESS itself is correct. Always runs.
+#   gv3  — OUR dynamic rootfs (${DYNAMIC_INITRD}), driven by OUR ld.so.1. This is
+#          the from-scratch loader under test: it maps /lib/libc.so, relocates,
+#          and hands off to an interactive /bin/sh (the 'gv3$' prompt is the marker).
 #
-# The mainline reference kernel is a build artifact (reproducible from the kernel
-# source tree via a git worktree); this script builds it once into
-# build/refkernel/ if absent. Unlike qemu-arm user-mode (only aarch64 is packaged
-# on this host), qemu-system-arm + a real kernel is available and dependency-free.
+# This harness is SELF-CONTAINED: it knows nothing about the os/ build system. It
+# takes the reference kernel and our dynamic rootfs as PATHS; whoever drives it is
+# responsible for building those and passing them in.
 #
-# Usage:
-#   ./test/dynamic.sh            # run the 'ref' known-good case (validate harness)
-#   ./test/dynamic.sh --gv3      # ALSO run our dynamic rootfs through ld.so.1
-#   REBUILD_KERNEL=1 ./test/dynamic.sh   # force-rebuild the reference kernel
+# ---- INPUT CONTRACT (environment) -------------------------------------------
+#   CROSS_COMPILE    (required) cross-gcc prefix used to build the inline `ref` binary
+#                    AND to source musl's libc.so + ld-musl from its baked sysroot,
+#                    e.g. /path/to/arm-forge-linux-gnueabihf- .
+#   REFKERNEL        (required) path to a bootable MAINLINE QEMU `virt` zImage (full
+#                    dynamic-linking support). Booted for BOTH cases.
+#   DYNAMIC_INITRD   (required) path to OUR prebuilt dynamically-linked rootfs
+#                    (PT_INTERP=/lib/ld.so.1) — booted as the `gv3` case.
+#   GEN_INIT_CPIO    (required) path to a gen_init_cpio host binary (packs the ref initramfs).
+#   QEMU             (optional) qemu-system-arm binary. Default: qemu-system-arm.
 #
 # Exit 0 iff every case that ran PASSED.
 set -u
 
-# ---- locate ourselves + project dirs ----------------------------------------
-# This test lives at libc/test/ (a repo-root PROVIDER). The gv3 case's dynamic rootfs is
-# built by the os ENGINE proper — `make -C <product> rootfs LIBC=custom LINKAGE=dynamic`
-# walks the graph (libc -> coreutils -> pack), so this harness no longer
-# hand-runs any engine internals; it just invokes make and boots the result.
+: "${CROSS_COMPILE:?dynamic.sh: set CROSS_COMPILE=<cross-gcc prefix (musl sysroot)>}"
+: "${REFKERNEL:?dynamic.sh: set REFKERNEL=<path to a bootable mainline virt zImage>}"
+: "${DYNAMIC_INITRD:?dynamic.sh: set DYNAMIC_INITRD=<path to our dynamically-linked rootfs cpio.gz>}"
+: "${GEN_INIT_CPIO:?dynamic.sh: set GEN_INIT_CPIO=<path to a gen_init_cpio binary>}"
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${HERE}/../.." && pwd)"          # repo root (libc/ is a top-level provider)
-PROJ="${REPO_ROOT}/projects/gameboy-v3"           # the product
-BUILD="${PROJ}/build/dynbed"                      # this harness's own scratch dir (ref case)
-LOGDIR="${PROJ}/build/test"
-MUSL_BIN="${PROJ}/build/toolchain-gcc/bin"
-GLIBC_BIN="${PROJ}/build/toolchain-gcc/bin"
-HOSTMAKE_BIN="${PROJ}/build/hostmake/bin"        # GNU Make >=4 (kernel needs it)
-# gen_init_cpio: an engine HOST PACKAGE (os/meta/recipes-devtools/gen_init_cpio) — os fetches +
-# compiles it into build/hosttools/bin/. pack_initrd provisions it
-# via `make gen_init_cpio` if absent. (This harness still needs build/linux too, but for its
-# REFERENCE KERNEL — see below — not for the cpio writer.)
-GEN_INIT_CPIO="${PROJ}/build/hosttools/bin/gen_init_cpio"
-
-# Reference mainline kernel (built here if missing) + the source worktree.
-REFKERNEL="${PROJ}/build/refkernel/virt-zImage"
-KSRC="${PROJ}/build/linux"                        # the (dirty, in-tree) sunxi build
-WORKTREE="${PROJ}/build/refkernel/linux-src"      # clean worktree for the virt build
-
-MUSL_PREFIX="arm-forge-linux-gnueabihf-"
-GLIBC_PREFIX="arm-forge-linux-gnueabihf-"
+BUILD="${BUILD:-${HERE}/.dynbed}"                 # this harness's own scratch dir (ref case)
+LOGDIR="${LOGDIR:-${HERE}/logs}"
 QEMU="${QEMU:-qemu-system-arm}"
 
 red() { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -64,55 +49,20 @@ ylw() { printf '\033[33m%s\033[0m\n' "$*"; }
 info(){ printf '  %s\n' "$*"; }
 die() { red "ERROR: $*"; exit 1; }
 
-mkdir -p "${LOGDIR}"
+command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 || die "cross gcc not found: ${CROSS_COMPILE}gcc"
+[ -f "${REFKERNEL}" ]      || die "REFKERNEL not found: ${REFKERNEL}"
+[ -f "${DYNAMIC_INITRD}" ] || die "DYNAMIC_INITRD not found: ${DYNAMIC_INITRD}"
+[ -x "${GEN_INIT_CPIO}" ]  || die "GEN_INIT_CPIO not executable: ${GEN_INIT_CPIO}"
+command -v "${QEMU}" >/dev/null 2>&1 || die "${QEMU} not on PATH"
 
-# ---- 1. reference kernel: build once if missing -----------------------------
-build_ref_kernel() {
-  command -v "${GLIBC_BIN}/${GLIBC_PREFIX}gcc" >/dev/null 2>&1 \
-    || die "from-source gcc cross toolchain missing — run 'make -C ${PROJ} toolchain-gcc'"
-  [ -x "${HOSTMAKE_BIN}/make" ] || die "build/hostmake/make (GNU Make >=4) missing — run 'make -C ${PROJ} make'"
-  [ -d "${KSRC}/.git" ] || die "${KSRC} is not a git checkout (need it for a worktree)"
+mkdir -p "${LOGDIR}" "${BUILD}"
 
-  ylw "building the mainline reference virt kernel (one-time, ~minutes) ..."
-  # A clean worktree at the same commit — does NOT disturb the in-tree sunxi build.
-  if [ ! -f "${WORKTREE}/Makefile" ]; then
-    git -C "${KSRC}" worktree add -f "${WORKTREE}" HEAD >/dev/null 2>&1 \
-      || die "git worktree add failed"
-  fi
-  (
-    cd "${WORKTREE}"
-    export PATH="${HOSTMAKE_BIN}:${GLIBC_BIN}:${PATH}"
-    export ARCH=arm CROSS_COMPILE="${GLIBC_PREFIX}"
-    make multi_v7_defconfig >/dev/null 2>&1 || exit 1
-    # gcc plugins need plugin headers (gmp/mpfr/mpc) — disable them, they aren't needed to boot.
-    # (The engine's mainline kernel recipe instead installs those headers; this harness just skips them.)
-    ./scripts/config --disable GCC_PLUGINS
-    make olddefconfig >/dev/null 2>&1 || exit 1
-    make -j"$(nproc)" zImage >/dev/null 2>&1 || exit 1
-  ) || die "reference kernel build failed"
-  mkdir -p "$(dirname "${REFKERNEL}")"
-  cp "${WORKTREE}/arch/arm/boot/zImage" "${REFKERNEL}" || die "zImage not produced"
-  grn "reference kernel -> ${REFKERNEL#${PROJ}/}"
-}
+info "reference kernel: ${REFKERNEL} (given)"
 
-if [ "${REBUILD_KERNEL:-0}" = 1 ] || [ ! -f "${REFKERNEL}" ]; then
-  build_ref_kernel
-else
-  info "reference kernel: ${REFKERNEL#${PROJ}/} (present)"
-fi
-
-# ---- 2. assemble a dynamic-capable initramfs from a staging tree ------------
-# Walks the tree (dir/file/slink) + appends /dev nodes, like the engine's rootfs pack
-# (os/steps/rootfs/recipe.sh). $1 = staging dir, $2 = output cpio.gz.
+# ---- 1. assemble a dynamic-capable initramfs from a staging tree ------------
+# Walks the tree (dir/file/slink) + appends /dev nodes. $1 = staging dir, $2 = output cpio.gz.
 pack_initrd() {
   local stage="$1" out="$2"
-  # gen_init_cpio is an engine HOST PACKAGE (os fetches + compiles it). Provision it
-  # by building the gen_init_cpio host node if this tree hasn't yet — no vendored copy.
-  if [ ! -x "${GEN_INIT_CPIO}" ]; then
-    info "provisioning gen_init_cpio (make gen_init_cpio) ..."
-    make -C "${PROJ}" gen_init_cpio >/dev/null 2>&1 || true
-    [ -x "${GEN_INIT_CPIO}" ] || die "gen_init_cpio missing at ${GEN_INIT_CPIO} — run 'make -C ${PROJ} gen_init_cpio'"
-  fi
   {
     echo 'dir /dev 0755 0 0'
     echo 'nod /dev/console 0600 0 0 c 5 1'
@@ -133,8 +83,7 @@ pack_initrd() {
 build_ref_initrd() {
   local stage="${BUILD}/reftest"
   rm -rf "${stage}"; mkdir -p "${stage}/lib"
-  local cc="${MUSL_BIN}/${MUSL_PREFIX}gcc"
-  command -v "$cc" >/dev/null 2>&1 || die "musl toolchain missing — run 'make -C ${PROJ} toolchain-gcc'"
+  local cc="${CROSS_COMPILE}gcc"
   local sysroot; sysroot="$("$cc" -print-sysroot)"
   # a trivial DYNAMIC program (normal link -> PT_INTERP + DT_NEEDED=libc.so)
   cat > "${BUILD}/refdyn.c" <<'EOF'
@@ -150,7 +99,7 @@ EOF
   pack_initrd "${stage}" "${BUILD}/reftest.cpio.gz"
 }
 
-# ---- 3. boot the reference kernel with an initramfs, check for a marker -----
+# ---- 2. boot the reference kernel with an initramfs, check for a marker -----
 # run_case <name> <initrd> <required-marker>
 run_case() {
   local name="$1" initrd="$2" marker="$3"
@@ -165,7 +114,7 @@ run_case() {
     -append "console=ttyAMA0 rdinit=/init panic=1" >"${log}" 2>&1
 
   if grep -qF -- "${marker}" "${log}"; then
-    grn "  PASS  (saw '${marker}')  log: ${log#${PROJ}/}"
+    grn "  PASS  (saw '${marker}')  log: ${log}"
   else
     red "  FAIL  (marker '${marker}' not found)  log: ${log}"
     ylw "  --- last lines ---"; tail -6 "${log}" | sed 's/^/    /'
@@ -181,34 +130,10 @@ build_ref_initrd
 run_case ref "${BUILD}/reftest.cpio.gz" "refdyn: dynamic-linked OK"
 
 # ---- case: gv3 (our dynamic rootfs; the dev target) -------------------------
-if [ "${1:-}" = "--gv3" ]; then
-  info "building OUR dynamic rootfs (make rootfs LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt) ..."
-  # Drive the os ENGINE, not its internals: `make rootfs` walks the graph
-  #   libc (builds libc + ld.so.1 into LIBC_STAGE_DIR)
-  #     -> coreutils (links against that libc)
-  #     -> rootfs (packs the artifact, named by libc-init-packages-link).
-  # The `rootfs: libc` edge guarantees the libc is built before the packages link,
-  # so we don't sequence it by hand anymore. Knobs:
-  #   LIBC=custom      the from-source libc (its recipe's PKG_SOURCE = repo-root libc/;
-  #                    the engine resolves LIBC_SRC/LIBC_STAGE_DIR — nothing to pass here).
-  #   INIT=shell       the minimal /bin/sh PID-1. NOT the default INIT=custom: that C supervisor
-  #                    is mainline-only (needs signalfd/timerfd/epoll/sockets/WNOHANG) and won't
-  #                    build against this libc — and PID 1 is orthogonal to the linker under test.
-  #   LINKAGE=dynamic  -> PT_INTERP=/lib/ld.so.1.
-  #   BOARD=virt       the QEMU emulator board (boards/virt/, VFP-free arch) — matches the
-  #                    reference kernel we boot below.
-  # `rootfs` (not `image`) is the minimal target: we boot our own reference kernel, so no
-  # zImage/bootloader/DTB is needed. rm the target first so a stale same-named artifact can't
-  # boot as a false pass (the earlier hardcoded name silently booted a stale image).
-  rootfs="${PROJ}/build/output/initramfs-custom-shell-coreutils-dynamic.cpio.gz"
-  rm -f "${rootfs}"
-  LIBC=custom INIT=shell LINKAGE=dynamic BOARD=virt PACKAGES=coreutils make -C "${PROJ}" rootfs \
-    || die "our dynamic rootfs failed to build"
-  # our init.sh is a shebang script; the mainline kernel needs /bin/sh to be OUR
-  # dynamic shell, loaded by OUR ld.so.1. PASS = the loader mapped libc.so,
-  # relocated, and reached the interactive shell prompt ('gv3$').
-  run_case gv3 "${rootfs}" "gv3\$"
-fi
+# Boots the prebuilt DYNAMIC_INITRD. Our init.sh is a shebang script; the mainline
+# kernel needs /bin/sh to be OUR dynamic shell, loaded by OUR ld.so.1. PASS = the
+# loader mapped libc.so, relocated, and reached the interactive shell prompt ('gv3$').
+run_case gv3 "${DYNAMIC_INITRD}" "gv3\$"
 
 # ---- summary ----------------------------------------------------------------
 printf '\n'
