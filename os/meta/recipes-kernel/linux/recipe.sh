@@ -1,12 +1,12 @@
 # providers/kernel/mainline/recipe.sh — mainline Linux (kconfig + pinned git). Board facts
-# (defconfig, DT overlays, console) live in board/<board>/board.conf, so this stays board-agnostic.
+# (defconfig, DT overlays, console) live in board/<board>/machine.conf, so this stays board-agnostic.
 #
 #   make kernel KERNEL=mainline           # build (idempotent)
 #   make kernel KERNEL=mainline CLEAN=1   # re-fetch the checkout from scratch, then rebuild
 PKG_NAME=linux
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
-PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf (defconfig/console/DTB) — a build input the recipehash must catch
+PKG_FILEDEPS="${MACHINE_DIR}"   # DT overlays + machine.conf (defconfig/console/DTB) — a build input the recipehash must catch
 PKG_DEPLOY="arch/arm/boot/zImage:zImage arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}:${KERNEL_DTB}"
 
 PKG_FETCH=git
@@ -49,7 +49,7 @@ do_build() {
   [ -f "${PROVIDER_RECIPE}" ] || die "provider recipe not found: ${PROVIDER_RECIPE}"
   local KERNEL_TAG; KERNEL_TAG="$(recipe_get "${PROVIDER_RECIPE}" PKG_VERSION)"
   : "${KERNEL_TAG:?recipe: PKG_VERSION missing from ${PROVIDER_RECIPE}}"
-  : "${KERNEL_DEFCONFIG:?recipe: KERNEL_DEFCONFIG missing from board.conf}"
+  : "${KERNEL_DEFCONFIG:?recipe: KERNEL_DEFCONFIG missing from machine.conf}"
 
   local BOARD_DTS_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${UBOOT_BOARD_DT}.dts"
   local BOARD_DTS_DIR_REL="arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}"
@@ -83,7 +83,7 @@ do_build() {
   local ov
   for ov in ${KERNEL_DTB_OVERLAYS}; do
     log "applying kernel DT overlay: ${ov}"
-    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${BOARD_DIR}" "${BOARD_DTS_DIR_REL}" \
+    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${MACHINE_DIR}" "${BOARD_DTS_DIR_REL}" \
       || die "failed to apply DT overlay ${ov}"
   done
 

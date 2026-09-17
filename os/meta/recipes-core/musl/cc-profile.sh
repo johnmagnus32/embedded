@@ -5,7 +5,7 @@
 # Only cross-cc=toolchain-gcc builds musl (our custom `cc` is a C subset that can't compile it; prebuilt is gone).
 [ "${PROVIDER_cross_cc}" = toolchain-gcc ] || die "libc=musl needs cross-cc=toolchain-gcc (musl is built from source; our custom cc can't compile it)"
 : "${CROSS_COMPILE:?musl cc-profile: CROSS_COMPILE unset}"
-: "${ROOTFS_ARCH_FLAGS:?musl cc-profile: ROOTFS_ARCH_FLAGS unset in board.conf}"
+: "${ROOTFS_ARCH_FLAGS:?musl cc-profile: ROOTFS_ARCH_FLAGS unset in machine.conf}"
 PKG_CC="${CROSS_COMPILE}gcc"
 PKG_CFLAGS="${ROOTFS_ARCH_FLAGS} -Os -Wall -Wextra"
 LIBC_CRT=""      # the sysroot's crt1/crti/crtn are auto-linked by gcc's driver

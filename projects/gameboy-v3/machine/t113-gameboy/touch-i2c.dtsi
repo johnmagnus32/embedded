@@ -1,5 +1,5 @@
 // t113-gameboy — enable i2c1 (TWI1) on PG8/PG9 for the FT7311 touch bring-up probe.
-// Compile-time #include, baked into the kernel DTB via board.conf KERNEL_DTB_OVERLAYS.
+// Compile-time #include, baked into the kernel DTB via machine.conf KERNEL_DTB_OVERLAYS.
 //
 // This is the real gv3 peripheral bus (touch/haptics/expander/gauge/INA all live on i2c1);
 // here we just bring the bus up so a raw i2c-dev tool (/usr/bin/touchtest) can scan for the

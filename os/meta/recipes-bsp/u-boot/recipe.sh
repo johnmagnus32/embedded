@@ -1,12 +1,12 @@
 # providers/bootloader/uboot/recipe.sh — mainline U-Boot (kconfig + pinned git). Board facts
-# (defconfig, CONS_INDEX/SPI-NOR fragments, DT overlays) live in board.conf.
+# (defconfig, CONS_INDEX/SPI-NOR fragments, DT overlays) live in machine.conf.
 #
 #   make bootloader BOOTLOADER=uboot            # build (idempotent)
 #   make bootloader BOOTLOADER=uboot CLEAN=1    # re-fetch the checkout from scratch, then rebuild
 PKG_NAME=uboot
 PKG_CLASS=target
 PKG_PROVIDES=virtual/bootloader
-PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf fragments — a build input the recipehash must catch
+PKG_FILEDEPS="${MACHINE_DIR}"   # DT overlays + machine.conf fragments — a build input the recipehash must catch
 PKG_DEPLOY="u-boot-sunxi-with-spl.bin:bootloader.bin u-boot.bin:fel-loader.bin tools/mkimage:mkimage"
 
 PKG_FETCH=git
@@ -43,8 +43,8 @@ do_build() {
 
   # Our own facts (PKG_VERSION) are already shell vars — set at the top of this recipe, which the
   # runner sourced before calling do_build — so use them directly, don't re-parse the file.
-  # Only UBOOT_DEFCONFIG needs a guard: it's a board.conf fact, not declared here.
-  : "${UBOOT_DEFCONFIG:?recipe: UBOOT_DEFCONFIG missing from board.conf}"
+  # Only UBOOT_DEFCONFIG needs a guard: it's a machine.conf fact, not declared here.
+  : "${UBOOT_DEFCONFIG:?recipe: UBOOT_DEFCONFIG missing from machine.conf}"
   local UBOOT_TAG="${PKG_VERSION}" UBOOT_IMAGE=u-boot-sunxi-with-spl.bin
 
   local BOARD_DTS_REL="dts/upstream/src/arm/allwinner/${UBOOT_BOARD_DT}.dts"
@@ -59,7 +59,7 @@ do_build() {
   git checkout -- "${BOARD_DTS_REL}"
 
   # Fragment order is load-bearing: provider no-tools FIRST, then the board's CONS_INDEX + SPI-NOR
-  # (within uboot-board.config MTD must precede SPI_FLASH — its menu is `if MTD`).
+  # (within uboot-machine.config MTD must precede SPI_FLASH — its menu is `if MTD`).
   local _UBOOT_FRAGMENTS="${RECIPE_DIR}/uboot-notools.config ${UBOOT_CONFIG_FRAGMENTS}"
   ufixup() {
     local f
@@ -80,7 +80,7 @@ do_build() {
   local ov
   for ov in ${UBOOT_DTB_OVERLAYS}; do
     log "applying u-boot DT overlay: ${ov}"
-    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${BOARD_DIR}" "${BOARD_DTS_DIR_REL}" \
+    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${MACHINE_DIR}" "${BOARD_DTS_DIR_REL}" \
       || die "failed to apply DT overlay ${ov}"
   done
 

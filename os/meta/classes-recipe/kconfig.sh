@@ -15,8 +15,8 @@
 
 # ARCH is a kbuild input (selects arch/<ARCH>/): owned by the kbuild layer here (à la OE's
 # kernel-arch.bbclass), not the engine. Asserted + exported at inherit, so every kconfig recipe's
-# make sees it — read in-shell from the sourced board.conf.
-: "${ARCH:?kconfig: ARCH unset — boards/*/board.conf must set it}"
+# make sees it — read in-shell from the sourced machine.conf.
+: "${ARCH:?kconfig: ARCH unset — machine/*/machine.conf must set it}"
 export ARCH
 
 # kconfig_normalize [olddefconfig|oldconfig] — re-resolve .config after edits. olddefconfig

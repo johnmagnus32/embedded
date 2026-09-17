@@ -50,9 +50,12 @@ locate() {
 
 # load_config — the product CONFIG. Parse local.conf KEY=value DATA (never sourced — the
 # PREFERRED_PROVIDER_virtual/<slot> keys hold a '/', not a legal shell name) into the PREFERRED_PROVIDER
-# map (slot -> recipe name, read by resolve) + the plain knobs as env vars (an already-set env value wins,
-# so MEDIA=sd make still works); then source the SELECTED board's board.conf (BSP facts, in-shell for
-# recipes). Called by resolve_dependencies + load_env — like bitbake parsing local.conf + machine.conf together.
+# map (slot -> recipe name, read by resolve) + the plain knobs as IN-SHELL vars. NOT exported: recipes are
+# sourced into this shell so they see them, and exporting would leak them into every subprocess's env —
+# MACHINE in particular collides with the GNU toolchain build (it bakes ${MACHINE} into gcc's target as
+# arm:<machine>). An already-set env value wins, so MEDIA=sd make still works. Then source the SELECTED
+# board's machine.conf (BSP facts, in-shell). Called by resolve_dependencies + load_env — like bitbake
+# parsing local.conf + machine.conf together.
 declare -gA PREFERRED_PROVIDER
 load_config() {
   locate
@@ -67,14 +70,14 @@ load_config() {
     key="${line%%=*}"; val="${line#*=}"
     case "${key}" in
       PREFERRED_PROVIDER_virtual/*) PREFERRED_PROVIDER["${key#PREFERRED_PROVIDER_}"]="${val}" ;;
-      *) [ -n "${!key:-}" ] || printf -v "${key}" '%s' "${val}"; export "${key?}" ;;
+      *) [ -n "${!key:-}" ] || printf -v "${key}" '%s' "${val}" ;;
     esac
   done < "${conf}"
 
-  # board.conf references ${BOARD_DIR}, so set it first. Not exported — recipes read it in-shell.
-  BOARD_DIR="${PRODUCT_DIR}/boards/${BOARD}"
+  # machine.conf references ${MACHINE_DIR}, so set it first. Not exported — recipes read it in-shell.
+  MACHINE_DIR="${PRODUCT_DIR}/machine/${MACHINE}"
   # shellcheck source=/dev/null
-  [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
+  [ -f "${MACHINE_DIR}/machine.conf" ] && source "${MACHINE_DIR}/machine.conf"
 }
 
 # byname <name> -> its recipe.sh path (product recipes-*/ + packages/ shadow os/meta).
@@ -115,7 +118,7 @@ recipe_deps() {
   printf '%s' "${out# }"
 }
 
-# load_env — the FULL build environment for execute-recipe: parse local.conf + board.conf, resolve the
+# load_env — the FULL build environment for execute-recipe: parse local.conf + machine.conf, resolve the
 # recipe name (RECIPE) to its path (RECIPE_PATH), and set the vars recipes/classes read.
 load_env() {
   load_config
@@ -162,7 +165,7 @@ load_env() {
   RECIPE_SCRATCH="${BUILD_DIR}/scratch/${RECIPE}"
   PROVIDER_RECIPE="${RECIPE_PATH}"
 
-  # export board.conf's ROOTFS_ARCH_FLAGS[_*] (read by classes); reset the inherit/require accumulators
+  # export machine.conf's ROOTFS_ARCH_FLAGS[_*] (read by classes); reset the inherit/require accumulators
   # for this recipe (they feed compute_recipe_stamp).
   local _v _
   while IFS='=' read -r _v _; do export "${_v?}"; done < <(set | grep '^ROOTFS_ARCH_FLAGS' || true)

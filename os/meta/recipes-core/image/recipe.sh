@@ -3,7 +3,7 @@
 # by engine.mk, so laziness is declared, not an inline `if MEDIA=sd`.
 PKG_NAME=image
 PKG_CLASS=image
-PKG_FILEDEPS="${BOARD_DIR}"   # genimage.cfg + boot.cmd + board.conf (NOR/DRAM/console) — build inputs the recipehash must catch
+PKG_FILEDEPS="${MACHINE_DIR}"   # genimage.cfg + boot.cmd + machine.conf (NOR/DRAM/console) — build inputs the recipehash must catch
 
 PKG_HOST_DEPENDS=
 PKG_HOST_DEPENDS_sd=genimage
@@ -57,7 +57,7 @@ LOADER_FILE="fel-loader.bin"
 KERNEL_SIZE=${KSZ}
 DTB_SIZE=${DSZ}
 INITRD_SIZE=${ISZ}
-# NOR + DRAM layout — from board.conf. Must match the README's SPI-NOR layout + bootloader/nor_layout.h.
+# NOR + DRAM layout — from machine.conf. Must match the README's SPI-NOR layout + bootloader/nor_layout.h.
 NOR_KERNEL_OFF=${NOR_KERNEL_OFF}
 NOR_DTB_OFF=${NOR_DTB_OFF}
 NOR_INITRD_OFF=${NOR_INITRD_OFF}
@@ -94,15 +94,15 @@ emit_sd_img() {
   if [ "${PROVIDER_bootloader}" = u-boot ]; then
     # U-Boot's distro_bootcmd auto-runs /boot.scr (the custom loader ignores it, so stage only here).
     local MKIMAGE="${OUTPUT_DIR}/mkimage"
-    "$MKIMAGE" -C none -A arm -T script -d "${BOARD_DIR}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
+    "$MKIMAGE" -C none -A arm -T script -d "${MACHINE_DIR}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
   fi
 
   # Raw @8 KiB bootloader -> the name genimage.cfg references. BL_ARTIFACT is each provider's
   # primary artifact (custom eGON | u-boot-sunxi-with-spl), so no per-provider branch.
   cp -f "$BL_ARTIFACT" "${IN}/sdboot.bin"
 
-  log "assembling SD image via genimage (${BOARD_DIR##*/}/genimage.cfg)"
-  "${GENIMAGE}" --config "${BOARD_DIR}/genimage.cfg" \
+  log "assembling SD image via genimage (${MACHINE_DIR##*/}/genimage.cfg)"
+  "${GENIMAGE}" --config "${MACHINE_DIR}/genimage.cfg" \
                 --inputpath "${IN}" --rootpath "${ROOT}" \
                 --tmppath "${TMP}" --outputpath "${OUTPUT_DIR}" >/dev/null \
     || die "genimage failed"

@@ -1,5 +1,5 @@
 # providers/kernel/custom/recipe.sh — the from-scratch kernel (make-c + local source). Board facts
-# (defconfig/DTB/console) live in board/<board>/board.conf, not here.
+# (defconfig/DTB/console) live in board/<board>/machine.conf, not here.
 PKG_NAME=kernel
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel

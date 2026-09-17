@@ -14,7 +14,7 @@
 : "${PROVIDER_cross_cc:?custom cc-profile: PROVIDER_cross_cc unset (from the recipe env)}"
 if [ "${PROVIDER_cross_cc}" = toolchain-gcc ]; then
   : "${CROSS_COMPILE:?custom cc-profile (gcc): CROSS_COMPILE unset}"
-  : "${ROOTFS_ARCH_FLAGS:?custom cc-profile (gcc): ROOTFS_ARCH_FLAGS unset in board.conf (arch tuning is a board fact)}"
+  : "${ROOTFS_ARCH_FLAGS:?custom cc-profile (gcc): ROOTFS_ARCH_FLAGS unset in machine.conf (arch tuning is a board fact)}"
   PKG_CC="${CROSS_COMPILE}gcc"
   PKG_CFLAGS="${ROOTFS_ARCH_FLAGS} -Os -Wall -Wextra"
   LIBC_CRT=""      # the sysroot's crt1/crti/crtn are auto-linked by gcc's driver

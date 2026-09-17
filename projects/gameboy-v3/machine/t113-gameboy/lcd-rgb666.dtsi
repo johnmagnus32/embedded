@@ -1,5 +1,5 @@
 // t113-gameboy — 5" 800x480 RGB666 parallel panel (Zettler ATM0500D27-CT) bench bring-up.
-// Compile-time #include, baked into the kernel DTB via board.conf KERNEL_DTB_OVERLAYS.
+// Compile-time #include, baked into the kernel DTB via machine.conf KERNEL_DTB_OVERLAYS.
 //
 // Parallel RGB is driver-supported on the T113 (sun4i_tcon: allwinner,sun20i-d1-tcon-lcd,
 // has_channel_0 -> sun4i_rgb_init on tcon_lcd0 port@1/endpoint@0). NOTE: this is NEW DT for
