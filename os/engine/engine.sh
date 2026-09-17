@@ -46,12 +46,27 @@ locate() {
   export OS_META REPO_ROOT
 }
 
-# load_config — the product SELECTION: source local.conf (knobs + OS_VIRTUALS + os_preferred_provider).
+# load_config — the product SELECTION (local.conf): parse KEY=value DATA (never sourced — the
+# PREFERRED_PROVIDER_virtual/<slot> keys contain a '/', not a legal shell name). Fills the
+# PREFERRED_PROVIDER map (slot -> recipe name, read by resolve) + the plain knobs as env vars
+# (env-overridable: an already-set env value wins, so MEDIA=sd make still works).
+declare -gA PREFERRED_PROVIDER
 load_config() {
   locate
   : "${PRODUCT_DIR:?os: PRODUCT_DIR unset (Make injects it)}"
-  # shellcheck source=/dev/null
-  source "${PRODUCT_DIR}/local.conf"
+  local conf="${PRODUCT_DIR}/local.conf" line key val
+  [ -f "${conf}" ] || die "no local.conf at ${conf}"
+  while IFS= read -r line || [ -n "${line}" ]; do
+    line="${line%%#*}"                        # strip comment
+    line="${line#"${line%%[![:space:]]*}"}"   # ltrim
+    line="${line%"${line##*[![:space:]]}"}"   # rtrim
+    [ -z "${line}" ] && continue
+    key="${line%%=*}"; val="${line#*=}"
+    case "${key}" in
+      PREFERRED_PROVIDER_virtual/*) PREFERRED_PROVIDER["${key#PREFERRED_PROVIDER_}"]="${val}" ;;
+      *) [ -n "${!key:-}" ] || printf -v "${key}" '%s' "${val}"; export "${key?}" ;;
+    esac
+  done < "${conf}"
 }
 
 # byname <name> -> its recipe.sh path (product recipes-*/ + packages/ shadow os/meta).
@@ -67,12 +82,12 @@ byname() {
 resolve() {
   case "$1" in
     virtual/*)
-      local name path
-      name="$(os_preferred_provider "$1")" || die "no preferred provider for $1 (local.conf os_preferred_provider)"
-      path="$(byname "${name}")" || die "preferred provider $1=${name}: no such recipe"
+      local name="${PREFERRED_PROVIDER[$1]:-}" path
+      [ -n "${name}" ] || die "no PREFERRED_PROVIDER for $1 (set PREFERRED_PROVIDER_$1 in local.conf)"
+      path="$(byname "${name}")" || die "PREFERRED_PROVIDER $1=${name}: no such recipe"
       case " $(recipe_get "${path}" PKG_PROVIDES) " in
         *" $1 "*) : ;;
-        *) die "preferred provider $1=${name}: recipe does not provide $1" ;;
+        *) die "PREFERRED_PROVIDER $1=${name}: recipe does not provide $1" ;;
       esac
       printf '%s' "${name}" ;;
     *) printf '%s' "$1" ;;
@@ -116,21 +131,22 @@ load_env() {
   [ -f "${BOARD_DIR}/board.conf" ] && source "${BOARD_DIR}/board.conf"
   : "${KERNEL_TARGET:?boards/${BOARD}/board.conf must set KERNEL_TARGET}"
 
-  # resolved providers — PROVIDER_<x> path per virtual (bash-safe key: virtual/cross-cc -> cross_cc)
+  # resolved providers — PROVIDER_<x> is the recipe NAME per virtual (bash-safe key: virtual/cross-cc
+  # -> PROVIDER_cross_cc). Recipes test it (e.g. [ "${PROVIDER_libc}" = musl ]); a path is byname "$PROVIDER_x".
   local v key
   for v in ${OS_VIRTUALS}; do
     key="PROVIDER_${v#virtual/}"
     key="${key//-/_}"
-    printf -v "${key}" '%s' "$(byname "$(resolve "${v}")")"
+    printf -v "${key}" '%s' "$(resolve "${v}")"
     export "${key?}"
   done
 
   # toolchain scalars (the compiler is cross-cutting — CROSS_COMPILE threads into every compile)
   : "${ARCH:?boards/${BOARD}/board.conf must set ARCH}"
-  CROSS_COMPILE="${CROSS_COMPILE:-$(recipe_get "${PROVIDER_cross_cc}" PKG_HOST_CC_PREFIX)}"
+  CROSS_COMPILE="${CROSS_COMPILE:-$(recipe_get "$(byname "${PROVIDER_cross_cc}")" PKG_HOST_CC_PREFIX)}"
   [ -n "${CROSS_COMPILE}" ] || die "CROSS_COMPILE empty: virtual/cross-cc provider has no PKG_HOST_CC_PREFIX"
-  TOOLCHAIN_DIR="${BUILD_DIR}/$(basename "$(dirname "${PROVIDER_cross_cc}")")"
-  LIBC_TC_DIR="${BUILD_DIR}/$(basename "$(dirname "${PROVIDER_cross_cc_initial}")")"
+  TOOLCHAIN_DIR="${BUILD_DIR}/${PROVIDER_cross_cc}"
+  LIBC_TC_DIR="${BUILD_DIR}/${PROVIDER_cross_cc_initial}"
 
   # derived paths (all a fixed function of BUILD_DIR)
   DOWNLOAD_DIR="${BUILD_DIR}/downloads"
@@ -144,7 +160,7 @@ load_env() {
 
   # libc staging (link-keyed — the producer + consumers agree here)
   local link="${LINKAGE:-${PKG_LINK:-static}}"
-  LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${LIBC:-custom}-${link}"
+  LIBC_STAGE_DIR="${BUILD_DIR}/libc/stage-${PROVIDER_libc}-${link}"
   STAGE_INC="${BUILD_DIR}/libc/include"
 
   # this recipe's build context: paths keyed by RECIPE / RECIPE_PATH + the link mode
@@ -169,8 +185,9 @@ load_env() {
          TOOLCHAIN_DIR LIBC_TC_DIR DOWNLOAD_DIR OUTPUT_DIR PYENV_DIR HOSTMAKE_DIR HOSTTOOLS_DIR \
          OS_STAMPS OS_SIGS HOSTTOOLS_FARM LIBC_STAGE_DIR STAGE_INC \
          HOSTTOOLS HOSTTOOLS_NONFATAL \
-         PKG_LINK RECIPE_DIR STAGE PKG_DEST PROVIDER_RECIPE \
-         KERNEL BOOTLOADER LIBC INIT TOOLCHAIN PACKAGES MEDIA LINKAGE
+         PKG_LINK RECIPE_DIR STAGE PKG_DEST PROVIDER_RECIPE
+  # PACKAGES/BOARD/MEDIA/LINKAGE are exported by load_config (parsed knobs); the engine no longer
+  # enumerates the product's provider knobs — providers are the PREFERRED_PROVIDER map + PROVIDER_<x>.
 }
 
 setup_build_env() {

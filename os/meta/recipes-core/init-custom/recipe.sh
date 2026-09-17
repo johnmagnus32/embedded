@@ -13,9 +13,9 @@ do_build() {
   : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${RECIPE_SCRATCH:?}"
   : "${PROVIDER_libc:?init do_build: PROVIDER_libc unset (recipe env)}"
   # shellcheck source=/dev/null
-  source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
+  source "$(dirname "$(byname "${PROVIDER_libc}")")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc + link
   local O="${RECIPE_SCRATCH}/build"; mkdir -p "${O}"
-  echo "  [init] make (LIBC=${LIBC}/${PKG_LINK:-static})"
+  echo "  [init] make (${PROVIDER_libc}/${PKG_LINK:-static})"
   # LIBC_CRT/LIBC_LIB are empty on musl (it supplies crt+libc); on the custom -nostdlib
   # libc they are crt0.S.o + libc.a, which the Makefile links (crt0 before, libc.a after).
   make --no-print-directory -C "${PKG_SRC_DIR}" O="${O}" \

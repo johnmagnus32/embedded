@@ -1,21 +1,18 @@
 # providers/libc/custom/cc-profile.sh — the from-scratch libc's COMPILE/LINK contract (sourced by a
-# compile class). Its SHAPE depends on the TOOLCHAIN axis (from the recipe env):
+# compile class). Its SHAPE depends on the resolved cross-cc provider (from the recipe env):
 #
-#   TOOLCHAIN=source  — the from-source toolchain-gcc carries our libc as its REAL sysroot, so
+#   cross-cc=toolchain-gcc — the from-source toolchain-gcc carries our libc as its REAL sysroot, so
 #                       a NORMAL cross-link works (like musl): no -nostdlib/-nostdinc, no linker
 #                       script, no explicit crt/lib — the sysroot supplies crt+libc+headers and the
 #                       /lib/ld.so.1 loader. This is the Tier-B end-state.
-#   TOOLCHAIN=custom  — OUR OWN from-scratch tools (toolchain-custom host pkg: cpp/cc/as/ar/ld behind
-#                       the forge-cc driver). Static-only: our ld places the ET_EXEC with its native
-#                       two-segment W^X layout + -Ttext and pulls libc.a to a fixpoint (no linker
-#                       script, no foreign gcc, no libgcc). Includes = our headers + staged kernel UAPI.
-#   TOOLCHAIN=prebuilt— we ride a FOREIGN (Bootlin musl) cross-gcc purely as a code generator; the
-#                       real bare-driver profile self-locates our crt0/libc.a|.so/user.ld relative
-#                       to the libc source, so it lives THERE (libc/libc-profile.sh) beside the code.
+#   cross-cc=toolchain-custom — OUR OWN from-scratch tools (cpp/cc/as/ar/ld behind the forge-cc
+#                       driver). Static-only: our ld places the ET_EXEC with its native two-segment
+#                       W^X layout + -Ttext and pulls libc.a to a fixpoint (no linker script, no
+#                       foreign gcc, no libgcc). Includes = our headers + staged kernel UAPI.
 #
 # Out (all modes): PKG_CC, PKG_CFLAGS, PKG_LDFLAGS, LIBC_CRT, LIBC_LIB.
-: "${TOOLCHAIN:?custom cc-profile: TOOLCHAIN unset (from the recipe env)}"
-if [ "${TOOLCHAIN}" = gcc ]; then
+: "${PROVIDER_cross_cc:?custom cc-profile: PROVIDER_cross_cc unset (from the recipe env)}"
+if [ "${PROVIDER_cross_cc}" = toolchain-gcc ]; then
   : "${CROSS_COMPILE:?custom cc-profile (gcc): CROSS_COMPILE unset}"
   : "${ROOTFS_ARCH_FLAGS:?custom cc-profile (gcc): ROOTFS_ARCH_FLAGS unset in board.conf (arch tuning is a board fact)}"
   PKG_CC="${CROSS_COMPILE}gcc"
@@ -27,7 +24,7 @@ if [ "${TOOLCHAIN}" = gcc ]; then
   else
     PKG_LDFLAGS="-static -Wl,--build-id=none"
   fi
-elif [ "${TOOLCHAIN}" = custom ]; then
+elif [ "${PROVIDER_cross_cc}" = toolchain-custom ]; then
   : "${CROSS_COMPILE:?custom cc-profile: CROSS_COMPILE unset}"
   : "${STAGE_INC:?custom cc-profile: STAGE_INC unset (staged kernel UAPI dir)}"
   : "${REPO_ROOT:?custom cc-profile: REPO_ROOT unset}"
@@ -43,5 +40,5 @@ elif [ "${TOOLCHAIN}" = custom ]; then
   LIBC_LIB="${LIBC_STAGE_DIR}/libc.a"                   # our ld pulls the needed members to a fixpoint
   PKG_LDFLAGS="-Ttext 0x40000000"                       # static ET_EXEC base (bare-metal virt RAM)
 else
-  die "custom cc-profile: TOOLCHAIN=${TOOLCHAIN} unsupported (gcc|custom only; prebuilt was dropped)"
+  die "custom cc-profile: cross-cc=${PROVIDER_cross_cc} unsupported (toolchain-gcc|toolchain-custom only)"
 fi

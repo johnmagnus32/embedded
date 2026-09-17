@@ -2,8 +2,8 @@
 # compile-c packages + the libc-linkers). musl is built into a conforming sysroot and toolchain-gcc is
 # --with-sysroot=that, so this is a NORMAL cross-link (like the custom libc's TOOLCHAIN=gcc path): no
 # -nostdlib/-nostdinc, no explicit crt/lib — the sysroot supplies crt+libc+headers.
-# Only TOOLCHAIN=gcc builds musl (our custom `cc` is a C subset that can't compile it; prebuilt is gone).
-[ "${TOOLCHAIN}" = gcc ] || die "LIBC=musl needs TOOLCHAIN=gcc (musl is built from source; our custom cc can't compile it)"
+# Only cross-cc=toolchain-gcc builds musl (our custom `cc` is a C subset that can't compile it; prebuilt is gone).
+[ "${PROVIDER_cross_cc}" = toolchain-gcc ] || die "libc=musl needs cross-cc=toolchain-gcc (musl is built from source; our custom cc can't compile it)"
 : "${CROSS_COMPILE:?musl cc-profile: CROSS_COMPILE unset}"
 : "${ROOTFS_ARCH_FLAGS:?musl cc-profile: ROOTFS_ARCH_FLAGS unset in board.conf}"
 PKG_CC="${CROSS_COMPILE}gcc"

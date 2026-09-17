@@ -50,8 +50,8 @@ _rootfs_pack() {
 _stage_libc_runtime() {
   [ "${PKG_LINK:-static}" = dynamic ] || return 0
   : "${PROVIDER_libc:?rootfs _stage_libc_runtime: PROVIDER_libc unset (from the recipe env)}"
-  local hook; hook="$(dirname "${PROVIDER_libc}")/stage-runtime.sh"
-  [ -f "${hook}" ] || die "libc '${LIBC:-}' has no stage-runtime.sh (needed for a dynamic rootfs): ${hook}"
+  local hook; hook="$(dirname "$(byname "${PROVIDER_libc}")")/stage-runtime.sh"
+  [ -f "${hook}" ] || die "libc '${PROVIDER_libc}' has no stage-runtime.sh (needed for a dynamic rootfs): ${hook}"
   mkdir -p "${STAGE}/lib"
   # shellcheck source=/dev/null
   source "${hook}"
@@ -63,7 +63,7 @@ do_build() {
   # INITRAMFS_IMAGE (recipe env) is keyed by ROOTFS_TAG+link, so static and dynamic land at
   # distinct names — no per-linkage rename needed here.
   local OUT_CPIO="${OUTPUT_DIR}/${INITRAMFS_IMAGE}"
-  log "packing rootfs: LIBC=${LIBC:-} PACKAGES='${PACKAGES:-}' (LINK=${PKG_LINK:-static}, BOARD=${BOARD_NAME:-})"
+  log "packing rootfs: libc=${PROVIDER_libc} PACKAGES='${PACKAGES:-}' (LINK=${PKG_LINK:-static}, BOARD=${BOARD_NAME:-})"
   mkdir -p "${OUTPUT_DIR}"
 
   # Assemble STAGE from each selected package's per-package dir. Wipe first + merge only the
@@ -88,8 +88,8 @@ do_build() {
     DEVTABLE_DEFAULT="${RECIPE_DIR}/rootfs.devs" DEVTABLE="${PRODUCT_DIR}/rootfs.devs" \
     _rootfs_pack )
 
-  printf '\n\033[1;32m[rootfs] DONE\033[0m  %s (%s)  [LIBC=%s PACKAGES=%s LINK=%s]\n' \
-    "${OUT_CPIO}" "$(du -h "${OUT_CPIO}" | cut -f1)" "${LIBC:-}" "${PACKAGES:-}" "${PKG_LINK:-static}"
+  printf '\n\033[1;32m[rootfs] DONE\033[0m  %s (%s)  [libc=%s PACKAGES=%s LINK=%s]\n' \
+    "${OUT_CPIO}" "$(du -h "${OUT_CPIO}" | cut -f1)" "${PROVIDER_libc}" "${PACKAGES:-}" "${PKG_LINK:-static}"
 }
 
 do_install() { :; }

@@ -45,10 +45,10 @@ emit_bundle() {
   cat > "$OUT/manifest.env" <<EOF
 # gameboy-v3 bundle manifest — consumed by tools/flash.sh
 BUNDLE_CFG="${CFG}"
-BOOTLOADER="${BOOTLOADER}"
-KERNEL="${KERNEL}"
+BOOTLOADER="${PROVIDER_bootloader}"
+KERNEL="${PROVIDER_kernel}"
 ROOTFS="${ROOTFS_TAG}"
-LIBC="${LIBC}"
+LIBC="${PROVIDER_libc}"
 PACKAGES="${PACKAGES}"
 KERNEL_FILE="zImage"
 DTB_FILE="board.dtb"
@@ -91,7 +91,7 @@ emit_sd_img() {
   cp -f "$KERNEL_ARTIFACT" "${ROOT}/zImage"
   cp -f "$DTB_ARTIFACT"    "${ROOT}/${KERNEL_DTB}"
   cp -f "$INITRD_ARTIFACT" "${ROOT}/${INITRAMFS_IMAGE}"
-  if [ "$BOOTLOADER" = uboot ]; then
+  if [ "${PROVIDER_bootloader}" = u-boot ]; then
     # U-Boot's distro_bootcmd auto-runs /boot.scr (the custom loader ignores it, so stage only here).
     local MKIMAGE="${OUTPUT_DIR}/mkimage"
     "$MKIMAGE" -C none -A arm -T script -d "${BOARD_DIR}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
@@ -116,16 +116,16 @@ emit_sd_img() {
 do_build() {
   # Every selector + derived tag comes from the recipe env (engine.sh); this recipe only ever runs via
   # engine.sh, which sources it — so require them, never guess a default.
-  : "${BOOTLOADER:?image: BOOTLOADER unset (from the recipe env)}"
-  : "${KERNEL:?image: KERNEL unset}"
-  : "${LIBC:?image: LIBC unset}"
+  : "${PROVIDER_bootloader:?image: PROVIDER_bootloader unset (from the recipe env)}"
+  : "${PROVIDER_kernel:?image: PROVIDER_kernel unset}"
+  : "${PROVIDER_libc:?image: PROVIDER_libc unset}"
   : "${PACKAGES:?image: PACKAGES unset}"
   : "${MEDIA:?image: MEDIA unset}"
   : "${ROOTFS_TAG:?image: ROOTFS_TAG unset}"
   : "${CFG:?image: CFG unset}"
   OUT="${OUT:-${BUILD_DIR}/bundle}"   # the NOR bundle dir (fixed path; override with OUT=)
 
-  log "compose: BOOTLOADER=$BOOTLOADER  KERNEL=$KERNEL  ROOTFS=$ROOTFS_TAG  MEDIA=$MEDIA  ($CFG)"
+  log "compose: bootloader=$PROVIDER_bootloader  kernel=$PROVIDER_kernel  ROOTFS=$ROOTFS_TAG  MEDIA=$MEDIA  ($CFG)"
   resolve_artifacts
 
   case "$MEDIA" in

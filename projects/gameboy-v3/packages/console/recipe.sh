@@ -26,9 +26,9 @@ do_build() {
   : "${PKG_SRC_DIR:?console do_build: PKG_SRC_DIR unset}"
   : "${RECIPE_SCRATCH:?}"; : "${PROVIDER_libc:?console do_build: PROVIDER_libc unset (node env)}"
   # shellcheck source=/dev/null
-  source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc
+  source "$(dirname "$(byname "${PROVIDER_libc}")")/cc-profile.sh"   # -> PKG_CC / PKG_CFLAGS / PKG_LDFLAGS for the SELECTED libc
   local O="${RECIPE_SCRATCH}/build"; mkdir -p "${O}"
-  echo "  [console] make (LIBC=${LIBC}/${PKG_LINK:-static})"
+  echo "  [console] make (${PROVIDER_libc}/${PKG_LINK:-static})"
   # SOUND_BACKEND=alsa: the device audio server drives the T113 codec (the Makefile default is
   # `file`, a host-test sink). CANVAS_BACKEND stays the Makefile default (drm) for the device.
   make --no-print-directory -C "${PKG_SRC_DIR}" O="${O}" SOUND_BACKEND=alsa \
@@ -39,7 +39,7 @@ do_install() {
   : "${PKG_DEST:?console do_install: PKG_DEST unset}"; : "${RECIPE_SCRATCH:?}"; : "${PKG_SRC_DIR:?}"
   : "${PROVIDER_libc:?}"
   # shellcheck source=/dev/null
-  source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
+  source "$(dirname "$(byname "${PROVIDER_libc}")")/cc-profile.sh"
   local O="${RECIPE_SCRATCH}/build"
   rm -rf "${PKG_DEST}"; mkdir -p "${PKG_DEST}"
   make --no-print-directory -C "${PKG_SRC_DIR}" O="${O}" install SOUND_BACKEND=alsa \

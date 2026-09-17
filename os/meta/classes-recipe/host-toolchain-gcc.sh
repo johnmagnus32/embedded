@@ -78,9 +78,9 @@ do_unpack() {
 # /lib/ld-musl-armhf.so.1. LIBC comes from the recipe env (the recipe env).
 do_patch() {
   local eabi="${W}/src/gcc/gcc/config/arm/linux-eabi.h"
-  : "${LIBC:?${PKG_NAME}: LIBC unset (from the recipe env)}"
+  : "${PROVIDER_libc:?${PKG_NAME}: PROVIDER_libc unset (from the recipe env)}"
   local loader="/lib/ld.so.1"
-  [ "${LIBC}" = musl ] && loader="/lib/ld-musl-armhf.so.1"
+  [ "${PROVIDER_libc}" = musl ] && loader="/lib/ld-musl-armhf.so.1"
   sed -i -e "s#\"/lib/ld-linux\.so\.3\"#\"${loader}\"#" \
          -e "s#\"/lib/ld-linux-armhf\.so\.3\"#\"${loader}\"#" "${eabi}" \
     || die "${PKG_NAME}: dynamic-linker patch failed"

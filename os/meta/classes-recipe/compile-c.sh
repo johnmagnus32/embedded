@@ -28,9 +28,9 @@ do_build() {
   # with no per-libc knowledge of its own.
   : "${PROVIDER_libc:?compile-c do_build: PROVIDER_libc unset (from the recipe env)}"
   # shellcheck source=/dev/null
-  source "$(dirname "${PROVIDER_libc}")/cc-profile.sh"
+  source "$(dirname "$(byname "${PROVIDER_libc}")")/cc-profile.sh"
   mkdir -p "${PKG_BUILD_DIR}"
-  echo "  [compile-c] ${PKG_NAME}: $(basename "${PKG_SRC_DIR}")/*.c (LIBC=${LIBC}/${PKG_LINK})"
+  echo "  [compile-c] ${PKG_NAME}: $(basename "${PKG_SRC_DIR}")/*.c (${PROVIDER_libc}/${PKG_LINK})"
   local c name out
   for c in "${PKG_SRC_DIR}"/*.c; do
     name="$(basename "${c}" .c)"
