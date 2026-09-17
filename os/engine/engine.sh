@@ -48,7 +48,8 @@ locate() {
   export OS_ENGINE OS_META REPO_ROOT
 }
 
-# load_config — the product CONFIG. Parse local.conf KEY=value DATA (never sourced — the
+# load_config — the product CONFIG. Parse the SELECTED config (CONFIG=<name> -> configs/<name>.conf,
+# else local.conf) as KEY=value DATA (never sourced — the
 # PREFERRED_PROVIDER_virtual/<slot> keys hold a '/', not a legal shell name) into the PREFERRED_PROVIDER
 # map (slot -> recipe name, read by resolve) + the plain knobs as IN-SHELL vars. NOT exported: recipes are
 # sourced into this shell so they see them, and exporting would leak them into every subprocess's env —
@@ -60,8 +61,9 @@ declare -gA PREFERRED_PROVIDER
 load_config() {
   locate
   : "${PRODUCT_DIR:?os: PRODUCT_DIR unset (Make injects it)}"
-  local conf="${PRODUCT_DIR}/local.conf" line key val
-  [ -f "${conf}" ] || die "no local.conf at ${conf}"
+  local conf line key val
+  if [ -n "${CONFIG:-}" ]; then conf="${PRODUCT_DIR}/configs/${CONFIG}.conf"; else conf="${PRODUCT_DIR}/local.conf"; fi
+  [ -f "${conf}" ] || die "no config at ${conf}${CONFIG:+ (CONFIG=${CONFIG})}"
   while IFS= read -r line || [ -n "${line}" ]; do
     line="${line%%#*}"
     line="${line#"${line%%[![:space:]]*}"}"
@@ -125,7 +127,7 @@ load_env() {
   RECIPE_PATH="$(byname "${RECIPE}" || true)"
   [ -n "${RECIPE_PATH}" ] && [ -f "${RECIPE_PATH}" ] \
     || die "no recipe for '${RECIPE}' — no recipes-*/ or packages/ dir by that name (typo in PACKAGES or a selection?)"
-  BUILD_DIR="${PRODUCT_DIR}/build"
+  BUILD_DIR="${PRODUCT_DIR}/build${CONFIG:+/${CONFIG}}"   # per-config cache (default config -> build/)
 
   # resolved providers — PROVIDER_<x> is the recipe NAME per virtual (bash-safe key: virtual/cross-cc
   # -> PROVIDER_cross_cc). Recipes test it ([ "${PROVIDER_libc}" = musl ]); a path is byname "$PROVIDER_x".
@@ -142,8 +144,9 @@ load_env() {
   TOOLCHAIN_DIR="${BUILD_DIR}/${PROVIDER_cross_cc}"
   LIBC_TC_DIR="${BUILD_DIR}/${PROVIDER_cross_cc_initial}"
 
-  # derived paths (a fixed function of BUILD_DIR)
-  DOWNLOAD_DIR="${BUILD_DIR}/downloads"
+  # derived paths (a fixed function of BUILD_DIR). DOWNLOAD_DIR is SHARED across configs (tarballs are
+  # config-independent) — it stays at build/downloads, not under the per-config BUILD_DIR.
+  DOWNLOAD_DIR="${PRODUCT_DIR}/build/downloads"
   OUTPUT_DIR="${BUILD_DIR}/output"
   PYENV_DIR="${BUILD_DIR}/pyenv"
   HOSTMAKE_DIR="${BUILD_DIR}/hostmake"
