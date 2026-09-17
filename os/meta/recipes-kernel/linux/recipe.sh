@@ -7,6 +7,7 @@ PKG_NAME=linux
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
 PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf (defconfig/console/DTB) — a build input the recipehash must catch
+PKG_DEPLOY="arch/arm/boot/zImage:zImage arch/arm/boot/dts/${KERNEL_DTB_SUBDIR}/${KERNEL_DTB}:${KERNEL_DTB}"
 
 PKG_FETCH=git
 PKG_GIT_URL=https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
@@ -92,26 +93,5 @@ do_build() {
 
   [ -f "${BUILT_ZIMAGE_REL}" ] || die "build finished but ${BUILT_ZIMAGE_REL} not found"
   [ -f "${BUILT_DTB_REL}" ]    || die "build finished but ${BUILT_DTB_REL} not found"
-
-  mkdir -p "${OUTPUT_DIR}"
-  cp -f "${BUILT_ZIMAGE_REL}" "${OUTPUT_DIR}/zImage"
-  cp -f "${BUILT_DTB_REL}"    "${OUTPUT_DIR}/${KERNEL_DTB}"
-
-  local ZSIZE DSIZE
-  ZSIZE="$(du -h "${OUTPUT_DIR}/zImage" | cut -f1)"
-  DSIZE="$(du -h "${OUTPUT_DIR}/${KERNEL_DTB}" | cut -f1)"
-  cat <<EOF
-
-$(printf '\033[1;32m[kernel] DONE\033[0m')
-  Kernel     : ${KERNEL_TAG}  (${KERNEL_DEFCONFIG})
-  Console    : Linux ${KERNEL_CONSOLE}  (via ${KERNEL_DTB_OVERLAYS} overlay)
-  Cores      : both A7s (U-Boot PSCI patches enable-method into this DTB at boot)
-  Artifacts  : ${OUTPUT_DIR}/zImage            (${ZSIZE})
-               ${OUTPUT_DIR}/${KERNEL_DTB}  (${DSIZE})
-
-The kernel cmdline (console=${KERNEL_CONSOLE} + root=...) is set by the boot path:
-the U-Boot boot script (board/*/boot.cmd) on SD, or the custom loader on NOR.
-EOF
+  printf '\n\033[1;32m[kernel] built\033[0m  %s (%s), console %s\n' "${KERNEL_TAG}" "${KERNEL_DEFCONFIG}" "${KERNEL_CONSOLE}"
 }
-
-do_install() { :; }

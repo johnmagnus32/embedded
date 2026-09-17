@@ -281,6 +281,7 @@ run_tasks() {
   do_patch
   do_build
   do_install
+  do_deploy
 }
 
 mark_built() { mkdir -p "${OS_STAMPS}"; printf '%s' "${_recipehash}" > "${_stamp}"; }

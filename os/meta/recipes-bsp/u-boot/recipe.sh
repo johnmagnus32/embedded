@@ -7,6 +7,7 @@ PKG_NAME=uboot
 PKG_CLASS=target
 PKG_PROVIDES=virtual/bootloader
 PKG_FILEDEPS="${BOARD_DIR}"   # DT overlays + board.conf fragments — a build input the recipehash must catch
+PKG_DEPLOY="u-boot-sunxi-with-spl.bin:bootloader.bin u-boot.bin:fel-loader.bin tools/mkimage:mkimage"
 
 PKG_FETCH=git
 PKG_GIT_URL=https://source.denx.de/u-boot/u-boot.git
@@ -88,15 +89,5 @@ do_build() {
   make -j"${JOBS}"
 
   [ -f "${UBOOT_IMAGE}" ] || die "build finished but ${UBOOT_IMAGE} not found"
-  mkdir -p "${OUTPUT_DIR}"
-  cp -f "${UBOOT_IMAGE}" "${OUTPUT_DIR}/bootloader.bin"   # SD-boot image (raw @8 KiB)
-  cp -f u-boot.bin       "${OUTPUT_DIR}/fel-loader.bin"   # NOR path: FEL-loaded U-Boot proper
-  cp -f tools/mkimage    "${OUTPUT_DIR}/mkimage"          # the image step builds boot.scr with it (SD)
-
-  local SIZE; SIZE="$(du -h "${OUTPUT_DIR}/bootloader.bin" | cut -f1)"
-  printf '\n\033[1;32m[uboot] DONE\033[0m  %s (%s)  ->  %s (%s)\n' \
-    "${UBOOT_TAG}" "${UBOOT_DEFCONFIG}" "${OUTPUT_DIR}/bootloader.bin" "${SIZE}"
-  printf '  SD (8 KiB offset): sudo dd if=%s of=/dev/sdX bs=1024 seek=8 conv=fsync\n' "${OUTPUT_DIR}/bootloader.bin"
+  printf '\n\033[1;32m[uboot] built\033[0m  %s (%s)\n' "${UBOOT_TAG}" "${UBOOT_DEFCONFIG}"
 }
-
-do_install() { :; }

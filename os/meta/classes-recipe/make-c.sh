@@ -41,22 +41,15 @@ do_build() {
   fi
 }
 
-# do_install — DEPLOY (Yocto's do_deploy): copy each `src-relative:name` the recipe declares in
-# PKG_DEPLOY into OUTPUT_DIR under the convention the image composer reads. Recipe-specific source
-# paths stay in the recipe; the class just applies the list. KERNEL-only extra: build + install the
+# do_deploy — the shared PKG_DEPLOY copy (base's deploy_pkg_files) + KERNEL-only: build + deploy the
 # board DTB into OUTPUT_DIR, so a full-custom `make image` produces its own DTB with no mainline
 # checkout — byte-identical to the mainline-built DTB (same vendored sources + board overlay).
-do_install() {
-  : "${PKG_SRC_DIR:?}"; : "${OUTPUT_DIR:?make-c do_install: OUTPUT_DIR unset}"
-  mkdir -p "${OUTPUT_DIR}"
-  local d src name
-  for d in ${PKG_DEPLOY:-}; do
-    src="${d%:*}"; name="${d#*:}"
-    log "deploy ${src##*/} -> ${OUTPUT_DIR}/${name}"
-    cp -f "${PKG_SRC_DIR}/${src}" "${OUTPUT_DIR}/${name}"
-  done
+do_deploy() {
+  deploy_pkg_files
   [ "${LAYER:-}" = kernel ] || return 0
-  : "${KERNEL_DTB:?make-c do_install: KERNEL_DTB unset (board.conf)}"
+  : "${PKG_SRC_DIR:?}"; : "${OUTPUT_DIR:?make-c do_deploy: OUTPUT_DIR unset}"
+  : "${KERNEL_DTB:?make-c do_deploy: KERNEL_DTB unset (board.conf)}"
+  mkdir -p "${OUTPUT_DIR}"
   local make_vars="BOARD=${KERNEL_TARGET}" dtb_overlays="" ov
   for ov in ${KERNEL_DTB_OVERLAYS:-}; do dtb_overlays="${dtb_overlays} ${BOARD_DIR}/${ov}"; done
   log "make -C ${PKG_SRC_DIR##*/} dtb -> ${OUTPUT_DIR}/${KERNEL_DTB}"

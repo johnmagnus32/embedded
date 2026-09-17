@@ -203,3 +203,22 @@ do_unpack() {
 # Build-time config edits (kconfig .config tweaks, defconfig fragments) are NOT patches — they belong in
 # do_build, since they operate on generated build artifacts, not the pristine source tree.
 do_patch() { :; }
+
+# do_install — default no-op; recipes that install into the rootfs (into PKG_DEST) override it.
+do_install() { :; }
+
+# deploy_pkg_files — copy each PKG_DEPLOY "src-rel:name" from the recipe's source tree into OUTPUT_DIR
+# (Yocto's deploy dir), where the image composer reads it by name. do_deploy is the default caller;
+# make-c's do_deploy calls it too, then builds the kernel DTB. Recipes with no PKG_DEPLOY deploy nothing.
+deploy_pkg_files() {
+  [ -n "${PKG_DEPLOY:-}" ] || return 0
+  : "${PKG_SRC_DIR:?do_deploy: PKG_SRC_DIR unset}"; : "${OUTPUT_DIR:?do_deploy: OUTPUT_DIR unset}"
+  mkdir -p "${OUTPUT_DIR}"
+  local d src name
+  for d in ${PKG_DEPLOY}; do
+    src="${d%:*}"; name="${d#*:}"
+    log "deploy ${src##*/} -> ${OUTPUT_DIR}/${name}"
+    cp -f "${PKG_SRC_DIR}/${src}" "${OUTPUT_DIR}/${name}"
+  done
+}
+do_deploy() { deploy_pkg_files; }
