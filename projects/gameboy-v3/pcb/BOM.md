@@ -230,15 +230,15 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 **Symbol library** (`../../../cad/symbols/easyeda2kicad.*`): 59/62 parts fetched. Missing = **C2481 (SS16), C23179 (470 Ω), C33353 (2.2 nF)** — their footprints (SMA, R0603, C0603) are already present; re-fetch to match by LCSC#, or reuse the generic symbol. **BT830 (#99) needs a hand-drawn symbol+footprint.**
 
 
-## Audit-recommended additions (2026-09-18 — pending independent review)
+## Audit-recommended additions (2026-09-18 — user-approved, sourced via part-# carry-over)
 
 A per-subsystem netlist-correctness audit (vs. component datasheets) found two parts the design **notes** call for but the numbered list omitted / a topology fix. Added here and mirrored in `gb3/gb3-bom.csv` + `gb3/gb3-nets.csv` (refdes R39/R40):
 
 | # | Qty | Role | Part | LCSC | Net | Src | Fit | Notes |
 |---|----:|------|------|------|-----|:---:|-----|-------|
-| 116 | 1 | DISP pull-up | RC0603JR-0710KL | C99198 | PANEL_DISP → 3.3 V | ⚠️ | JLC | 10 KΩ. Line 64 requires it ("DISP … 10 KΩ pull-up") but no part was listed. refdes **R39**. C99198 already sourced (#14/#84/#89) — confirm on JLC. |
-| 117 | 1 | STM6601 /PB_OUT pull-up | RC0603JR-0710KL | C99198 | /PB_OUT → 3.3 V → PE10 | ⚠️ | JLC | 10 KΩ. Levels the power-button EINT to 3.3 V; PE10 now reads /PB_OUT instead of the ~SYS PB node. refdes **R40**. See #92/#94. |
-| 118 | 2 | i2c2 pull-ups (IMU bus) | 0603WAF1501T5E | C22843 | I2C2_SCL/SDA → 3.3 V | ⚠️ | JLC | 1.5 KΩ ×2 (reuses #97 part; 2.2–4.7 K also fine). **🔴 BLOCKER: i2c2 had no pull-ups → IMU never ACKs.** refdes R41/R42. |
+| 116 | 1 | DISP pull-up | RC0603JR-0710KL | C99198 | PANEL_DISP → 3.3 V | ✅ | JLC | 10 KΩ. Line 64 requires it ("DISP … 10 KΩ pull-up") but no part was listed. refdes **R39**. Part # confirmed via C99198 carry-over (#14/#84/#89). |
+| 117 | 1 | STM6601 /PB_OUT pull-up | RC0603JR-0710KL | C99198 | /PB_OUT → 3.3 V → PE10 | ✅ | JLC | 10 KΩ. Levels the power-button EINT to 3.3 V; PE10 now reads /PB_OUT instead of the ~SYS PB node. refdes **R40**. See #92/#94. Part # = C99198 carry-over. |
+| 118 | 2 | i2c2 pull-ups (IMU bus) | 0603WAF1501T5E | C22843 | I2C2_SCL/SDA → 3.3 V | ✅ | JLC | 1.5 KΩ ×2 (reuses #97 part; 2.2–4.7 K also fine). **🔴 BLOCKER: i2c2 had no pull-ups → IMU never ACKs.** refdes R41/R42. Part # = C22843 carry-over (#97). |
 
 **Also applied to `gb3-nets.csv` (net-only, NO new parts):** VCC-RTC→LDOA merge (blocker: was a dead island), SW1 pad-pairing (later corrected to `{1,2}=RESET/{3,4}=GND` per datasheet — see round 3), R21 wired as a real series `VBUS_SENSE`, C19–C22 decoupling re-pointed to AVCC/HPVCC/VRA1/VRA2, and R38 = wiring the **existing #33** Rset (FB→GND, backlight blocker).
 
