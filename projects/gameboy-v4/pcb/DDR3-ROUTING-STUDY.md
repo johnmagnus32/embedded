@@ -1,3 +1,18 @@
+# DDR3 Routing — Study Sheet
+
+> ⚠️ **CHIP CHANGED — partial rework needed.** This sheet was extracted from the old
+> **H616** candidate's Kononenko reference (32-bit DDR3, 2 chips). The project has since
+> moved to the **STM32MP157AAC3** (see [`../REQUIREMENTS.md`](../REQUIREMENTS.md)), which
+> uses a **single-chip 16-bit DDR3L** bus with **ST's DK2 (MB1272) / EV1 (MB1262)** board
+> files as the reference. The **fundamentals below still hold and are the point of this
+> sheet** — unbroken ground plane, byte-lane length/skew matching, controlled impedance,
+> topology, VREF/ZQ. But the **specific numbers** (stackup, net-class widths, skew targets,
+> the 2-chip/32-bit topology) are the H616 board's — **redo them from ST's DK2 16-bit DDR3L
+> layout** before using for the v4 board. Keep this as a concept primer; regenerate the
+> hard numbers from ST's reference.
+
+## (Below: original H616-reference extraction — concepts transfer, numbers do not)
+
 # DDR3 Routing — Study Sheet (extracted from the H616 reference layout)
 
 Ground-truth constraints pulled directly from the **Kononenko-K `Allwinner_H616_Devboard`,
