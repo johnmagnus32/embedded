@@ -13,7 +13,7 @@
 #   PKG_LINK              static | dynamic
 #   STAGE_INC             the staged kernel-UAPI include dir (build.sh populates it)
 #   LIBC_STAGE_DIR        where build.sh put crt0.S.o / libc.a / libc.so
-#   ROOTFS_CROSS_COMPILE  the cross-toolchain prefix
+#   CROSS_COMPILE  the cross-toolchain prefix
 # Sets (the CC/link contract): PKG_CC, PKG_CFLAGS, PKG_LDFLAGS, LIBC_CRT, LIBC_LIB.
 
 LIBC_PROVIDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,24 +25,39 @@ PKG_LINK="${PKG_LINK:-static}"
 # The compiler: libc has no toolchain of its own — it rides the musl cross-gcc purely as a
 # bare ARM code generator (we pass -ffreestanding -nostdlib below, so NONE of musl's libc/crt
 # is used; only the compiler + binutils). Hence the musl prefix, even though this isn't musl.
-: "${ROOTFS_CROSS_COMPILE:?libc-profile.sh: ROOTFS_CROSS_COMPILE unset (the cross-gcc libc drives)}"
-PKG_CC="${ROOTFS_CROSS_COMPILE}gcc"
+: "${CROSS_COMPILE:?libc-profile.sh: CROSS_COMPILE unset (the cross-gcc libc drives)}"
+PKG_CC="${CROSS_COMPILE}gcc"
 
 # -ffreestanding -nostdlib -nostartfiles: no host/musl libc, no crt. -fno-builtin so
-# the compiler assumes no libc semantics (we provide memcpy/memset ourselves). Include
-# order: our headers, the staged kernel UAPI snapshot, then libc/src (private headers).
-PKG_CFLAGS="${ROOTFS_ARCH_FLAGS} -ffreestanding -nostdlib -nostartfiles \
+# the compiler assumes no libc semantics (we provide memcpy/memset ourselves). -nostdinc
+# makes the build HERMETIC: the toolchain's musl sysroot headers are NOT searched, so a
+# header we don't ship is a hard "No such file" error instead of silently leaking musl's
+# (which also caused type clashes, e.g. time_t). We re-add ONLY the compiler's own
+# freestanding headers (stdarg.h/stddef.h/stdint.h/...) via -isystem; our -I dirs are
+# searched first, so our stddef.h still wins. Include order: our headers, the staged
+# kernel UAPI snapshot, libc/src (private), then the compiler's freestanding set.
+GCC_FREESTANDING_INC="$(${PKG_CC} -print-file-name=include)"
+PKG_CFLAGS="${ROOTFS_ARCH_FLAGS} -ffreestanding -nostdlib -nostartfiles -nostdinc \
 -fno-builtin -fno-stack-protector -Os -Wall -Wextra \
--I${LIBC_PROVIDER_DIR}/include -I${STAGE_INC} -I${LIBC_PROVIDER_DIR}/src"
+-I${LIBC_PROVIDER_DIR}/include -I${STAGE_INC} -I${LIBC_PROVIDER_DIR}/src \
+-isystem ${GCC_FREESTANDING_INC}"
+
+# libgcc supplies the compiler's own support routines (64-bit div/mod __aeabi_uldivmod,
+# soft-float, etc.) that a -nostdlib link would otherwise leave undefined. It goes AFTER
+# libc.a (libc references it). Needed as soon as any 64-bit arithmetic appears (e.g. %lld,
+# and later libm). -print-libgcc-file-name gives the .a's absolute path.
+LIBGCC="$(${PKG_CC} -print-libgcc-file-name)"
 
 # crt0 (our _start) is ALWAYS linked into the executable, never the library.
 LIBC_CRT="${LIBC_STAGE_DIR}/crt0.S.o"
 if [ "${PKG_LINK}" = "dynamic" ]; then
   # PIC + shared libc.so, resolved at runtime by our ld.so.1 (PT_INTERP).
-  LIBC_LIB="-L${LIBC_STAGE_DIR} -lc"
+  LIBC_LIB="-L${LIBC_STAGE_DIR} -lc ${LIBGCC}"
   PKG_LDFLAGS="-nostdlib -no-pie -Wl,--dynamic-linker=/lib/ld.so.1 -Wl,--build-id=none"
 else
-  # static: our user.ld places the ET_EXEC; libc.a is copied into each program.
-  LIBC_LIB="${LIBC_STAGE_DIR}/libc.a"
+  # static: our user.ld places the ET_EXEC; libc.a is copied into each program. Wrap libc.a +
+  # libgcc in a group: they're mutually recursive (libc uses libgcc's __aeabi_uldivmod; libgcc's
+  # divide-by-zero handler uses libc's raise), which a single left-to-right pass can't resolve.
+  LIBC_LIB="-Wl,--start-group ${LIBC_STAGE_DIR}/libc.a ${LIBGCC} -Wl,--end-group"
   PKG_LDFLAGS="-T ${LIBC_PROVIDER_DIR}/user.ld -nostdlib -static -Wl,--build-id=none -Wl,-z,max-page-size=0x1000"
 fi

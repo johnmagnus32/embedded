@@ -5,8 +5,8 @@
  * (ld/test) AND run on the ARM target. This is where linker bugs are cheapest to
  * catch, so it's isolated here on purpose.
  */
-#ifndef GV3_LD_RELOC_H
-#define GV3_LD_RELOC_H
+#ifndef LD_RELOC_H
+#define LD_RELOC_H
 
 #include "elf32.h"
 
@@ -137,18 +137,33 @@ static inline int reloc_apply(const dso_t *self, const dso_t *provider,
 	Elf32_Word addend = *where;             /* REL: addend lives in the slot */
 
 	Elf32_Addr S = 0;
+	int is_weak = 0;
 	if (type != R_ARM_RELATIVE) {
-		const char *name = self->strtab + self->symtab[symidx].st_name;
+		const Elf32_Sym *sym = &self->symtab[symidx];
+		const char *name = self->strtab + sym->st_name;
 		S = dso_lookup(provider, name);
 		if (S == 0)
 			S = dso_lookup(self, name);   /* local definition fallback */
+		if (S == 0)
+			is_weak = (ELF32_ST_BIND(sym->st_info) == STB_WEAK);
 	}
 
 	reloc_value_t rv = reloc_value(type, self->base, S, addend);
-	if (!rv.ok)
+	if (!rv.ok) {
+		/* A WEAK symbol that resolves nowhere binds to 0 (ELF gABI): write 0 into the
+		 * slot and treat it as resolved, rather than failing. This is what makes a normal
+		 * cross-linked binary from the conforming toolchain-bootstrap work — crtbegin.o
+		 * imports __register_frame_info/__deregister_frame_info as WEAK and NULL-checks
+		 * them, so a minimal libc that doesn't provide them is fine. (The -nostartfiles
+		 * LIBC=custom binaries carry no such weak imports, so this path is unreachable there.) */
+		if (is_weak && (type == R_ARM_JUMP_SLOT || type == R_ARM_GLOB_DAT || type == R_ARM_ABS32)) {
+			*where = 0;
+			return 1;
+		}
 		return 0;
+	}
 	*where = rv.value;
 	return 1;
 }
 
-#endif /* GV3_LD_RELOC_H */
+#endif /* LD_RELOC_H */

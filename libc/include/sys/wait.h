@@ -5,8 +5,8 @@
  * stores (code & 0xff) << 8; a kill-by-signal stores the signal in the low 7
  * bits. WEXITSTATUS/WIFEXITED/WTERMSIG mirror the standard POSIX bit layout.
  */
-#ifndef _GV3_SYS_WAIT_H
-#define _GV3_SYS_WAIT_H
+#ifndef _LIBC_SYS_WAIT_H
+#define _LIBC_SYS_WAIT_H
 
 #include <sys/types.h>
 
@@ -18,4 +18,10 @@ pid_t waitpid(pid_t pid, int *status, int options);
 #define WIFEXITED(s)   (WTERMSIG(s) == 0)
 #define WIFSIGNALED(s) (WTERMSIG(s) != 0 && WTERMSIG(s) != 0x7f)
 
-#endif /* _GV3_SYS_WAIT_H */
+/* waitpid options (Linux ABI values). WNOHANG => return 0 instead of blocking when no
+ * child has changed state — waitpid() forwards these to wait4(2). */
+#define WNOHANG    1
+#define WUNTRACED  2
+#define WCONTINUED 8
+
+#endif /* _LIBC_SYS_WAIT_H */

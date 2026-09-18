@@ -38,8 +38,8 @@ ABI our kernel implements**. That ABI is single-sourced in the kernel's UAPI
 headers and *consumed* by the libc — never re-typed:
 
 ```
-  kernel/include/uapi/gv3_syscalls.h   syscall NUMBERS      ┐  the CONTRACT (kernel owns)
-  kernel/include/uapi/gv3_abi.h        structs + constants  ┘
+  kernel/include/uapi/syscalls.h   syscall NUMBERS      ┐  the CONTRACT (kernel owns)
+  kernel/include/uapi/abi.h        structs + constants  ┘
         │  `make headers` copies a SNAPSHOT into build/include/ (headers_install model)
         ▼
   libc  wraps them in POSIX functions (open/read/malloc/…) that programs call

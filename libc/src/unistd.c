@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mount.h>
+#include <string.h>   /* execvp: strchr/strlen/memcpy */
+#include <stdlib.h>   /* execvp: getenv */
 #include "syscall_internal.h"
 
 ssize_t read(int fd, void *buf, size_t n)
@@ -81,6 +83,60 @@ int execv(const char *path, char *const argv[])
 {
 	extern char **environ;
 	return execve(path, argv, environ);
+}
+
+/* execvp: if `file` has a '/', exec it directly; else search each PATH element. */
+int execvp(const char *file, char *const argv[])
+{
+	extern char **environ;
+	if (strchr(file, '/')) return execve(file, argv, environ);
+	const char *path = getenv("PATH");
+	if (!path || !*path) path = "/usr/sbin:/usr/bin:/sbin:/bin";
+	size_t fl = strlen(file);
+	char buf[512];
+	while (*path) {
+		size_t i = 0;
+		while (*path && *path != ':') { if (i < sizeof buf - 2) buf[i++] = *path; path++; }
+		if (*path == ':') path++;
+		if (i == 0) buf[i++] = '.';            /* empty element => cwd */
+		buf[i++] = '/';
+		if (i + fl < sizeof buf) {
+			memcpy(buf + i, file, fl);
+			buf[i + fl] = '\0';
+			execve(buf, argv, environ);        /* returns only on failure; keep trying */
+		}
+	}
+	return -1;   /* errno left by the last execve attempt */
+}
+
+int access(const char *path, int mode)
+{
+	return (int)__ret(__sys2(SYS_access, path, mode));
+}
+
+int dup2(int oldfd, int newfd)
+{
+	return (int)__ret(__sys2(SYS_dup2, oldfd, newfd));
+}
+
+int unlink(const char *path)
+{
+	return (int)__ret(__sys1(SYS_unlink, path));
+}
+
+int rmdir(const char *path)
+{
+	return (int)__ret(__sys1(SYS_rmdir, path));
+}
+
+int symlink(const char *target, const char *linkpath)
+{
+	return (int)__ret(__sys2(SYS_symlink, target, linkpath));
+}
+
+void sync(void)
+{
+	__sys0(SYS_sync);
 }
 
 pid_t getpid(void)

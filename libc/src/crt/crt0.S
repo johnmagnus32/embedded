@@ -31,3 +31,6 @@ _start:
 	/* __libc_start_main calls _exit; if it ever returns, trap loudly. */
 1:	b       1b
 	.size _start, . - 1b
+
+	/* Mark the stack non-executable (silences ld's missing-.note.GNU-stack warning). */
+	.section .note.GNU-stack,"",%progbits

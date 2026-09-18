@@ -4,6 +4,8 @@
  * must exist even in -ffreestanding builds.
  */
 #include <string.h>
+#include <stdlib.h>   /* malloc (strdup) */
+#include <errno.h>    /* E* codes (strerror) */
 
 void *memcpy(void *dst, const void *src, size_t n)
 {
@@ -67,6 +69,14 @@ char *strcpy(char *dst, const char *src)
 	return dst;
 }
 
+char *strcat(char *dst, const char *src)
+{
+	char *d = dst;
+	while (*d) d++;
+	while ((*d++ = *src++)) { }
+	return dst;
+}
+
 char *strncpy(char *dst, const char *src, size_t n)
 {
 	size_t i = 0;
@@ -79,4 +89,80 @@ char *strchr(const char *s, int c)
 {
 	for (; *s; s++) if (*s == (char)c) return (char *)s;
 	return (c == '\0') ? (char *)s : NULL;
+}
+
+char *strrchr(const char *s, int c)
+{
+	const char *last = NULL;
+	for (;; s++) { if (*s == (char)c) last = s; if (!*s) break; }
+	return (char *)last;
+}
+
+void *memchr(const void *s, int c, size_t n)
+{
+	const unsigned char *p = s;
+	for (; n; n--, p++) if (*p == (unsigned char)c) return (void *)p;
+	return NULL;
+}
+
+char *strstr(const char *hay, const char *needle)
+{
+	if (!*needle) return (char *)hay;
+	for (; *hay; hay++) {
+		const char *h = hay, *n = needle;
+		while (*h && *n && *h == *n) { h++; n++; }
+		if (!*n) return (char *)hay;
+	}
+	return NULL;
+}
+
+size_t strspn(const char *s, const char *set)
+{
+	size_t n = 0;
+	for (; s[n]; n++) if (!strchr(set, s[n])) break;
+	return n;
+}
+
+size_t strcspn(const char *s, const char *set)
+{
+	size_t n = 0;
+	for (; s[n]; n++) if (strchr(set, s[n])) break;
+	return n;
+}
+
+char *strdup(const char *s)
+{
+	size_t n = strlen(s) + 1;
+	char *p = malloc(n);
+	if (p) memcpy(p, s, n);
+	return p;
+}
+
+/* Minimal errno -> message table. Unknown numbers get a stable fallback. */
+char *strerror(int errnum)
+{
+	switch (errnum) {
+	case 0:       return "Success";
+	case EPERM:   return "Operation not permitted";
+	case ENOENT:  return "No such file or directory";
+	case ESRCH:   return "No such process";
+	case EINTR:   return "Interrupted system call";
+	case EIO:     return "Input/output error";
+	case EBADF:   return "Bad file descriptor";
+	case EAGAIN:  return "Resource temporarily unavailable";
+	case ENOMEM:  return "Out of memory";
+	case EACCES:  return "Permission denied";
+	case EFAULT:  return "Bad address";
+	case EBUSY:   return "Device or resource busy";
+	case EEXIST:  return "File exists";
+	case ENOTDIR: return "Not a directory";
+	case EISDIR:  return "Is a directory";
+	case EINVAL:  return "Invalid argument";
+	case ENOSYS:  return "Function not implemented";
+	case ERANGE:  return "Numerical result out of range";
+	case ECHILD:  return "No child processes";
+	case EPIPE:   return "Broken pipe";
+	case ENOSPC:  return "No space left on device";
+	default:      return "Unknown error";
+	}
 }

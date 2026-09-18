@@ -1,110 +1,180 @@
 /*
- * stdio.c — a tiny unbuffered printf family over write(2). Enough for our
- * coreutils + shell. Formats: %s %c %d %i %u %x %p %%, with a minimal field
- * width via '0'/digit padding NOT supported yet (kept deliberately small; add
- * width/precision when a program actually needs it). Each conversion is emitted
- * as it's parsed; output goes to the target fd in modest chunks.
+ * stdio.c — the buffered FILE* stream layer over the raw fd syscalls.
+ *
+ * Output is UNBUFFERED (each fputc/fputs/fwrite/fprintf write()s immediately, so fflush is
+ * a no-op); input is buffered (fgetc/fgets/fread refill via read()). stdin/stdout/stderr are
+ * static streams on fds 0/1/2. The printf/snprintf format engine lives in printf.c; fprintf
+ * here just targets a stream's fd through vdprintf. Enough for init (config read + logging)
+ * and coreutils; a write buffer + real fmemopen can come later.
  */
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <errno.h>
 
-/* format one unsigned into `buf` in the given base; return length. */
-static int u2s(char *buf, unsigned long v, unsigned base, int upper)
+struct _gv_file {
+	int fd;
+	int flags;                 /* bit0 = EOF seen, bit1 = error */
+	int ungot;                 /* pushed-back byte, or -1 */
+	int rpos, rlen;            /* read-buffer cursor / fill */
+	unsigned char rbuf[1024];
+};
+
+static FILE _stdin  = { 0, 0, -1, 0, 0, {0} };
+static FILE _stdout = { 1, 0, -1, 0, 0, {0} };
+static FILE _stderr = { 2, 0, -1, 0, 0, {0} };
+FILE *stdin  = &_stdin;
+FILE *stdout = &_stdout;
+FILE *stderr = &_stderr;
+
+FILE *fopen(const char *path, const char *mode)
 {
-	char tmp[32];
-	const char *digs = upper ? "0123456789ABCDEF" : "0123456789abcdef";
-	int i = 0;
-	do { tmp[i++] = digs[v % base]; v /= base; } while (v);
-	int n = i;
-	while (i) buf[n - i] = tmp[i - 1], i--;
-	return n;
-}
-
-static int vprint(int fd, const char *fmt, __builtin_va_list ap)
-{
-	char out[256];
-	int total = 0;
-
-	/* flush helper: write the accumulated `out[0..len)` */
-	#define FLUSH(len) do { if (len) { write(fd, out, (len)); total += (len); } } while (0)
-
-	int len = 0;
-	for (const char *p = fmt; *p; p++) {
-		if (*p != '%') {
-			out[len++] = *p;
-			if (len == sizeof(out)) { FLUSH(len); len = 0; }
-			continue;
-		}
-		FLUSH(len); len = 0;          /* emit literal run before the conversion */
-		p++;                          /* skip '%' */
-		char nbuf[32]; int nn;
-		switch (*p) {
-		case 's': {
-			const char *s = __builtin_va_arg(ap, const char *);
-			if (!s) s = "(null)";
-			int sl = (int)strlen(s);
-			write(fd, s, sl); total += sl;
-			break;
-		}
-		case 'c': {
-			char c = (char)__builtin_va_arg(ap, int);
-			write(fd, &c, 1); total += 1;
-			break;
-		}
-		case 'd': case 'i': {
-			long v = __builtin_va_arg(ap, int);
-			if (v < 0) { write(fd, "-", 1); total += 1; v = -v; }
-			nn = u2s(nbuf, (unsigned long)v, 10, 0);
-			write(fd, nbuf, nn); total += nn;
-			break;
-		}
-		case 'u': nn = u2s(nbuf, (unsigned long)__builtin_va_arg(ap, unsigned), 10, 0); write(fd, nbuf, nn); total += nn; break;
-		case 'x': nn = u2s(nbuf, (unsigned long)__builtin_va_arg(ap, unsigned), 16, 0); write(fd, nbuf, nn); total += nn; break;
-		case 'X': nn = u2s(nbuf, (unsigned long)__builtin_va_arg(ap, unsigned), 16, 1); write(fd, nbuf, nn); total += nn; break;
-		case 'p': {
-			unsigned long v = (unsigned long)__builtin_va_arg(ap, void *);
-			write(fd, "0x", 2); total += 2;
-			nn = u2s(nbuf, v, 16, 0); write(fd, nbuf, nn); total += nn;
-			break;
-		}
-		case '%': write(fd, "%", 1); total += 1; break;
-		case '\0': p--; break;        /* trailing '%' — stop cleanly */
-		default:  write(fd, p, 1); total += 1; break;   /* unknown: emit literally */
-		}
+	int fl;
+	switch (mode[0]) {
+	case 'r': fl = (mode[1] == '+') ? O_RDWR : O_RDONLY; break;
+	case 'w': fl = O_CREAT | O_TRUNC  | ((mode[1] == '+') ? O_RDWR : O_WRONLY); break;
+	case 'a': fl = O_CREAT | O_APPEND | ((mode[1] == '+') ? O_RDWR : O_WRONLY); break;
+	default:  return NULL;
 	}
-	FLUSH(len);
-	#undef FLUSH
-	return total;
+	int fd = open(path, fl, 0644);
+	if (fd < 0) return NULL;
+	FILE *f = malloc(sizeof *f);
+	if (!f) { close(fd); return NULL; }
+	f->fd = fd; f->flags = 0; f->ungot = -1; f->rpos = 0; f->rlen = 0;
+	return f;
 }
 
-int dprintf(int fd, const char *fmt, ...)
+/* fdopen — wrap an already-open fd in a FILE*. The mode string is advisory: the fd's real
+ * access mode was fixed at open()/socket() time, so we only allocate the stream state. */
+FILE *fdopen(int fd, const char *mode)
 {
-	__builtin_va_list ap; __builtin_va_start(ap, fmt);
-	int n = vprint(fd, fmt, ap);
-	__builtin_va_end(ap);
+	(void)mode;
+	if (fd < 0) return NULL;
+	FILE *f = malloc(sizeof *f);
+	if (!f) return NULL;
+	f->fd = fd; f->flags = 0; f->ungot = -1; f->rpos = 0; f->rlen = 0;
+	return f;
+}
+
+int fclose(FILE *f)
+{
+	if (!f) return EOF;
+	int r = close(f->fd);
+	if (f != &_stdin && f != &_stdout && f != &_stderr) free(f);
+	return r;
+}
+
+int fgetc(FILE *f)
+{
+	if (f->ungot >= 0) { int c = f->ungot; f->ungot = -1; return c; }
+	if (f->rpos >= f->rlen) {
+		ssize_t n = read(f->fd, f->rbuf, sizeof f->rbuf);
+		if (n <= 0) { f->flags |= (n == 0) ? 1 : 2; return EOF; }
+		f->rlen = (int)n; f->rpos = 0;
+	}
+	return f->rbuf[f->rpos++];
+}
+
+int getc(FILE *f) { return fgetc(f); }
+
+int ungetc(int c, FILE *f)
+{
+	if (c == EOF) return EOF;
+	f->ungot = (unsigned char)c;
+	f->flags &= ~1;
+	return (unsigned char)c;
+}
+
+char *fgets(char *s, int size, FILE *f)
+{
+	if (size <= 0) return NULL;
+	int i = 0;
+	while (i < size - 1) {
+		int c = fgetc(f);
+		if (c == EOF) break;
+		s[i++] = (char)c;
+		if (c == '\n') break;
+	}
+	if (i == 0) return NULL;           /* nothing read (EOF at start) */
+	s[i] = '\0';
+	return s;
+}
+
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *f)
+{
+	size_t total = size * nmemb, got = 0;
+	unsigned char *p = ptr;
+	while (got < total) { int c = fgetc(f); if (c == EOF) break; p[got++] = (unsigned char)c; }
+	return size ? got / size : 0;
+}
+
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *f)
+{
+	size_t total = size * nmemb, done = 0;
+	const unsigned char *p = ptr;
+	while (done < total) {                       /* loop: a single write() may be short (pipe/socket) */
+		ssize_t w = write(f->fd, p + done, total - done);
+		if (w <= 0) { f->flags |= 2; break; }
+		done += (size_t)w;
+	}
+	return size ? done / size : 0;
+}
+
+int fputc(int c, FILE *f)
+{
+	unsigned char ch = (unsigned char)c;
+	if (write(f->fd, &ch, 1) != 1) { f->flags |= 2; return EOF; }
+	return (unsigned char)c;
+}
+
+int putc(int c, FILE *f) { return fputc(c, f); }
+
+int fputs(const char *s, FILE *f)
+{
+	size_t n = strlen(s);
+	return write(f->fd, s, n) == (ssize_t)n ? (int)n : EOF;
+}
+
+int fflush(FILE *f) { (void)f; return 0; }   /* output is unbuffered */
+int feof(FILE *f)   { return f->flags & 1; }
+int ferror(FILE *f) { return f->flags & 2; }
+void clearerr(FILE *f) { f->flags = 0; }
+
+int fseek(FILE *f, long off, int whence)
+{
+	/* SEEK_CUR is relative to the LOGICAL position, but the kernel offset is ahead by the
+	 * read-ahead bytes still in the buffer (+ any ungot char); discount them first. */
+	if (whence == SEEK_CUR)
+		off -= (f->rlen - f->rpos) + (f->ungot >= 0 ? 1 : 0);
+	if (lseek(f->fd, off, whence) < 0) return -1;
+	f->rpos = f->rlen = 0; f->ungot = -1; f->flags &= ~1;
+	return 0;
+}
+
+long ftell(FILE *f)
+{
+	off_t r = lseek(f->fd, 0, SEEK_CUR);
+	if (r < 0) return -1;
+	return (long)r - (f->rlen - f->rpos) - (f->ungot >= 0 ? 1 : 0);   /* discount unconsumed bytes */
+}
+
+void rewind(FILE *f) { fseek(f, 0, SEEK_SET); f->flags = 0; }
+
+int vfprintf(FILE *f, const char *fmt, va_list ap) { return vdprintf(f->fd, fmt, ap); }
+
+int fprintf(FILE *f, const char *fmt, ...)
+{
+	va_list ap; va_start(ap, fmt);
+	int n = vdprintf(f->fd, fmt, ap);
+	va_end(ap);
 	return n;
 }
 
-int printf(const char *fmt, ...)
+void perror(const char *s)
 {
-	__builtin_va_list ap; __builtin_va_start(ap, fmt);
-	int n = vprint(1, fmt, ap);
-	__builtin_va_end(ap);
-	return n;
-}
-
-int puts(const char *s)
-{
-	int n = (int)strlen(s);
-	write(1, s, n);
-	write(1, "\n", 1);
-	return n + 1;
-}
-
-int putchar(int c)
-{
-	char ch = (char)c;
-	write(1, &ch, 1);
-	return c;
+	if (s && *s) { fputs(s, stderr); fputs(": ", stderr); }
+	fputs(strerror(errno), stderr);
+	fputc('\n', stderr);
 }

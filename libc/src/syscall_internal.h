@@ -2,8 +2,8 @@
  * syscall_internal.h — private to libc: the raw svc entry + errno plumbing.
  * Not installed as a public header (programs use unistd.h/fcntl.h/etc).
  */
-#ifndef _GV3_SYSCALL_INTERNAL_H
-#define _GV3_SYSCALL_INTERNAL_H
+#ifndef _LIBC_SYSCALL_INTERNAL_H
+#define _LIBC_SYSCALL_INTERNAL_H
 
 #include <sys/syscall.h>
 #include <errno.h>
@@ -35,4 +35,4 @@ static inline long __ret(long r)
 	return r;
 }
 
-#endif /* _GV3_SYSCALL_INTERNAL_H */
+#endif /* _LIBC_SYSCALL_INTERNAL_H */

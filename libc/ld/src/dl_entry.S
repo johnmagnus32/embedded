@@ -40,3 +40,6 @@ _start:
  * Simplest: the kernel gives us AT_BASE in the auxv which is literally our load
  * base. So we just parse that. The asm trick is a fallback; C reads AT_BASE first.
  */
+
+	/* Mark the stack non-executable (silences ld's missing-.note.GNU-stack warning). */
+	.section .note.GNU-stack,"",%progbits

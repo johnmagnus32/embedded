@@ -21,3 +21,8 @@ int lstat(const char *path, struct stat *st)
 {
 	return (int)__ret(__sys2(SYS_lstat64, path, st));
 }
+
+int mkdir(const char *path, mode_t mode)
+{
+	return (int)__ret(__sys2(SYS_mkdir, path, mode));
+}

@@ -14,8 +14,8 @@
  * +base to become a pointer) OR a plain scalar (a size/count). The ELF spec
  * fixes which per tag; we apply +base only to the address-typed ones.
  */
-#ifndef GV3_LD_DYNAMIC_H
-#define GV3_LD_DYNAMIC_H
+#ifndef LD_DYNAMIC_H
+#define LD_DYNAMIC_H
 
 #include "elf32.h"
 #include "reloc.h"
@@ -84,4 +84,4 @@ static inline int dl_parse(dso_t *d, const Elf32_Dyn *dyn, Elf32_Addr base)
 	return 1;
 }
 
-#endif /* GV3_LD_DYNAMIC_H */
+#endif /* LD_DYNAMIC_H */

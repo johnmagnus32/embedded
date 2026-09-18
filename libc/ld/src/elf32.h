@@ -5,8 +5,8 @@
  *
  * Verified against the ELF spec + arch/arm ABI (readelf on our own libc.so).
  */
-#ifndef GV3_LD_ELF32_H
-#define GV3_LD_ELF32_H
+#ifndef LD_ELF32_H
+#define LD_ELF32_H
 
 #include <stdint.h>
 
@@ -87,4 +87,4 @@ typedef struct {
 #define R_ARM_JUMP_SLOT 22  /* PLT slot:       S (+ A)                  */
 #define R_ARM_RELATIVE  23  /* base-relative:  B + A  (no symbol)       */
 
-#endif /* GV3_LD_ELF32_H */
+#endif /* LD_ELF32_H */

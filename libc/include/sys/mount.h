@@ -6,8 +6,8 @@
  * devtmpfs backend yet, that is future work). Enough for a `mount` coreutil and
  * for /init to issue the standard proc/sys/dev mounts portably.
  */
-#ifndef _GV3_SYS_MOUNT_H
-#define _GV3_SYS_MOUNT_H
+#ifndef _LIBC_SYS_MOUNT_H
+#define _LIBC_SYS_MOUNT_H
 
 /* umount2() flags (subset; matches Linux). */
 #define MNT_FORCE       0x00000001
@@ -18,4 +18,4 @@ int mount(const char *source, const char *target, const char *fstype,
 int umount2(const char *target, int flags);
 int umount(const char *target);   /* umount2(target, 0) */
 
-#endif /* _GV3_SYS_MOUNT_H */
+#endif /* _LIBC_SYS_MOUNT_H */
