@@ -11,8 +11,8 @@
  * An "address space" is identified by its L1 table's physical address (the
  * value we load into TTBR0).
  */
-#ifndef GV3K_VM_H
-#define GV3K_VM_H
+#ifndef K_VM_H
+#define K_VM_H
 
 #include <stdint.h>
 
@@ -54,4 +54,4 @@ void vm_switch(uint32_t l1_pa);
  *   S10_DESIGN.md. */
 #define MMAP_TOP      0x38000000u   /* anon mappings placed downward from here  */
 
-#endif /* GV3K_VM_H */
+#endif /* K_VM_H */

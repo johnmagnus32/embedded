@@ -2,8 +2,8 @@
  * libk.h — prototypes for the freestanding libc primitives in libk.c
  * (the mem and str helpers the kernel and GCC need). Tiny, self-contained.
  */
-#ifndef GV3K_LIBK_H
-#define GV3K_LIBK_H
+#ifndef K_LIBK_H
+#define K_LIBK_H
 
 #include <stddef.h>
 
@@ -19,4 +19,4 @@ char  *strlcpy_(char *dst, const char *src, size_t cap);
 
 int printf(const char *fmt, ...);
 
-#endif /* GV3K_LIBK_H */
+#endif /* K_LIBK_H */

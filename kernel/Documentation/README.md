@@ -23,7 +23,7 @@ the physical T113.
 / # echo HELLO-FROM-SHELL
 HELLO-FROM-SHELL
 / # uname -a
-Linux gameboy-v3 0.9-gv3 gv3kernel S10 armv7l GNU/Linux
+Linux gameboy-v3 0.9-gv3 kernel S10 armv7l GNU/Linux
 / # echo sub: $(echo hi | tr a-z A-Z)
 sub: HI
 / # exit
@@ -40,11 +40,11 @@ links at `0x40010000` (QEMU RAM base + the Linux boot-stub offset) and enables
 the VFP/FPU in `_start` (hardfloat BusyBox emits `vpush`/`vmov`).
 
 ```bash
-make BOARD=virt          # → build/gv3kernel.bin + build/initramfs.cpio.gz (test)
+make BOARD=virt          # → build/kernel.bin + build/initramfs.cpio.gz (test)
 make BOARD=virt qemu      # boot the test initramfs under QEMU
 # or boot the real musl-BusyBox rootfs:
 qemu-system-arm -M virt -cpu cortex-a7 -m 128M -nographic -net none \
-  -kernel build/gv3kernel.bin -initrd ../build/output/initramfs.cpio.gz
+  -kernel build/kernel.bin -initrd ../build/output/initramfs.cpio.gz
 ```
 
 We boot the **raw `.bin`** (not the ELF): that makes QEMU run its Linux boot
@@ -369,7 +369,7 @@ lib/               portable helpers
   printf.c         tiny printf → UART
   inflate.c        in-kernel gunzip: puff-style DEFLATE (RFC1951) + gzip (RFC1952) + CRC32
 include/           all headers (-Iinclude); board.h is the GIC/timer/UART board seam
-  uapi/            the kernel↔user ABI: gv3_syscalls.h (numbers) + gv3_abi.h (types/structs/flags)
+  uapi/            the kernel↔user ABI: syscalls.h (numbers) + abi.h (types/structs/flags)
 user/              standalone static test programs (uinit, uhello, ufault*, uorphan*, upreempt*) + user.ld
 test/              golden.sh regression harness (smoke/fault/orphan/preempt/busybox/dynamic)
 Documentation/     this README, PLAN.md, S8/S10_DESIGN.md
@@ -404,7 +404,7 @@ motd.txt           data file packed into the test cpio at /etc/motd
 
 ```bash
 forge/backends/toolchain.sh (or `make toolchain`)      # once (shared toolchain)
-make                            # → build/gv3kernel.bin
+make                            # → build/kernel.bin
 ```
 
 ## How it runs (loaded by our bootloader)
@@ -421,7 +421,7 @@ bootloader passes (those are the Linux DTB handoff — harmless to us). So the
 quickest way to boot S5 on hardware:
 
 1. Build the bootloader (`../bootloader`) and this kernel.
-2. Put `build/gv3kernel.bin` on the SD's FAT partition **named `zImage`**
+2. Put `build/kernel.bin` on the SD's FAT partition **named `zImage`**
    (replacing the Linux zImage). The DTB/initramfs the bootloader also loads are
    simply unused by our kernel.
 3. Boot. After the bootloader's "Jumping to kernel", you should see the S6

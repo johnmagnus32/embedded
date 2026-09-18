@@ -7,8 +7,8 @@
  * are dereferenced directly: during a syscall the caller's address space is
  * active (TTBR0 -> its L1), exactly as S8's write/wait already rely on.
  */
-#ifndef GV3K_FS_SYSCALL_H
-#define GV3K_FS_SYSCALL_H
+#ifndef K_FS_SYSCALL_H
+#define K_FS_SYSCALL_H
 
 #include <stdint.h>
 
@@ -40,4 +40,4 @@ long sys_chdir(const char *path);
 long sys_getcwd(uint32_t buf_uptr, uint32_t size);
 long sys_ioctl(int fd, uint32_t req, uint32_t arg);
 
-#endif /* GV3K_FS_SYSCALL_H */
+#endif /* K_FS_SYSCALL_H */

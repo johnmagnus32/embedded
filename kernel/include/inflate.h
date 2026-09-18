@@ -11,8 +11,8 @@
  * Scope: single-shot, whole-buffer in / whole-buffer out (the initramfs fits in
  * RAM). No streaming. gzip container only (magic 1f 8b, CM=8).
  */
-#ifndef GV3K_INFLATE_H
-#define GV3K_INFLATE_H
+#ifndef K_INFLATE_H
+#define K_INFLATE_H
 
 #include <stdint.h>
 
@@ -31,4 +31,4 @@ int is_gzip(const uint8_t *src, uint32_t srclen);
  * the output buffer before calling gunzip(). 0 if srclen < 4. */
 uint32_t gzip_isize(const uint8_t *src, uint32_t srclen);
 
-#endif /* GV3K_INFLATE_H */
+#endif /* K_INFLATE_H */

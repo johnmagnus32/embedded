@@ -3,8 +3,8 @@
  * The wired GIC PPI differs by board (secure phys PPI13->INTID29 on the T113;
  * non-secure phys PPI14->INTID30 on QEMU virt), so the INTID comes from board.h.
  */
-#ifndef GV3K_TIMER_H
-#define GV3K_TIMER_H
+#ifndef K_TIMER_H
+#define K_TIMER_H
 
 #include <stdint.h>
 #include "board.h"
@@ -20,4 +20,4 @@ void timer_rearm(void);
 /* Detected counter frequency (Hz). */
 uint32_t timer_freq(void);
 
-#endif /* GV3K_TIMER_H */
+#endif /* K_TIMER_H */

@@ -1,8 +1,8 @@
 /*
  * elf.h — load an ARM ELF (ET_EXEC or ET_DYN) into an address space.
  */
-#ifndef GV3K_ELF_H
-#define GV3K_ELF_H
+#ifndef K_ELF_H
+#define K_ELF_H
 
 #include <stdint.h>
 
@@ -28,4 +28,4 @@ struct elf_info {
 int elf_load(uint32_t l1_pa, const void *img, uint32_t sz, uint32_t bias,
              struct elf_info *out);
 
-#endif /* GV3K_ELF_H */
+#endif /* K_ELF_H */

@@ -31,7 +31,7 @@ static long sys_uname(uint32_t buf)
 	strcpy(u + 0 * 65, "Linux");             /* sysname  (ABI-compatible lie) */
 	strcpy(u + 1 * 65, "gameboy-v3");        /* nodename */
 	strcpy(u + 2 * 65, "0.9-gv3");           /* release  */
-	strcpy(u + 3 * 65, "gv3kernel S10");     /* version  */
+	strcpy(u + 3 * 65, "kernel S10");     /* version  */
 	strcpy(u + 4 * 65, "armv7l");            /* machine  */
 	strcpy(u + 5 * 65, "(none)");            /* domainname */
 	return 0;

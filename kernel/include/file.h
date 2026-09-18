@@ -10,8 +10,8 @@
  * This mirrors real Unix: fd (per-process int) -> struct file (shared open
  * description, has the offset) -> inode (the actual object). Three levels.
  */
-#ifndef GV3K_FILE_H
-#define GV3K_FILE_H
+#ifndef K_FILE_H
+#define K_FILE_H
 
 #include <stdint.h>
 
@@ -48,4 +48,4 @@ int  fd_close(struct fdtable *t, int fd);
 void fdtable_copy(struct fdtable *dst, const struct fdtable *src);  /* fork */
 void fdtable_closeall(struct fdtable *t);                /* exit */
 
-#endif /* GV3K_FILE_H */
+#endif /* K_FILE_H */

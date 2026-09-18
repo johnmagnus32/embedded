@@ -13,8 +13,8 @@
  * The Makefile passes -DBOARD_VIRT for the virt build; T113 is the default.
  * uart.c dispatches to the right UART driver on the same flag.
  */
-#ifndef GV3K_BOARD_H
-#define GV3K_BOARD_H
+#ifndef K_BOARD_H
+#define K_BOARD_H
 
 #if defined(BOARD_VIRT)
 /* ---- QEMU 'virt' (GICv2, PL011 UART) — addresses from the generated DTB ---- */
@@ -40,4 +40,4 @@
 
 #endif
 
-#endif /* GV3K_BOARD_H */
+#endif /* K_BOARD_H */

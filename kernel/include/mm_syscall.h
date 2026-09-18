@@ -8,8 +8,8 @@
  * passes back verbatim: brk returns the resulting break (NOT -errno); mmap2
  * returns the VA or a value in -4095..-1 (musl reads that as MAP_FAILED).
  */
-#ifndef GV3K_MM_SYSCALL_H
-#define GV3K_MM_SYSCALL_H
+#ifndef K_MM_SYSCALL_H
+#define K_MM_SYSCALL_H
 
 #include <stdint.h>
 
@@ -18,4 +18,4 @@ long sys_mmap2(uint32_t addr, uint32_t len, int prot, int flags, int fd, uint32_
 long sys_munmap(uint32_t addr, uint32_t len);
 long sys_mprotect(uint32_t addr, uint32_t len, int prot);
 
-#endif /* GV3K_MM_SYSCALL_H */
+#endif /* K_MM_SYSCALL_H */

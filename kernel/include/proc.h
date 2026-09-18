@@ -9,8 +9,8 @@
  * fork/exec/wait (every process makes syscalls); true PREEMPTIVE scheduling
  * (switch on the timer IRQ, per-process kernel stacks) is a later refinement.
  */
-#ifndef GV3K_PROC_H
-#define GV3K_PROC_H
+#ifndef K_PROC_H
+#define K_PROC_H
 
 #include <stdint.h>
 #include "file.h"
@@ -139,4 +139,4 @@ void             proc_set_cwd(struct rf_inode *ino);
 /* Enter the first user process (does not return). */
 void proc_run_first(void);
 
-#endif /* GV3K_PROC_H */
+#endif /* K_PROC_H */

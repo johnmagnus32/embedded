@@ -1,8 +1,8 @@
 /*
  * mmu.h — ARMv7-A short-descriptor MMU (1 MB sections, TTBR0-only).
  */
-#ifndef GV3K_MMU_H
-#define GV3K_MMU_H
+#ifndef K_MMU_H
+#define K_MMU_H
 
 #include <stdint.h>
 
@@ -23,4 +23,4 @@ void mmu_map_section(uint32_t va, uint32_t pa, enum mem_type type);
 /* Physical base of the active L1 table (for inspection/tests). */
 uint32_t mmu_l1_base(void);
 
-#endif /* GV3K_MMU_H */
+#endif /* K_MMU_H */

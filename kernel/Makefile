@@ -18,7 +18,7 @@ CROSS_COMPILE ?= arm-buildroot-linux-gnueabihf-
 CC      := $(CROSS_COMPILE)gcc
 OBJCOPY := $(CROSS_COMPILE)objcopy
 
-TARGET  := gv3kernel
+TARGET  := kernel
 BOARD   ?= t113
 
 # Per-board build directory. The two boards differ in CFLAGS (-DBOARD_VIRT), the

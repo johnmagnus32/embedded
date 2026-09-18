@@ -1,8 +1,8 @@
 /*
  * gic.h — ARM GIC-400 (GICv2) minimal driver: enable one PPI, ack/EOI.
  */
-#ifndef GV3K_GIC_H
-#define GV3K_GIC_H
+#ifndef K_GIC_H
+#define K_GIC_H
 
 #include <stdint.h>
 
@@ -13,4 +13,4 @@ void gic_eoi(uint32_t iar);       /* write EOIR with the value from gic_ack */
 
 #define GIC_SPURIOUS  0x3FFu
 
-#endif /* GV3K_GIC_H */
+#endif /* K_GIC_H */

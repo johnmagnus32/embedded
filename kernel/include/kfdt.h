@@ -11,8 +11,8 @@
  * target version 17 (what dtc emits); the header fields we read (magic,
  * off_dt_struct, off_dt_strings, totalsize) exist in all versions >= 3.
  */
-#ifndef GV3K_KFDT_H
-#define GV3K_KFDT_H
+#ifndef K_KFDT_H
+#define K_KFDT_H
 
 #include <stdint.h>
 
@@ -38,4 +38,4 @@ int kfdt_initrd(const void *dtb, uint32_t *base_out, uint32_t *size_out);
  * base + size. Returns 0 on success, -1 if absent/unsupported cell sizes. */
 int kfdt_memory(const void *dtb, uint32_t *base_out, uint32_t *size_out);
 
-#endif /* GV3K_KFDT_H */
+#endif /* K_KFDT_H */

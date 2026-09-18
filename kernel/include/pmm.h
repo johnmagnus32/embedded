@@ -3,8 +3,8 @@
  * The foundation the MMU + everything above needs: hand out / free physical
  * frames. Simple bitmap allocator over the DRAM above the kernel.
  */
-#ifndef GV3K_PMM_H
-#define GV3K_PMM_H
+#ifndef K_PMM_H
+#define K_PMM_H
 
 #include <stdint.h>
 
@@ -33,4 +33,4 @@ void pmm_reserve(uint32_t start, uint32_t end);
 uint32_t pmm_free_pages(void);
 uint32_t pmm_total_pages(void);
 
-#endif /* GV3K_PMM_H */
+#endif /* K_PMM_H */

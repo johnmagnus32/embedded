@@ -11,8 +11,8 @@
  * Not thread-safe (single kernel context, syscall-boundary switching). No
  * alignment guarantees beyond 8 bytes. Good enough to build a filesystem on.
  */
-#ifndef GV3K_KMALLOC_H
-#define GV3K_KMALLOC_H
+#ifndef K_KMALLOC_H
+#define K_KMALLOC_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -25,4 +25,4 @@ void *krealloc(void *ptr, uint32_t newsize);
 /* stats (for the S9 self-report) */
 uint32_t kmalloc_used(void);
 
-#endif /* GV3K_KMALLOC_H */
+#endif /* K_KMALLOC_H */

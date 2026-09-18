@@ -7,8 +7,8 @@
  * execve and the syscalls talk to THIS interface, so swapping/adding a real fs
  * later doesn't touch them.
  */
-#ifndef GV3K_VFS_H
-#define GV3K_VFS_H
+#ifndef K_VFS_H
+#define K_VFS_H
 
 #include <stdint.h>
 
@@ -26,4 +26,4 @@ struct elf_info;
 int vfs_load_elf(struct rf_inode *ino, uint32_t l1_pa, uint32_t bias,
                  struct elf_info *info);
 
-#endif /* GV3K_VFS_H */
+#endif /* K_VFS_H */

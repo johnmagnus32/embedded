@@ -15,8 +15,8 @@
  *     across directories beyond what cpio hardlinks produce (we don't dedup).
  *     Those are later refinements; this is enough for a shell + BusyBox.
  */
-#ifndef GV3K_RAMFS_H
-#define GV3K_RAMFS_H
+#ifndef K_RAMFS_H
+#define K_RAMFS_H
 
 #include <stdint.h>
 
@@ -100,4 +100,4 @@ int  ramfs_truncate(struct rf_inode *ino, uint32_t newsize);
  * contiguous bytes available in that page (for zero-copy ELF loading). */
 const uint8_t *ramfs_page_at(struct rf_inode *ino, uint32_t off, uint32_t *avail);
 
-#endif /* GV3K_RAMFS_H */
+#endif /* K_RAMFS_H */

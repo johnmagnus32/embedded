@@ -2,16 +2,16 @@
  * fs_abi.h — kernel-side ABI glue for the filesystem syscalls.
  *
  * The userspace-facing ABI CONSTANTS (S_IF*, O_*, AT_*, SEEK_*, F_*, DT_*) now
- * live in the shared UAPI (uapi/gv3_abi.h) — the single source of truth the
+ * live in the shared UAPI (uapi/abi.h) — the single source of truth the
  * rootfs libc also consumes. This header pulls those in and adds only the
  * KERNEL-PRIVATE negated-errno codes the dispatch returns (userspace has its own
  * errno.h with the POSIX-facing values; the K_E* names are an internal return
  * convention, deliberately not part of the shared UAPI).
  */
-#ifndef GV3K_FS_ABI_H
-#define GV3K_FS_ABI_H
+#ifndef K_FS_ABI_H
+#define K_FS_ABI_H
 
-#include "uapi/gv3_abi.h"    /* S_IF*, O_*, AT_*, SEEK_*, F_*, DT_*, PROT_*, MAP_* */
+#include "uapi/abi.h"    /* S_IF*, O_*, AT_*, SEEK_*, F_*, DT_*, PROT_*, MAP_* */
 
 /* ---- errno values we return (negated) — kernel-internal convention ---- */
 #define K_EPERM    1
@@ -34,4 +34,4 @@
 #define K_EIO_S     5   /* -EIO   */
 #define K_ENOEXEC_S 8   /* -ENOEXEC */
 
-#endif /* GV3K_FS_ABI_H */
+#endif /* K_FS_ABI_H */

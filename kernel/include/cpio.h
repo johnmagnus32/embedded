@@ -12,8 +12,8 @@
  * All header fields are 8-char ASCII hex except the 6-char magic. Archive ends
  * with an entry named "TRAILER!!!".
  */
-#ifndef GV3K_CPIO_H
-#define GV3K_CPIO_H
+#ifndef K_CPIO_H
+#define K_CPIO_H
 
 #include <stdint.h>
 
@@ -23,4 +23,4 @@
  * create them under the ramfs root, making intermediate dirs as needed. */
 int cpio_load(const void *base, uint32_t size);
 
-#endif /* GV3K_CPIO_H */
+#endif /* K_CPIO_H */
