@@ -26,13 +26,29 @@ enum { DIR_DOWN, DIR_UP, DIR_LEFT, DIR_RIGHT };                     /* == hero s
 #define INV_TIME     0.9f     /* i-frames after taking a hit */
 #define MAXHP        5
 
+/* palette */
+#define C_GRASS        ENG_RGB(86,150,78)     /* tile: grass  */
+#define C_PATH         ENG_RGB(196,170,120)   /* tile: path   */
+#define C_FLOWER       ENG_RGB(96,170,90)     /* tile: flower */
+#define C_SAND         ENG_RGB(220,204,152)   /* tile: sand   */
+#define C_WATER        ENG_RGB(64,118,196)    /* tile: water  */
+#define C_TREE         ENG_RGB(44,112,52)     /* tile: tree   */
+#define C_WALL         ENG_RGB(120,120,132)   /* tile: wall   */
+#define C_HURT         ENG_RGB(255,120,120)   /* hero i-frame blink tint */
+#define C_BACKDROP     ENG_RGB(24, 28, 34)    /* void behind the level (edges only) */
+#define C_TITLE        ENG_RGB(235, 225, 180) /* title text */
+#define C_TITLE_PROMPT ENG_RGB(220, 220, 230) /* "PRESS START" on the title screen */
+#define C_GOLD         ENG_RGB(240, 220, 90)  /* win banner + "need a key" hint */
+#define C_GAMEOVER     ENG_RGB(220, 70, 80)   /* "GAME OVER" text */
+#define C_OVER_PROMPT  ENG_RGB(230, 230, 240) /* "PRESS START" on the game-over screen */
+
 /* Fallback flat-tile palette (used only if the .tmj's atlas image fails to load); gid n ->
  * TILE_COLORS[n-1]. Order matches tools/gen_adventure_assets.py: grass/path/flower/sand/
  * water/tree/wall. */
 static const char      TILE_KEYS[]   = "1234567";
 static const eng_color TILE_COLORS[] = {
-	ENG_RGB(86,150,78), ENG_RGB(196,170,120), ENG_RGB(96,170,90), ENG_RGB(220,204,152),
-	ENG_RGB(64,118,196), ENG_RGB(44,112,52), ENG_RGB(120,120,132),
+	C_GRASS, C_PATH, C_FLOWER, C_SAND,
+	C_WATER, C_TREE, C_WALL,
 };
 
 static int         st, W, H;                 /* game state; screen size */
@@ -109,7 +125,7 @@ static void player_update(eng_node *self, float dt)
 	if (eng_just_pressed(ENG_A) && attack_cd <= 0 && !sword) { swing_sword(); attack_cd = SWORD_CD; }
 
 	/* i-frame blink, then contact damage from any overlapping slime */
-	if (inv > 0) { inv -= dt; self->tint = (fmodf(inv, 0.2f) < 0.1f) ? ENG_RGB(255,120,120) : ENG_WHITE; }
+	if (inv > 0) { inv -= dt; self->tint = (fmodf(inv, 0.2f) < 0.1f) ? C_HURT : ENG_WHITE; }
 	else {
 		self->tint = ENG_WHITE;
 		if (eng_overlap_next(self, T_SLIME, NULL)) hurt_player();
@@ -209,27 +225,22 @@ static void on_update(float dt)
 
 static void on_draw_background(void)
 {
-	eng_clear(ENG_RGB(24, 28, 34));   /* only shows at level edges; the ground tilemap covers the rest */
-}
-
-static void center(const char *s, int y, int px, eng_color c)
-{
-	eng_text((W - eng_text_width(px, s)) / 2, y, px, c, s);
+	eng_clear(C_BACKDROP);   /* only shows at level edges; the ground tilemap covers the rest */
 }
 
 static void on_draw_overlay(void)
 {
 	if (st == S_TITLE) {
-		center("ADVENTURE",   H/2 - 70, 84, ENG_RGB(235, 225, 180));
-		center("PRESS START", H/2 + 30, 36, ENG_RGB(220, 220, 230));
+		eng_text_aligned(W/2, H/2 - 70, 84, C_TITLE,        ENG_ALIGN_CENTER, "ADVENTURE");
+		eng_text_aligned(W/2, H/2 + 30, 36, C_TITLE_PROMPT, ENG_ALIGN_CENTER, "PRESS START");
 	} else if (st == S_WIN) {
-		center("YOU ESCAPED!", H/2 - 60, 80, ENG_RGB(240, 220, 90));
-		center("PRESS START",  H/2 + 40, 32, ENG_WHITE);
+		eng_text_aligned(W/2, H/2 - 60, 80, C_GOLD,     ENG_ALIGN_CENTER, "YOU ESCAPED!");
+		eng_text_aligned(W/2, H/2 + 40, 32, ENG_WHITE,  ENG_ALIGN_CENTER, "PRESS START");
 	} else if (st == S_DEAD) {
-		center("GAME OVER",   H/2 - 60, 80, ENG_RGB(220, 70, 80));
-		center("PRESS START", H/2 + 40, 32, ENG_RGB(230, 230, 240));
+		eng_text_aligned(W/2, H/2 - 60, 80, C_GAMEOVER,    ENG_ALIGN_CENTER, "GAME OVER");
+		eng_text_aligned(W/2, H/2 + 40, 32, C_OVER_PROMPT, ENG_ALIGN_CENTER, "PRESS START");
 	} else if (hint_t > 0) {
-		center("NEED A KEY!", H - 70, 34, ENG_RGB(240, 220, 90));
+		eng_text_aligned(W/2, H - 70, 34, C_GOLD, ENG_ALIGN_CENTER, "NEED A KEY!");
 	}
 }
 

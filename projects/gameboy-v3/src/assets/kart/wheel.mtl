@@ -1,0 +1,4 @@
+# Turbo Kart material library (generated)
+newmtl wheel
+Kd 0.11 0.11 0.125
+map_Kd kart_tex.png

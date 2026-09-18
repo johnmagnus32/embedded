@@ -19,6 +19,13 @@ enum { T_SHIP = 1, T_BULLET, T_ENEMY };
 /* game states */
 enum { S_TITLE, S_PLAY, S_OVER };
 
+/* palette */
+#define C_SPACE   ENG_RGB(8, 10, 26)     /* deep-space background */
+#define C_STAR    ENG_RGB(120, 130, 170) /* scrolling starfield dots */
+#define C_TITLE   ENG_RGB(120, 200, 255) /* title screen heading */
+#define C_DANGER  ENG_RGB(240, 80, 80)   /* GAME OVER heading */
+#define C_PROMPT  ENG_RGB(180, 180, 200) /* dim "press start" hint */
+
 static int       st;
 static int       W, H;
 static int       score, lives;
@@ -137,14 +144,9 @@ static void on_update(float dt)
 
 static void on_draw_background(void)      /* immediate, before the scene layers */
 {
-	eng_clear(ENG_RGB(8, 10, 26));
+	eng_clear(C_SPACE);
 	for (int i = 0; i < NSTAR; i++)
-		eng_rect_fill((int)star_x[i], (int)star_y[i], 2, 2, ENG_RGB(120, 130, 170));
-}
-
-static void center(const char *s, int y, int px, eng_color c)
-{
-	eng_text((W - eng_text_width(px, s)) / 2, y, px, c, s);
+		eng_rect_fill((int)star_x[i], (int)star_y[i], 2, 2, C_STAR);
 }
 
 static void on_draw_overlay(void)         /* HUD + overlays, after the scene layers */
@@ -154,15 +156,15 @@ static void on_draw_overlay(void)         /* HUD + overlays, after the scene lay
 		snprintf(buf, sizeof buf, "SCORE %d", score);
 		eng_text(20, 16, 26, ENG_WHITE, buf);
 		snprintf(buf, sizeof buf, "LIVES %d", lives);
-		eng_text(W - 20 - eng_text_width(26, buf), 16, 26, ENG_WHITE, buf);
+		eng_text_aligned(W - 20, 16, 26, ENG_WHITE, ENG_ALIGN_RIGHT, buf);
 	} else if (st == S_TITLE) {
-		center("SHMUP", H / 2 - 90, 96, ENG_RGB(120, 200, 255));
-		center("PRESS START", H / 2 + 30, 40, ENG_WHITE);
+		eng_text_aligned(W/2, H / 2 - 90, 96, C_TITLE, ENG_ALIGN_CENTER, "SHMUP");
+		eng_text_aligned(W/2, H / 2 + 30, 40, ENG_WHITE, ENG_ALIGN_CENTER, "PRESS START");
 	} else if (st == S_OVER) {
-		center("GAME OVER", H / 2 - 74, 80, ENG_RGB(240, 80, 80));
+		eng_text_aligned(W/2, H / 2 - 74, 80, C_DANGER, ENG_ALIGN_CENTER, "GAME OVER");
 		snprintf(buf, sizeof buf, "SCORE %d", score);
-		center(buf, H / 2 + 14, 44, ENG_WHITE);
-		center("PRESS START", H / 2 + 74, 30, ENG_RGB(180, 180, 200));
+		eng_text_aligned(W/2, H / 2 + 14, 44, ENG_WHITE, ENG_ALIGN_CENTER, buf);
+		eng_text_aligned(W/2, H / 2 + 74, 30, C_PROMPT, ENG_ALIGN_CENTER, "PRESS START");
 	}
 }
 

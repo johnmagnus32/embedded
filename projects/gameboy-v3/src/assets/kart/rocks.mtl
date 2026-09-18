@@ -1,0 +1,10 @@
+# rock materials
+newmtl rock_gray
+Kd 0.44 0.43 0.41
+map_Kd rock_tex.png
+newmtl rock_tan
+Kd 0.5 0.44 0.34
+map_Kd rock_tex.png
+newmtl rock_dark
+Kd 0.34 0.34 0.36
+map_Kd rock_tex.png

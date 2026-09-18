@@ -1,0 +1,7 @@
+newmtl shell_tint
+Kd 1 1 1
+map_Kd shell_tex.png
+newmtl shell_rim
+Kd 0.30 0.26 0.18
+newmtl shell_belly
+Kd 0.90 0.84 0.62

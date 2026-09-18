@@ -1,0 +1,19 @@
+# Turbo Kart material library (generated)
+newmtl tint_body
+Kd 1.0 1.0 1.0
+map_Kd kart_tex.png
+newmtl wheel
+Kd 0.11 0.11 0.125
+map_Kd kart_tex.png
+newmtl seat
+Kd 0.2 0.2 0.23
+map_Kd kart_tex.png
+newmtl chassis
+Kd 0.14 0.14 0.16
+map_Kd kart_tex.png
+newmtl accent
+Kd 0.93 0.93 0.96
+map_Kd kart_tex.png
+newmtl chrome
+Kd 0.72 0.74 0.8
+map_Kd kart_tex.png

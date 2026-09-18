@@ -26,6 +26,17 @@
 
 enum state { S_TITLE, S_SERVE, S_PLAY, S_OVER, S_WIN };
 
+/* palette */
+#define C_BG            ENG_RGB(15, 15, 28)     /* deep-blue play field background */
+#define C_BRICK_RED     ENG_RGB(224, 64, 64)    /* top brick row; also GAME OVER text */
+#define C_BRICK_ORANGE  ENG_RGB(232, 140, 44)
+#define C_BRICK_YELLOW  ENG_RGB(230, 208, 52)   /* also BREAKOUT title text */
+#define C_BRICK_GREEN   ENG_RGB(72, 200, 88)    /* also YOU WIN! text */
+#define C_BRICK_BLUE    ENG_RGB(60, 176, 224)
+#define C_BRICK_INDIGO  ENG_RGB(96, 112, 232)
+#define C_PADDLE        ENG_RGB(232, 232, 244)  /* paddle fill */
+#define C_HINT          ENG_RGB(180, 180, 200)  /* muted "PRESS START" prompt */
+
 static int   W, H;              /* screen size (from the engine at init) */
 static int   brick_w;           /* computed to fill the wall width */
 static enum  state st;
@@ -37,8 +48,8 @@ static int   bricks_left, score, lives;
 
 /* one color per row, warm at the top -> cool at the bottom */
 static const eng_color ROW_COLOR[ROWS] = {
-	ENG_RGB(224, 64, 64),  ENG_RGB(232, 140, 44), ENG_RGB(230, 208, 52),
-	ENG_RGB(72, 200, 88),  ENG_RGB(60, 176, 224), ENG_RGB(96, 112, 232),
+	C_BRICK_RED,    C_BRICK_ORANGE, C_BRICK_YELLOW,
+	C_BRICK_GREEN,  C_BRICK_BLUE,   C_BRICK_INDIGO,
 };
 
 static int paddle_top(void) { return H - PADDLE_MARGIN - PADDLE_H; }
@@ -169,16 +180,11 @@ static void on_update(float dt)
 	}
 }
 
-static void center_text(const char *s, int y, int px, eng_color c)
-{
-	eng_text((W - eng_text_width(px, s)) / 2, y, px, c, s);
-}
-
 static void on_draw_background(void)      /* breakout uses no scene nodes: it draws everything here */
 {
 	char buf[32];
 
-	eng_clear(ENG_RGB(15, 15, 28));
+	eng_clear(C_BG);
 
 	for (int r = 0; r < ROWS; r++)
 		for (int c = 0; c < COLS; c++) {
@@ -188,28 +194,28 @@ static void on_draw_background(void)      /* breakout uses no scene nodes: it dr
 			eng_rect_fill(x0, y0, brick_w, BRICK_H, ROW_COLOR[r]);
 		}
 
-	eng_rect_fill((int)paddle_x, paddle_top(), PADDLE_W, PADDLE_H, ENG_RGB(232, 232, 244));
+	eng_rect_fill((int)paddle_x, paddle_top(), PADDLE_W, PADDLE_H, C_PADDLE);
 	if (st == S_SERVE || st == S_PLAY)
 		eng_rect_fill((int)ball_x, (int)ball_y, BALL, BALL, ENG_WHITE);
 
 	snprintf(buf, sizeof buf, "SCORE %d", score);
 	eng_text(MARGIN_X, 20, 30, ENG_WHITE, buf);
 	snprintf(buf, sizeof buf, "LIVES %d", lives);
-	eng_text(W - MARGIN_X - eng_text_width(30, buf), 20, 30, ENG_WHITE, buf);
+	eng_text_aligned(W - MARGIN_X, 20, 30, ENG_WHITE, ENG_ALIGN_RIGHT, buf);
 
 	if (st == S_TITLE) {
-		center_text("BREAKOUT", H / 2 - 90, 100, ENG_RGB(230, 208, 52));
-		center_text("PRESS START", H / 2 + 40, 40, ENG_WHITE);
+		eng_text_aligned(W/2, H / 2 - 90, 100, C_BRICK_YELLOW, ENG_ALIGN_CENTER, "BREAKOUT");
+		eng_text_aligned(W/2, H / 2 + 40, 40, ENG_WHITE, ENG_ALIGN_CENTER, "PRESS START");
 	} else if (st == S_OVER) {
-		center_text("GAME OVER", H / 2 - 80, 84, ENG_RGB(224, 64, 64));
+		eng_text_aligned(W/2, H / 2 - 80, 84, C_BRICK_RED, ENG_ALIGN_CENTER, "GAME OVER");
 		snprintf(buf, sizeof buf, "SCORE %d", score);
-		center_text(buf, H / 2 + 20, 44, ENG_WHITE);
-		center_text("PRESS START", H / 2 + 84, 30, ENG_RGB(180, 180, 200));
+		eng_text_aligned(W/2, H / 2 + 20, 44, ENG_WHITE, ENG_ALIGN_CENTER, buf);
+		eng_text_aligned(W/2, H / 2 + 84, 30, C_HINT, ENG_ALIGN_CENTER, "PRESS START");
 	} else if (st == S_WIN) {
-		center_text("YOU WIN!", H / 2 - 80, 84, ENG_RGB(72, 200, 88));
+		eng_text_aligned(W/2, H / 2 - 80, 84, C_BRICK_GREEN, ENG_ALIGN_CENTER, "YOU WIN!");
 		snprintf(buf, sizeof buf, "SCORE %d", score);
-		center_text(buf, H / 2 + 20, 44, ENG_WHITE);
-		center_text("PRESS START", H / 2 + 84, 30, ENG_RGB(180, 180, 200));
+		eng_text_aligned(W/2, H / 2 + 20, 44, ENG_WHITE, ENG_ALIGN_CENTER, buf);
+		eng_text_aligned(W/2, H / 2 + 84, 30, C_HINT, ENG_ALIGN_CENTER, "PRESS START");
 	}
 }
 

@@ -20,10 +20,19 @@ enum { S_TITLE, S_PLAY, S_WIN };
 #define COYOTE_T 0.10f            /* jump still allowed this long after leaving the ground */
 #define JBUF_T   0.10f            /* a jump press is remembered this long */
 
+/* palette */
+#define C_TILE_GRASS   ENG_RGB(84, 120, 64)    /* # solid grass tile */
+#define C_TILE_WOOD    ENG_RGB(150, 124, 96)   /* = solid wood tile */
+#define C_SKY          ENG_RGB(110, 170, 230)  /* background sky fill */
+#define C_TITLE        ENG_RGB(40, 40, 60)     /* title text */
+#define C_TITLE_PROMPT ENG_RGB(20, 20, 30)     /* "PRESS START" on the title screen */
+#define C_WIN          ENG_RGB(60, 180, 90)    /* "YOU WIN!" text */
+#define C_WIN_PROMPT   ENG_RGB(230, 230, 240)  /* "PRESS START" on the win screen */
+
 /* Level tiles: '#'/'=' are solid, colored below. The level itself loads from a DATA FILE
  * (platformer/level1.tmj, painted in Tiled) — design lives in data, not code. */
 static const char      TILE_KEYS[]   = "#=";
-static const eng_color TILE_COLORS[] = { ENG_RGB(84, 120, 64), ENG_RGB(150, 124, 96) };  /* # grass, = wood */
+static const eng_color TILE_COLORS[] = { C_TILE_GRASS, C_TILE_WOOD };  /* # grass, = wood */
 
 static int        st, W, H;
 static int        coins, total_coins;
@@ -142,25 +151,20 @@ static void on_update(float dt)
 
 static void on_draw_background(void)      /* immediate, behind the scene layers */
 {
-	eng_clear(ENG_RGB(110, 170, 230));    /* sky */
-}
-
-static void center(const char *s, int y, int px, eng_color c)
-{
-	eng_text((W - eng_text_width(px, s)) / 2, y, px, c, s);
+	eng_clear(C_SKY);    /* sky */
 }
 
 static void on_draw_overlay(void)         /* title / win text, above everything */
 {
 	char buf[32];
 	if (st == S_TITLE) {
-		center("PLATFORMER", H / 2 - 70, 84, ENG_RGB(40, 40, 60));
-		center("PRESS START", H / 2 + 30, 36, ENG_RGB(20, 20, 30));
+		eng_text_aligned(W/2, H / 2 - 70, 84, C_TITLE, ENG_ALIGN_CENTER, "PLATFORMER");
+		eng_text_aligned(W/2, H / 2 + 30, 36, C_TITLE_PROMPT, ENG_ALIGN_CENTER, "PRESS START");
 	} else if (st == S_WIN) {
-		center("YOU WIN!", H / 2 - 70, 84, ENG_RGB(60, 180, 90));
+		eng_text_aligned(W/2, H / 2 - 70, 84, C_WIN, ENG_ALIGN_CENTER, "YOU WIN!");
 		snprintf(buf, sizeof buf, "COINS %d/%d", coins, total_coins);
-		center(buf, H / 2 + 16, 40, ENG_WHITE);
-		center("PRESS START", H / 2 + 72, 30, ENG_RGB(230, 230, 240));
+		eng_text_aligned(W/2, H / 2 + 16, 40, ENG_WHITE, ENG_ALIGN_CENTER, buf);
+		eng_text_aligned(W/2, H / 2 + 72, 30, C_WIN_PROMPT, ENG_ALIGN_CENTER, "PRESS START");
 	}
 }
 
