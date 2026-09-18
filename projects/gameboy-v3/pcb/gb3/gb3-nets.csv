@@ -797,7 +797,7 @@ R37,2,2,GND,
 Audio1,1,1,GND,"[DS confirmed via CUI SJ-3524-SMT std pinout] jack sleeve -> GND (pin1=sleeve, independent contact)"
 Audio1,2,2,HP_L,"[DS confirmed] tip = left = TPA OUTL (pin2=tip; {2,4}=tip+tip-switch are the one NC pair)"
 Audio1,3,3,HP_R,"[DS confirmed] ring = right = TPA OUTR (pin3=ring, independent contact)"
-Audio1,4,4,JACK_DET,"[DS confirmed] pin4 = tip-switch (NC to tip pin2 when unplugged, opens on insert) -> JACK_DET GPIO PE12; pull direction is firmware/DTS detail"
+Audio1,4,4,JACK_DET,"[DS confirmed] pin4 = tip-switch, NC to tip(pin2=HP_L=TPA6132 OUTL) when unplugged, opens on insert -> JACK_DET PE12. CAVEAT (not purely SW): detect is normalled to the LIVE amp output, not a fixed level. If TPA6132 DirectPath OUTL is hi-Z in shutdown, a PE12 pull-up reads 'inserted' when actually unplugged. This 4-pin jack has ONLY a tip switch (no sleeve/ground-normalling contact) so detect cannot be rerouted to GND. Bench-check OUTL shutdown state on breakout, or only sample detect with amp enabled."
 R38,1,1,BL_LED_N,"backlight Rset 5.1R (C137955) FB(BL_LED_N)->GND, 200mV/5.1R=39mA"
 R38,2,2,GND,
 R39,1,1,PANEL_DISP,[AUDIT #116] 10k DISP pull-up -> +3V3 (BOM.md line 64 requires it)
