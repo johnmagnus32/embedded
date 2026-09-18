@@ -3,7 +3,7 @@
 # by engine.mk, so laziness is declared, not an inline `if MEDIA=sd`.
 PKG_NAME=image
 PKG_CLASS=image
-PKG_FILEDEPS="${MACHINE_DIR}"   # genimage.cfg + boot.cmd + machine.conf (NOR/DRAM/console) — build inputs the recipehash must catch
+PKG_FILEDEPS="${LAYER_FILES} ${MACHINE_CONF}"   # genimage.cfg + boot.cmd + machine.conf (NOR/DRAM/console) — build inputs the recipehash must catch
 
 PKG_HOST_DEPENDS=
 PKG_HOST_DEPENDS_sd=genimage
@@ -94,15 +94,15 @@ emit_sd_img() {
   if [ "${PROVIDER_bootloader}" = u-boot ]; then
     # U-Boot's distro_bootcmd auto-runs /boot.scr (the custom loader ignores it, so stage only here).
     local MKIMAGE="${OUTPUT_DIR}/mkimage"
-    "$MKIMAGE" -C none -A arm -T script -d "${MACHINE_DIR}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
+    "$MKIMAGE" -C none -A arm -T script -d "${LAYER_FILES}/boot.cmd" "${ROOT}/boot.scr" >/dev/null
   fi
 
   # Raw @8 KiB bootloader -> the name genimage.cfg references. BL_ARTIFACT is each provider's
   # primary artifact (custom eGON | u-boot-sunxi-with-spl), so no per-provider branch.
   cp -f "$BL_ARTIFACT" "${IN}/sdboot.bin"
 
-  log "assembling SD image via genimage (${MACHINE_DIR##*/}/genimage.cfg)"
-  "${GENIMAGE}" --config "${MACHINE_DIR}/genimage.cfg" \
+  log "assembling SD image via genimage (${LAYER_FILES}/genimage.cfg)"
+  "${GENIMAGE}" --config "${LAYER_FILES}/genimage.cfg" \
                 --inputpath "${IN}" --rootpath "${ROOT}" \
                 --tmppath "${TMP}" --outputpath "${OUTPUT_DIR}" >/dev/null \
     || die "genimage failed"

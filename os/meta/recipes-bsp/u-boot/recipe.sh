@@ -6,7 +6,7 @@
 PKG_NAME=uboot
 PKG_CLASS=target
 PKG_PROVIDES=virtual/bootloader
-PKG_FILEDEPS="${MACHINE_DIR}"   # DT overlays + machine.conf fragments — a build input the recipehash must catch
+PKG_FILEDEPS="${DEVICETREE_DIR} ${LAYER_FILES} ${MACHINE_CONF}"   # DT overlays + u-boot config fragments + machine.conf — build inputs the recipehash must catch
 PKG_DEPLOY="u-boot-sunxi-with-spl.bin:bootloader.bin u-boot.bin:fel-loader.bin tools/mkimage:mkimage"
 
 PKG_FETCH=git
@@ -58,9 +58,12 @@ do_build() {
   log "restoring pristine board DTS"
   git checkout -- "${BOARD_DTS_REL}"
 
-  # Fragment order is load-bearing: provider no-tools FIRST, then the board's CONS_INDEX + SPI-NOR
-  # (within uboot-machine.config MTD must precede SPI_FLASH — its menu is `if MTD`).
-  local _UBOOT_FRAGMENTS="${RECIPE_DIR}/uboot-notools.config ${UBOOT_CONFIG_FRAGMENTS}"
+  # Fragment order is load-bearing: provider no-tools FIRST (lives beside this recipe), then the
+  # board's CONS_INDEX + SPI-NOR fragment(s) from machine.conf — bare filenames resolved against
+  # LAYER_FILES/ (recipes-bsp/u-boot/files/). Within uboot.config MTD must precede SPI_FLASH — its
+  # menu is `if MTD`.
+  local _UBOOT_FRAGMENTS="${RECIPE_DIR}/uboot-notools.config" f
+  for f in ${UBOOT_CONFIG_FRAGMENTS:-}; do _UBOOT_FRAGMENTS="${_UBOOT_FRAGMENTS} ${LAYER_FILES}/${f}"; done
   ufixup() {
     local f
     for f in ${_UBOOT_FRAGMENTS}; do
@@ -80,7 +83,7 @@ do_build() {
   local ov
   for ov in ${UBOOT_DTB_OVERLAYS}; do
     log "applying u-boot DT overlay: ${ov}"
-    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${MACHINE_DIR}" "${BOARD_DTS_DIR_REL}" \
+    apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${DEVICETREE_DIR}" "${BOARD_DTS_DIR_REL}" \
       || die "failed to apply DT overlay ${ov}"
   done
 

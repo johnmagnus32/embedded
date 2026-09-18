@@ -7,7 +7,7 @@
 PKG_NAME=linux
 PKG_CLASS=target
 PKG_PROVIDES=virtual/kernel
-PKG_FILEDEPS="${MACHINE_DIR}"   # DT overlays + machine.conf (defconfig/console/DTB) — a build input the recipehash must catch
+PKG_FILEDEPS="${DEVICETREE_DIR} ${LAYER_FILES} ${MACHINE_CONF}"   # DT overlays + kernel config fragments + machine.conf (defconfig/console/DTB) — build inputs the recipehash must catch
 PKG_DEPLOY="arch/arm/boot/zImage:zImage"   # the board DTB (if any) is deployed by do_deploy below
 
 PKG_FETCH=git
@@ -58,18 +58,19 @@ do_build() {
 
   # kconfig_configure: `make <defconfig>` -> fixup -> olddefconfig. verify_config_fragment then
   # asserts each forced symbol stuck — olddefconfig can silently drop one.
+  # KERNEL_CONFIG_FRAGMENTS are bare filenames from machine.conf; resolve each against LAYER_FILES/.
   kfixup() {
     local f
     for f in ${KERNEL_CONFIG_FRAGMENTS:-}; do
-      log "applying kernel config fragment: ${f#${REPO_ROOT}/}"
-      apply_config_fragment "${f}" || return 1
+      log "applying kernel config fragment: ${f}"
+      apply_config_fragment "${LAYER_FILES}/${f}" || return 1
     done
   }
   log "make ${KERNEL_DEFCONFIG}${KERNEL_CONFIG_FRAGMENTS:+ + config fragments}"
   kconfig_configure "${KERNEL_DEFCONFIG}" kfixup
   local f
   for f in ${KERNEL_CONFIG_FRAGMENTS:-}; do
-    verify_config_fragment "${f}" || die "kernel config fragment did not stick: ${f}"
+    verify_config_fragment "${LAYER_FILES}/${f}" || die "kernel config fragment did not stick: ${f}"
   done
 
   local JOBS; JOBS="$(nproc)"
@@ -85,7 +86,7 @@ do_build() {
     local ov
     for ov in ${KERNEL_DTB_OVERLAYS:-}; do
       log "applying kernel DT overlay: ${ov}"
-      apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${MACHINE_DIR}" "${BOARD_DTS_DIR_REL}" \
+      apply_dtsi_overlay "${BOARD_DTS_REL}" "${ov}" "${DEVICETREE_DIR}" "${BOARD_DTS_DIR_REL}" \
         || die "failed to apply DT overlay ${ov}"
     done
     log "building ${KERNEL_IMAGE_TARGET} + DTB (-j${JOBS}) ..."

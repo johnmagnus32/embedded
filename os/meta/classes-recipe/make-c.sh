@@ -9,11 +9,11 @@
 # provisioned PKG_HOST_DEPENDS before this recipe ran). Inputs the tasks read (from the
 # runner + engine.sh + machine.conf): PKG_SRC_DIR (the `make -C` target), RECIPE
 # (kernel|bootloader — selects the kernel's BOARD= pass), KERNEL_TARGET, PKG_MAKE_GOALS ("all fel"),
-# OUTPUT_DIR/KERNEL_DTB/KERNEL_DTB_OVERLAYS/UBOOT_BOARD_DT/MACHINE_DIR (kernel DTB step).
+# OUTPUT_DIR/KERNEL_DTB/KERNEL_DTB_OVERLAYS/UBOOT_BOARD_DT/DEVICETREE_DIR/MACHINE_CONF (kernel DTB step).
 
-# Board files (DTB overlays + machine.conf targets) are a build input outside the recipe dir + source, so
-# declare them for the recipehash (Yocto file-checksums) — the engine names no board.
-PKG_FILEDEPS="${MACHINE_DIR}"
+# Board files (DT overlays in the shared DEVICETREE_DIR pool + machine.conf) are a build input outside
+# the recipe dir + source, so declare them for the recipehash (Yocto file-checksums) — the engine names no board.
+PKG_FILEDEPS="${DEVICETREE_DIR} ${MACHINE_CONF}"
 
 # do_build — one `make -C PKG_SRC_DIR` per goal (empty goal list => default goal). Passes
 # BOARD=<target> only for the kernel, whose Makefile keys off it.
@@ -56,7 +56,7 @@ do_deploy() {
   : "${KERNEL_DTB:?make-c do_deploy: KERNEL_DTB unset (machine.conf)}"
   mkdir -p "${OUTPUT_DIR}"
   local make_vars="BOARD=${KERNEL_TARGET}" dtb_overlays="" ov
-  for ov in ${KERNEL_DTB_OVERLAYS:-}; do dtb_overlays="${dtb_overlays} ${MACHINE_DIR}/${ov}"; done
+  for ov in ${KERNEL_DTB_OVERLAYS:-}; do dtb_overlays="${dtb_overlays} ${DEVICETREE_DIR}/${ov}"; done
   log "make -C ${PKG_SRC_DIR##*/} dtb -> ${OUTPUT_DIR}/${KERNEL_DTB}"
   # shellcheck disable=SC2086
   make --no-print-directory -C "${PKG_SRC_DIR}" dtb ${make_vars} \

@@ -76,10 +76,14 @@ load_config() {
     esac
   done < "${conf}"
 
-  # machine.conf references ${MACHINE_DIR}, so set it first. Not exported — recipes read it in-shell.
-  MACHINE_DIR="${PRODUCT_DIR}/machine/${MACHINE}"
+  # Machine config now lives in conf/machine/<machine>.conf (Yocto layer shape); the BSP files it
+  # references are scattered into recipes-*/files/ pools, resolved by the recipes via DEVICETREE_DIR
+  # (the shared DT-overlay pool used by kernel + u-boot + make-c) + each recipe's own LAYER_FILES
+  # (set in load_env). Not exported — recipes read these in-shell.
+  MACHINE_CONF="${PRODUCT_DIR}/conf/machine/${MACHINE}.conf"
+  DEVICETREE_DIR="${PRODUCT_DIR}/recipes-bsp/device-tree/files"
   # shellcheck source=/dev/null
-  [ -f "${MACHINE_DIR}/machine.conf" ] && source "${MACHINE_DIR}/machine.conf"
+  [ -f "${MACHINE_CONF}" ] && source "${MACHINE_CONF}"
 }
 
 # byname <name> -> its recipe.sh path (product recipes-*/ + packages/ shadow os/meta).
@@ -163,6 +167,13 @@ load_env() {
   # this recipe's build context, keyed by RECIPE / RECIPE_PATH + the link mode
   PKG_LINK="${PKG_LINK:-${LINKAGE:-static}}"
   RECIPE_DIR="$(cd "$(dirname "${RECIPE_PATH}")" && pwd)"
+  # LAYER_FILES — this recipe's product-layer files/ dir (its scattered BSP inputs). A shared recipe
+  # under os/meta/ mirrors to the product layer (recipes-kernel/linux -> ${PRODUCT_DIR}/recipes-kernel/linux/files);
+  # a product-layer recipe uses its own files/. Not exported — recipes read it in-shell.
+  case "${RECIPE_DIR}" in
+    "${OS_META}"/*) LAYER_FILES="${PRODUCT_DIR}/${RECIPE_DIR#${OS_META}/}/files" ;;  # shared recipe -> product-layer mirror
+    *)              LAYER_FILES="${RECIPE_DIR}/files" ;;                              # product-layer recipe -> its own files/
+  esac
   STAGE="${BUILD_DIR}/rootfs/stage"
   PKG_DEST="${BUILD_DIR}/rootfs/pkgstage/${RECIPE}"
   RECIPE_SCRATCH="${BUILD_DIR}/scratch/${RECIPE}"
