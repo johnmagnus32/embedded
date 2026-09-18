@@ -55,7 +55,7 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 | 30 | 1 | Boost diode | MDD SS16 | C2481 | boost | ✅ | JLC | 60 V 1 A Schottky, SMA(DO-214AC). |
 | 31 | 1 | Boost output cap (Cout) | YAGEO CC0805KKX7R9BB225 | C125847 | boost | ✅ | JLC | 2.2 µF 50 V X7R 0805 (≥1 µF after 19 V derate; ≥50 V clears OVP). |
 | 32 | 1 | Boost input cap (Cin) | CC0603KRX5R6BB475 | C109456 | at VIN (SYS) | ✅ | JLC | 4.7 µF 0603 (reuse #21). |
-| 33 | 1 | Boost FB sense R (Rset) | 5.1 Ω 1% 0402 | verify (Basic) | boost FB | ✅ | JLC | Sets 40 mA (VREF 200 mV / 5.1 Ω). Brightness knob; never exceed 40 mA. **Kelvin-route its ground to the TPS61165 GND pin.** |
+| 33 | 1 | Boost FB sense R (Rset) | YAGEO RC0402FR-075R1L | C137955 | boost FB | ✅ | JLC | Sets 40 mA (VREF 200 mV / 5.1 Ω). Brightness knob; never exceed 40 mA. **Kelvin-route its ground to the TPS61165 GND pin.** |
 | 34 | 1 | Boost COMP cap | YAGEO CC0402KRX7R7BB224 | C326590 | COMP (SOT-23 pin 5) → GND | ✅ | JLC | 220 nF 16 V X7R — **mandatory loop-comp; omit → unstable.** Place close to pin 5. |
 
 **§2 notes:**
@@ -240,11 +240,11 @@ A per-subsystem netlist-correctness audit (vs. component datasheets) found two p
 | 117 | 1 | STM6601 /PB_OUT pull-up | RC0603JR-0710KL | C99198 | /PB_OUT → 3.3 V → PE10 | ⚠️ | JLC | 10 KΩ. Levels the power-button EINT to 3.3 V; PE10 now reads /PB_OUT instead of the ~SYS PB node. refdes **R40**. See #92/#94. |
 | 118 | 2 | i2c2 pull-ups (IMU bus) | 0603WAF1501T5E | C22843 | I2C2_SCL/SDA → 3.3 V | ⚠️ | JLC | 1.5 KΩ ×2 (reuses #97 part; 2.2–4.7 K also fine). **🔴 BLOCKER: i2c2 had no pull-ups → IMU never ACKs.** refdes R41/R42. |
 
-**Also applied to `gb3-nets.csv` (net-only, NO new parts):** VCC-RTC→LDOA merge (blocker: was a dead island), SW1 `{1,3}=RESET/{2,4}=GND` (was RESET→GND short), R21 wired as a real series `VBUS_SENSE`, C19–C22 decoupling re-pointed to AVCC/HPVCC/VRA1/VRA2, and R38 = wiring the **existing #33** Rset (FB→GND, backlight blocker).
+**Also applied to `gb3-nets.csv` (net-only, NO new parts):** VCC-RTC→LDOA merge (blocker: was a dead island), SW1 pad-pairing (later corrected to `{1,2}=RESET/{3,4}=GND` per datasheet — see round 3), R21 wired as a real series `VBUS_SENSE`, C19–C22 decoupling re-pointed to AVCC/HPVCC/VRA1/VRA2, and R38 = wiring the **existing #33** Rset (FB→GND, backlight blocker).
 
 **NOT added (judged unnecessary):** MAX17048 ALRT pull-up — #77 marks ALRT optional (polled over I²C).
 
-**Still needs a copper/footprint decision (not changed here):** TS-1187A pad pairing (SW1–11), ALPS SKRT grouping (SW12–16), FPC1 touch contact-side, CN1 battery polarity, `SD_CD` routing, R1/R14 duplicate 680 k strap (DNP one), C32 10 µF on VBUS.
+**Still needs a copper/footprint decision (not changed here):** FPC1 touch contact-side, CN1 battery polarity, `SD_CD` routing, C32 10 µF on VBUS.
 
 
 ### Independent-review round 2 (applied)
@@ -253,4 +253,11 @@ A per-subsystem netlist-correctness audit (vs. component datasheets) found two p
 - **R1 DNP** — the R1/R14 duplicate 680 K mono-strap: R1 (#5) set place=no, R14 (#48) populated.
 - **OCS_Aux** pin-name fix (was OSC_AUX) on the IMU aux pin.
 
-Still open for the reviewer (not netlist-fixable): tactile/ALPS footprint pairing (SW1–16), battery current margin + PCM OCP, JACK_DET pull (enable PE12 internal pull; polarity per jack), PJ-327C-4A pad map, DRV2605L LRA clamp firmware, symbol pin counts (P1=42/FPC1=6+2, FPC1=8), FT7311 VDD headroom, AVCC 0.47–1 µF bulk (optional), and doc nits (PINOUT.md +3V3 census lists pin 107 which is 1.8 V; PCA9555 pull-up ≈33 k).
+### Datasheet-driven resolution round 3 (applied 2026-09-18)
+
+Verified against maker datasheets (C318884 TS-1187A, C127481 ALPS SKRTLBE010, C145813 PJ-327C-4A + CUI SJ-3524 as the labeled reference):
+- **TS-1187A tactiles (SW1–11)** — 🔴 the `{1,3}/{2,4}` assumption was **wrong**: A–B (pins 1,2) and C–D (pins 3,4) are the internally-common pairs, so signal was shorted to GND (RESET→GND = no boot). **Fixed to `{1,2}=signal / {3,4}=GND`.**
+- **ALPS SKRT (SW12–16)** — confirmed `{1,3}` common / `{2}` = switched pole; netlist (signal on pin 2, GND on 1/3 + lugs) is correct. No change.
+- **PJ-327C-4A jack (Audio1)** — confirmed stereo w/ tip switch: `1=sleeve, 2=tip(L), 3=ring(R), 4=tip-switch` (one NC pair {2,4}); netlist matches. Final continuity-meter check at assembly.
+
+Still open for the reviewer (not netlist-fixable): battery current margin + PCM OCP, DRV2605L LRA clamp firmware, symbol pin counts (P1=42/FPC1=6+2, FPC1=8), FT7311 VDD headroom, AVCC 0.47–1 µF bulk (optional), `GAUGE_ALRT`/`SD_CD` pull-ups, and doc nits (PINOUT.md +3V3 census lists pin 107 which is 1.8 V; PCA9555 pull-up ≈33 k). **JACK_DET** = tip-switch (firmware: enable PE12 pull-up, plugged→open→high).

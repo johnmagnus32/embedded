@@ -297,10 +297,10 @@ C43,1,1,+3V3,4.7uF general bulk on +3V3
 C43,2,2,GND,
 C44,1,1,+3V3,4.7uF general bulk on +3V3
 C44,2,2,GND,
-SW1,1,A,RESET,RESET tactile; A/B assumed common (->RESET) — verify tactile footprint pin pairing
-SW1,2,B,GND,"RESET tactile {1,3}=RESET / {2,4}=GND to match SW2-11 (FIX: was RESET->GND short). VERIFY TS-1187A footprint pairing"
-SW1,3,C,RESET,"RESET tactile {1,3}=RESET pair"
-SW1,4,D,GND,D common with C
+SW1,1,A,RESET,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW1,2,B,RESET,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW1,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW1,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
 U5,1,-,GND,power LED cathode(-) -> GND
 U5,2,+,PWR_LED_A,power LED anode(+) -> R12 junction
 R12,1,1,+3V3,510R power-LED limit off +3V3 (always-on)
@@ -576,73 +576,73 @@ U16,21,A0,GND,A0 strap=0 for I2C base addr 0x20
 U16,22,SCL,I2C1_SCL,I2C1 bus
 U16,23,SDA,I2C1_SDA,I2C1 bus
 U16,24,VCC,+3V3,rail: #85 i2c1 expander 3.3V logic
-SW2,1,A,BTN_UP,"TS-1187A tactile node = pads {1,3} (same left edge x=-3.0 => internally shorted). VERIFY vs symbol {1,2}/{3,4} (see uncertainties)"
-SW2,2,B,GND,"tactile GND node = pads {2,4} (same right edge x=+3.0)"
-SW2,3,C,BTN_UP,same node as pin1 (left-edge terminal)
-SW2,4,D,GND,same node as pin2 (right-edge terminal)
-SW3,1,A,BTN_DOWN,"tactile node pads {1,3}"
-SW3,2,B,GND,"tactile GND node pads {2,4}"
-SW3,3,C,BTN_DOWN,same node as pin1
-SW3,4,D,GND,same node as pin2
-SW4,1,A,BTN_LEFT,"tactile node pads {1,3}"
-SW4,2,B,GND,"tactile GND node pads {2,4}"
-SW4,3,C,BTN_LEFT,same node as pin1
-SW4,4,D,GND,same node as pin2
-SW5,1,A,BTN_RIGHT,"tactile node pads {1,3}"
-SW5,2,B,GND,"tactile GND node pads {2,4}"
-SW5,3,C,BTN_RIGHT,same node as pin1
-SW5,4,D,GND,same node as pin2
-SW6,1,A,BTN_A,"tactile node pads {1,3}"
-SW6,2,B,GND,"tactile GND node pads {2,4}"
-SW6,3,C,BTN_A,same node as pin1
-SW6,4,D,GND,same node as pin2
-SW7,1,A,BTN_B,"tactile node pads {1,3}"
-SW7,2,B,GND,"tactile GND node pads {2,4}"
-SW7,3,C,BTN_B,same node as pin1
-SW7,4,D,GND,same node as pin2
-SW8,1,A,BTN_X,"tactile node pads {1,3}"
-SW8,2,B,GND,"tactile GND node pads {2,4}"
-SW8,3,C,BTN_X,same node as pin1
-SW8,4,D,GND,same node as pin2
-SW9,1,A,BTN_Y,"tactile node pads {1,3}"
-SW9,2,B,GND,"tactile GND node pads {2,4}"
-SW9,3,C,BTN_Y,same node as pin1
-SW9,4,D,GND,same node as pin2
-SW10,1,A,BTN_START,"tactile node pads {1,3}"
-SW10,2,B,GND,"tactile GND node pads {2,4}"
-SW10,3,C,BTN_START,same node as pin1
-SW10,4,D,GND,same node as pin2
-SW11,1,A,BTN_SELECT,"tactile node pads {1,3}"
-SW11,2,B,GND,"tactile GND node pads {2,4}"
-SW11,3,C,BTN_SELECT,same node as pin1
-SW11,4,D,GND,same node as pin2
+SW2,1,A,BTN_UP,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW2,2,B,BTN_UP,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW2,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW2,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW3,1,A,BTN_DOWN,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW3,2,B,BTN_DOWN,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW3,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW3,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW4,1,A,BTN_LEFT,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW4,2,B,BTN_LEFT,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW4,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW4,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW5,1,A,BTN_RIGHT,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW5,2,B,BTN_RIGHT,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW5,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW5,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW6,1,A,BTN_A,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW6,2,B,BTN_A,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW6,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW6,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW7,1,A,BTN_B,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW7,2,B,BTN_B,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW7,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW7,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW8,1,A,BTN_X,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW8,2,B,BTN_X,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW8,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW8,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW9,1,A,BTN_Y,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW9,2,B,BTN_Y,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW9,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW9,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW10,1,A,BTN_START,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW10,2,B,BTN_START,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW10,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW10,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
+SW11,1,A,BTN_SELECT,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW11,2,B,BTN_SELECT,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW11,3,C,GND,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
+SW11,4,D,GND,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
 R29,1,1,EXP_INT,10k INT pull-up: to expander ~INT / EXP_INT node
 R29,2,2,+3V3,"10k INT pull-up: to +3V3 (expander logic rail, open-drain INT)"
 C67,1,1,+3V3,100nF PCA9555 VCC decoupling: rail side
 C67,2,2,GND,100nF PCA9555 VCC decoupling: GND side
-SW12,1,1,GND,"ALPS SKRT: assumed common/outer contact -> GND (VERIFY grouping, see uncertainties)"
-SW12,2,2,BTN_VOLUP,ALPS SKRT: assumed center=switched contact -> expander P12
-SW12,3,3,GND,ALPS SKRT: outer contact -> GND
+SW12,1,1,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
+SW12,2,2,BTN_VOLUP,"[DS C127481] ALPS SKRT: pin2 = switched pole (signal); {1,3} common. Confirmed"
+SW12,3,3,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
 SW12,4,4,GND,mechanical mounting lug -> GND
 SW12,5,5,GND,mechanical mounting lug -> GND
-SW13,1,1,GND,ALPS SKRT outer contact -> GND (VERIFY grouping)
-SW13,2,2,BTN_VOLDOWN,ALPS SKRT center=switched contact -> expander P13
-SW13,3,3,GND,ALPS SKRT outer contact -> GND
+SW13,1,1,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
+SW13,2,2,BTN_VOLDOWN,"[DS C127481] ALPS SKRT: pin2 = switched pole (signal); {1,3} common. Confirmed"
+SW13,3,3,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
 SW13,4,4,GND,mounting lug -> GND
 SW13,5,5,GND,mounting lug -> GND
-SW14,1,1,GND,soft-power ALPS SKRT outer contact -> GND (VERIFY grouping)
-SW14,2,2,PWR_BTN,soft-power center contact -> PWR_BTN: drives STM6601 U17 /PB(pin6) AND native T113 EINT PE10 (wake/power-on)
-SW14,3,3,GND,soft-power outer contact -> GND
+SW14,1,1,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
+SW14,2,2,PWR_BTN,"[DS C127481] ALPS SKRT: pin2 = switched pole (signal); {1,3} common. Confirmed"
+SW14,3,3,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
 SW14,4,4,GND,mounting lug -> GND
 SW14,5,5,GND,mounting lug -> GND
-SW15,1,1,GND,L bumper ALPS SKRT outer contact -> GND (VERIFY grouping)
-SW15,2,2,BTN_L1,L bumper center contact -> expander P14
-SW15,3,3,GND,L bumper outer contact -> GND
+SW15,1,1,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
+SW15,2,2,BTN_L1,"[DS C127481] ALPS SKRT: pin2 = switched pole (signal); {1,3} common. Confirmed"
+SW15,3,3,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
 SW15,4,4,GND,mounting lug -> GND
 SW15,5,5,GND,mounting lug -> GND
-SW16,1,1,GND,R bumper ALPS SKRT outer contact -> GND (VERIFY grouping)
-SW16,2,2,BTN_R1,R bumper center contact -> expander P15
-SW16,3,3,GND,R bumper outer contact -> GND
+SW16,1,1,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
+SW16,2,2,BTN_R1,"[DS C127481] ALPS SKRT: pin2 = switched pole (signal); {1,3} common. Confirmed"
+SW16,3,3,GND,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
 SW16,4,4,GND,mounting lug -> GND
 SW16,5,5,GND,mounting lug -> GND
 U17,1,VCC,SYS,rail: #94 VCC always-on SYS
@@ -794,11 +794,11 @@ C91,1,1,+3V3,"100nF VDD(14) HF decoupling, close-in"
 C91,2,2,GND,
 R37,1,1,HP_EN,100k EN pull-down (boots off until GPIO drives high)
 R37,2,2,GND,
-Audio1,1,1,GND,jack sleeve -> GND (also TPA SGND ref). VERIFY pin->function map from PJ-327C-4A maker drawing (BOM.md warns it varies)
-Audio1,2,2,HP_L,tip = left = TPA OUTL. VERIFY pin numbering from PJ-327C-4A drawing
-Audio1,3,3,HP_R,ring = right = TPA OUTR. VERIFY pin numbering
-Audio1,4,4,JACK_DET,"tip-detect switch -> GPIO PE12 (SW_HEADPHONE_INSERT), mutes speaker amp. VERIFY switch pin & sense polarity from drawing"
-R38,1,1,BL_LED_N,"ADDED backlight Rset 5.1R: FB(BL_LED_N)->GND, 200mV/5.1R=39mA (fixes missing current-set)"
+Audio1,1,1,GND,"[DS confirmed via CUI SJ-3524-SMT std pinout] jack sleeve -> GND (pin1=sleeve, independent contact)"
+Audio1,2,2,HP_L,"[DS confirmed] tip = left = TPA OUTL (pin2=tip; {2,4}=tip+tip-switch are the one NC pair)"
+Audio1,3,3,HP_R,"[DS confirmed] ring = right = TPA OUTR (pin3=ring, independent contact)"
+Audio1,4,4,JACK_DET,"[DS confirmed] pin4 = tip-switch (NC to tip pin2 when unplugged, opens on insert) -> JACK_DET GPIO PE12; pull direction is firmware/DTS detail"
+R38,1,1,BL_LED_N,"backlight Rset 5.1R (C137955) FB(BL_LED_N)->GND, 200mV/5.1R=39mA"
 R38,2,2,GND,
 R39,1,1,PANEL_DISP,[AUDIT #116] 10k DISP pull-up -> +3V3 (BOM.md line 64 requires it)
 R39,2,2,+3V3,
