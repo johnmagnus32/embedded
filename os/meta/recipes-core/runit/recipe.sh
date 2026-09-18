@@ -7,13 +7,13 @@
 # it into /etc/service/<n>/run (see the console package), which runsvdir picks up.
 PKG_NAME=runit
 PKG_CLASS=target
-PKG_PROVIDES=virtual/init
+PKG_PROVIDES=init
 PKG_FETCH=tarball
 PKG_VERSION=2.1.2
 PKG_SITE=http://smarden.org/runit
 PKG_SOURCE=runit-2.1.2.tar.gz
 PKG_SHA256=6fd0160cb0cf1207de4e66754b6d39750cff14bb0aa66ab49490992c0c47ba18
-PKG_DEPENDS=virtual/libc
+PKG_DEPENDS=libc
 
 # The tarball extracts to admin/runit-<ver>/ (base do_fetch strips one component -> runit-<ver>/).
 _runit_src() { echo "${PKG_SRC_DIR}/runit-${PKG_VERSION}/src"; }
@@ -25,7 +25,7 @@ do_build() {
   [ -d "${rsrc}" ] || die "runit: source not at ${rsrc} (tarball layout changed?)"
   cd "${rsrc}"
   local CC="${CROSS_COMPILE}gcc"
-  command -v "${CC}" >/dev/null 2>&1 || die "runit: ${CC} not on PATH (it's provisioned as a build dependency via virtual/cross-cc)"
+  command -v "${CC}" >/dev/null 2>&1 || die "runit: ${CC} not on PATH (it's provisioned as a build dependency via cross-cc)"
 
   # Cross config: first line is the command runit's DJB compile/load scripts read. Static -> the
   # binaries are self-contained in the initramfs (no ld.so needed).

@@ -21,7 +21,7 @@ do_build() {
   : "${PKG_SRC_DIR:?make-c do_build: PKG_SRC_DIR unset}"
   [ -d "${PKG_SRC_DIR}" ] || { echo "make-c: source dir not found: ${PKG_SRC_DIR}" >&2; return 1; }
   command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-    || { echo "make-c: cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via virtual/cross-cc)" >&2; return 1; }
+    || { echo "make-c: cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via cross-cc)" >&2; return 1; }
 
   local role="${RECIPE:-}"
   local make_vars=""

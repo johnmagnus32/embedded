@@ -5,7 +5,7 @@
 #   make bootloader BOOTLOADER=uboot CLEAN=1    # re-fetch the checkout from scratch, then rebuild
 PKG_NAME=uboot
 PKG_CLASS=target
-PKG_PROVIDES=virtual/bootloader
+PKG_PROVIDES=bootloader
 PKG_FILEDEPS="${DEVICETREE_DIR} ${LAYER_FILES} ${MACHINE_CONF}"   # DT overlays + u-boot config fragments + machine.conf — build inputs the recipehash must catch
 PKG_DEPLOY="u-boot-sunxi-with-spl.bin:bootloader.bin u-boot.bin:fel-loader.bin tools/mkimage:mkimage"
 
@@ -16,7 +16,7 @@ PKG_GIT_CHECKOUT=u-boot
 PKG_VERSION=v2026.04
 
 # Declared only here → the python venv is provisioned iff U-Boot is in the build.
-PKG_HOST_DEPENDS="virtual/cross-cc binman-venv"
+PKG_HOST_DEPENDS="cross-cc binman-venv"
 
 inherit kconfig
 inherit devicetree
@@ -25,7 +25,7 @@ do_build() {
   # base's do_fetch already cloned/reused the pinned checkout into PKG_SRC_DIR.
   command -v git >/dev/null 2>&1 || die "git not found"
   command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-    || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via virtual/cross-cc)"
+    || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via cross-cc)"
   # dtc is intentionally absent — U-Boot builds its own.
   local t
   for t in bison flex bc swig; do

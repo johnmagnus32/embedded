@@ -8,7 +8,7 @@
 # the URL is just availability).
 
 # (the cross triple / PKG_HOST_CC_PREFIX lives in each stage recipe now — resolve.mk reads it via
-#  _field on the selected virtual/cross-cc provider, so it must be a recipe field, not a shared .inc one.)
+#  _field on the selected cross-cc provider, so it must be a recipe field, not a shared .inc one.)
 # arch baseline (T113 Cortex-A7, hard-float VFP). Board-independent — per-board -mgeneral-regs-only is
 # a package COMPILE flag (ROOTFS_ARCH_FLAGS), not a toolchain-build one, so one toolchain serves all boards.
 PKG_TC_CPU=cortex-a7

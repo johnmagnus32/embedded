@@ -1,15 +1,4 @@
-# Build tree: toolchain, downloaded tarballs, and all build outputs.
-# Everything here is reproducible from scripts/ + pinned versions in env.sh,
-# so none of it belongs in git.
-/build/
-
-# Custom bootloader build output (reproducible from bootloader/ sources).
-/bootloader/build/
-
-# Custom kernel build output (reproducible from kernel/ sources).
-/kernel/build/
-
-# Compiled bring-up/bench tools — rebuild from tools/*.c on demand (not shipped in the product).
-/overlay/usr/bin/fbtest
-/overlay/usr/bin/touchtest
-/overlay/usr/bin/touchpaint
+# Build trees (toolchain, downloaded tarballs, all outputs) — reproducible from the recipes/sources +
+# pinned versions, so none of it belongs in git.
+/image/build/    # the OS image build (the engine's PRODUCT_DIR workspace)
+/build/          # the host console-app build (src/Makefile -> build/sim, used by run-sim.sh)

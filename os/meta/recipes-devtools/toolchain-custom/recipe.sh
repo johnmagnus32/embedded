@@ -10,7 +10,7 @@
 #   arm-forge-custom-{ar,as,ld}                      prefixed names build.sh / make-c invoke
 PKG_NAME=toolchain-custom
 PKG_CLASS=cross
-PKG_PROVIDES="virtual/cross-cc virtual/cross-cc-initial"         # our tools are BOTH stages (no bootstrap split — no foreign libc to build against)
+PKG_PROVIDES="cross-cc cross-cc-initial"         # our tools are BOTH stages (no bootstrap split — no foreign libc to build against)
 PKG_FETCH=local
 PKG_SOURCE=toolchain                 # REPO_ROOT/toolchain — the five tool sources + the forge-cc driver
 PKG_HOST_DEST=${BUILD_DIR}/toolchain-custom

@@ -14,5 +14,5 @@ endef
 $(foreach r,$(_RECIPES),$(eval $(call _recipe,$(r))))
 
 .PHONY: clean $(_RECIPES)
-clean: ; rm -rf $(PRODUCT_DIR)/build$(if $(CONFIG),/$(CONFIG))
+clean: ; rm -rf $(PRODUCT_DIR)/build$(if $(MACHINE),/$(MACHINE))
 .DEFAULT_GOAL := image

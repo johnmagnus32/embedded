@@ -7,7 +7,7 @@ PKG_FILEDEPS="${LAYER_FILES} ${MACHINE_CONF}"   # genimage.cfg + boot.cmd + mach
 
 PKG_HOST_DEPENDS=
 PKG_HOST_DEPENDS_sd=genimage
-PKG_DEPENDS="virtual/kernel virtual/bootloader rootfs"
+PKG_DEPENDS="kernel bootloader rootfs"
 PKG_FETCH=none
 require ${OS_META}/recipes-core/image-naming.inc   # CFG + ROOTFS_TAG + INITRAMFS_IMAGE (shared with rootfs)
 

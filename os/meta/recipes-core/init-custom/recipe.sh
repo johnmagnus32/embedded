@@ -4,10 +4,10 @@
 # signalfd/timerfd/epoll); the minimal kernel-agnostic PID-1 is INIT=shell.
 PKG_NAME=init
 PKG_CLASS=target
-PKG_PROVIDES=virtual/init
+PKG_PROVIDES=init
 PKG_FETCH=local
 PKG_SOURCE=init                        # top-level init/ (relative to REPO_ROOT)
-PKG_DEPENDS=virtual/libc                       # link the selected libc + rebuild on its change
+PKG_DEPENDS=libc                       # link the selected libc + rebuild on its change
 
 do_build() {
   : "${PKG_SRC_DIR:?init do_build: PKG_SRC_DIR unset}"; : "${RECIPE_SCRATCH:?}"

@@ -6,7 +6,7 @@ PKG_CLASS=image
 # PKG_DEPENDS mirrors what the rootfs assembles (init + the selected PACKAGES), so the dep graph +
 # recipehash fold match. Quoted: PACKAGES may be several space-separated names, and an unquoted RHS
 # would run all but the first as a command.
-PKG_DEPENDS="virtual/init ${PACKAGES}"
+PKG_DEPENDS="init ${PACKAGES}"
 PKG_FETCH=none
 PKG_HOST_DEPENDS=gen_init_cpio          # the newc-cpio writer
 require ${OS_META}/recipes-core/image-naming.inc   # ROOTFS_TAG + INITRAMFS_IMAGE (shared with image)

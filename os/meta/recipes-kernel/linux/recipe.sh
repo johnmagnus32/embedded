@@ -6,7 +6,7 @@
 #   make kernel KERNEL=mainline CLEAN=1   # re-fetch the checkout from scratch, then rebuild
 PKG_NAME=linux
 PKG_CLASS=target
-PKG_PROVIDES=virtual/kernel
+PKG_PROVIDES=kernel
 PKG_FILEDEPS="${DEVICETREE_DIR} ${LAYER_FILES} ${MACHINE_CONF}"   # DT overlays + kernel config fragments + machine.conf (defconfig/console/DTB) — build inputs the recipehash must catch
 PKG_DEPLOY="arch/arm/boot/zImage:zImage"   # the board DTB (if any) is deployed by do_deploy below
 
@@ -16,7 +16,7 @@ PKG_GIT_URL_MIRROR=https://github.com/gregkh/linux.git
 PKG_GIT_CHECKOUT=linux
 PKG_VERSION=v6.12.95
 
-PKG_HOST_DEPENDS=virtual/cross-cc
+PKG_HOST_DEPENDS=cross-cc
 
 inherit kconfig
 inherit devicetree
@@ -25,7 +25,7 @@ do_build() {
   # base's do_fetch already cloned/reused the pinned checkout into PKG_SRC_DIR.
   command -v git >/dev/null 2>&1 || die "git not found"
   command -v "${CROSS_COMPILE}gcc" >/dev/null 2>&1 \
-    || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via virtual/cross-cc)"
+    || die "cross compiler '${CROSS_COMPILE}gcc' not on PATH (it's provisioned as a build dependency via cross-cc)"
   # libelf headers are needed for objtool/CONFIG_UNWINDER.
   local t
   for t in bc bison flex perl gzip; do

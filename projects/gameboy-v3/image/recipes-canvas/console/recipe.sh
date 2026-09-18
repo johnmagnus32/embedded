@@ -16,7 +16,7 @@ PKG_CLASS=target
 
 PKG_FETCH=local
 PKG_SOURCE=projects/gameboy-v3/src     # relative to REPO_ROOT (the git root)
-PKG_DEPENDS=virtual/libc                       # link the selected libc + rebuild on its change
+PKG_DEPENDS=libc                       # link the selected libc + rebuild on its change
 PKG_INSTALL=/usr/bin
 PKG_ARTIFACT=stage:                    # artifact = this package's pkgstage dir (cacheable)
 

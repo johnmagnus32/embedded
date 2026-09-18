@@ -5,7 +5,7 @@
 # supervisor is INIT=custom (built from init/).
 PKG_NAME=shell-init
 PKG_CLASS=target
-PKG_PROVIDES=virtual/init
+PKG_PROVIDES=init
 PKG_FETCH=none
 
 do_build() { :; }

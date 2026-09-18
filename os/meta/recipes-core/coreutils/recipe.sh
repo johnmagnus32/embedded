@@ -4,6 +4,6 @@ PKG_NAME=coreutils
 PKG_CLASS=target
 PKG_FETCH=local
 PKG_SOURCE=coreutils
-PKG_DEPENDS=virtual/libc
+PKG_DEPENDS=libc
 inherit compile-c
 PKG_INSTALL=/bin
