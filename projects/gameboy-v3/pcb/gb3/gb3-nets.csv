@@ -24,7 +24,7 @@ U1,22,DXOUT,HOSC_OUT,DXOUT → 24MHz crystal X1 + load cap C4
 U1,23,DXIN,HOSC_IN,DXIN → 24MHz crystal X1 + load cap C3
 U1,24,X32KOUT,RTC_OUT,X32KOUT → 32.768kHz crystal X2 + load cap C6
 U1,25,X32KIN,RTC_IN,X32KIN → 32.768kHz crystal X2 + load cap C5
-U1,26,VCC-RTC,VCC_RTC,VCC-RTC 1.8V (datasheet Table 5-2); RESET pull-up lands here (NOT +3V3). On breakout grouped with LDOA rail — VCC_RTC and LDOA may be same 1.8V copper. VERIFY vs t113-breakout
+U1,26,VCC-RTC,LDOA,VCC-RTC 1.8V INPUT merged onto LDOA 1.8V rail (FIX: was floating VCC_RTC island -> RTC unpowered + RESET pull-up on dead rail). Matches breakout.
 U1,27,RESET,RESET,RESET (low-active) → reset btn R22? + 100nF + 10K pull-up to VCC_RTC(1.8V)
 U1,28,LDOA-OUT,LDOA,LDOA-OUT internal 1.8V regulator output (1.764/1.8/1.836) + bypass cap→GND; source of the 1.8V rail feeding VCC-PLL/VCC-LVDS/VDD18-DRAM/VCC-TVIN. VERIFY vs t113-breakout
 U1,29,LDO-IN,+3V3,"LDO-IN internal LDOA/B input, 2.4/3.3/3.6V → 3.3V rail"
@@ -35,7 +35,7 @@ U1,33,PE3,UART0_RX,PE3 UART0-RX (console)
 U1,34,VCC-PE,+3V3,"VCC-PE — PE-bank I/O supply, 3.3V"
 U1,35,PE2,UART0_TX,PE2 UART0-TX (console)
 U1,36,PE11,PSHOLD,PE11 → STM6601 PSHOLD (gpio-poweroff handshake)
-U1,37,PE10,PWR_BTN,PE10 → power button / STM6601 PB; must be wakeup-capable EINT (verify)
+U1,37,PE10,PWR_BTN_3V3,[AUDIT] PE10 <- STM6601 /PB_OUT via #117 pull-up (was raw PWR_BTN idling ~SYS on a 3.3V pin)
 U1,38,PE9,TOUCH_RST,PE9 → touch FFC → FT7311 reset
 U1,39,PE8,TOUCH_INT,PE8 → touch FFC → FT7311 INT
 U1,40,PE7,EXP_INT,PE7 → PCA9555 INT + pull-up
@@ -206,7 +206,7 @@ R9,2,2,+3V3,
 R10,1,1,SD_D3,10k SD pull-up
 R10,2,2,+3V3,
 R11,1,1,RESET,10k RESET pull-up
-R11,2,2,VCC_RTC,"pull-up rail = 1.8V VCC-RTC, NOT 3V3 (RESET buffer abs-max 2.16V) per PINOUT pin27/BOM #14"
+R11,2,2,LDOA,RESET pull-up to 1.8V rail LDOA (FIX: was VCC_RTC island)
 X1,1,OSC1,HOSC_IN,"24MHz xtal OSC1 -> T113 DXIN (pin23); crystal symmetric, polarity must match U1"
 X1,2,GND,GND,ground family
 X1,3,OSC2,HOSC_OUT,OSC2 -> T113 DXOUT (pin22)
@@ -245,13 +245,13 @@ C17,1,1,+0V9,100nF +0V9 ball decoupling
 C17,2,2,GND,
 C18,1,1,+0V9,100nF +0V9 ball decoupling
 C18,2,2,GND,
-C19,1,1,LDOA,100nF internal LDO-A bypass (balls 20/26/28/50/65/89/97); dict: LDOA-OUT net
+C19,1,1,AVCC,100nF bypass AVCC internal ALDO (GPADC0 ref) -> GND (reassigned from LDOA; +1uF bulk recommended)
 C19,2,2,GND,
-C20,1,1,LDOA,100nF LDO-A bypass
+C20,1,1,HPVCC,100nF bypass HPVCC internal HPLDO -> GND (reassigned from LDOA)
 C20,2,2,GND,
-C21,1,1,LDOA,100nF LDO-A bypass
+C21,1,1,VRA1,100nF bypass codec VRA1 ref -> GND (reassigned from LDOA; PINOUT open-item 6)
 C21,2,2,GND,
-C22,1,1,LDOA,100nF LDO-A bypass
+C22,1,1,VRA2,100nF bypass codec VRA2 ref -> GND (reassigned from LDOA; PINOUT open-item 6)
 C22,2,2,GND,
 C23,1,1,LDOA,100nF LDO-A bypass
 C23,2,2,GND,
@@ -298,8 +298,8 @@ C43,2,2,GND,
 C44,1,1,+3V3,4.7uF general bulk on +3V3
 C44,2,2,GND,
 SW1,1,A,RESET,RESET tactile; A/B assumed common (->RESET) — verify tactile footprint pin pairing
-SW1,2,B,RESET,B common with A
-SW1,3,C,GND,C common with D (-> GND); button shorts RESET->GND when pressed
+SW1,2,B,GND,"RESET tactile {1,3}=RESET / {2,4}=GND to match SW2-11 (FIX: was RESET->GND short). VERIFY TS-1187A footprint pairing"
+SW1,3,C,RESET,"RESET tactile {1,3}=RESET pair"
 SW1,4,D,GND,D common with C
 U5,1,-,GND,power LED cathode(-) -> GND
 U5,2,+,PWR_LED_A,power LED anode(+) -> R12 junction
@@ -380,7 +380,7 @@ U7,6,GND,GND,ground family
 U7,7,GND,GND,ground family
 U7,8,VDD,+3V3,rail: IMU 3.3V (REVIEW: rail not explicit)
 U7,9,INT2,IMU_INT2,"INT2 → T113 PE1 EINT (programmable, no tie)"
-U7,10,OSC_AUX,,"spare/NC: OCS_Aux, DS says leave unconnected in Mode 1; do NOT tie (could perturb aux path)"
+U7,10,OCS_Aux,,"[AUDIT] pin-name fix (was OSC_AUX). aux SPI CS, unused -> NC/GND per BOM #35"
 U7,11,SDO_AUX,,"spare/NC: SDO_Aux, left unconnected (DS allows tie to VDDIO as alternative — either valid)"
 U7,12,CS,+3V3,CS high selects I2C mode (BOM #38); ties to VDDIO = +3V3
 U7,13,SCL,I2C2_SCL,I2C2 bus
@@ -468,7 +468,7 @@ U11,4,DP,,spare/NC: DP unused — design requests fixed 5V via CC/CFG only; lega
 U11,5,DM,,spare/NC: DM unused — see pin 4
 U11,6,CC2,USBC_CC2,CH224K CC2 <-> USB-C connector CC2 (no external 5.1k CC pulldowns)
 U11,7,CC1,USBC_CC1,CH224K CC1 <-> USB-C connector CC1
-U11,8,VBUS,+5V,rail: #61 USB-C 5V rail sense
+U11,8,VBUS,VBUS_SENSE,CH224K VBUS sense node via R21 series-R from +5V (FIX: was degenerate +5V)
 U11,9,CFG1,CH224K_CFG1,CFG1 -> R20 10k -> +5V = request 5V (with CFG2/CFG3=GND)
 U11,10,PG,,spare/NC: PG power-good open-drain; BOM says leave open (optional pull-up to +3V3 for adapter-present)
 U11,11,GND,GND,ground family
@@ -479,7 +479,7 @@ C58,2,2,GND,
 R20,1,1,CH224K_CFG1,CFG1 strap 10k
 R20,2,2,+5V,CFG1 pulled to VBUS(+5V) = 5V request
 R21,1,1,+5V,VBUS-sense R (to U11 pin8 which is committed +5V)
-R21,2,2,+5V,"DEGENERATE: BOM #65 intends R21 as a series hi-Z VBUS sense R between +5V rail and CH224K VBUS pin8, but pin8 is pre-committed = +5V, so both ends are +5V. To honor the sense-R intent, pin8 should be a separate VBUS_SENSE node fed only via R21. VERIFY"
+R21,2,2,VBUS_SENSE,series VBUS-sense: +5V -> R21 -> VBUS_SENSE(U11.8)
 U12,1,VINA,SYS,rail: #66 buck-boost in=SYS
 U12,2,GND,GND,ground family
 U12,3,FB,BB_FB,FB -> R22 0R -> +3V3 (external rail sense for fixed-output DSJ part)
@@ -652,7 +652,7 @@ U17,4,PS_HOLD,PSHOLD,PS_HOLD gpio-poweroff handshake -> T113 PE11 (PSHOLD)
 U17,5,C_SRD,,C_SRD Smart-Reset delay cap input unused -> leave open per BOM #94
 U17,6,#PB,PWR_BTN,/PB push-button input <- SW14 center + T113 PE10 (PWR_BTN). Has internal pull-up
 U17,7,#VCC_LO,,"/VCC_LO comparator output unused -> leave open per BOM #94 (open-drain, no pull-up needed)"
-U17,8,#PB_OUT,,/PB_OUT status output unused -> leave open per BOM #94
+U17,8,#PB_OUT,PWR_BTN_3V3,[AUDIT] /PB_OUT open-drain -> PWR_BTN_3V3 (+#117 pull-up) -> T113 PE10
 U17,9,EN(#EN),PWR_EN,EN (active-high) -> PWR_EN master enable: TPS63021 U12.12 EN + R4.1 (RC to FP6161 CORE_RUN). Fixed seam: was CORE_RUN
 U17,10,#RST,,/RST reset output unused -> leave open per BOM #94 (open-drain)
 U17,11,#INT,,/INT interrupt output unused -> leave open per BOM #94 (open-drain)
@@ -798,3 +798,13 @@ Audio1,1,1,GND,jack sleeve -> GND (also TPA SGND ref). VERIFY pin->function map 
 Audio1,2,2,HP_L,tip = left = TPA OUTL. VERIFY pin numbering from PJ-327C-4A drawing
 Audio1,3,3,HP_R,ring = right = TPA OUTR. VERIFY pin numbering
 Audio1,4,4,JACK_DET,"tip-detect switch -> GPIO PE12 (SW_HEADPHONE_INSERT), mutes speaker amp. VERIFY switch pin & sense polarity from drawing"
+R38,1,1,BL_LED_N,"ADDED backlight Rset 5.1R: FB(BL_LED_N)->GND, 200mV/5.1R=39mA (fixes missing current-set)"
+R38,2,2,GND,
+R39,1,1,PANEL_DISP,[AUDIT #116] 10k DISP pull-up -> +3V3 (BOM.md line 64 requires it)
+R39,2,2,+3V3,
+R40,1,1,PWR_BTN_3V3,[AUDIT #117] 10k /PB_OUT pull-up -> +3V3
+R40,2,2,+3V3,
+R41,1,1,I2C2_SCL,[AUDIT #118] i2c2 SCL pull-up -> +3V3 (IMU bus had NO pull-ups -> IMU can't ACK)
+R41,2,2,+3V3,
+R42,1,1,I2C2_SDA,[AUDIT #118] i2c2 SDA pull-up -> +3V3
+R42,2,2,+3V3,

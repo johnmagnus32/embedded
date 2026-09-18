@@ -3,7 +3,7 @@ U1,1. Core — SoC + power + clock + storage,1,SoC,T113-S3,C5197687,JLC,easyeda2
 USBC1,1. Core — SoC + power + clock + storage,2,USB-C,TYPE-C-31-M-12,C165948,JLC,easyeda2kicad:TYPE-C-31-M-12,easyeda2kicad:USB-C_SMD-TYPE-C-31-M-12_1,yes,
 U2,1. Core — SoC + power + clock + storage,3,0.9 V core buck,FP6161KR-LF-ADJ,C77234,JLC,easyeda2kicad:FP6161KR-LF-ADJ,easyeda2kicad:SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BL,yes,
 L1,1. Core — SoC + power + clock + storage,4,Core-buck inductor,SMNR4020-2.2UH,C135262,JLC,easyeda2kicad:SMNR4020-2.2UH,easyeda2kicad:IND-SMD_L4.0-W4.0_LQH44PN2R2MP0L,yes,
-R1,1. Core — SoC + power + clock + storage,5,Amp mono strap R,RS-03K6803FT,C140074,JLC,easyeda2kicad:RS-03K6803FT,easyeda2kicad:R0603,yes,
+R1,1. Core — SoC + power + clock + storage,5,Amp mono strap R,RS-03K6803FT,C140074,JLC,easyeda2kicad:RS-03K6803FT,easyeda2kicad:R0603,no,[AUDIT] DNP — duplicate of R14/#48 MAX98357A mono strap; populate only ONE (both=340k mis-selects SD_MODE)
 R2,1. Core — SoC + power + clock + storage,6,Core FB R_bot,0603WAF1503T5E,C22807,JLC,easyeda2kicad:0603WAF1503T5E,easyeda2kicad:R0603,yes,
 R3,1. Core — SoC + power + clock + storage,7,Core FB R_top,0603WAF7502T5E,C23242,JLC,easyeda2kicad:0603WAF7502T5E,easyeda2kicad:R0603,yes,
 C1,1. Core — SoC + power + clock + storage,8,Core FB feed-forward,CL05C100JB5NNNC,C32949,JLC,easyeda2kicad:CL05C100JB5NNNC,easyeda2kicad:C0402,yes,
@@ -75,7 +75,7 @@ L2,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0,
 D3,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",30,Boost diode,MDD SS16,C2481,JLC,easyeda2kicad:SS16,easyeda2kicad:SMA_L4.3-W2.6-LS5.2-RD,yes,
 C45,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",31,Boost output cap (Cout),YAGEO CC0805KKX7R9BB225,C125847,JLC,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,yes,
 C46,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",32,Boost input cap (Cin),CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",33,Boost FB sense R (Rset),5.1 Ω 1% 0402,,JLC,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
+R38,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",33,Boost FB sense R (Rset),5.1 Ω 1% 0402,,JLC,,,no,"no LCSC# and no symbol match — off-board/net, skipped | refdes R38; wire Rset FB->GND. Needs LCSC+symbol (verify Basic) before place."
 C47,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",34,Boost COMP cap,YAGEO CC0402KRX7R7BB224,C326590,JLC,easyeda2kicad:CC0402KRX7R7BB224,easyeda2kicad:C0402,yes,
 U7,3. Motion (IMU) + Haptics,35,IMU (6-axis),LSM6DSOXTR,C481766,JLC,easyeda2kicad:LSM6DSOXTR,easyeda2kicad:LGA-14L_L3.0-W2.5-P0.50-TL,yes,
 C48,3. Motion (IMU) + Haptics,36,IMU VDD decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
@@ -186,3 +186,7 @@ C90,8. Audio-out + Bluetooth (Tier-2),112,TPA6132A2 2.2 µF caps,CC0805KKX7R9BB2
 C91,8. Audio-out + Bluetooth (Tier-2),113,TPA6132A2 VDD HF cap,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
 R37,8. Audio-out + Bluetooth (Tier-2),114,TPA6132A2 EN pull-down,RC0603FR-07100KL,C14675,JLC,easyeda2kicad:RC0603FR-07100KL,easyeda2kicad:R0603,yes,
 Audio1,8. Audio-out + Bluetooth (Tier-2),115,3.5 mm headphone jack,PJ-327C-4A,C145813,JLC,easyeda2kicad:PJ-327C-4A,easyeda2kicad:AUDIO-SMD_PJ-327C-4A,yes,
+R39,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",116,DISP pull-up 10k,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,[AUDIT] PANEL_DISP->+3V3; BOM.md #116 (fills line-64 gap)
+R40,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,117,STM6601 /PB_OUT pull-up 10k,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,[AUDIT] PWR_BTN_3V3 -> PE10; BOM.md #117 (fixes PE10 SYS-overvoltage)
+R41,3. Motion (IMU) + Haptics,118,i2c2 pull-up (IMU bus),0603WAF1501T5E,C22843,JLC,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,yes,[AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
+R42,3. Motion (IMU) + Haptics,118,i2c2 pull-up (IMU bus),0603WAF1501T5E,C22843,JLC,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,yes,[AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97

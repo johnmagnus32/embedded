@@ -16,7 +16,7 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 | 2 | 1 | USB-C | TYPE-C-31-M-12 | C165948 | 5 V in + USB2 | ✅ | JLC | Receptacle (charge + FEL/data). **Shell + stainless mid-plate + all 4 THT retention posts → GND** (ESD discharge path + mechanical retention; direct short — plastic-shelled handheld, no separate earthed chassis). Optional DNP hedge: 4.7 nF/2 kV ∥ 1 MΩ shell-to-GND (split off only if a first-article EMI/ground-loop issue appears; default = stuff the short). |
 | 3 | 1 | 0.9 V core buck | FP6161KR-LF-ADJ | C77234 | **input = SYS** | ✅ | JLC | Sync buck, SOT-23-5, 1 A, 0.6 V FB. **RUN driven from STM6601 EN via RC #9 (≥2 ms after VCC-IO)** — do NOT tie RUN→SYS (no true-off/drain) or →3.3 V (RUN abs-max = VIN). FB set by #6/#7; output cap = 10 µF (see #21). |
 | 4 | 1 | Core-buck inductor | SMNR4020-2.2UH | C135262 | FP6161 (#3) | ✅ | JLC | 2.2 µH 3.4 A shielded. |
-| 5 | 1 | Amp mono strap R | RS-03K6803FT | C140074 | MAX98357A SD/MODE (#48) | ✅ | JLC | 680 K 1% 0603. |
+| 5 | 1 | Amp mono strap R | RS-03K6803FT | C140074 | MAX98357A SD/MODE (#48) | ✅ | JLC | 680 K 1% 0603. **[AUDIT] DNP — duplicate of #48; populate only ONE (both = 340 k mis-selects SD_MODE).** |
 | 6 | 1 | Core FB R_bot | 0603WAF1503T5E | C22807 | FP6161 FB | ✅ | JLC | 150 K 1%. With #7 (75 K) → 0.6·(1+75/150) = 0.9 V. |
 | 7 | 1 | Core FB R_top | 0603WAF7502T5E | C23242 | FP6161 FB | ✅ | JLC | 75 K 1%. |
 | 8 | 1 | Core FB feed-forward | CL05C100JB5NNNC | C32949 | across #7 | ✅ | JLC | 10 pF C0G 0402 — REQUIRED for loop stability. |
@@ -25,7 +25,7 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 | 11 | 1 | SPI-NOR | W25Q128JVSIQ | C97521 | SPI0 boot | ✅ | JLC | 128 Mbit, SOIC-8, QE=1. |
 | 12 | 1 | microSD socket | A-MicroTF-1.85A | C22467599 | SDC0 | ✅ | JLC | Push-push, card-detect. |
 | 13 | 2 | microSD ESD array | Littelfuse SP3004-04XTG ×2 | C207280 | SDC0 CLK/CMD/DAT0-3 | ✅ | JLC | 2× 4-ch → all 6 SD lines. 0.85 pF ultra-low-cap, SOT-563, unidirectional rail-clamp. |
-| 14 | 6 | SD/RESET pull-ups | RC0603JR-0710KL | C99198 | SD CMD+DAT0-3 → 3.3 V | ✅ | JLC | 10 KΩ. **⚠️ RESET pull-up goes to the 1.8 V VCC-RTC rail, NOT 3.3 V** (RESET buffer = VCC-RTC, abs-max 2.16 V). SD-line pulls stay on 3.3 V. |
+| 14 | 6 | SD/RESET pull-ups | RC0603JR-0710KL | C99198 | SD CMD+DAT0-3 → 3.3 V | ✅ | JLC | 10 KΩ. **⚠️ RESET pull-up goes to the 1.8 V VCC-RTC rail, NOT 3.3 V** (RESET buffer = VCC-RTC, abs-max 2.16 V). SD-line pulls stay on 3.3 V. **[AUDIT] netlist ties VCC-RTC to the 1.8 V LDOA rail — verify it's the same copper vs the breakout.** |
 | 15 | 1 | HOSC crystal | X322524MRB4SI | C70571 | 24 MHz | ✅ | JLC | SMD3225-4P, CL 18 pF (loads #17). |
 | 16 | 1 | RTC crystal | SC-20S 32.768kHz | C97607 | RTC | ✅ | JLC | SMD2012-2P (loads #18). |
 | 17 | 2 | 24 MHz load caps | 0402CG220J500NT | C1555 | HOSC | ✅ | JLC | 22 pF C0G 0402. |
@@ -90,7 +90,7 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 | # | Qty | Role | Part | LCSC # | Interface / net | Src | Fit | Note |
 |---|-----|------|------|--------|-----------------|-----|-----|------|
 | 47 | 1 | Class-D amp | MAX98357AETE+T | C910544 | I2S1 (BCLK/LRCLK/DIN) | ✅ | JLC | `maxim,max98357a`; no MCLK. **VDD on SYS.** EP → GND pour + thermal vias (audio GND return). Output kept filterless. |
-| 48 | 1 | Amp SD/MODE strap | RS-03K6803FT | C140074 | SD/MODE → 3.3 V | ✅ | JLC | 680 KΩ (#5) → (L/2+R/2) mono. **Mute-GPIO must be open-drain/hi-Z** (hi-Z = mono/run via this R; drive low = shutdown, for jack-detect). |
+| 48 | 1 | Amp SD/MODE strap | RS-03K6803FT | C140074 | SD/MODE → 3.3 V | ✅ | JLC | 680 KΩ (#5) → (L/2+R/2) mono. **Mute-GPIO must be open-drain/hi-Z** (hi-Z = mono/run via this R; drive low = shutdown, for jack-detect). **[AUDIT] Populate THIS one; DNP #5 (duplicate 680 K).** |
 | 49 | 1 | Amp GAIN_SLOT strap | net (no part) | — (net) | GAIN_SLOT → VDD | ✅ | JLC | **VDD tie = 6 dB** (0 dBFS ≈ 0.8 W into 8 Ω, no clip). NOT 15 dB. |
 | 50 | 1 | Amp VDD bypass | CC0603KRX7R9BB104 | C14663 | VDD | ✅ | JLC | 100 nF. |
 | 51 | 1 | Amp VDD bulk | CL21A106KPFNNNE | C17024 | VDD | ✅ | JLC | 10 µF. |
@@ -150,9 +150,9 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 | 89 | 1 | Expander INT pull-up | RC0603JR-0710KL | C99198 | INT → 3V3 | ✅ | JLC | 10 kΩ. |
 | 90 | 1 | PCA9555 VDD decoupling | CC0603KRX7R9BB104 | C14663 | VDD → GND | ✅ | JLC | 100 nF. |
 | 91 | 2 | Volume ± tactiles | ALPS SKRTLBE010 | C127481 | 2× expander pin → GND | ✅ | JLC | Side-actuated SMD (4.5×3.4 mm, 1.6 N), footprint `KEY-SMD_SKRTLAE010-1`. `KEY_VOLUMEUP/DOWN`. Shared part w/ #92/#93 (qty 5). |
-| 92 | 1 | Soft power button | ALPS SKRTLBE010 | C127481 | STM6601 PB (#94) **AND** native SoC EINT | ✅ | JLC | `KEY_POWER`. **EINT MUST be a native SoC pin, not the expander** (must wake/power-on from off). |
+| 92 | 1 | Soft power button | ALPS SKRTLBE010 | C127481 | STM6601 PB (#94) **AND** native SoC EINT | ✅ | JLC | `KEY_POWER`. **EINT MUST be a native SoC pin, not the expander** (must wake/power-on from off). **[AUDIT] Route the SoC EINT from STM6601 /PB_OUT via #117, not the raw PB node (PB idles ~SYS 4.4 V).** |
 | 93 | 2 | L/R bumper tactiles | ALPS SKRTLBE010 | C127481 | 2× expander pin → GND | ✅ | JLC | `KEY_L1/KEY_R1`. 100k-cycle — upgrade to 500k/1M (ALPS SKHHLNA010/SKHHLQA010) in a later rev if they wear. |
-| 94 | 1 | Push-button power controller | STM6601CA2BDM6F | C109022 | PB←#92; EN(pin9)→TPS63021 EN; PSHOLD(pin4)↔GPIO | ✅ | JLC | TDFN-12. **`C`** = active-high EN, long-push deasserts (true off). **VCC → always-on SYS** (NOT the switched 3.3 V). PSHOLD = `gpio-poweroff` handshake. Caps #95/#96. EN push-pull (no pull-up); RST/INT/VCCLO/PBOUT/SR/CSRD leave open. |
+| 94 | 1 | Push-button power controller | STM6601CA2BDM6F | C109022 | PB←#92; EN(pin9)→TPS63021 EN; PSHOLD(pin4)↔GPIO | ✅ | JLC | TDFN-12. **`C`** = active-high EN, long-push deasserts (true off). **VCC → always-on SYS** (NOT the switched 3.3 V). PSHOLD = `gpio-poweroff` handshake. Caps #95/#96. EN push-pull (no pull-up); RST/INT/VCCLO/SR/CSRD leave open; **PBOUT → 3.3 V pull-up (#117) → T113 PE10** [AUDIT: was 'leave open'; levels the button EINT off the ~SYS PB node]. |
 | 95 | 1 | STM6601 VCC decoupling | CC0603KRX7R9BB104 | C14663 | VCC (pin 1) → GND | ✅ | JLC | 100 nF, close to device. |
 | 96 | 1 | STM6601 VREF cap (CREF) | CL10A105KB8NNNC | C15849 | VREF (pin 3) → GND | ✅ | JLC | 1 µF — mandatory even though VREF unused. Place close. |
 
@@ -228,3 +228,29 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 5. **Adafruit 2011 cell (#73)** continuous ≥2 A + PCM trip >2 A.
 
 **Symbol library** (`../../../cad/symbols/easyeda2kicad.*`): 59/62 parts fetched. Missing = **C2481 (SS16), C23179 (470 Ω), C33353 (2.2 nF)** — their footprints (SMA, R0603, C0603) are already present; re-fetch to match by LCSC#, or reuse the generic symbol. **BT830 (#99) needs a hand-drawn symbol+footprint.**
+
+
+## Audit-recommended additions (2026-09-18 — pending independent review)
+
+A per-subsystem netlist-correctness audit (vs. component datasheets) found two parts the design **notes** call for but the numbered list omitted / a topology fix. Added here and mirrored in `gb3/gb3-bom.csv` + `gb3/gb3-nets.csv` (refdes R39/R40):
+
+| # | Qty | Role | Part | LCSC | Net | Src | Fit | Notes |
+|---|----:|------|------|------|-----|:---:|-----|-------|
+| 116 | 1 | DISP pull-up | RC0603JR-0710KL | C99198 | PANEL_DISP → 3.3 V | ⚠️ | JLC | 10 KΩ. Line 64 requires it ("DISP … 10 KΩ pull-up") but no part was listed. refdes **R39**. C99198 already sourced (#14/#84/#89) — confirm on JLC. |
+| 117 | 1 | STM6601 /PB_OUT pull-up | RC0603JR-0710KL | C99198 | /PB_OUT → 3.3 V → PE10 | ⚠️ | JLC | 10 KΩ. Levels the power-button EINT to 3.3 V; PE10 now reads /PB_OUT instead of the ~SYS PB node. refdes **R40**. See #92/#94. |
+| 118 | 2 | i2c2 pull-ups (IMU bus) | 0603WAF1501T5E | C22843 | I2C2_SCL/SDA → 3.3 V | ⚠️ | JLC | 1.5 KΩ ×2 (reuses #97 part; 2.2–4.7 K also fine). **🔴 BLOCKER: i2c2 had no pull-ups → IMU never ACKs.** refdes R41/R42. |
+
+**Also applied to `gb3-nets.csv` (net-only, NO new parts):** VCC-RTC→LDOA merge (blocker: was a dead island), SW1 `{1,3}=RESET/{2,4}=GND` (was RESET→GND short), R21 wired as a real series `VBUS_SENSE`, C19–C22 decoupling re-pointed to AVCC/HPVCC/VRA1/VRA2, and R38 = wiring the **existing #33** Rset (FB→GND, backlight blocker).
+
+**NOT added (judged unnecessary):** MAX17048 ALRT pull-up — #77 marks ALRT optional (polled over I²C).
+
+**Still needs a copper/footprint decision (not changed here):** TS-1187A pad pairing (SW1–11), ALPS SKRT grouping (SW12–16), FPC1 touch contact-side, CN1 battery polarity, `SD_CD` routing, R1/R14 duplicate 680 k strap (DNP one), C32 10 µF on VBUS.
+
+
+### Independent-review round 2 (applied)
+
+- **#118 i2c2 pull-ups (R41/R42)** — 🔴 blocker: the IMU I²C bus had no pull-ups; added 2×1.5 K to +3V3.
+- **R1 DNP** — the R1/R14 duplicate 680 K mono-strap: R1 (#5) set place=no, R14 (#48) populated.
+- **OCS_Aux** pin-name fix (was OSC_AUX) on the IMU aux pin.
+
+Still open for the reviewer (not netlist-fixable): tactile/ALPS footprint pairing (SW1–16), battery current margin + PCM OCP, JACK_DET pull (enable PE12 internal pull; polarity per jack), PJ-327C-4A pad map, DRV2605L LRA clamp firmware, symbol pin counts (P1=42/FPC1=6+2, FPC1=8), FT7311 VDD headroom, AVCC 0.47–1 µF bulk (optional), and doc nits (PINOUT.md +3V3 census lists pin 107 which is 1.8 V; PCA9555 pull-up ≈33 k).
