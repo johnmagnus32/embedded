@@ -86,7 +86,7 @@ A real toolchain MUST provide libgcc:
 ### 2.4 A proper sysroot layout
 `libc/build.sh` installs into a sysroot instead of a loose `SUBSTRATE_DIR`:
 ```
-<sysroot>/usr/include/   ← libc/include/* + staged UAPI (gv3_syscalls.h, gv3_abi.h) ONLY
+<sysroot>/usr/include/   ← libc/include/* + staged UAPI (syscalls.h, abi.h) ONLY
                             (NOT libc/src — those are build-time-private headers)
 <sysroot>/usr/lib/       ← libc.a, libc.so, crt1.o crti.o crtn.o, libgcc.a, ld.so.1
 ```

@@ -590,7 +590,7 @@ Not everything is a graph node. Some components are **selected (an axis)** or si
   manager (mdev/udev)**, **getty**, **syslog**. Buildroot `BR2_INIT_*` / Yocto
   `VIRTUAL-RUNTIME_*`. Picked via a selector, NOT added to a package set.
 - **Tier 2 — in-graph but privileged.** Kernel UAPI headers (libc compiles against
-  them; `build-substrate.sh` stages `gv3_syscalls.h`/`gv3_abi.h`); the host-tool class
+  them; `build-substrate.sh` stages `syscalls.h`/`abi.h`); the host-tool class
   (`PKG_CLASS=host`: special class, ordinary resolution).
 - **Tier 3 — the actual graph.** busybox, coreutils, zlib, future daemons/plugins —
   what the resolver walks.

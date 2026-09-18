@@ -204,13 +204,13 @@ PKG_ARTIFACT=zImage
 
 ```makefile
 # providers/kernel/custom/provider.mk  (the from-scratch kernel)
-PKG_NAME=gv3kernel
+PKG_NAME=kernel
 PKG_CLASS=provider
 PKG_ROLE=kernel
 PKG_FETCH=local                 # source is the repo-root kernel/ provider; no fetch
 PKG_SOURCE=kernel
 PKG_TYPE=make-c                 # a self-contained provider: `make -C` it
-PKG_ARTIFACT=build/$(KERNEL_TARGET)/gv3kernel.bin
+PKG_ARTIFACT=build/$(KERNEL_TARGET)/kernel.bin
 ```
 
 The provider-unique payload that does **not** fit the generic kconfig style
