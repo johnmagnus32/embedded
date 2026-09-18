@@ -25,10 +25,15 @@ typedef struct {
 	int       index;           /* buffer id, SDK-internal */
 } canvas_frame;
 
-/* An input event as delivered to a client (a subset of canvas_msg.u.input). */
+/* An input event as delivered to a client. `type` says which kind:
+ *   CANVAS_INPUT   — a gamepad button: read `button` + `value` (1 press / 0 release).
+ *   CANVAS_POINTER — a touch/pointer: read `x,y` (surface pixels, 0,0 = top-left) + `value`
+ *                    as the phase (1 = down, 0 = up, 2 = move). */
 typedef struct {
-	uint32_t button;   /* enum canvas_button */
-	int32_t  value;    /* 1 = pressed, 0 = released */
+	uint32_t type;     /* CANVAS_INPUT or CANVAS_POINTER */
+	uint32_t button;   /* enum canvas_button (when type == CANVAS_INPUT) */
+	int32_t  value;    /* button: 1/0; pointer: phase (1 down / 0 up / 2 move) */
+	int32_t  x, y;     /* pointer surface coords (when type == CANVAS_POINTER) */
 } canvas_input_event;
 
 /* Connect to the compositor as `role` (CANVAS_ROLE_GAME for the launcher/games,

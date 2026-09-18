@@ -35,23 +35,32 @@ export CANVAS_FONT=${CANVAS_FONT:-$PDIR/src/assets/common/ui.ttf}
 # Asset base — games load per-game paths relative to this (e.g. "shmup/ship.png", "platformer/level1.tmj").
 export CANVAS_ASSETS=${CANVAS_ASSETS:-$PDIR/src/assets}
 
-[ -x "$O/canvasd" ]  || { echo "build first: make -C src CANVAS_BACKEND=web" >&2; exit 1; }
+# Audio: soundd (the audio server) mixes the game's sound and streams PCM to the browser on its OWN
+# WebSocket port (= video port + 1; the page's audio JS connects there). SOUND_SOCK is the game<->soundd
+# control socket. A game runs silent if soundd isn't up, so audio is best-effort.
+export SOUND_SOCK=${SOUND_SOCK:-/tmp/sound-sim.sock}
+export SOUND_WEB_PORT=${SOUND_WEB_PORT:-$((PORT + 1))}
+
+[ -x "$O/canvasd" ]  || { echo "build first: make -C src CANVAS_BACKEND=web SOUND_BACKEND=web" >&2; exit 1; }
+[ -x "$O/soundd" ]   || { echo "build first: make -C src CANVAS_BACKEND=web SOUND_BACKEND=web" >&2; exit 1; }
 [ -x "$O/$CLIENT" ]  || { echo "no such game '$name' ($O/$CLIENT not found)" >&2; usage; }
 
-rm -f "$CANVAS_SOCK"
+rm -f "$CANVAS_SOCK" "$SOUND_SOCK"
 "$O/canvasd" &
 CANVASD=$!
-trap 'kill $CANVASD 2>/dev/null' EXIT INT TERM
+"$O/soundd" &
+SOUNDD=$!
+trap 'kill $CANVASD $SOUNDD 2>/dev/null' EXIT INT TERM
 
-# wait for the compositor socket
-i=0; while [ ! -S "$CANVAS_SOCK" ] && [ "$i" -lt 50 ]; do i=$((i+1)); sleep 0.1; done
+# wait for both server sockets
+i=0; while { [ ! -S "$CANVAS_SOCK" ] || [ ! -S "$SOUND_SOCK" ]; } && [ "$i" -lt 50 ]; do i=$((i + 1)); sleep 0.1; done
 
 cat <<EOF
 
 ──────────────── canvas simulator ────────────────
  game   : $name
- view   : http://localhost:$PORT
- remote : ssh -L $PORT:localhost:$PORT <this-cloud-box>   then open the URL on your Mac
+ view   : http://localhost:$PORT      audio: ws://localhost:$SOUND_WEB_PORT (needs a click to start)
+ remote : ssh -L $PORT:localhost:$PORT -L $SOUND_WEB_PORT:localhost:$SOUND_WEB_PORT <this-cloud-box>   (tunnel BOTH for sound)
  keys   : arrows = D-pad,  z or Space = A (jump/action),  x=B a=X s=Y,  q=L w=R,  Enter=Start, Shift=Select
  stop   : Ctrl-C
 ───────────────────────────────────────────────────

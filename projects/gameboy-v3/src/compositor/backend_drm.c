@@ -18,4 +18,7 @@ int backend_alloc_buffer(uint32_t *stride, uint32_t *size)
 
 void backend_present(int fg_fd) { (void)fg_fd; /* TODO: setplane + pageflip */ }
 int  backend_poll_input(uint32_t *b, int32_t *v) { (void)b; (void)v; return 0; /* TODO: evdev */ }
+/* TODO(touch): read the panel's touch controller (evdev EV_ABS ABS_MT_POSITION_X/Y + BTN_TOUCH)
+ * and emit x,y in surface pixels with phase 1=down/0=up/2=move — the gb3 touch part is FT7311. */
+int  backend_poll_pointer(int32_t *x, int32_t *y, int32_t *phase) { (void)x; (void)y; (void)phase; return 0; }
 void backend_fini(void) { }

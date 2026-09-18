@@ -46,6 +46,15 @@ static void forward_input(uint32_t button, int32_t value)
 	canvas_send(clients[who].sock, &m, -1);
 }
 
+/* Forward a pointer/touch event (surface coords) to the focused client, same routing as buttons. */
+static void forward_pointer(int32_t x, int32_t y, int32_t phase)
+{
+	int who = foreground >= 0 ? foreground : launcher;
+	if (who < 0) return;
+	struct canvas_msg m = { .op = CANVAS_POINTER, .u.pointer = { .x = x, .y = y, .phase = phase } };
+	canvas_send(clients[who].sock, &m, -1);
+}
+
 static int alloc_slot(void)
 {
 	for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i].sock < 0) return i;
@@ -182,6 +191,8 @@ int main(void)
 
 		uint32_t btn; int32_t val;
 		while (backend_poll_input(&btn, &val)) forward_input(btn, val);
+		int32_t px, py, pphase;
+		while (backend_poll_pointer(&px, &py, &pphase)) forward_pointer(px, py, pphase);
 	}
 	backend_fini();
 	return 0;

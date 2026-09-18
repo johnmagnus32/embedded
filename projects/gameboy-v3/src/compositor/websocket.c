@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <errno.h>
+#include <poll.h>
 
 /* RFC 6455 frame bits (first two header bytes). */
 #define WS_FIN         0x80          /* byte 0: final fragment (we only send whole frames) */
@@ -106,8 +108,16 @@ static int full_read(int fd, void *buf, size_t n)
 	size_t done = 0;
 	while (done < n) {
 		ssize_t r = read(fd, (char *)buf + done, n - done);
-		if (r <= 0) return -1;
-		done += (size_t)r;
+		if (r > 0) { done += (size_t)r; continue; }
+		if (r == 0) return -1;                          /* EOF: peer closed */
+		if (errno == EINTR) continue;
+		if (errno == EAGAIN || errno == EWOULDBLOCK) {  /* frame split across reads (nonblocking
+		                                                   socket): wait briefly for the rest */
+			struct pollfd pf = { .fd = fd, .events = POLLIN };
+			if (poll(&pf, 1, 200) <= 0) return -1;  /* no more data in 200ms -> give up */
+			continue;
+		}
+		return -1;                                      /* real error */
 	}
 	return 0;
 }

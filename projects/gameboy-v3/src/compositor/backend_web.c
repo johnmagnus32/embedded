@@ -62,6 +62,8 @@ static long     last_send_ms;
 static struct { int fd; void *ptr; size_t size; } reg[MAXBUF];  /* memfd registry */
 static struct { uint32_t b; int32_t v; } evq[EVQ];
 static int      evq_head, evq_tail;
+static struct { int32_t x, y, phase; } pevq[EVQ];   /* pointer/touch events (mouse in the sim) */
+static int      pevq_head, pevq_tail;
 
 static const char INDEX_HTML[] =
 	"<!doctype html><meta charset=utf-8><title>canvas sim</title>\n"
@@ -87,6 +89,36 @@ static const char INDEX_HTML[] =
 	"};\n"
 	"const K=t=>e=>{if(!e.repeat)ws.send(JSON.stringify({t,k:e.key}));e.preventDefault();};\n"
 	"onkeydown=K('down');onkeyup=K('up');\n"
+	/* Mouse acts as a single-finger touch: map client coords to the 800x480 backing store
+	 * (survives CSS scaling), send {p,x,y} with x/y QUOTED so the compositor's json_get parses
+	 * them, and coalesce unchanged moves so we don't flood the socket. */
+	"const cv=document.getElementById('s');let lx=-1,ly=-1;\n"
+	"const P=ph=>e=>{const r=cv.getBoundingClientRect();\n"
+	" const gx=Math.max(0,Math.min(799,Math.round((e.clientX-r.left)*cv.width /r.width)));\n"
+	" const gy=Math.max(0,Math.min(479,Math.round((e.clientY-r.top )*cv.height/r.height)));\n"
+	" if(ph=='move'&&gx==lx&&gy==ly)return;lx=gx;ly=gy;\n"
+	" ws.send(JSON.stringify({p:ph,x:''+gx,y:''+gy}));e.preventDefault();};\n"
+	"cv.addEventListener('mousedown',P('down'));\n"
+	"cv.addEventListener('mousemove',P('move'));\n"
+	"addEventListener('mouseup',P('up'));\n"
+	/* Audio: a SECOND WebSocket to soundd (its own port = this page's port + 1) delivering raw
+	 * int16 stereo PCM; play it gaplessly by chaining AudioBufferSourceNodes with a small safety
+	 * lead. Browsers block audio until a user gesture, so resume() the context on the first tap/key. */
+	"const ac=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100});\n"
+	"let head=0;\n"
+	"const aws=new WebSocket('ws://'+location.hostname+':'+(+location.port+1)+'/');\n"
+	"aws.binaryType='arraybuffer';\n"
+	"aws.onmessage=e=>{\n"
+	" const i=new Int16Array(e.data),n=i.length/2; if(!n)return;\n"
+	" const b=ac.createBuffer(2,n,44100),L=b.getChannelData(0),R=b.getChannelData(1);\n"
+	" for(let k=0;k<n;k++){L[k]=i[2*k]/32768;R[k]=i[2*k+1]/32768;}\n"
+	" const s=ac.createBufferSource();s.buffer=b;s.connect(ac.destination);\n"
+	" let t=head;\n"
+	" if(t<ac.currentTime+0.02)t=ac.currentTime+0.02;\n"        // underran: catch up (min 20ms lead)
+	" else if(t>ac.currentTime+0.10)t=ac.currentTime+0.04;\n"   // drifted too far: drop back (cap latency)
+	" s.start(t);head=t+b.duration;\n"
+	"};\n"
+	"addEventListener('mousedown',()=>ac.resume());addEventListener('keydown',()=>ac.resume());\n"
 	"</script>\n";
 
 static long now_ms(void)
@@ -106,6 +138,18 @@ static void evq_push(uint32_t b, int32_t v)
 	int nt = (evq_tail + 1) % EVQ;
 	if (nt == evq_head) return;               /* full: drop */
 	evq[evq_tail].b = b; evq[evq_tail].v = v; evq_tail = nt;
+}
+
+static void pevq_push(int32_t x, int32_t y, int32_t phase)
+{
+	if (phase == 2 && pevq_head != pevq_tail) {   /* coalesce a run of moves into the latest one, so a
+	                                                 move-flood can't fill the ring and drop the up/down */
+		int last = (pevq_tail - 1 + EVQ) % EVQ;
+		if (pevq[last].phase == 2) { pevq[last].x = x; pevq[last].y = y; return; }
+	}
+	int nt = (pevq_tail + 1) % EVQ;
+	if (nt == pevq_head) return;              /* full: drop */
+	pevq[pevq_tail].x = x; pevq[pevq_tail].y = y; pevq[pevq_tail].phase = phase; pevq_tail = nt;
 }
 
 static int map_key(const char *k, uint32_t *btn)
@@ -296,31 +340,56 @@ void backend_present(int fg_fd)
 		if (ws[i].fd >= 0 && ws[i].off < ws[i].len && ws_pump(i) < 0) ws_close(i);
 }
 
+/* Drain every ready WebSocket frame into the button queue (keys) or pointer queue (mouse).
+ * Fully empties the sockets in one call so backend_poll_input / backend_poll_pointer each just
+ * pop their queue; whichever poller runs first this tick does the draining, the other reuses it. */
+static void pump_ws(void)
+{
+	for (int guard = 0; guard < 1024; guard++) {
+		struct pollfd p[1 + MAXWS]; int idx[1 + MAXWS]; int n = 0;
+		p[n].fd = listen_fd; p[n].events = POLLIN; idx[n] = -1; n++;
+		for (int i = 0; i < MAXWS; i++)
+			if (ws[i].fd >= 0) { p[n].fd = ws[i].fd; p[n].events = POLLIN; idx[n] = i; n++; }
+		if (poll(p, n, 0) <= 0) return;
+		int progress = 0;
+		if (p[0].revents & POLLIN) { accept_http(); progress = 1; }
+		for (int k = 1; k < n; k++) {
+			if (!(p[k].revents & POLLIN)) continue;
+			char b[512]; int r = ws_recv(ws[idx[k]].fd, b, sizeof b);
+			if (r < 0) { ws_close(idx[k]); progress = 1; continue; }
+			if (r == 0) continue;                       /* ping/pong/oversized: ignored */
+			progress = 1;
+			char pp[8], xs[8], ys[8];
+			if (json_get(b, "p", pp, sizeof pp) && json_get(b, "x", xs, sizeof xs) &&
+			    json_get(b, "y", ys, sizeof ys)) {      /* a pointer/touch event */
+				int32_t ph = !strcmp(pp, "down") ? 1 : !strcmp(pp, "up") ? 0 : 2;
+				pevq_push(atoi(xs), atoi(ys), ph);
+			} else {                                    /* a key event */
+				char t[8], kk[24]; uint32_t bn;
+				if (json_get(b, "k", kk, sizeof kk) && json_get(b, "t", t, sizeof t) && map_key(kk, &bn))
+					evq_push(bn, strcmp(t, "down") == 0 ? 1 : 0);
+			}
+		}
+		if (!progress) return;
+	}
+}
+
 int backend_poll_input(uint32_t *button, int32_t *value)
 {
-	if (evq_head != evq_tail) {                /* drain the queue without re-polling */
-		*button = evq[evq_head].b; *value = evq[evq_head].v;
-		evq_head = (evq_head + 1) % EVQ; return 1;
-	}
-	struct pollfd p[1 + MAXWS]; int idx[1 + MAXWS]; int n = 0;
-	p[n].fd = listen_fd; p[n].events = POLLIN; idx[n] = -1; n++;
-	for (int i = 0; i < MAXWS; i++)
-		if (ws[i].fd >= 0) { p[n].fd = ws[i].fd; p[n].events = POLLIN; idx[n] = i; n++; }
-	if (poll(p, n, 0) <= 0) return 0;
-	if (p[0].revents & POLLIN) accept_http();
-	for (int k = 1; k < n; k++) {
-		if (!(p[k].revents & POLLIN)) continue;
-		char b[512]; int r = ws_recv(ws[idx[k]].fd, b, sizeof b);
-		if (r < 0) { ws_close(idx[k]); }
-		else if (r > 0) {
-			char t[8], kk[24]; uint32_t bn;
-			if (json_get(b, "k", kk, sizeof kk) && json_get(b, "t", t, sizeof t) && map_key(kk, &bn))
-				evq_push(bn, strcmp(t, "down") == 0 ? 1 : 0);
-		}
-	}
+	if (evq_head == evq_tail) pump_ws();
 	if (evq_head != evq_tail) {
 		*button = evq[evq_head].b; *value = evq[evq_head].v;
 		evq_head = (evq_head + 1) % EVQ; return 1;
+	}
+	return 0;
+}
+
+int backend_poll_pointer(int32_t *x, int32_t *y, int32_t *phase)
+{
+	if (pevq_head == pevq_tail) pump_ws();
+	if (pevq_head != pevq_tail) {
+		*x = pevq[pevq_head].x; *y = pevq[pevq_head].y; *phase = pevq[pevq_head].phase;
+		pevq_head = (pevq_head + 1) % EVQ; return 1;
 	}
 	return 0;
 }

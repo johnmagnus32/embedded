@@ -75,6 +75,7 @@ enum canvas_op {
 	CANVAS_SUBMIT,    /* c->s: buffer u.submit.index is drawn and ready to show    */
 	CANVAS_RELEASE,   /* s->c: buffer u.release.index left scanout; reuse it       */
 	CANVAS_INPUT,     /* s->c: a normalized gamepad event (u.input)                */
+	CANVAS_POINTER,   /* s->c: a touch/pointer event (u.pointer) — surface coords  */
 	CANVAS_FOCUS,     /* s->c: u.focus.focused = did I just gain (1) or lose (0)   */
 	CANVAS_QUIT,      /* c->s: clean teardown (compositor also reaps on exit)      */
 };
@@ -88,6 +89,7 @@ struct canvas_msg {
 		struct { uint32_t index; }                             submit;
 		struct { uint32_t index; }                             release;
 		struct { uint32_t button; int32_t value; }             input;
+		struct { int32_t x, y, phase; }                        pointer;   /* phase: 1 down, 0 up, 2 move */
 		struct { uint32_t focused; }                           focus;
 	} u;
 };

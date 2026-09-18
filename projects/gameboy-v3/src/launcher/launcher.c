@@ -23,6 +23,19 @@ static struct entry games[] = {
 	{ "Shmup",      "/usr/bin/canvas-shmup",      0x005050e0 },
 	{ "Platformer", "/usr/bin/canvas-platformer", 0x0050c060 },
 	{ "Adventure",  "/usr/bin/canvas-adventure",  0x00c0a040 },
+	{ "Asteroids",  "/usr/bin/canvas-asteroids",  0x009060d0 },
+	{ "Pong",       "/usr/bin/canvas-pong",       0x0040b0a0 },
+	{ "Pinball",    "/usr/bin/canvas-pinball",    0x00d06080 },
+	{ "Billiards",  "/usr/bin/canvas-billiards",  0x0018704a },
+	{ "BalloonTD",  "/usr/bin/canvas-td",         0x00308060 },
+	{ "Raycaster",  "/usr/bin/canvas-raycast",    0x00803040 },
+	{ "Flappy",     "/usr/bin/canvas-flappy",     0x0038a0c0 },
+	{ "Racer",      "/usr/bin/canvas-racer",      0x00c05828 },
+	{ "Rhythm",     "/usr/bin/canvas-rhythm",     0x00b040c0 },
+	{ "Doom",       "/usr/bin/canvas-doom",       0x00b04030 },
+	{ "Nova",       "/usr/bin/canvas-nova",       0x005878c0 },
+	{ "Circuit",    "/usr/bin/canvas-circuit",    0x00385028 },
+	{ "TurboKart",  "/usr/bin/canvas-kart",       0x00e0a020 },
 };
 #define NGAMES ((int)(sizeof(games) / sizeof(games[0])))
 
@@ -74,7 +87,18 @@ int main(void)
 	for (;;) {
 		canvas_input_event ev;
 		while (canvas_poll_input(c, &ev)) {
-			if (ev.value != 1) continue;         /* act on press */
+			if (ev.type == CANVAS_POINTER) {     /* touch/mouse: tap a tile to select+launch it */
+				if (ev.value != 1) continue;    /* act on contact-down (phase 1) */
+				int pad = 24, h = 70, w = (int)canvas_width(c);
+				for (int i = 0; i < NGAMES; i++) {
+					int y = pad + i * (h + pad);
+					if (ev.x >= pad && ev.x < w - pad && ev.y >= y && ev.y < y + h) {
+						sel = i; launch_app(games[i].exec); break;
+					}
+				}
+				continue;
+			}
+			if (ev.value != 1) continue;         /* button: act on press */
 			switch (ev.button) {
 			case CANVAS_BTN_DOWN: sel = (sel + 1) % NGAMES; break;
 			case CANVAS_BTN_UP:   sel = (sel + NGAMES - 1) % NGAMES; break;

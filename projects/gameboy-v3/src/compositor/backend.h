@@ -19,6 +19,8 @@ int  backend_init(uint32_t *w, uint32_t *h);            /* set up output; report
 int  backend_alloc_buffer(uint32_t *stride, uint32_t *size);  /* -> fd for the client (-1 = none) */
 void backend_present(int fg_fd);                        /* composite + show buffer fg_fd (-1 = nothing) */
 int  backend_poll_input(uint32_t *button, int32_t *value);    /* 1 if an event was pending, else 0 */
+int  backend_poll_pointer(int32_t *x, int32_t *y, int32_t *phase); /* touch/pointer; 1 if pending, else 0
+                                                                   (phase: 1 down, 0 up, 2 move) */
 void backend_fini(void);
 
 #endif /* BACKEND_H */

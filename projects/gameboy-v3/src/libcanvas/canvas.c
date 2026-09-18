@@ -112,8 +112,18 @@ int canvas_poll_input(canvas_ctx *c, canvas_input_event *ev)
 			break;
 		case CANVAS_INPUT:
 			if (ev) {
+				ev->type   = CANVAS_INPUT;
 				ev->button = m.u.input.button;
 				ev->value  = m.u.input.value;
+				return 1;
+			}
+			break;
+		case CANVAS_POINTER:
+			if (ev) {
+				ev->type  = CANVAS_POINTER;
+				ev->x     = m.u.pointer.x;
+				ev->y     = m.u.pointer.y;
+				ev->value = m.u.pointer.phase;
 				return 1;
 			}
 			break;
