@@ -110,7 +110,7 @@ main.c   uart0_init(): mux PE2/PE3 → UART0 (func 6), ungate+dereset the UART0
 
 ```bash
 forge/backends/toolchain.sh (or `make toolchain`)          # once (shared toolchain)
-make                                 # → build/gv3boot.egon.bin
+make                                 # → build/bootloader.egon.bin
 ```
 
 ## Verified register values (sun20i / T113-S3 / R528)
@@ -137,7 +137,7 @@ Write the eGON image to the SD at the **8 KiB** offset — same as U-Boot. This
 
 ```bash
 lsblk                                # find the card — NOT a partition
-sudo dd if=build/gv3boot.egon.bin of=/dev/sdX bs=1024 seek=8 conv=fsync
+sudo dd if=build/bootloader.egon.bin of=/dev/sdX bs=1024 seek=8 conv=fsync
 sync
 ```
 
@@ -184,7 +184,7 @@ BROM → our SPL → DRAM → SD/FAT → DTB patch → Linux.
 
 **If nothing prints at all:** check TX/RX aren't swapped; confirm 3.3 V adapter +
 common GND + 115200. If the board seems dead, the BROM may have rejected the image
-— re-check with `../build/u-boot/tools/mkimage -l build/gv3boot.egon.bin` (should
+— re-check with `../build/u-boot/tools/mkimage -l build/bootloader.egon.bin` (should
 say "Allwinner eGON image"). Recovery: with no valid boot media the BROM drops to
 FEL/USB, so a bad image can't brick the board.
 

@@ -1,6 +1,6 @@
 # Makefile — build the gameboy-v3 custom bootloader (Stage 1).
 #
-# Produces build/gv3boot.egon.bin: a BROM-bootable eGON image you dd to the SD
+# Produces build/bootloader.egon.bin: a BROM-bootable eGON image you dd to the SD
 # at the 8 KiB offset (exactly where our U-Boot goes), replacing U-Boot.
 #
 # Uses the same pinned cross toolchain as the rest of the project (Step 0).
@@ -12,7 +12,7 @@ OBJCOPY := $(CROSS_COMPILE)objcopy
 HOSTCC  := cc
 
 BUILD   := build
-TARGET  := gv3boot
+TARGET  := bootloader
 
 # Bare-metal, freestanding, ARMv7-A (Cortex-A7), no libc, no stdlib.
 CFLAGS  := -mcpu=cortex-a7 -marm -ffreestanding -nostdlib -nostartfiles \
