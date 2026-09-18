@@ -4,17 +4,20 @@
 #define ENGINE_INTERNAL_H
 
 #include "engine.h"
-#include "canvas.h"
+#include "engine_platform.h"
 
 /* The frame currently being drawn (valid only during rendering), else NULL. (engine.c) */
-canvas_frame *eng__frame(void);
+eng_surface *eng__frame(void);
 
 /* One gamma-correct src-over-dst pixel: composite `rgb` over the frame at (x,y) with
  * coverage/alpha a in [0,255]. Used by both text.c and scene.c. (engine.c) */
-void eng__blend(canvas_frame *f, int x, int y, eng_color rgb, unsigned a);
+void eng__blend(eng_surface *f, int x, int y, eng_color rgb, unsigned a);
 
 /* Called once by eng_run() at startup to load the vector font. (text.c) */
 void eng_font_init(void);
+
+/* The software mixer (eng__mix) + its rate/channels live in engine_platform.h now, so a platform's
+ * audio transport can pull it. The transport itself (connect/feed/disconnect) is the PLATFORM's job. */
 
 /* Per-frame scene-graph hooks driven by eng_run(). (scene.c) */
 void eng__scene_update(float dt);   /* run node update callbacks, then reap freed nodes */

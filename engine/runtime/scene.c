@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG                 /* we only ship PNGs; keeps the decoder small */
@@ -31,6 +32,8 @@ struct eng_image { int w, h; uint32_t *argb; };   /* 0xAARRGGBB, row-major */
  * atlas (atlas_cols per row); otherwise it's a flat pal[cell] color. */
 struct eng_tilemap { int cols, rows, tile_px; unsigned char *cell; eng_color pal[16];
                      eng_image *tileset; int atlas_cols; };
+static void blit_affine(eng_surface *f, const eng_image *im, int cx, int cy,
+                        int sx, int sy, int sw, int sh, float rot, float scale, eng_color t, float ziz);  /* fwd; ziz>0 = z-test+write */
 
 /* ---- layers -------------------------------------------------------------------------- */
 /* Three fixed layer roots, rendered back-to-front. Each is a position-only node owning its
@@ -99,6 +102,336 @@ eng_image *eng_image_from_png(const char *path)
 void eng_image_free(eng_image *im)      { if (im) { free(im->argb); free(im); } }
 int  eng_image_w(const eng_image *im)   { return im ? im->w : 0; }
 int  eng_image_h(const eng_image *im)   { return im ? im->h : 0; }
+
+void eng_tex_column(const eng_image *tex, int sx, int tex_x, int y0, int y1, int shade, int alpha)
+{
+	eng_surface *f = eng__frame();
+	if (!f || !tex || !tex->argb || sx < 0 || sx >= (int)f->width) return;
+	int span = y1 - y0;
+	if (span < 1) return;
+	if (tex_x < 0) tex_x = 0; else if (tex_x >= tex->w) tex_x = tex->w - 1;
+	if (shade < 0) shade = 0; else if (shade > 256) shade = 256;
+	int ys = y0 < 0 ? 0 : y0, ye = y1 > (int)f->height ? (int)f->height : y1;
+	for (int y = ys; y < ye; y++) {
+		int ty = (int)((long)(y - y0) * tex->h / span);   /* full texture height -> the span */
+		if (ty < 0) ty = 0; else if (ty >= tex->h) ty = tex->h - 1;
+		uint32_t p = tex->argb[ty * tex->w + tex_x];
+		if (alpha && (p >> 24) == 0) continue;             /* transparent texel (sprites) */
+		unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+		if (shade < 256) { r = (r * shade) >> 8; g = (g * shade) >> 8; b = (b * shade) >> 8; }
+		*((uint32_t *)((char *)f->pixels + (size_t)y * f->stride) + sx) = (r << 16) | (g << 8) | b;
+	}
+}
+
+/* Textured wall column with an independent clip window (see engine.h). The texture v runs over
+ * the wall's full projected extent [wy0,wy1); only rows in [clip0,clip1) (and on-screen) draw. */
+void eng_wall_column(const eng_image *tex, int sx, int tex_x, int wy0, int wy1,
+                     int clip0, int clip1, int shade)
+{
+	eng_surface *f = eng__frame();
+	if (!f || !tex || !tex->argb || sx < 0 || sx >= (int)f->width) return;
+	int span = wy1 - wy0;
+	if (span < 1) return;
+	if (tex_x < 0) tex_x = 0; else if (tex_x >= tex->w) tex_x = tex->w - 1;
+	if (shade < 0) shade = 0; else if (shade > 256) shade = 256;
+	int ys = clip0, ye = clip1;                        /* draw only the visible slice */
+	if (ys < 0) ys = 0;
+	if (ye > (int)f->height) ye = (int)f->height;
+	for (int y = ys; y < ye; y++) {
+		int ty = (int)((long)(y - wy0) * tex->h / span);   /* v tied to the FULL wall height */
+		if (ty < 0) ty = 0; else if (ty >= tex->h) ty = tex->h - 1;
+		uint32_t p = tex->argb[ty * tex->w + tex_x];
+		unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+		if (shade < 256) { r = (r * shade) >> 8; g = (g * shade) >> 8; b = (b * shade) >> 8; }
+		*((uint32_t *)((char *)f->pixels + (size_t)y * f->stride) + sx) = (r << 16) | (g << 8) | b;
+	}
+}
+
+/* Perspective-textured floor/ceiling plane, one column (see engine.h). rowDist grows toward the
+ * horizon; sampling wraps the texture so one image tiles the whole plane. */
+void eng_floor_column(const eng_image *tex, int sx, int y0, int y1, int horizon,
+                      float numer, float rdx, float rdy, float px, float py,
+                      float texscale, int fog)
+{
+	eng_surface *f = eng__frame();
+	if (!f || !tex || !tex->argb || sx < 0 || sx >= (int)f->width) return;
+	int tw = tex->w, th = tex->h;
+	int ys = y0 < 0 ? 0 : y0, ye = y1 > (int)f->height ? (int)f->height : y1;
+	for (int y = ys; y < ye; y++) {
+		float dp = (float)(y - horizon);
+		if (dp < 0) dp = -dp;
+		if (dp < 1.0f) dp = 1.0f;                       /* clamp at the horizon (rowDist -> inf) */
+		float rowDist = numer / dp;
+		float wx = px + rowDist * rdx, wy = py + rowDist * rdy;
+		int tu = (int)(wx * texscale) % tw; if (tu < 0) tu += tw;   /* wrap into the tile */
+		int tv = (int)(wy * texscale) % th; if (tv < 0) tv += th;
+		uint32_t p = tex->argb[tv * tw + tu];
+		unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+		int shade = 256 - (int)(rowDist * fog);         /* distance fog */
+		if (shade < 40) shade = 40; else if (shade > 256) shade = 256;
+		if (shade < 256) { r = (r * shade) >> 8; g = (g * shade) >> 8; b = (b * shade) >> 8; }
+		*((uint32_t *)((char *)f->pixels + (size_t)y * f->stride) + sx) = (r << 16) | (g << 8) | b;
+	}
+}
+
+/* ---- software 3D: flat-shaded z-buffered triangle rasterizer ------------------------- */
+
+static float *g_zbuf;                 /* per-pixel inverse-depth buffer (iz), frame-sized */
+static int    g_zw, g_zh;
+
+static void ensure_zbuf(int w, int h)
+{
+	if (g_zbuf && g_zw == w && g_zh == h) return;
+	free(g_zbuf);
+	g_zbuf = malloc((size_t)w * h * sizeof(float));
+	g_zw = w; g_zh = h;
+}
+
+void eng_zclear(void)
+{
+	eng_surface *f = eng__frame();
+	if (!f) return;
+	ensure_zbuf((int)f->width, (int)f->height);
+	if (g_zbuf) memset(g_zbuf, 0, (size_t)g_zw * g_zh * sizeof(float));  /* iz 0 = infinitely far */
+}
+
+/* ---- distance fog (blend toward a haze colour by camera depth) ------------------------------------
+ * Opt-in: a game calls eng_fog(colour, near, far); triangles then lerp toward `colour` as they recede
+ * (fully hazed at >= far). Fog is expressed in inverse-depth (iz) so the rasterizers need no extra
+ * per-pixel divide — they already interpolate iz. eng_fog_off() (or never calling it) = no fog. */
+static eng_color g_fog_col; static float g_fog_near_iz, g_fog_den; static int g_fog_on;
+void eng_fog(eng_color color, float near_dist, float far_dist)
+{
+	if (far_dist <= near_dist || near_dist <= 0.0f) { g_fog_on = 0; return; }
+	g_fog_col = color; g_fog_near_iz = 1.0f/near_dist;
+	g_fog_den = g_fog_near_iz - 1.0f/far_dist; if (g_fog_den < 1e-6f) g_fog_den = 1e-6f;
+	g_fog_on = 1;
+}
+void eng_fog_off(void) { g_fog_on = 0; }
+static inline void fog_apply(unsigned *r, unsigned *g, unsigned *b, float iz)
+{
+	if (!g_fog_on) return;
+	float t = (g_fog_near_iz - iz) / g_fog_den;   /* 0 near .. 1 far */
+	if (t <= 0.0f) return;
+	if (t > 1.0f) t = 1.0f;
+	unsigned fr=(g_fog_col>>16)&0xff, fg=(g_fog_col>>8)&0xff, fb=g_fog_col&0xff;
+	*r = (unsigned)(*r*(1.0f-t) + fr*t); *g = (unsigned)(*g*(1.0f-t) + fg*t); *b = (unsigned)(*b*(1.0f-t) + fb*t);
+}
+
+static inline float edge_fn(float ax, float ay, float bx, float by, float px, float py)
+{
+	return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+}
+
+void eng_tri(eng_vtx a, eng_vtx b, eng_vtx c, eng_color color)
+{
+	eng_surface *f = eng__frame();
+	if (!f) return;
+	int W = (int)f->width, H = (int)f->height;
+	ensure_zbuf(W, H);
+	if (!g_zbuf) return;
+
+	float area = edge_fn(a.x, a.y, b.x, b.y, c.x, c.y);   /* 2x signed area (winding sign) */
+	if (area > -1e-6f && area < 1e-6f) return;             /* degenerate */
+	float inv_area = 1.0f / area;
+
+	int minx = (int)floorf(fminf(a.x, fminf(b.x, c.x)));
+	int maxx = (int)ceilf (fmaxf(a.x, fmaxf(b.x, c.x)));
+	int miny = (int)floorf(fminf(a.y, fminf(b.y, c.y)));
+	int maxy = (int)ceilf (fmaxf(a.y, fmaxf(b.y, c.y)));
+	if (minx < 0) minx = 0;
+	if (miny < 0) miny = 0;
+	if (maxx > W - 1) maxx = W - 1;
+	if (maxy > H - 1) maxy = H - 1;
+	if (minx > maxx || miny > maxy) return;
+
+	uint32_t packed = color & 0x00ffffff;
+	for (int y = miny; y <= maxy; y++) {
+		float py = y + 0.5f;
+		uint32_t *row  = (uint32_t *)((char *)f->pixels + (size_t)y * f->stride);
+		float    *zrow = g_zbuf + (size_t)y * W;
+		for (int x = minx; x <= maxx; x++) {
+			float px = x + 0.5f;
+			float w0 = edge_fn(b.x, b.y, c.x, c.y, px, py);   /* weight for a */
+			float w1 = edge_fn(c.x, c.y, a.x, a.y, px, py);   /* weight for b */
+			float w2 = edge_fn(a.x, a.y, b.x, b.y, px, py);   /* weight for c */
+			/* inside iff all weights share the sign of `area` (handles either winding) */
+			if ((w0 < 0 || w1 < 0 || w2 < 0) && (w0 > 0 || w1 > 0 || w2 > 0)) continue;
+			float iz = (w0 * a.iz + w1 * b.iz + w2 * c.iz) * inv_area;
+			if (iz > zrow[x]) { zrow[x] = iz;
+				if (g_fog_on) { unsigned r=(packed>>16)&0xff,g=(packed>>8)&0xff,b=packed&0xff; fog_apply(&r,&g,&b,iz); row[x]=(r<<16)|(g<<8)|b; }
+				else row[x] = packed; }
+		}
+	}
+}
+
+/* Gouraud-shaded triangle: like eng_tri but each vertex carries a light intensity (0..1) that is
+ * interpolated (affine, screen-space — the classic Gouraud look) and scales the base color per
+ * pixel. Shares the same depth buffer, so flat/gouraud/textured tris interleave correctly. */
+void eng_tri_gouraud(eng_vtx a, eng_vtx b, eng_vtx c, eng_color color, float ia, float ib, float ic)
+{
+	eng_surface *f = eng__frame();
+	if (!f) return;
+	int W = (int)f->width, H = (int)f->height;
+	ensure_zbuf(W, H);
+	if (!g_zbuf) return;
+
+	float area = edge_fn(a.x, a.y, b.x, b.y, c.x, c.y);
+	if (area > -1e-6f && area < 1e-6f) return;
+	float inv_area = 1.0f / area;
+
+	int minx = (int)floorf(fminf(a.x, fminf(b.x, c.x)));
+	int maxx = (int)ceilf (fmaxf(a.x, fmaxf(b.x, c.x)));
+	int miny = (int)floorf(fminf(a.y, fminf(b.y, c.y)));
+	int maxy = (int)ceilf (fmaxf(a.y, fmaxf(b.y, c.y)));
+	if (minx < 0) minx = 0;
+	if (miny < 0) miny = 0;
+	if (maxx > W - 1) maxx = W - 1;
+	if (maxy > H - 1) maxy = H - 1;
+	if (minx > maxx || miny > maxy) return;
+
+	unsigned br = (color >> 16) & 0xff, bg = (color >> 8) & 0xff, bb = color & 0xff;
+	for (int y = miny; y <= maxy; y++) {
+		float py = y + 0.5f;
+		uint32_t *row  = (uint32_t *)((char *)f->pixels + (size_t)y * f->stride);
+		float    *zrow = g_zbuf + (size_t)y * W;
+		for (int x = minx; x <= maxx; x++) {
+			float px = x + 0.5f;
+			float w0 = edge_fn(b.x, b.y, c.x, c.y, px, py);
+			float w1 = edge_fn(c.x, c.y, a.x, a.y, px, py);
+			float w2 = edge_fn(a.x, a.y, b.x, b.y, px, py);
+			if ((w0 < 0 || w1 < 0 || w2 < 0) && (w0 > 0 || w1 > 0 || w2 > 0)) continue;
+			float t0 = w0 * inv_area, t1 = w1 * inv_area, t2 = w2 * inv_area;   /* barycentric (sum=1) */
+			float iz = t0 * a.iz + t1 * b.iz + t2 * c.iz;
+			if (iz <= zrow[x]) continue;
+			float it = t0 * ia + t1 * ib + t2 * ic;
+			if (it < 0) it = 0;
+			else if (it > 1) it = 1;
+			unsigned r = (unsigned)(br * it), g = (unsigned)(bg * it), bl = (unsigned)(bb * it);
+			fog_apply(&r,&g,&bl,iz);
+			zrow[x] = iz;
+			row[x] = (r << 16) | (g << 8) | bl;
+		}
+	}
+}
+
+/* Perspective-correct textured triangle (see engine.h). Interpolates iz, u/z, v/z; divides per
+ * pixel to recover (u,v); wraps + samples `tex`; z-tests against the shared g_zbuf. */
+void eng_tri_tex(eng_vtx_tex a, eng_vtx_tex b, eng_vtx_tex c, const eng_image *tex, int shade)
+{
+	eng_surface *f = eng__frame();
+	if (!f || !tex || !tex->argb) return;
+	int W = (int)f->width, H = (int)f->height;
+	ensure_zbuf(W, H);
+	if (!g_zbuf) return;
+	if (shade < 0) shade = 0; else if (shade > 256) shade = 256;
+
+	float area = edge_fn(a.x, a.y, b.x, b.y, c.x, c.y);
+	if (area > -1e-6f && area < 1e-6f) return;
+	float inv_area = 1.0f / area;
+	float auoz = a.u * a.iz, avoz = a.v * a.iz;      /* premultiply by iz: u/z is linear in screen space */
+	float buoz = b.u * b.iz, bvoz = b.v * b.iz;
+	float cuoz = c.u * c.iz, cvoz = c.v * c.iz;
+	int tw = tex->w, th = tex->h;
+
+	int minx = (int)floorf(fminf(a.x, fminf(b.x, c.x)));
+	int maxx = (int)ceilf (fmaxf(a.x, fmaxf(b.x, c.x)));
+	int miny = (int)floorf(fminf(a.y, fminf(b.y, c.y)));
+	int maxy = (int)ceilf (fmaxf(a.y, fmaxf(b.y, c.y)));
+	if (minx < 0) minx = 0;
+	if (miny < 0) miny = 0;
+	if (maxx > W - 1) maxx = W - 1;
+	if (maxy > H - 1) maxy = H - 1;
+	if (minx > maxx || miny > maxy) return;
+
+	for (int y = miny; y <= maxy; y++) {
+		float py = y + 0.5f;
+		uint32_t *row  = (uint32_t *)((char *)f->pixels + (size_t)y * f->stride);
+		float    *zrow = g_zbuf + (size_t)y * W;
+		for (int x = minx; x <= maxx; x++) {
+			float px = x + 0.5f;
+			float w0 = edge_fn(b.x, b.y, c.x, c.y, px, py);
+			float w1 = edge_fn(c.x, c.y, a.x, a.y, px, py);
+			float w2 = edge_fn(a.x, a.y, b.x, b.y, px, py);
+			if ((w0 < 0 || w1 < 0 || w2 < 0) && (w0 > 0 || w1 > 0 || w2 > 0)) continue;
+			float iz = (w0 * a.iz + w1 * b.iz + w2 * c.iz) * inv_area;
+			if (iz <= zrow[x]) continue;                          /* occluded */
+			float invz = 1.0f / iz;
+			float u = (w0 * auoz + w1 * buoz + w2 * cuoz) * inv_area * invz;
+			float v = (w0 * avoz + w1 * bvoz + w2 * cvoz) * inv_area * invz;
+			int tu = (int)(u * tw) % tw; if (tu < 0) tu += tw;    /* wrap for tiling */
+			int tv = (int)(v * th) % th; if (tv < 0) tv += th;
+			uint32_t p = tex->argb[tv * tw + tu];
+			unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, bl = p & 0xff;
+			if (shade < 256) { r = (r * shade) >> 8; g = (g * shade) >> 8; bl = (bl * shade) >> 8; }
+			fog_apply(&r,&g,&bl,iz);
+			zrow[x] = iz;
+			row[x] = (r << 16) | (g << 8) | bl;
+		}
+	}
+}
+
+/* Textured AND Gouraud-lit triangle: interpolates perspective-correct (u,v) like eng_tri_tex AND a
+ * per-vertex light intensity (ia/ib/ic, 0..1) like eng_tri_gouraud, sampling the texture then scaling
+ * the texel by the interpolated light. This is the rasterizer that lets a MESH carry a texture. */
+void eng_tri_tex_lit(eng_vtx_tex a, eng_vtx_tex b, eng_vtx_tex c, const eng_image *tex, float ia, float ib, float ic, eng_color base)
+{
+	unsigned Br=(base>>16)&0xff, Bg=(base>>8)&0xff, Bb=base&0xff;
+	eng_surface *f = eng__frame();
+	if (!f || !tex || !tex->argb) return;
+	int W = (int)f->width, H = (int)f->height;
+	ensure_zbuf(W, H);
+	if (!g_zbuf) return;
+
+	float area = edge_fn(a.x, a.y, b.x, b.y, c.x, c.y);
+	if (area > -1e-6f && area < 1e-6f) return;
+	float inv_area = 1.0f / area;
+	float auoz = a.u * a.iz, avoz = a.v * a.iz;
+	float buoz = b.u * b.iz, bvoz = b.v * b.iz;
+	float cuoz = c.u * c.iz, cvoz = c.v * c.iz;
+	int tw = tex->w, th = tex->h;
+
+	int minx = (int)floorf(fminf(a.x, fminf(b.x, c.x)));
+	int maxx = (int)ceilf (fmaxf(a.x, fmaxf(b.x, c.x)));
+	int miny = (int)floorf(fminf(a.y, fminf(b.y, c.y)));
+	int maxy = (int)ceilf (fmaxf(a.y, fmaxf(b.y, c.y)));
+	if (minx < 0) minx = 0;
+	if (miny < 0) miny = 0;
+	if (maxx > W - 1) maxx = W - 1;
+	if (maxy > H - 1) maxy = H - 1;
+	if (minx > maxx || miny > maxy) return;
+
+	for (int y = miny; y <= maxy; y++) {
+		float py = y + 0.5f;
+		uint32_t *row  = (uint32_t *)((char *)f->pixels + (size_t)y * f->stride);
+		float    *zrow = g_zbuf + (size_t)y * W;
+		for (int x = minx; x <= maxx; x++) {
+			float px = x + 0.5f;
+			float w0 = edge_fn(b.x, b.y, c.x, c.y, px, py);
+			float w1 = edge_fn(c.x, c.y, a.x, a.y, px, py);
+			float w2 = edge_fn(a.x, a.y, b.x, b.y, px, py);
+			if ((w0 < 0 || w1 < 0 || w2 < 0) && (w0 > 0 || w1 > 0 || w2 > 0)) continue;
+			float t0 = w0 * inv_area, t1 = w1 * inv_area, t2 = w2 * inv_area;
+			float iz = t0 * a.iz + t1 * b.iz + t2 * c.iz;
+			if (iz <= zrow[x]) continue;
+			float invz = 1.0f / iz;
+			float u = (t0 * auoz + t1 * buoz + t2 * cuoz) * invz;
+			float v = (t0 * avoz + t1 * bvoz + t2 * cvoz) * invz;
+			int tu = (int)(u * tw) % tw; if (tu < 0) tu += tw;
+			int tv = (int)(v * th) % th; if (tv < 0) tv += th;
+			uint32_t p = tex->argb[tv * tw + tu];
+			unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, bl = p & 0xff;
+			float it = t0 * ia + t1 * ib + t2 * ic;
+			if (it < 0) it = 0; else if (it > 1) it = 1;
+			r = (unsigned)((float)r * Br * it * (1.0f/255.0f));   /* texel x base(material/tint) x light */
+			g = (unsigned)((float)g * Bg * it * (1.0f/255.0f));
+			bl = (unsigned)((float)bl * Bb * it * (1.0f/255.0f));
+			fog_apply(&r,&g,&bl,iz);
+			zrow[x] = iz;
+			row[x] = (r << 16) | (g << 8) | bl;
+		}
+	}
+}
 
 /* ---- tilemaps ------------------------------------------------------------------------ */
 
@@ -171,6 +504,34 @@ bool eng_tilemap_solid_at(const eng_tilemap *m, float x, float y)   /* world (x,
 	return m->cell[r * m->cols + c] != 0;
 }
 
+/* ---- grid pathfinding: BFS flow field (see engine.h) --------------------------------- */
+void eng_flow_field(int cols, int rows, const unsigned char *blocked, int goalc, int goalr, int *next)
+{
+	int n = cols * rows;
+	for (int i = 0; i < n; i++) next[i] = -1;
+	if (cols <= 0 || rows <= 0 || goalc < 0 || goalc >= cols || goalr < 0 || goalr >= rows) return;
+	int gi = goalr * cols + goalc;
+	if (blocked[gi]) return;
+	int *q = malloc((size_t)n * sizeof(int));
+	if (!q) return;
+	int head = 0, tail = 0;
+	next[gi] = gi;                                  /* goal points to itself (also marks visited) */
+	q[tail++] = gi;
+	static const int dc[4] = { 0, 0, -1, 1 }, dr[4] = { -1, 1, 0, 0 };
+	while (head < tail) {
+		int ci = q[head++], cc = ci % cols, cr = ci / cols;
+		for (int k = 0; k < 4; k++) {
+			int nc = cc + dc[k], nr = cr + dr[k];
+			if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+			int ni = nr * cols + nc;
+			if (next[ni] != -1 || blocked[ni]) continue;   /* visited or a wall */
+			next[ni] = ci;                                  /* from ni, step to ci (toward the goal) */
+			q[tail++] = ni;
+		}
+	}
+	free(q);
+}
+
 /* ---- nodes --------------------------------------------------------------------------- */
 
 eng_node *eng_node_new(eng_node *parent)
@@ -180,6 +541,7 @@ eng_node *eng_node_new(eng_node *parent)
 	if (!n) return NULL;
 	n->visible = true;
 	n->tint = ENG_WHITE;
+	n->scale = 1.0f;                                /* calloc'd 0 would be invisible; default native size */
 	eng_node *p = parent ? parent : eng_root();   /* default parent = the WORLD layer */
 	n->_parent = p;
 	n->_sibling = p->_child;                       /* prepend to the parent's child list */
@@ -336,7 +698,7 @@ static int cmp_z(const void *a, const void *b)
 
 /* blit a sub-rectangle (sx,sy,sw,sh) of `im`, centered at screen (cx,cy), modulated by tint.
  * A plain sprite passes its whole extent; an animated node passes the current frame's cell. */
-static void blit_region(canvas_frame *f, const eng_image *im, int cx, int cy,
+static void blit_region(eng_surface *f, const eng_image *im, int cx, int cy,
                         int sx, int sy, int sw, int sh, eng_color t)
 {
 	int x0 = cx - sw / 2, y0 = cy - sh / 2;
@@ -350,14 +712,95 @@ static void blit_region(canvas_frame *f, const eng_image *im, int cx, int cy,
 			uint32_t p = im->argb[ay * im->w + ax];
 			unsigned a = p >> 24;
 			if (!a) continue;                /* transparent pixel */
+			int dx = x0 + i, dy = y0 + j;
+			if (a == 255 && plain) {         /* opaque + untinted: straight copy, skip the gamma blend
+			                                    (matters for the full-screen per-frame background) */
+				if (dx >= 0 && dy >= 0 && dx < (int)f->width && dy < (int)f->height)
+					((uint32_t *)((char *)f->pixels + (size_t)dy * f->stride))[dx] = p & 0x00ffffff;
+				continue;
+			}
 			unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
 			if (!plain) { r = r * tr / 255; g = g * tg / 255; b = b * tb / 255; }
-			eng__blend(f, x0 + i, y0 + j, (r << 16) | (g << 8) | b, a);
+			eng__blend(f, dx, dy, (r << 16) | (g << 8) | b, a);
 		}
 }
 
+/* Public: immediate centered whole-image blit (see engine.h). Thin wrapper over blit_region so
+ * games can draw a sprite outside the scene graph (HUD, particles, cursor). */
+void eng_draw_image(const eng_image *im, int cx, int cy, eng_color tint)
+{
+	eng_surface *f = eng__frame();
+	if (f && im) blit_region(f, im, cx, cy, 0, 0, im->w, im->h, tint);
+}
+
+/* Public: immediate centered blit of sheet cell (col,row). blit_region clips the sub-rect to the
+ * sheet, so an out-of-range cell just draws nothing. */
+void eng_draw_image_cell(const eng_image *im, int cx, int cy, int fw, int fh, int col, int row, eng_color tint)
+{
+	eng_surface *f = eng__frame();
+	if (f && im) blit_region(f, im, cx, cy, col * fw, row * fh, fw, fh, tint);
+}
+
+/* Public: immediate rotated+scaled whole-image blit (thin wrapper over blit_affine). */
+void eng_draw_image_rot(const eng_image *im, int cx, int cy, float rot, float scale, eng_color tint)
+{
+	eng_surface *f = eng__frame();
+	if (f && im) blit_affine(f, im, cx, cy, 0, 0, im->w, im->h, rot, scale, tint, 0.0f);
+}
+
+void eng_draw_sprite(const eng_image *im, int cx, int cy, int fw, int fh, int col, int row, float rot, float scale, eng_color tint)
+{
+	eng_surface *f = eng__frame();
+	if (f && im) blit_affine(f, im, cx, cy, col*fw, row*fh, fw, fh, rot, scale, tint, 0.0f);
+}
+
+/* Depth-tested billboard: like eng_draw_sprite but the whole sprite sits at inverse-depth `iz`
+ * (1/z_cam from eng_project) and is z-tested + written against the shared depth buffer, so it is
+ * occluded by nearer 3D geometry (road/hills/karts). For trees, rivals, world billboards. */
+void eng_draw_sprite_z(const eng_image *im, int cx, int cy, int fw, int fh, int col, int row, float rot, float scale, eng_color tint, float iz)
+{
+	eng_surface *f = eng__frame();
+	if (f && im) blit_affine(f, im, cx, cy, col*fw, row*fh, fw, fh, rot, scale, tint, iz);
+}
+
+/* Like blit_region but ROTATED by `rot` (radians) and uniformly SCALED by `scale` about (cx,cy).
+ * Inverse-mapped: for each destination pixel in the rotated bounding box, map back through -rot and
+ * 1/scale to the source cell and nearest-sample (no gaps). Only used when a node actually rotates or
+ * scales — blit_region stays the fast path for the (rot==0, scale==1) common case. */
+static void blit_affine(eng_surface *f, const eng_image *im, int cx, int cy,
+                        int sx, int sy, int sw, int sh, float rot, float scale, eng_color t, float ziz)
+{
+	if (scale <= 0.0f || sw <= 0 || sh <= 0) return;
+	float c = cosf(rot), s = sinf(rot);
+	float hw = sw * scale * 0.5f, hh = sh * scale * 0.5f;
+	int ext = (int)ceilf(sqrtf(hw * hw + hh * hh)) + 1;   /* half-size of the on-screen bounding box */
+	int plain = (t == ENG_WHITE);
+	unsigned tr = (t >> 16) & 0xff, tg = (t >> 8) & 0xff, tb = t & 0xff;
+
+	for (int py = cy - ext; py <= cy + ext; py++) {
+		if (py < 0 || py >= (int)f->height) continue;
+		for (int px = cx - ext; px <= cx + ext; px++) {
+			if (px < 0 || px >= (int)f->width) continue;
+			float dx = (float)(px - cx), dy = (float)(py - cy);
+			float u = ( c * dx + s * dy) / scale;         /* inverse rotate (-rot) then inverse scale */
+			float v = (-s * dx + c * dy) / scale;
+			int ix = sx + (int)floorf(u + sw * 0.5f);     /* nearest source texel in the cell */
+			int iy = sy + (int)floorf(v + sh * 0.5f);
+			if (ix < sx || iy < sy || ix >= sx + sw || iy >= sy + sh) continue;   /* outside the cell */
+			if (ix < 0 || iy < 0 || ix >= im->w || iy >= im->h) continue;         /* outside the sheet */
+			uint32_t p = im->argb[iy * im->w + ix];
+			unsigned a = p >> 24;
+			if (!a) continue;
+			unsigned r = (p >> 16) & 0xff, g = (p >> 8) & 0xff, b = p & 0xff;
+			if (!plain) { r = r * tr / 255; g = g * tg / 255; b = b * tb / 255; }
+			if (ziz > 0.0f && g_zbuf) { size_t zi = (size_t)py * g_zw + px; if (ziz <= g_zbuf[zi]) continue; g_zbuf[zi] = ziz; }
+			eng__blend(f, px, py, (r << 16) | (g << 8) | b, a);
+		}
+	}
+}
+
 /* copy one tp x tp tile from the atlas (source top-left sx,sy) to screen (dx,dy) */
-static void blit_tile(canvas_frame *f, const eng_image *im, int dx, int dy, int sx, int sy, int tp)
+static void blit_tile(eng_surface *f, const eng_image *im, int dx, int dy, int sx, int sy, int tp)
 {
 	if (sx < 0 || sy < 0 || sx + tp > im->w || sy + tp > im->h) return;   /* invalid tile index */
 	for (int j = 0; j < tp; j++) {
@@ -378,7 +821,7 @@ static void blit_tile(canvas_frame *f, const eng_image *im, int dx, int dy, int 
 }
 
 /* draw the visible part of a tilemap whose top-left is at screen (ox,oy) */
-static void draw_tilemap(canvas_frame *f, const eng_tilemap *m, int ox, int oy)
+static void draw_tilemap(eng_surface *f, const eng_tilemap *m, int ox, int oy)
 {
 	int tp = m->tile_px, fw = (int)f->width, fh = (int)f->height;
 	int c0 = ox < 0 ? (-ox) / tp : 0;            /* skip columns/rows fully off the left/top */
@@ -403,22 +846,28 @@ static void draw_tilemap(canvas_frame *f, const eng_tilemap *m, int ox, int oy)
 }
 
 /* draw one layer's tree, z-sorted, at base offset (ox,oy) — so layer order dominates z */
-static void render_layer(canvas_frame *f, eng_node *rootn, float ox, float oy)
+static void render_layer(eng_surface *f, eng_node *rootn, float ox, float oy)
 {
 	int n = collect_draw(rootn, ox, oy, 0);
 	qsort(s_draw, (size_t)n, sizeof s_draw[0], cmp_z);
 	for (int i = 0; i < n; i++) {
 		eng_node *nd = s_draw[i].n;
 		if (nd->tiles)  draw_tilemap(f, nd->tiles, s_draw[i].x, s_draw[i].y);
-		if (nd->sheet)  blit_region(f, nd->sheet, s_draw[i].x, s_draw[i].y,
-		                            nd->frame * nd->fw, nd->row * nd->fh, nd->fw, nd->fh, nd->tint);
+		if (nd->sheet) {
+			int fx = nd->frame * nd->fw, fy = nd->row * nd->fh;
+			if (nd->rot == 0.0f && nd->scale == 1.0f)   /* fast path: axis-aligned 1:1 copy */
+				blit_region(f, nd->sheet, s_draw[i].x, s_draw[i].y, fx, fy, nd->fw, nd->fh, nd->tint);
+			else                                        /* rotated/scaled: inverse-mapped sampler */
+				blit_affine(f, nd->sheet, s_draw[i].x, s_draw[i].y, fx, fy, nd->fw, nd->fh,
+				            nd->rot, nd->scale, nd->tint, 0.0f);
+		}
 		if (nd->text)   eng_text(s_draw[i].x, s_draw[i].y, nd->text_px, nd->tint, nd->text);
 	}
 }
 
 void eng__scene_render(void)
 {
-	canvas_frame *f = eng__frame();
+	eng_surface *f = eng__frame();
 	if (!f) return;
 	ensure();
 	render_layer(f, &g_layer[ENG_LAYER_BACKGROUND], 0.0f, 0.0f);

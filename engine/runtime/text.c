@@ -89,7 +89,7 @@ static struct glyph *glyph_get(int cp, int px, float scale)
 
 void eng_text(int x, int y, int px, eng_color c, const char *s)
 {
-	canvas_frame *f = eng__frame();
+	eng_surface *f = eng__frame();
 	if (!f || !s || px < 1) return;
 
 	if (!g_font.loaded) return;                  /* no font -> nothing to draw */
@@ -130,4 +130,13 @@ int eng_text_width(int px, const char *s)
 			w += stbtt_GetCodepointKernAdvance(&g_font.info, cp, (unsigned char)s[i + 1]) * scale;
 	}
 	return (int)(w + 0.5f);
+}
+
+void eng_text_aligned(int x, int y, int px, eng_color c, eng_align a, const char *s)
+{
+	if (a != ENG_ALIGN_LEFT) {
+		int w = eng_text_width(px, s);
+		x -= (a == ENG_ALIGN_CENTER) ? w / 2 : w;   /* CENTER: center on x; RIGHT: end at x */
+	}
+	eng_text(x, y, px, c, s);
 }
