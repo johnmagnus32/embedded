@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Open in KiCad",
+      "type": "process",
+      "command": "open",
+      "args": ["-a", "/Applications/KiCad/Schematic Editor.app", "${file}"],
+      "presentation": { "reveal": "never", "echo": false, "panel": "shared", "close": true },
+      "problemMatcher": []
+    }
+  ]
+}
