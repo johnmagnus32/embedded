@@ -7,6 +7,10 @@ O      ?= build
 WARN   := -Wall -Wextra
 ALL_CFLAGS  := $(WARN) -O2 -std=c11 $(CFLAGS)     # init.c defines _GNU_SOURCE itself
 ALL_LDFLAGS := $(LDFLAGS)
+# crt0 + libc archive for a -nostdlib libc (custom). Empty on musl/host (crt+libc auto-linked).
+# crt0 goes BEFORE the source, the libc archive AFTER (link-order: archive resolves the objects).
+LIBC_CRT ?=
+LIBC_LIB ?=
 
 all: $(O)/init $(O)/initctl
 
@@ -14,10 +18,10 @@ $(O):
 	mkdir -p $(O)
 
 $(O)/init: init.c | $(O)
-	$(CC) $(ALL_CFLAGS) init.c $(ALL_LDFLAGS) -o $@
+	$(CC) $(ALL_CFLAGS) $(ALL_LDFLAGS) $(LIBC_CRT) init.c $(LIBC_LIB) -o $@
 
 $(O)/initctl: initctl.c | $(O)
-	$(CC) $(ALL_CFLAGS) initctl.c $(ALL_LDFLAGS) -o $@
+	$(CC) $(ALL_CFLAGS) $(ALL_LDFLAGS) $(LIBC_CRT) initctl.c $(LIBC_LIB) -o $@
 
 # Installs PID 1 as /init — the initramfs entry point the kernel execs. Deliberately NOT /sbin/init:
 # busybox ships /sbin/init -> bin/busybox, and merging a real /sbin/init over that symlink would
