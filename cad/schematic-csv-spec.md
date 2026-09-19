@@ -6,31 +6,49 @@ to what*. They are joined on **`refdes`**.
 
 ```
 generate_schematic.py --bom <board>-bom.csv --nets <board>-nets.csv --project <dir>
-    PLACE stage (bom)  -> every place=yes part, grouped by subcircuit, one child sheet per subcircuit
-    WIRE  stage (nets) -> net labels / power symbols / PWR_FLAGs, connectivity by net name
-    VALIDATE gate      -> every pin on a net + ERC clean + every rendered net lands on its pin
+    one pass: group parts by subcircuit -> per subcircuit PLACE each part (spacing sized to fit its
+      net-label text) + WIRE it (net labels / power symbols / PWR_FLAGs) -> one child sheet per
+      subcircuit + a root
+    then VALIDATE: every pin on a net + ERC clean + exported netlist matches the CSV
+    (--subcircuit <name>… rebuilds just those sheets)
 ```
 
-Both files are hand-edited (spreadsheet-friendly, one row per part / per pin). Keep them a superset: the
-tool reads the columns it needs and ignores the rest, which serve fab/PCB and human review.
+Both files are hand-edited (spreadsheet-friendly, one row per part / per pin). The format is **strict**:
+the tool reads the columns below and ignores any extras (kept only for fab/human review), but the
+**required** columns must be present and non-blank — there are no fallbacks and the tool never writes
+the CSVs back.
 
 ---
 
-## `bom.csv` — one row per physical part
+## `bom.csv` — one row per physical part (every row IS placed)
 
 | column | required | used by | meaning / allowed values |
 |---|---|---|---|
-| `refdes` | **yes** | tool (join key, symbol reference) | Schematic reference, e.g. `C1`, `U10`. **Unique.** The stable key `nets.csv` joins on. A blank placeable row is auto-assigned the next free number for its prefix and written back. |
-| `subcircuit` | for grouping | tool (sheet grouping) | Which subcircuit the part belongs to, e.g. `soc`, `core-buck`, `microsd`. One child sheet is generated per distinct value (`gb3-<subcircuit>.kicad_sch`). If blank, falls back to `section`. |
-| `section` | no | tool (fallback grouping) | Coarse functional area, e.g. `1. Core — SoC…`. Only used to group when `subcircuit` is blank. |
+| `refdes` | **yes** | tool (join key, symbol reference) | Schematic reference, e.g. `C1`, `U10`. **Unique, non-blank.** The stable key `nets.csv` joins on — the tool never invents it (a blank is a hard error). |
+| `subcircuit` | **yes** | tool (sheet grouping) | Which subcircuit (schematic page) the part goes on, e.g. `soc`, `core-buck`, `microsd`. One child sheet per distinct value. **Non-blank, no fallback** (a blank is a hard error). See *Designing subcircuits* below — this is your main lever for a readable schematic. |
+| `symbol` | **yes** | tool (placement) | Library id `nick:name` to place, e.g. `easyeda2kicad:T113-S3_C5197687`. Must resolve in the symbol libraries. |
 | `lcsc` | no | tool + fab | LCSC order code. Written as the placed symbol's `LCSC` field; also used by a fab/assembly BOM. |
-| `fit` | no | fab | Assembly method: `JLC` \| `Hand`. Not used by this tool. |
-| `symbol` | **yes** | tool (placement) | Library id `nick:name` to place, e.g. `easyeda2kicad:T113-S3_C5197687`. If blank or `place=no`, the row is skipped. Must resolve in the symbol libraries. |
-| `footprint` | no | fab / PCB | Footprint id. **Not** used by this tool — the placed footprint comes from the symbol definition. Carried for the PCB/fab step. |
-| `place` | **yes** | tool | `yes` \| `no` (also `true`/`1`). Whether the part is placed on the schematic. |
 | `note` | no | human | Free-form. The single human-readable column — part description, role, provenance, etc. |
 
-Required columns (the tool errors if missing): **`refdes`, `symbol`, `place`.**
+Required columns (the tool errors if missing): **`refdes`, `subcircuit`, `symbol`.** There is no
+`place` column — a part you don't want on the schematic simply isn't in this file. Footprints come from
+the symbol definition, not the CSV. Any other columns (e.g. `footprint`, `fit`) are ignored.
+
+### Designing subcircuits (how to get a readable schematic)
+
+`subcircuit` is the **only** thing that decides which schematic page a part is drawn on: every part
+sharing a value lands on `sheets/<board>-<subcircuit>.kicad_sch`, one page per distinct value. It is also
+the unit of `--subcircuit` (rebuild just those pages) and the boundary for net labels — a net whose pins
+span more than one subcircuit becomes a cross-sheet **global** label; a net confined to one subcircuit
+stays a **local** label.
+
+The tool auto-arranges parts *within* a sheet (a label-aware shelf pack — it can't know your intent), so
+**readability is entirely down to how you group by `subcircuit`.** Put the parts that form one functional
+block together — a regulator with its inductor / caps / feedback divider, a connector with its ESD +
+pull-ups, an IC with its decoupling — under one short, meaningful name (`core-buck`, `microsd`, `usb-pd`,
+`imu`). Keep each group focused (a handful up to a few dozen parts): too coarse and a page is an
+unreadable wall of parts; too fine and parts that belong together scatter across pages. Each part is in
+exactly one subcircuit.
 
 ---
 
@@ -44,7 +62,7 @@ Required columns (the tool errors if missing): **`refdes`, `symbol`, `place`.**
 | `kind` | for power | tool (symbol vs label) | Net classification — **the tool never guesses from the net name.** `gnd`, `pwr`, or blank/`sig` (signal). Must be **consistent across all rows of the same net** (the tool errors otherwise). |
 | `note` | no | human | Free-form. The single human-readable column — pin function/name, rationale, etc. |
 
-### What `kind` does (WIRE stage)
+### What `kind` does
 | `kind` | rendering |
 |---|---|
 | `gnd` | a `GND` power symbol at each pin, **plus one `PWR_FLAG`** on the net (marks it driven for ERC) |
@@ -58,8 +76,8 @@ so ERC's "power input not driven" is satisfied by declared data, not by name heu
 
 ## Relationship + validation
 
-- **Join:** every `nets.csv` `refdes` should be a placed part in `bom.csv`, and every placed part's pins
-  should appear in `nets.csv`.
+- **Join:** every `nets.csv` `refdes` should be a part in `bom.csv`, and every part's pins should appear
+  in `nets.csv`.
 - The tool's mandatory **VALIDATE** gate fails the build unless:
   1. every pin has a net (no `TODO_*`; a blank net is an accepted intentional no-connect);
   2. ERC has **0 error-severity violations and 0 unconnected pins** (warnings are tolerated);
