@@ -118,13 +118,16 @@ static void gen_expr(Node *n) {
 	case ND_CALL: {
 		Node *av[32]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 32) die("cc: too many args"); av[nargs++] = a; }
 		int stackn = nargs > 4 ? nargs - 4 : 0;             /* args beyond the 4th go on the stack   */
-		int pad = (stackn & 1) ? 4 : 0;                     /* keep sp 8-aligned at the bl (AAPCS)    */
+		int cw = n->lhs ? 4 : 0;                            /* indirect: the fn ptr is stashed below the stack args */
+		int pad = ((4 * stackn + cw) & 7) ? 4 : 0;          /* keep sp 8-aligned at the (b)lx (AAPCS)  */
 		if (pad) fprintf(o, "\tsub sp, sp, #4\n");
+		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tpush {r0}\n"); }   /* evaluate + stash the callee pointer */
 		for (int i = nargs - 1; i >= 0; i--) { gen_expr(av[i]); fprintf(o, "\tpush {r0}\n"); }  /* arg0 ends on top */
 		int nreg = nargs < 4 ? nargs : 4;
 		for (int i = 0; i < nreg; i++) fprintf(o, "\tpop {r%d}\n", i);   /* r0..r3; sp then points at arg4 */
-		fprintf(o, "\tbl %s\n", n->name);                                /* result in r0 */
-		if (stackn || pad) fprintf(o, "\tadd sp, sp, #%d\n", 4 * stackn + pad);   /* drop stack args + padding */
+		if (n->lhs) fprintf(o, "\tldr r12, [sp, #%d]\n\tblx r12\n", 4 * stackn);   /* indirect: call through the stashed ptr */
+		else        fprintf(o, "\tbl %s\n", n->name);                              /* direct; result in r0 */
+		if (stackn || cw || pad) fprintf(o, "\tadd sp, sp, #%d\n", 4 * stackn + cw + pad);   /* drop stack args + callee + pad */
 		return;
 	}
 	default: break;
@@ -232,7 +235,8 @@ static void gen_stmt(Node *n) {
 static void gen_func(Func *f) {
 	ret_label = uniq(); cur_func_id = func_seq++; npool = 0; nclabels = 0;
 	cur_nfixed = f->nparams; cur_variadic = f->variadic;
-	fprintf(o, "\t.global %s\n\t.type %s, %%function\n%s:\n", f->name, f->name, f->name);
+	if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
+	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
 	if (f->variadic) fprintf(o, "\tpush {r0, r1, r2, r3}\n");   /* save area: args become contiguous at [r11,#8+4i] */
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);
@@ -245,13 +249,15 @@ static void gen_func(Func *f) {
 		for (int k = 0; k < npool; k++) fprintf(o, ".LCPI%d_%d:\n\t.word %s\n", cur_func_id, k, pool[k]); }
 }
 
-/* Emit the file-scope objects: string literals in .rodata, initialized globals in .data, zero-init in .bss. */
+/* Emit the file-scope objects: string literals in .rodata, initialized globals in .data, zero-init in .bss;
+ * an `extern` decl defines nothing — it's a reference the linker resolves against the real definition. */
 static void gen_data(void) {
 	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
 		fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
-		fprintf(o, "\t.data\n\t.global %s\n", g->name);
+		fprintf(o, "\t.data\n");
+		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
 		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n");
 		fprintf(o, "%s:\n", g->name);
 		for (Init *it = g->init; it; it = it->next) {
@@ -260,8 +266,9 @@ static void gen_data(void) {
 			else fprintf(o, "\t.space %d\n", it->size);
 		}
 	}
-	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->init) {
-		fprintf(o, "\t.bss\n\t.global %s\n", g->name);
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->init && !g->is_extern) {
+		fprintf(o, "\t.bss\n");
+		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
 		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n");
 		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
 	}

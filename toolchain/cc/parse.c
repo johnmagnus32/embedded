@@ -56,15 +56,18 @@ static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind 
 
 /* declaration-specifiers: fold type keywords, qualifiers, and storage classes. M1 approximations:
  * short/int/long/signed/unsigned all become 4-byte int; void ~ char (so void* scales like char*, per the
- * GNU extension); const/volatile/static/extern/register/inline and __attribute__ are consumed and ignored.
- * `td` (may be NULL) is set to 1 iff `typedef` appears — an out-param, NOT a global, because parsing a
- * struct member type recursively calls declspec and would otherwise clobber the outer typedef flag. */
-static Type *declspec(int *td) {
+ * GNU extension); const/volatile/register/inline and __attribute__ are consumed and ignored.
+ * `td` is set iff `typedef` appears; `sc` collects the storage-class bits (SC_EXTERN/SC_STATIC). Both are
+ * out-params (may be NULL), NOT globals — a recursive declspec (struct members) would clobber a global. */
+static Type *declspec(int *td, int *sc) {
 	if (td) *td = 0;
+	if (sc) *sc = 0;
 	Type *ty = ty_int; int seen = 0;
 	for (;;) {
 		if (consume("typedef")) { if (td) *td = 1; continue; }
-		if (consume("const") || consume("volatile") || consume("restrict") || consume("static") || consume("extern") || consume("register") || consume("inline") || consume("signed")) continue;
+		if (consume("extern")) { if (sc) *sc |= SC_EXTERN; continue; }   /* file-scope: a reference, not a definition */
+		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
+		if (consume("const") || consume("volatile") || consume("restrict") || consume("register") || consume("inline") || consume("signed")) continue;
 		if (consume("__attribute__")) { skip_attribute(); continue; }
 		if (consume("unsigned")) { ty = ty_int;  seen = 1; continue; }
 		if (consume("void"))     { ty = ty_char; seen = 1; continue; }
@@ -114,7 +117,7 @@ static Type *struct_decl(void) {
 	expect("{");
 	Member mh = {0}, *mc = &mh; int off = 0, salign = 1;
 	while (!consume("}")) {
-		Type *base = declspec(NULL);
+		Type *base = declspec(NULL, NULL);
 		do {
 			char mname[64]; Type *mt = declarator(base, mname);
 			int a = align_of(mt); off = (off + a - 1) & ~(a - 1);   /* align this member */
@@ -180,10 +183,21 @@ static Node *primary(void) {
 	if (tk->kind == TK_IDENT) {
 		char name[64]; ident(name);
 		if (!strcmp(name, "__builtin_va_start")) { expect("("); Node *n = node(ND_VA_START); n->lhs = assign(); expect(","); assign(); expect(")"); return n; }
-		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL), d); expect(")"); return n; }
+		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL, NULL), d); expect(")"); return n; }
 		if (!strcmp(name, "__builtin_va_end"))   { expect("("); assign(); expect(")"); return num(0); }
-		if (consume("(")) {                                  /* function call name(args) */
-			Node *n = node(ND_CALL); strncpy(n->name, name, 63);
+		if (consume("(")) {                                  /* call: name(args) */
+			Node *n = node(ND_CALL);
+			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
+			 * variable holding a function pointer — a param/local, or a global. n->lhs = the callee. */
+			if (local_exists(name)) {
+				Node *c = node(ND_VAR); strncpy(c->name, name, 63);
+				c->offset = local_offset(name); c->type = local_type(name); strncpy(c->reg, local_reg(name), 7);
+				n->lhs = c;
+			} else {
+				Gvar *gv = global_find(name);
+				if (gv) { Node *c = node(ND_GVAR); strncpy(c->name, name, 63); c->type = gv->type; n->lhs = c; }
+				else strncpy(n->name, name, 63);            /* a function name -> direct call */
+			}
 			Node argh = {0}, *ac = &argh;
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
 			expect(")"); n->args = argh.next; return n;
@@ -228,11 +242,11 @@ static int cast_ahead(void) {
 
 static Node *unary_expr(void) {
 	if (cast_ahead()) {                                      /* (type) expr — re-types the operand */
-		char d[64]; expect("("); Type *t = declarator(declspec(NULL), d); expect(")");
+		char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
 		Node *n = node(ND_CAST); n->lhs = unary_expr(); n->type = t; return n;
 	}
 	if (consume("sizeof")) {                                 /* sizeof(type) or sizeof expr -> a constant */
-		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL), d); expect(")"); return num(t->size); }
+		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return num(t->size); }
 		Node *e = unary_expr(); add_type(e); return num(e->type ? e->type->size : 4);
 	}
 	if (consume("++")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_add(x, num(1))); }   /* ++x */
@@ -368,7 +382,7 @@ static Node *stmt(void) {
 	}
 	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
 	if (is_typename()) {                                     /* local declaration(s): `T a, b = e, c;` */
-		int td; Type *base = declspec(&td);
+		int td; Type *base = declspec(&td, NULL);
 		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); return node(ND_BLOCK); }
 		if (consume(";")) return node(ND_BLOCK);             /* type-only (e.g. a struct definition) */
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
@@ -396,7 +410,7 @@ static Func *function_tail(const char *name) {
 	else if (!is(")")) {
 		do {
 			if (is(".")) { while (consume(".")) ; f->variadic = 1; break; }   /* `...` */
-			char p[64]; Type *ty = declarator(declspec(NULL), p);
+			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
 			if (np < 16) { strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++; }
 		} while (consume(","));
@@ -486,13 +500,14 @@ Func *parse(Token *tok) {
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
 		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_attribute(); consume(";"); continue; }
-		int td; Type *base = declspec(&td);                  /* type keywords/qualifiers (struct/enum defs register) */
+		int td, sc; Type *base = declspec(&td, &sc);               /* type keywords/qualifiers + storage class; struct/enum defs register */
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); continue; }
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
-		if (is("(")) { Func *fn = function_tail(name); if (fn) cur = cur->next = fn; continue; }   /* NULL = prototype */
+		if (is("(")) { Func *fn = function_tail(name); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* NULL = prototype */
 		for (;;) {                                           /* global variable(s), comma-separated */
 			Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;
+			g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0;
 			if (consume("=")) g->init = global_init(ty);
 			if (!consume(",")) break;
 			ty = declarator(base, name);

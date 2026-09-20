@@ -76,6 +76,7 @@ typedef struct Func {
 	char name[64];
 	int nparams;                 /* number of NAMED params (excludes the variadic `...`)         */
 	int variadic;                /* 1 if declared with `...` (needs the register-save prologue)  */
+	int is_static;               /* 1 if `static` — file-local symbol, emit no .global            */
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
 	Node *body;                  /* statement list                                               */
 	struct Func *next;
@@ -89,10 +90,15 @@ enum { INIT_CONST, INIT_SYM, INIT_ZERO };
 typedef struct Init { int kind; long val; char sym[64]; int size; struct Init *next; } Init;
 
 /* File-scope objects: global variables and string literals, emitted by gen() as .data/.bss/.rodata. */
+/* storage-class bits declspec() reports for file-scope objects (they set symbol binding). */
+#define SC_EXTERN 1   /* `extern` — a reference; emit no definition */
+#define SC_STATIC 2   /* `static` — file-local symbol (no .global)  */
 typedef struct Gvar {
 	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
 	Type *type;
 	int is_str;                  /* 1 = string literal -> .rodata .asciz; 0 = variable            */
+	int is_extern;               /* 1 = `extern` decl -> reference only, emit no storage           */
+	int is_static;               /* 1 = `static` -> file-local symbol, emit no .global             */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
 	char str[64];                /* is_str: the raw string bytes (escapes as spelled)             */
 	struct Gvar *next;
