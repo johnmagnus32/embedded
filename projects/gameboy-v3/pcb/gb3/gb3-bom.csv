@@ -1,192 +1,183 @@
-refdes,section,ref_num,role,part,lcsc,fit,symbol,footprint,place,note
-U1,1. Core — SoC + power + clock + storage,1,SoC,T113-S3,C5197687,JLC,easyeda2kicad:T113-S3_C5197687,easyeda2kicad:LQFP-128_L14.0-W14.0-P0.40-LS16.0-BL-EP5.6,yes,
-USBC1,1. Core — SoC + power + clock + storage,2,USB-C,TYPE-C-31-M-12,C165948,JLC,easyeda2kicad:TYPE-C-31-M-12,easyeda2kicad:USB-C_SMD-TYPE-C-31-M-12_1,yes,
-U2,1. Core — SoC + power + clock + storage,3,0.9 V core buck,FP6161KR-LF-ADJ,C77234,JLC,easyeda2kicad:FP6161KR-LF-ADJ,easyeda2kicad:SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BL,yes,
-L1,1. Core — SoC + power + clock + storage,4,Core-buck inductor,SMNR4020-2.2UH,C135262,JLC,easyeda2kicad:SMNR4020-2.2UH,easyeda2kicad:IND-SMD_L4.0-W4.0_LQH44PN2R2MP0L,yes,
-R1,1. Core — SoC + power + clock + storage,5,Amp mono strap R,RS-03K6803FT,C140074,JLC,easyeda2kicad:RS-03K6803FT,easyeda2kicad:R0603,no,[AUDIT] DNP — duplicate of R14/#48 MAX98357A mono strap; populate only ONE (both=340k mis-selects SD_MODE)
-R2,1. Core — SoC + power + clock + storage,6,Core FB R_bot,0603WAF1503T5E,C22807,JLC,easyeda2kicad:0603WAF1503T5E,easyeda2kicad:R0603,yes,
-R3,1. Core — SoC + power + clock + storage,7,Core FB R_top,0603WAF7502T5E,C23242,JLC,easyeda2kicad:0603WAF7502T5E,easyeda2kicad:R0603,yes,
-C1,1. Core — SoC + power + clock + storage,8,Core FB feed-forward,CL05C100JB5NNNC,C32949,JLC,easyeda2kicad:CL05C100JB5NNNC,easyeda2kicad:C0402,yes,
-R4,1. Core — SoC + power + clock + storage,9,Core-buck RUN RC,100 kΩ 0603 (C14675) + 100 nF 0603 (C14663),C14675,JLC,easyeda2kicad:RC0603FR-07100KL,easyeda2kicad:R0603,yes,multi-part row: 1 of each code
-C2,1. Core — SoC + power + clock + storage,9,Core-buck RUN RC,100 kΩ 0603 (C14675) + 100 nF 0603 (C14663),C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,multi-part row: 1 of each code
-R5,1. Core — SoC + power + clock + storage,10,DDR ZQ,0603WAF2400T5E,C23350,JLC,easyeda2kicad:0603WAF2400T5E,easyeda2kicad:R0603,yes,
-U3,1. Core — SoC + power + clock + storage,11,SPI-NOR,W25Q128JVSIQ,C97521,JLC,easyeda2kicad:W25Q128JVSIQTR,easyeda2kicad:SOIC-8_L5.3-W5.3-P1.27-LS8.0-BL,yes,
-U4,1. Core — SoC + power + clock + storage,12,microSD socket,A-MicroTF-1.85A,C22467599,JLC,easyeda2kicad:A-MICROTF-1.85A,easyeda2kicad:TF-SMD_A-MICROTF-1.85A,yes,
-D1,1. Core — SoC + power + clock + storage,13,microSD ESD array,Littelfuse SP3004-04XTG ×2,C207280,JLC,easyeda2kicad:SP3004-04XTG,easyeda2kicad:SOT-563_L1.6-W1.2-P0.50-LS1.6-BR,yes,
-D2,1. Core — SoC + power + clock + storage,13,microSD ESD array,Littelfuse SP3004-04XTG ×2,C207280,JLC,easyeda2kicad:SP3004-04XTG,easyeda2kicad:SOT-563_L1.6-W1.2-P0.50-LS1.6-BR,yes,
-R6,1. Core — SoC + power + clock + storage,14,SD/RESET pull-ups,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R7,1. Core — SoC + power + clock + storage,14,SD/RESET pull-ups,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R8,1. Core — SoC + power + clock + storage,14,SD/RESET pull-ups,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R9,1. Core — SoC + power + clock + storage,14,SD/RESET pull-ups,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R10,1. Core — SoC + power + clock + storage,14,SD/RESET pull-ups,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R11,1. Core — SoC + power + clock + storage,14,SD/RESET pull-ups,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-X1,1. Core — SoC + power + clock + storage,15,HOSC crystal,X322524MRB4SI,C70571,JLC,easyeda2kicad:X322524MRB4SI,easyeda2kicad:CRYSTAL-SMD_4P-L3.2-W2.5-BL-2,yes,
-X2,1. Core — SoC + power + clock + storage,16,RTC crystal,SC-20S 32.768kHz,C97607,JLC,easyeda2kicad:SC-20S32.768kHz20PPM12.5pF,easyeda2kicad:OSC-SMD_L2.0-W1.2,yes,
-C3,1. Core — SoC + power + clock + storage,17,24 MHz load caps,0402CG220J500NT,C1555,JLC,easyeda2kicad:0402CG220J500NT,easyeda2kicad:C0402,yes,
-C4,1. Core — SoC + power + clock + storage,17,24 MHz load caps,0402CG220J500NT,C1555,JLC,easyeda2kicad:0402CG220J500NT,easyeda2kicad:C0402,yes,
-C5,1. Core — SoC + power + clock + storage,18,RTC load caps,0402CG180J500NT,C1549,JLC,easyeda2kicad:0402CG180J500NT,easyeda2kicad:C0402,yes,
-C6,1. Core — SoC + power + clock + storage,18,RTC load caps,0402CG180J500NT,C1549,JLC,easyeda2kicad:0402CG180J500NT,easyeda2kicad:C0402,yes,
-C7,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C8,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C9,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C10,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C11,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C12,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C13,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C14,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C15,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C16,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C17,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C18,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C19,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C20,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C21,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C22,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C23,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C24,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C25,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C26,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C27,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C28,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C29,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C30,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C31,1. Core — SoC + power + clock + storage,19,Decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C32,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C33,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C34,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C35,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C36,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C37,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C38,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C39,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C40,1. Core — SoC + power + clock + storage,20,Bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C41,1. Core — SoC + power + clock + storage,21,Bulk,CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-C42,1. Core — SoC + power + clock + storage,21,Bulk,CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-C43,1. Core — SoC + power + clock + storage,21,Bulk,CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-C44,1. Core — SoC + power + clock + storage,21,Bulk,CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-SW1,1. Core — SoC + power + clock + storage,22,RESET button,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-U5,1. Core — SoC + power + clock + storage,23,Power LED,19-213SYGC,C2986027,JLC,easyeda2kicad:19-213SYGC_S530-E2_5T,easyeda2kicad:LED0603-RD,yes,
-R12,1. Core — SoC + power + clock + storage,24,Power-LED resistor,0603WAF5100T5E,C23193,JLC,easyeda2kicad:0603WAF5100T5E,easyeda2kicad:R0603,yes,
-,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",25,"5"" IPS panel (+ FT7311 touch on-panel)",Zettler ATM0500D27-CT,,Hand,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-P1,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",26,Display FPC connector,BOOMELE 0.5-40PFGPZ,C9160,JLC,easyeda2kicad:FPCConnector40PIN0.5MM,easyeda2kicad:FPC-SMD_40P-P0.50_FG-H2.0-40P,yes,
-FPC1,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",27,Touch FFC connector,HDGC 1.0K-1.5-6PWB,C2919568,JLC,easyeda2kicad:1.0K-1.5-6PWB,easyeda2kicad:FPC-SMD_6P-P1.00_HDGC_1.0K-1.5-6PWB,yes,
-U6,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",28,Backlight WLED boost,TI TPS61165DBVR,C58756,JLC,easyeda2kicad:TPS61165DBVR,easyeda2kicad:SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BR,yes,
-L2,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",29,Boost inductor,SMNR4020-10UH,C135263,JLC,easyeda2kicad:SMNR4020-10UH,easyeda2kicad:IND-SMD_L4.0-W4.0_LQH44PN2R2MP0L,yes,
-D3,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",30,Boost diode,MDD SS16,C2481,JLC,easyeda2kicad:SS16,easyeda2kicad:SMA_L4.3-W2.6-LS5.2-RD,yes,
-C45,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",31,Boost output cap (Cout),YAGEO CC0805KKX7R9BB225,C125847,JLC,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,yes,
-C46,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",32,Boost input cap (Cin),CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-R38,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",33,Boost FB sense R (Rset),YAGEO RC0402FR-075R1L,C137955,JLC,easyeda2kicad:RC0402FR-075R1L,easyeda2kicad:R0402,yes,Backlight Rset (FB->GND): 200mV/5.1R=39mA. Sourced C137955 (Extended). Fetch symbol via fetch_symbols.py.
-C47,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",34,Boost COMP cap,YAGEO CC0402KRX7R7BB224,C326590,JLC,easyeda2kicad:CC0402KRX7R7BB224,easyeda2kicad:C0402,yes,
-U7,3. Motion (IMU) + Haptics,35,IMU (6-axis),LSM6DSOXTR,C481766,JLC,easyeda2kicad:LSM6DSOXTR,easyeda2kicad:LGA-14L_L3.0-W2.5-P0.50-TL,yes,
-C48,3. Motion (IMU) + Haptics,36,IMU VDD decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C49,3. Motion (IMU) + Haptics,37,IMU VDDIO decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-,3. Motion (IMU) + Haptics,38,IMU CS tie,0 Ω / short,,JLC,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-,3. Motion (IMU) + Haptics,39,IMU SA0 strap,net,,JLC,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-R13,3. Motion (IMU) + Haptics,40,IMU INT1 pulldown,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-U8,3. Motion (IMU) + Haptics,41,Haptic driver,DRV2605LDGSR,C527464,JLC,easyeda2kicad:DRV2605LDGSR,easyeda2kicad:VSSOP-10_L3.0-W3.0-P0.50-LS4.9-BL,yes,
-C50,3. Motion (IMU) + Haptics,42,Haptic REG cap,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-C51,3. Motion (IMU) + Haptics,43,Haptic VDD bypass,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-,3. Motion (IMU) + Haptics,44,Haptic IN/TRIG tie,0 Ω / net,,JLC,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-C52,3. Motion (IMU) + Haptics,45,Haptic VDD bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-,3. Motion (IMU) + Haptics,46,Actuator (LRA),Vybronics VG0832022D,,Hand,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-U9,4. Sound — I2S Class-D amp + speaker (on-chip codec has no mainline driver),47,Class-D amp,MAX98357AETE+T,C910544,JLC,easyeda2kicad:MAX98357AETE+T,easyeda2kicad:TQFN-16_L3.0-W3.0-P0.50-BL-EP1.5,yes,
-R14,4. Sound — I2S Class-D amp + speaker (on-chip codec has no mainline driver),48,Amp SD/MODE strap,RS-03K6803FT,C140074,JLC,easyeda2kicad:RS-03K6803FT,easyeda2kicad:R0603,yes,
-,4. Sound — I2S Class-D amp + speaker (on-chip codec has no mainline driver),49,Amp GAIN_SLOT strap,net (no part),,JLC,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-C53,4. Sound — I2S Class-D amp + speaker (on-chip codec has no mainline driver),50,Amp VDD bypass,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C54,4. Sound — I2S Class-D amp + speaker (on-chip codec has no mainline driver),51,Amp VDD bulk,CL21A106KPFNNNE,C17024,JLC,easyeda2kicad:CL21A106KPFNNNE,easyeda2kicad:C0805,yes,
-,4. Sound — I2S Class-D amp + speaker (on-chip codec has no mainline driver),52,Speaker,Same Sky CES-2704-088L050,,Hand,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-U10,5. Battery — charge + power-path + fuel gauge (1S LiPo),53,Power-path charger,BQ24074RGTR,C54313,JLC,easyeda2kicad:BQ24074RGTR,easyeda2kicad:QFN-16_L3.0-W3.0-P0.50-TL-EP1.7,yes,
-C55,5. Battery — charge + power-path + fuel gauge (1S LiPo),54,Charger IN cap,CL10A475KO8NNNC,C19666,JLC,easyeda2kicad:CL10A475KO8NNNC,easyeda2kicad:C0603,yes,
-C56,5. Battery — charge + power-path + fuel gauge (1S LiPo),55,Charger OUT cap,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C57,5. Battery — charge + power-path + fuel gauge (1S LiPo),56,Charger BAT cap,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-R15,5. Battery — charge + power-path + fuel gauge (1S LiPo),57,ISET (charge current),0603WAF2001T5E,C22975,JLC,easyeda2kicad:0603WAF2001T5E,easyeda2kicad:R0603,yes,
-R16,5. Battery — charge + power-path + fuel gauge (1S LiPo),58,ILIM (input limit),0603WAF1201T5E,C22765,JLC,easyeda2kicad:0603WAF1201T5E,easyeda2kicad:R0603,yes,
-R17,5. Battery — charge + power-path + fuel gauge (1S LiPo),59,TS NTC-defeat,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R18,5. Battery — charge + power-path + fuel gauge (1S LiPo),60,EN2 strap,0 Ω 0603,C21189,JLC,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,yes,
-U11,5. Battery — charge + power-path + fuel gauge (1S LiPo),61,USB-PD sink,CH224K,C970725,JLC,easyeda2kicad:CH224K,easyeda2kicad:ESSOP-10_L4.9-W3.9-P1.0-LS6.0-TL-EP,yes,
-R19,5. Battery — charge + power-path + fuel gauge (1S LiPo),62,CH224K VDD series R,0603WAF1001T5E,C21190,JLC,easyeda2kicad:0603WAF1001T5E,easyeda2kicad:R0603,yes,
-C58,5. Battery — charge + power-path + fuel gauge (1S LiPo),63,CH224K VDD cap,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-R20,5. Battery — charge + power-path + fuel gauge (1S LiPo),64,CH224K CFG1 strap,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-R21,5. Battery — charge + power-path + fuel gauge (1S LiPo),65,CH224K VBUS-sense R,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-U12,5. Battery — charge + power-path + fuel gauge (1S LiPo),66,3.3 V buck-boost,TPS63021DSJR,C202140,JLC,easyeda2kicad:TPS63021DSJR,easyeda2kicad:VSON-14_L4.0-W3.0-P0.50-BL-EP_TI_DSJ,yes,
-R22,5. Battery — charge + power-path + fuel gauge (1S LiPo),67,Buck-boost FB tie,0603WAF0000T5E,C21189,JLC,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,yes,
-R23,5. Battery — charge + power-path + fuel gauge (1S LiPo),68,Buck-boost PS/SYNC strap,0603WAF0000T5E,C21189,JLC,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,yes,
-C59,5. Battery — charge + power-path + fuel gauge (1S LiPo),69,Buck-boost VINA bypass,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C60,5. Battery — charge + power-path + fuel gauge (1S LiPo),70,Buck-boost input caps,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C61,5. Battery — charge + power-path + fuel gauge (1S LiPo),70,Buck-boost input caps,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C62,5. Battery — charge + power-path + fuel gauge (1S LiPo),71,Buck-boost output caps,CL21A226MAQNNNE,C45783,JLC,easyeda2kicad:CL21A226MAQNNNE,easyeda2kicad:C0805,yes,
-C63,5. Battery — charge + power-path + fuel gauge (1S LiPo),71,Buck-boost output caps,CL21A226MAQNNNE,C45783,JLC,easyeda2kicad:CL21A226MAQNNNE,easyeda2kicad:C0805,yes,
-C64,5. Battery — charge + power-path + fuel gauge (1S LiPo),71,Buck-boost output caps,CL21A226MAQNNNE,C45783,JLC,easyeda2kicad:CL21A226MAQNNNE,easyeda2kicad:C0805,yes,
-L3,5. Battery — charge + power-path + fuel gauge (1S LiPo),72,Buck-boost inductor,MWSA0503S-1R5MT,C408407,JLC,easyeda2kicad:MWSA0503S-1R5MT,easyeda2kicad:IND-SMD_L5.4-W5.2,yes,
-,5. Battery — charge + power-path + fuel gauge (1S LiPo),73,LiPo cell,Adafruit 2011 (2000 mAh),,Hand,,,no,"no LCSC# and no symbol match — off-board/net, skipped"
-CN1,5. Battery — charge + power-path + fuel gauge (1S LiPo),74,Battery connector,S2B-PH-SM4-TB(LF)(SN),C295747,JLC,easyeda2kicad:S2B-PH-SM4-TB,easyeda2kicad:CONN-SMD_P2.00_S2B-PH-SM4-TB-LF-SN,yes,
-R24,5. Battery — charge + power-path + fuel gauge (1S LiPo),75,Fuel divider R_top,0603WAF1803T5E,C22827,JLC,easyeda2kicad:0603WAF1803T5E,easyeda2kicad:R0603,yes,
-R25,5. Battery — charge + power-path + fuel gauge (1S LiPo),76,Fuel divider R_bot,0603WAF1003T5E,C25803,JLC,easyeda2kicad:0603WAF1003T5E,easyeda2kicad:R0603,yes,
-U13,5. Battery — charge + power-path + fuel gauge (1S LiPo),77,Fuel gauge (SoC %),MAX17048G+T10,C2682616,JLC,easyeda2kicad:MAX17048G+T10,easyeda2kicad:TDFN-8_L2.0-W2.0-P0.50-BL-EP1.2,yes,
-C65,5. Battery — charge + power-path + fuel gauge (1S LiPo),78,MAX17048 VDD bypass,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-U14,5. Battery — charge + power-path + fuel gauge (1S LiPo),79,Charge-status LED,19-213SYGC/S530-E2/5T,C2986027,JLC,easyeda2kicad:19-213SYGC_S530-E2_5T,easyeda2kicad:LED0603-RD,yes,
-R26,5. Battery — charge + power-path + fuel gauge (1S LiPo),80,Charge-LED resistor,0603WAF5100T5E,C23193,JLC,easyeda2kicad:0603WAF5100T5E,easyeda2kicad:R0603,yes,
-U15,5. Battery — charge + power-path + fuel gauge (1S LiPo),81,Power/current monitor,TI INA226AIDGSR,C49851,JLC,easyeda2kicad:INA226AIDGSR,easyeda2kicad:MSOP-10_L3.0-W3.0-P0.50-LS5.0-BL,yes,
-R27,5. Battery — charge + power-path + fuel gauge (1S LiPo),82,INA226 shunt,RLP25FEGMR010,C393072,JLC,easyeda2kicad:RLP25FEGMR010,easyeda2kicad:R2512,yes,
-C66,5. Battery — charge + power-path + fuel gauge (1S LiPo),83,INA226 VS decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-R28,5. Battery — charge + power-path + fuel gauge (1S LiPo),84,/PGOOD pull-up,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-U16,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,85,GPIO expander,PCA9555PWR,C2864778,JLC,easyeda2kicad:PCA9555PWR,easyeda2kicad:TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL,yes,
-SW2,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,86,D-pad tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW3,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,86,D-pad tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW4,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,86,D-pad tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW5,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,86,D-pad tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW6,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,87,A/B/X/Y tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW7,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,87,A/B/X/Y tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW8,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,87,A/B/X/Y tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW9,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,87,A/B/X/Y tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW10,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,88,Start/Select tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-SW11,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,88,Start/Select tactiles,TS-1187A-B-A-B,C318884,JLC,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,yes,
-R29,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,89,Expander INT pull-up,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,
-C67,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,90,PCA9555 VDD decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-SW12,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,91,Volume ± tactiles,ALPS SKRTLBE010,C127481,JLC,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,yes,
-SW13,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,91,Volume ± tactiles,ALPS SKRTLBE010,C127481,JLC,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,yes,
-SW14,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,92,Soft power button,ALPS SKRTLBE010,C127481,JLC,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,yes,
-SW15,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,93,L/R bumper tactiles,ALPS SKRTLBE010,C127481,JLC,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,yes,
-SW16,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,93,L/R bumper tactiles,ALPS SKRTLBE010,C127481,JLC,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,yes,
-U17,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,94,Push-button power controller,STM6601CA2BDM6F,C109022,JLC,easyeda2kicad:STM6601CA2BDM6F,easyeda2kicad:TDFN-12_L3.0-W2.0-P0.50-BL,yes,
-C68,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,95,STM6601 VCC decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C69,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,96,STM6601 VREF cap (CREF),CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-R30,7. Shared bus / cross-cutting,97,I2C pull-ups (SDA/SCL),0603WAF1501T5E,C22843,JLC,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,yes,
-R31,7. Shared bus / cross-cutting,97,I2C pull-ups (SDA/SCL),0603WAF1501T5E,C22843,JLC,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,yes,
-D4,7. Shared bus / cross-cutting,98,USB2 D+/D− ESD array,USBLC6-2SC6,C7519,JLC,easyeda2kicad:USBLC6-2SC6,easyeda2kicad:SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BL,yes,
-U18,8. Audio-out + Bluetooth (Tier-2),99,Bluetooth module,Ezurio BT830-SA-01,,Hand,manual:BT830-SA-01-T_R,manual:XCVR_BT830-SA-01-T_R,yes,matched hand-drawn symbol by name (BT830-SA-01-T_R)
-C70,8. Audio-out + Bluetooth (Tier-2),100,BT830 VREG_OUT_HV cap,CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-C71,8. Audio-out + Bluetooth (Tier-2),101,BT830 supply decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C72,8. Audio-out + Bluetooth (Tier-2),101,BT830 supply decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C73,8. Audio-out + Bluetooth (Tier-2),102,BT830 3.3 V bulk,CC0603KRX5R6BB475,C109456,JLC,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,yes,
-U19,8. Audio-out + Bluetooth (Tier-2),103,Stereo I2S DAC (HP out),TI PCM5102APWR,C107671,JLC,easyeda2kicad:PCM5102APWR,easyeda2kicad:TSSOP-20_L6.5-W4.4-P0.65-LS6.4-BL,yes,
-R32,8. Audio-out + Bluetooth (Tier-2),104,I2S1 series-R,0603WAF0000T5E,C21189,JLC,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,yes,
-R33,8. Audio-out + Bluetooth (Tier-2),104,I2S1 series-R,0603WAF0000T5E,C21189,JLC,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,yes,
-R34,8. Audio-out + Bluetooth (Tier-2),104,I2S1 series-R,0603WAF0000T5E,C21189,JLC,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,yes,
-C74,8. Audio-out + Bluetooth (Tier-2),105,PCM5102A supply decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C75,8. Audio-out + Bluetooth (Tier-2),105,PCM5102A supply decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C76,8. Audio-out + Bluetooth (Tier-2),105,PCM5102A supply decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C77,8. Audio-out + Bluetooth (Tier-2),105,PCM5102A supply decoupling,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-C78,8. Audio-out + Bluetooth (Tier-2),106,PCM5102A supply bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C79,8. Audio-out + Bluetooth (Tier-2),106,PCM5102A supply bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C80,8. Audio-out + Bluetooth (Tier-2),106,PCM5102A supply bulk,CL21A106KOQNNNE,C1713,JLC,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,yes,
-C81,8. Audio-out + Bluetooth (Tier-2),107,PCM5102A charge-pump caps,CC0805KKX7R9BB225,C125847,JLC,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,yes,
-C82,8. Audio-out + Bluetooth (Tier-2),107,PCM5102A charge-pump caps,CC0805KKX7R9BB225,C125847,JLC,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,yes,
-R35,8. Audio-out + Bluetooth (Tier-2),108,PCM5102A anti-imaging R,UNI-ROYAL 0603WAF4700T5E,C23179,JLC,easyeda2kicad:0603WAF4700T5E,easyeda2kicad:R0603,yes,
-R36,8. Audio-out + Bluetooth (Tier-2),108,PCM5102A anti-imaging R,UNI-ROYAL 0603WAF4700T5E,C23179,JLC,easyeda2kicad:0603WAF4700T5E,easyeda2kicad:R0603,yes,
-C83,8. Audio-out + Bluetooth (Tier-2),109,PCM5102A anti-imaging C,Samsung CL10C222JB8NNNC,C33353,JLC,easyeda2kicad:CL10C222JB8NNNC,easyeda2kicad:C0603,yes,
-C84,8. Audio-out + Bluetooth (Tier-2),109,PCM5102A anti-imaging C,Samsung CL10C222JB8NNNC,C33353,JLC,easyeda2kicad:CL10C222JB8NNNC,easyeda2kicad:C0603,yes,
-U20,8. Audio-out + Bluetooth (Tier-2),110,Stereo headphone amp,TI TPA6132A2RTER,C69901,JLC,easyeda2kicad:TPA6132A2RTER,easyeda2kicad:WQFN-16_L3.0-W3.0-P0.50-TL-EP1.6,yes,
-C85,8. Audio-out + Bluetooth (Tier-2),111,TPA6132A2 1 µF caps,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-C86,8. Audio-out + Bluetooth (Tier-2),111,TPA6132A2 1 µF caps,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-C87,8. Audio-out + Bluetooth (Tier-2),111,TPA6132A2 1 µF caps,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-C88,8. Audio-out + Bluetooth (Tier-2),111,TPA6132A2 1 µF caps,CL10A105KB8NNNC,C15849,JLC,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,yes,
-C89,8. Audio-out + Bluetooth (Tier-2),112,TPA6132A2 2.2 µF caps,CC0805KKX7R9BB225,C125847,JLC,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,yes,
-C90,8. Audio-out + Bluetooth (Tier-2),112,TPA6132A2 2.2 µF caps,CC0805KKX7R9BB225,C125847,JLC,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,yes,
-C91,8. Audio-out + Bluetooth (Tier-2),113,TPA6132A2 VDD HF cap,CC0603KRX7R9BB104,C14663,JLC,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,yes,
-R37,8. Audio-out + Bluetooth (Tier-2),114,TPA6132A2 EN pull-down,RC0603FR-07100KL,C14675,JLC,easyeda2kicad:RC0603FR-07100KL,easyeda2kicad:R0603,yes,
-Audio1,8. Audio-out + Bluetooth (Tier-2),115,3.5 mm headphone jack,PJ-327C-4A,C145813,JLC,easyeda2kicad:PJ-327C-4A,easyeda2kicad:AUDIO-SMD_PJ-327C-4A,yes,
-R39,"2. Screen — Zettler ATM0500D27-CT (5"" 800×480 IPS, RGB666 via TCON-LCD0, 22 pins on the PD bank)",116,DISP pull-up 10k,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,[AUDIT] PANEL_DISP->+3V3; BOM.md #116 (fills line-64 gap)
-R40,6. Controls — buttons via PCA9555 I2C expander + `gpio-keys`,117,STM6601 /PB_OUT pull-up 10k,RC0603JR-0710KL,C99198,JLC,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,yes,[AUDIT] PWR_BTN_3V3 -> PE10; BOM.md #117 (fixes PE10 SYS-overvoltage)
-R41,3. Motion (IMU) + Haptics,118,i2c2 pull-up (IMU bus),0603WAF1501T5E,C22843,JLC,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,yes,[AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
-R42,3. Motion (IMU) + Haptics,118,i2c2 pull-up (IMU bus),0603WAF1501T5E,C22843,JLC,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,yes,[AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
+refdes,subcircuit,lcsc,symbol,footprint,note
+U1,soc,C5197687,easyeda2kicad:T113-S3_C5197687,easyeda2kicad:LQFP-128_L14.0-W14.0-P0.40-LS16.0-BL-EP5.6,SoC · T113-S3 · #1
+USBC1,usb-c,C165948,easyeda2kicad:TYPE-C-31-M-12,easyeda2kicad:USB-C_SMD-TYPE-C-31-M-12_1,USB-C · TYPE-C-31-M-12 · #2
+U2,core-buck,C77234,easyeda2kicad:FP6161KR-LF-ADJ,easyeda2kicad:SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BL,0.9 V core buck · FP6161KR-LF-ADJ · #3
+L1,core-buck,C135262,easyeda2kicad:SMNR4020-2.2UH,easyeda2kicad:IND-SMD_L4.0-W4.0_LQH44PN2R2MP0L,Core-buck inductor · SMNR4020-2.2UH · #4
+R2,core-buck,C22807,easyeda2kicad:0603WAF1503T5E,easyeda2kicad:R0603,Core FB R_bot · 0603WAF1503T5E · #6
+R3,core-buck,C23242,easyeda2kicad:0603WAF7502T5E,easyeda2kicad:R0603,Core FB R_top · 0603WAF7502T5E · #7
+C1,core-buck,C32949,easyeda2kicad:CL05C100JB5NNNC,easyeda2kicad:C0402,Core FB feed-forward · CL05C100JB5NNNC · #8
+R4,core-buck,C14675,easyeda2kicad:RC0603FR-07100KL,easyeda2kicad:R0603,Core-buck RUN RC · 100 kΩ 0603 (C14675) + 100 nF 0603 (C14663) · #9 · multi-part row: 1 of each code
+C2,core-buck,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Core-buck RUN RC · 100 kΩ 0603 (C14675) + 100 nF 0603 (C14663) · #9 · multi-part row: 1 of each code
+R5,soc,C23350,easyeda2kicad:0603WAF2400T5E,easyeda2kicad:R0603,DDR ZQ · 0603WAF2400T5E · #10
+U3,nor,C97521,easyeda2kicad:W25Q128JVSIQTR,easyeda2kicad:SOIC-8_L5.3-W5.3-P1.27-LS8.0-BL,SPI-NOR · W25Q128JVSIQ · #11
+U4,microsd,C22467599,easyeda2kicad:A-MICROTF-1.85A,easyeda2kicad:TF-SMD_A-MICROTF-1.85A,microSD socket · A-MicroTF-1.85A · #12
+D1,microsd,C207280,easyeda2kicad:SP3004-04XTG,easyeda2kicad:SOT-563_L1.6-W1.2-P0.50-LS1.6-BR,microSD ESD array · Littelfuse SP3004-04XTG ×2 · #13
+D2,microsd,C207280,easyeda2kicad:SP3004-04XTG,easyeda2kicad:SOT-563_L1.6-W1.2-P0.50-LS1.6-BR,microSD ESD array · Littelfuse SP3004-04XTG ×2 · #13
+R6,microsd,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,SD/RESET pull-ups · RC0603JR-0710KL · #14
+R7,microsd,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,SD/RESET pull-ups · RC0603JR-0710KL · #14
+R8,microsd,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,SD/RESET pull-ups · RC0603JR-0710KL · #14
+R9,microsd,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,SD/RESET pull-ups · RC0603JR-0710KL · #14
+R10,microsd,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,SD/RESET pull-ups · RC0603JR-0710KL · #14
+R11,microsd,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,SD/RESET pull-ups · RC0603JR-0710KL · #14
+X1,clock,C70571,easyeda2kicad:X322524MRB4SI,easyeda2kicad:CRYSTAL-SMD_4P-L3.2-W2.5-BL-2,HOSC crystal · X322524MRB4SI · #15
+X2,clock,C97607,easyeda2kicad:SC-20S32.768kHz20PPM12.5pF,easyeda2kicad:OSC-SMD_L2.0-W1.2,RTC crystal · SC-20S 32.768kHz · #16
+C3,clock,C1555,easyeda2kicad:0402CG220J500NT,easyeda2kicad:C0402,24 MHz load caps · 0402CG220J500NT · #17
+C4,clock,C1555,easyeda2kicad:0402CG220J500NT,easyeda2kicad:C0402,24 MHz load caps · 0402CG220J500NT · #17
+C5,clock,C1549,easyeda2kicad:0402CG180J500NT,easyeda2kicad:C0402,RTC load caps · 0402CG180J500NT · #18
+C6,clock,C1549,easyeda2kicad:0402CG180J500NT,easyeda2kicad:C0402,RTC load caps · 0402CG180J500NT · #18
+C7,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C8,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C9,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C10,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C11,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C12,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C13,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C14,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C15,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C16,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C17,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C18,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C19,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C20,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C21,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C22,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C23,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C24,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C25,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C26,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C27,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C28,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C29,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C30,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C31,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Decoupling · CC0603KRX7R9BB104 · #19
+C32,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C33,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C34,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C35,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C36,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C37,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C38,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C39,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C40,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Bulk · CL21A106KOQNNNE · #20
+C41,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,Bulk · CC0603KRX5R6BB475 · #21
+C42,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,Bulk · CC0603KRX5R6BB475 · #21
+C43,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,Bulk · CC0603KRX5R6BB475 · #21
+C44,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,Bulk · CC0603KRX5R6BB475 · #21
+SW1,soc,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,RESET button · TS-1187A-B-A-B · #22
+U5,power-led,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,easyeda2kicad:LED0603-RD,Power LED · 19-213SYGC · #23
+R12,power-led,C23193,easyeda2kicad:0603WAF5100T5E,easyeda2kicad:R0603,Power-LED resistor · 0603WAF5100T5E · #24
+P1,display,C9160,easyeda2kicad:FPCConnector40PIN0.5MM,easyeda2kicad:FPC-SMD_40P-P0.50_FG-H2.0-40P,Display FPC connector · BOOMELE 0.5-40PFGPZ · #26
+FPC1,touch,C2919568,easyeda2kicad:1.0K-1.5-6PWB,easyeda2kicad:FPC-SMD_6P-P1.00_HDGC_1.0K-1.5-6PWB,Touch FFC connector · HDGC 1.0K-1.5-6PWB · #27
+U6,backlight,C58756,easyeda2kicad:TPS61165DBVR,easyeda2kicad:SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BR,Backlight WLED boost · TI TPS61165DBVR · #28
+L2,backlight,C135263,easyeda2kicad:SMNR4020-10UH,easyeda2kicad:IND-SMD_L4.0-W4.0_LQH44PN2R2MP0L,Boost inductor · SMNR4020-10UH · #29
+D3,backlight,C2481,easyeda2kicad:SS16,easyeda2kicad:SMA_L4.3-W2.6-LS5.2-RD,Boost diode · MDD SS16 · #30
+C45,backlight,C125847,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,Boost output cap (Cout) · YAGEO CC0805KKX7R9BB225 · #31
+C46,backlight,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,Boost input cap (Cin) · CC0603KRX5R6BB475 · #32
+R38,backlight,C137955,easyeda2kicad:RC0402FR-075R1L,easyeda2kicad:R0402,Boost FB sense R (Rset) · YAGEO RC0402FR-075R1L · #33 · Backlight Rset (FB->GND): 200mV/5.1R=39mA. Sourced C137955 (Extended). Fetch symbol via fetch_symbols.py.
+C47,backlight,C326590,easyeda2kicad:CC0402KRX7R7BB224,easyeda2kicad:C0402,Boost COMP cap · YAGEO CC0402KRX7R7BB224 · #34
+U7,imu,C481766,easyeda2kicad:LSM6DSOXTR,easyeda2kicad:LGA-14L_L3.0-W2.5-P0.50-TL,IMU (6-axis) · LSM6DSOXTR · #35
+C48,imu,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,IMU VDD decoupling · CC0603KRX7R9BB104 · #36
+C49,imu,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,IMU VDDIO decoupling · CC0603KRX7R9BB104 · #37
+R13,imu,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,IMU INT1 pulldown · RC0603JR-0710KL · #40
+U8,haptics,C527464,easyeda2kicad:DRV2605LDGSR,easyeda2kicad:VSSOP-10_L3.0-W3.0-P0.50-LS4.9-BL,Haptic driver · DRV2605LDGSR · #41
+C50,haptics,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,Haptic REG cap · CL10A105KB8NNNC · #42
+C51,haptics,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Haptic VDD bypass · CC0603KRX7R9BB104 · #43
+C52,haptics,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Haptic VDD bulk · CL21A106KOQNNNE · #45
+U9,amp,C910544,easyeda2kicad:MAX98357AETE+T,easyeda2kicad:TQFN-16_L3.0-W3.0-P0.50-BL-EP1.5,Class-D amp · MAX98357AETE+T · #47
+R14,amp,C140074,easyeda2kicad:RS-03K6803FT,easyeda2kicad:R0603,Amp SD/MODE strap · RS-03K6803FT · #48
+C53,amp,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Amp VDD bypass · CC0603KRX7R9BB104 · #50
+C54,amp,C17024,easyeda2kicad:CL21A106KPFNNNE,easyeda2kicad:C0805,Amp VDD bulk · CL21A106KPFNNNE · #51
+U10,charger,C54313,easyeda2kicad:BQ24074RGTR,easyeda2kicad:QFN-16_L3.0-W3.0-P0.50-TL-EP1.7,Power-path charger · BQ24074RGTR · #53
+C55,charger,C19666,easyeda2kicad:CL10A475KO8NNNC,easyeda2kicad:C0603,Charger IN cap · CL10A475KO8NNNC · #54
+C56,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Charger OUT cap · CL21A106KOQNNNE · #55
+C57,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Charger BAT cap · CL21A106KOQNNNE · #56
+R15,charger,C22975,easyeda2kicad:0603WAF2001T5E,easyeda2kicad:R0603,ISET (charge current) · 0603WAF2001T5E · #57
+R16,charger,C22765,easyeda2kicad:0603WAF1201T5E,easyeda2kicad:R0603,ILIM (input limit) · 0603WAF1201T5E · #58
+R17,charger,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,TS NTC-defeat · RC0603JR-0710KL · #59
+R18,charger,C21189,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,EN2 strap · 0 Ω 0603 · #60
+U11,usb-c,C970725,easyeda2kicad:CH224K,easyeda2kicad:ESSOP-10_L4.9-W3.9-P1.0-LS6.0-TL-EP,USB-PD sink · CH224K · #61
+R19,usb-c,C21190,easyeda2kicad:0603WAF1001T5E,easyeda2kicad:R0603,CH224K VDD series R · 0603WAF1001T5E · #62
+C58,usb-c,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,CH224K VDD cap · CL10A105KB8NNNC · #63
+R20,usb-c,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,CH224K CFG1 strap · RC0603JR-0710KL · #64
+R21,usb-c,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,CH224K VBUS-sense R · RC0603JR-0710KL · #65
+U12,buck-boost,C202140,easyeda2kicad:TPS63021DSJR,easyeda2kicad:VSON-14_L4.0-W3.0-P0.50-BL-EP_TI_DSJ,3.3 V buck-boost · TPS63021DSJR · #66
+R22,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,Buck-boost FB tie · 0603WAF0000T5E · #67
+R23,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,Buck-boost PS/SYNC strap · 0603WAF0000T5E · #68
+C59,buck-boost,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,Buck-boost VINA bypass · CC0603KRX7R9BB104 · #69
+C60,buck-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Buck-boost input caps · CL21A106KOQNNNE · #70
+C61,buck-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,Buck-boost input caps · CL21A106KOQNNNE · #70
+C62,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,easyeda2kicad:C0805,Buck-boost output caps · CL21A226MAQNNNE · #71
+C63,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,easyeda2kicad:C0805,Buck-boost output caps · CL21A226MAQNNNE · #71
+C64,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,easyeda2kicad:C0805,Buck-boost output caps · CL21A226MAQNNNE · #71
+L3,buck-boost,C408407,easyeda2kicad:MWSA0503S-1R5MT,easyeda2kicad:IND-SMD_L5.4-W5.2,Buck-boost inductor · MWSA0503S-1R5MT · #72
+CN1,charger,C295747,easyeda2kicad:S2B-PH-SM4-TB,easyeda2kicad:CONN-SMD_P2.00_S2B-PH-SM4-TB-LF-SN,Battery connector · S2B-PH-SM4-TB(LF)(SN) · #74
+R24,fuel-gauge,C22827,easyeda2kicad:0603WAF1803T5E,easyeda2kicad:R0603,Fuel divider R_top · 0603WAF1803T5E · #75
+R25,fuel-gauge,C25803,easyeda2kicad:0603WAF1003T5E,easyeda2kicad:R0603,Fuel divider R_bot · 0603WAF1003T5E · #76
+U13,fuel-gauge,C2682616,easyeda2kicad:MAX17048G+T10,easyeda2kicad:TDFN-8_L2.0-W2.0-P0.50-BL-EP1.2,Fuel gauge (SoC %) · MAX17048G+T10 · #77
+C65,fuel-gauge,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,MAX17048 VDD bypass · CL10A105KB8NNNC · #78
+U14,charger,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,easyeda2kicad:LED0603-RD,Charge-status LED · 19-213SYGC/S530-E2/5T · #79
+R26,charger,C23193,easyeda2kicad:0603WAF5100T5E,easyeda2kicad:R0603,Charge-LED resistor · 0603WAF5100T5E · #80
+U15,power-monitor,C49851,easyeda2kicad:INA226AIDGSR,easyeda2kicad:MSOP-10_L3.0-W3.0-P0.50-LS5.0-BL,Power/current monitor · TI INA226AIDGSR · #81
+R27,power-monitor,C393072,easyeda2kicad:RLP25FEGMR010,easyeda2kicad:R2512,INA226 shunt · RLP25FEGMR010 · #82
+C66,power-monitor,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,INA226 VS decoupling · CC0603KRX7R9BB104 · #83
+R28,charger,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,/PGOOD pull-up · RC0603JR-0710KL · #84
+U16,expander,C2864778,easyeda2kicad:PCA9555PWR,easyeda2kicad:TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL,GPIO expander · PCA9555PWR · #85
+SW2,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,D-pad tactiles · TS-1187A-B-A-B · #86
+SW3,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,D-pad tactiles · TS-1187A-B-A-B · #86
+SW4,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,D-pad tactiles · TS-1187A-B-A-B · #86
+SW5,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,D-pad tactiles · TS-1187A-B-A-B · #86
+SW6,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,A/B/X/Y tactiles · TS-1187A-B-A-B · #87
+SW7,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,A/B/X/Y tactiles · TS-1187A-B-A-B · #87
+SW8,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,A/B/X/Y tactiles · TS-1187A-B-A-B · #87
+SW9,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,A/B/X/Y tactiles · TS-1187A-B-A-B · #87
+SW10,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,Start/Select tactiles · TS-1187A-B-A-B · #88
+SW11,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,easyeda2kicad:SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5,Start/Select tactiles · TS-1187A-B-A-B · #88
+R29,expander,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,Expander INT pull-up · RC0603JR-0710KL · #89
+C67,expander,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,PCA9555 VDD decoupling · CC0603KRX7R9BB104 · #90
+SW12,buttons,C127481,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,Volume ± tactiles · ALPS SKRTLBE010 · #91
+SW13,buttons,C127481,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,Volume ± tactiles · ALPS SKRTLBE010 · #91
+SW14,power-ctrl,C127481,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,Soft power button · ALPS SKRTLBE010 · #92
+SW15,buttons,C127481,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,L/R bumper tactiles · ALPS SKRTLBE010 · #93
+SW16,buttons,C127481,easyeda2kicad:SKRTLBE010,easyeda2kicad:KEY-SMD_SKRTLAE010-1,L/R bumper tactiles · ALPS SKRTLBE010 · #93
+U17,power-ctrl,C109022,easyeda2kicad:STM6601CA2BDM6F,easyeda2kicad:TDFN-12_L3.0-W2.0-P0.50-BL,Push-button power controller · STM6601CA2BDM6F · #94
+C68,power-ctrl,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,STM6601 VCC decoupling · CC0603KRX7R9BB104 · #95
+C69,power-ctrl,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,STM6601 VREF cap (CREF) · CL10A105KB8NNNC · #96
+R30,i2c,C22843,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,I2C pull-ups (SDA/SCL) · 0603WAF1501T5E · #97
+R31,i2c,C22843,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,I2C pull-ups (SDA/SCL) · 0603WAF1501T5E · #97
+D4,usb-c,C7519,easyeda2kicad:USBLC6-2SC6,easyeda2kicad:SOT-23-6_L2.9-W1.6-P0.95-LS2.8-BL,USB2 D+/D− ESD array · USBLC6-2SC6 · #98
+U18,bluetooth,,manual:BT830-SA-01-T_R,manual:XCVR_BT830-SA-01-T_R,Bluetooth module · Ezurio BT830-SA-01 · #99 · matched hand-drawn symbol by name (BT830-SA-01-T_R)
+C70,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,BT830 VREG_OUT_HV cap · CC0603KRX5R6BB475 · #100
+C71,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,BT830 supply decoupling · CC0603KRX7R9BB104 · #101
+C72,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,BT830 supply decoupling · CC0603KRX7R9BB104 · #101
+C73,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,easyeda2kicad:C0603,BT830 3.3 V bulk · CC0603KRX5R6BB475 · #102
+U19,dac,C107671,easyeda2kicad:PCM5102APWR,easyeda2kicad:TSSOP-20_L6.5-W4.4-P0.65-LS6.4-BL,Stereo I2S DAC (HP out) · TI PCM5102APWR · #103
+R32,dac,C21189,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,I2S1 series-R · 0603WAF0000T5E · #104
+R33,dac,C21189,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,I2S1 series-R · 0603WAF0000T5E · #104
+R34,dac,C21189,easyeda2kicad:0603WAF0000T5E,easyeda2kicad:R0603,I2S1 series-R · 0603WAF0000T5E · #104
+C74,dac,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,PCM5102A supply decoupling · CC0603KRX7R9BB104 · #105
+C75,dac,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,PCM5102A supply decoupling · CC0603KRX7R9BB104 · #105
+C76,dac,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,PCM5102A supply decoupling · CC0603KRX7R9BB104 · #105
+C77,dac,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,PCM5102A supply decoupling · CC0603KRX7R9BB104 · #105
+C78,dac,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,PCM5102A supply bulk · CL21A106KOQNNNE · #106
+C79,dac,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,PCM5102A supply bulk · CL21A106KOQNNNE · #106
+C80,dac,C1713,easyeda2kicad:CL21A106KOQNNNE,easyeda2kicad:C0805,PCM5102A supply bulk · CL21A106KOQNNNE · #106
+C81,dac,C125847,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,PCM5102A charge-pump caps · CC0805KKX7R9BB225 · #107
+C82,dac,C125847,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,PCM5102A charge-pump caps · CC0805KKX7R9BB225 · #107
+R35,dac,C23179,easyeda2kicad:0603WAF4700T5E,easyeda2kicad:R0603,PCM5102A anti-imaging R · UNI-ROYAL 0603WAF4700T5E · #108
+R36,dac,C23179,easyeda2kicad:0603WAF4700T5E,easyeda2kicad:R0603,PCM5102A anti-imaging R · UNI-ROYAL 0603WAF4700T5E · #108
+C83,dac,C33353,easyeda2kicad:CL10C222JB8NNNC,easyeda2kicad:C0603,PCM5102A anti-imaging C · Samsung CL10C222JB8NNNC · #109
+C84,dac,C33353,easyeda2kicad:CL10C222JB8NNNC,easyeda2kicad:C0603,PCM5102A anti-imaging C · Samsung CL10C222JB8NNNC · #109
+U20,headphone-amp,C69901,easyeda2kicad:TPA6132A2RTER,easyeda2kicad:WQFN-16_L3.0-W3.0-P0.50-TL-EP1.6,Stereo headphone amp · TI TPA6132A2RTER · #110
+C85,headphone-amp,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,TPA6132A2 1 µF caps · CL10A105KB8NNNC · #111
+C86,headphone-amp,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,TPA6132A2 1 µF caps · CL10A105KB8NNNC · #111
+C87,headphone-amp,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,TPA6132A2 1 µF caps · CL10A105KB8NNNC · #111
+C88,headphone-amp,C15849,easyeda2kicad:CL10A105KB8NNNC,easyeda2kicad:C0603,TPA6132A2 1 µF caps · CL10A105KB8NNNC · #111
+C89,headphone-amp,C125847,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,TPA6132A2 2.2 µF caps · CC0805KKX7R9BB225 · #112
+C90,headphone-amp,C125847,easyeda2kicad:CC0805KKX7R9BB225,easyeda2kicad:C0805,TPA6132A2 2.2 µF caps · CC0805KKX7R9BB225 · #112
+C91,headphone-amp,C14663,easyeda2kicad:CC0603KRX7R9BB104,easyeda2kicad:C0603,TPA6132A2 VDD HF cap · CC0603KRX7R9BB104 · #113
+R37,headphone-amp,C14675,easyeda2kicad:RC0603FR-07100KL,easyeda2kicad:R0603,TPA6132A2 EN pull-down · RC0603FR-07100KL · #114
+Audio1,jack,C145813,easyeda2kicad:PJ-327C-4A,easyeda2kicad:AUDIO-SMD_PJ-327C-4A,3.5 mm headphone jack · PJ-327C-4A · #115
+R39,display,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,DISP pull-up 10k · RC0603JR-0710KL · #116 · [AUDIT] PANEL_DISP->+3V3; BOM.md #116 (fills line-64 gap)
+R40,power-ctrl,C99198,easyeda2kicad:RC0603JR-0710KL,easyeda2kicad:R0603,STM6601 /PB_OUT pull-up 10k · RC0603JR-0710KL · #117 · [AUDIT] PWR_BTN_3V3 -> PE10; BOM.md #117 (fixes PE10 SYS-overvoltage)
+R41,imu,C22843,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
+R42,imu,C22843,easyeda2kicad:0603WAF1501T5E,easyeda2kicad:R0603,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
