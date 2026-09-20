@@ -192,7 +192,7 @@
           (effects (font (size 1.016 1.016)))
         )
       )
-      (pin power_in line (at 35.56 15.24 180.0) (length 5.08)
+      (pin power_out line (at 35.56 15.24 180.0) (length 5.08)
         (name "VREG_OUT_HV"
           (effects (font (size 1.016 1.016)))
         )
