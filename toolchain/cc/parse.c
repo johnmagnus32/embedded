@@ -54,6 +54,7 @@ static Type *struct_decl(int is_union);
 static Type *enum_decl(void);
 static int is_typename(void);
 static Type *declarator(Type *base, char *name);
+static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
 static long eval_const(Node *n); static Node *assign(void);
 /* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
@@ -321,6 +322,21 @@ static Node *new_sub(Node *l, Node *r);
 		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL, NULL), d); expect(")"); return n; }
 		if (!strcmp(name, "__builtin_va_end"))   { expect("("); assign(); expect(")"); return num(0); }
 		if (!strcmp(name, "__builtin_unreachable")) { expect("("); expect(")"); return num(0); }   /* no-op, not a call */
+		if (!strcmp(name, "__builtin_expect"))    { expect("("); Node *e = assign(); expect(","); assign(); expect(")"); return e; }   /* value is the 1st arg; the hint is ignored */
+		if (!strcmp(name, "__builtin_constant_p")) { expect("("); assign(); expect(")"); return num(0); }   /* conservatively "not constant" */
+		if (!strcmp(name, "__builtin_offsetof")) {   /* constant byte offset of a member designator within a type */
+			expect("("); char d[64]; Type *t = declarator(declspec(NULL, NULL), d); expect(",");
+			long off = 0; char mn[64]; ident(mn);
+			Member *m = NULL; for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
+			if (!m) die("parse: __builtin_offsetof: no member '%s'", mn);
+			off = m->offset; t = m->type;
+			for (;;) {
+				if (consume(".")) { ident(mn); for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break; if (!m) die("parse: __builtin_offsetof: no member '%s'", mn); off += m->offset; t = m->type; }
+				else if (consume("[")) { long idx = eval_const(assign()); expect("]"); if (t->base) off += idx * t->base->size, t = t->base; }
+				else break;
+			}
+			expect(")"); return num(off);
+		}
 		if (consume("(")) {                                  /* call: name(args) */
 			Node *n = node(ND_CALL);
 			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
@@ -577,26 +593,35 @@ static Func *function_tail(const char *name, Type *ret) {
 	}
 	expect(")");
 	f->nparams = np;
-	/* Assign each param to argument WORDS (64-bit = 2 words). A variadic function spills r0..r3 into a
-	 * contiguous incoming-arg block, so ALL params sit at [r11, #8 + 4*word]. A normal function keeps the
-	 * first 4 words in r0..r3 (spilled to negative frame slots in the prologue), later words at +8. */
-	int word = 0;
-	for (int i = 0; i < np; i++) {
-		int nw = (prm[i].ty && prm[i].ty->size == 8) ? 2 : 1;
-		if (f->variadic) {
-			if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * word);
-		} else if (word + nw <= 4) {                             /* fully in registers r{word}..r{word+nw-1} */
-			int off = prm[i].name[0] ? add_local(prm[i].name, prm[i].ty) : 0;
-			for (int k = 0; k < nw && off; k++) f->arg_off[word + k] = off + 4 * k;   /* spill targets */
-			f->arg_regs = word + nw;
-		} else if (word >= 4) {                                  /* fully on the stack */
-			if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * (word - 4));
-		} else {
-			die("cc: 64-bit parameter split across registers and stack (not supported)");
+	{ Type *pts[16]; for (int i = 0; i < np && i < 16; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic); }   /* publish the signature for callers */
+	/* Bind params per AAPCS (64-bit args are even-aligned, may skip a register / pad the stack). A variadic
+	 * function spills r0..r3 into a contiguous incoming block, so ALL its params sit at [r11, #8 + 4*word];
+	 * a normal function keeps register params in r0..r3 (spilled to negative frame slots in the prologue)
+	 * and stack params at [r11, #8 + 4*stackword]. */
+	if (f->variadic) {
+		int w = 0;
+		for (int i = 0; i < np; i++) {
+			int nw = (prm[i].ty && prm[i].ty->size == 8) ? 2 : 1;
+			if (nw == 2) w = (w + 1) & ~1;                       /* 64-bit even-aligned */
+			if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * w);
+			w += nw;
 		}
-		word += nw;
+		f->nfixed_words = w;                                     /* where varargs begin, for va_start */
+	} else {
+		int is64a[16], onstk[16], word[16];
+		for (int i = 0; i < np; i++) is64a[i] = (prm[i].ty && prm[i].ty->size == 8);
+		aapcs_layout(is64a, np, onstk, word);
+		for (int i = 0; i < np; i++) {
+			int nw = is64a[i] ? 2 : 1;
+			if (!onstk[i]) {                                     /* register param: spill r{word} to a frame slot */
+				int off = prm[i].name[0] ? add_local(prm[i].name, prm[i].ty) : 0;
+				for (int k = 0; k < nw && off; k++) f->arg_off[word[i] + k] = off + 4 * k;
+				if (word[i] + nw > f->arg_regs) f->arg_regs = word[i] + nw;
+			} else if (prm[i].name[0]) {                         /* stack param */
+				add_local_at(prm[i].name, prm[i].ty, 8 + word[i] * 4);
+			}
+		}
 	}
-	f->nfixed_words = word;                                      /* words of fixed params, for va_start */
 	while (consume("__attribute__")) skip_attribute();       /* e.g. int f(void) __attribute__((noreturn)) { … } */
 	if (consume(";")) return NULL;                           /* a prototype — no body to compile */
 	expect("{");
@@ -665,15 +690,26 @@ static Init *global_init(Type *ty) {
 	Init *i = mkinit(INIT_CONST); i->val = eval_const(conditional()); i->size = ty->size; return i;   /* 1/2/4 -> .byte/.hword/.word */
 }
 
-/* Function-signature table: a called function's return type, so ND_CALL result nodes get the right width
- * (a 64-bit return must not be truncated). Populated for every prototype/definition, consulted by add_type. */
-static struct { char name[64]; Type *ret; } func_sigs[512]; static int nfunc_sigs;
-static void record_func_sig(const char *name, Type *ret) {
-	for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) { func_sigs[i].ret = ret; return; }
-	if (nfunc_sigs < 512) { strncpy(func_sigs[nfunc_sigs].name, name, 63); func_sigs[nfunc_sigs].ret = ret; nfunc_sigs++; }
+/* Function-signature table: a callee's return + parameter types. The return type gives ND_CALL result
+ * nodes the right width; the parameter types let a caller place/widen each argument per AAPCS (a 64-bit
+ * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
+ * Populated for every prototype/definition. */
+static struct { char name[64]; Type *ret; Type *params[16]; int nparams; int variadic; } func_sigs[512]; static int nfunc_sigs;
+static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic) {
+	int idx = -1;
+	for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) { idx = i; break; }
+	if (idx < 0) { if (nfunc_sigs >= 512) return; idx = nfunc_sigs++; strncpy(func_sigs[idx].name, name, 63); }
+	func_sigs[idx].ret = ret; func_sigs[idx].variadic = variadic;
+	func_sigs[idx].nparams = np < 16 ? np : 16;
+	for (int i = 0; i < func_sigs[idx].nparams; i++) func_sigs[idx].params[i] = params[i];
 }
 Type *func_ret_type(const char *name) {
 	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return func_sigs[i].ret;
+	return NULL;
+}
+Type *func_param_type(const char *name, int i) {
+	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name))
+		return (i < func_sigs[k].nparams) ? func_sigs[k].params[i] : NULL;   /* NULL => unknown or a vararg */
 	return NULL;
 }
 
@@ -687,7 +723,7 @@ Func *parse(Token *tok) {
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); continue; }
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
-		if (is("(")) { record_func_sig(name, ty); Func *fn = function_tail(name, ty); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* NULL = prototype */
+		if (is("(")) { Func *fn = function_tail(name, ty); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* records its own signature; NULL = prototype */
 		for (;;) {                                           /* global variable(s), comma-separated */
 			Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;
 			g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0;

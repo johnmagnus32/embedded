@@ -40,6 +40,8 @@ extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
 Type *usual_arith(Type *a, Type *b);         /* usual-arithmetic-conversion result type (drives op width+sign) */
 Type *func_ret_type(const char *name);       /* a called function's declared return type (NULL if unknown) */
+Type *func_param_type(const char *name, int i);   /* a callee's declared param i type (NULL if unknown/vararg) */
+int  aapcs_layout(const int *is64, int n, int *onstk, int *word);   /* AAPCS arg placement (caller + callee agree) */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
 Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);

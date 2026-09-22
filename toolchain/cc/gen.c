@@ -58,6 +58,20 @@ static int op_uns(Node *n) { return usual_arith(n->lhs->type, n->rhs->type)->is_
 
 /* A 64-bit value lives in the register PAIR r0(low):r1(high); everything else lives in r0. */
 static int is64(Type *t) { return t && t->size == 8; }
+
+/* AAPCS base-standard argument placement. is64[i] marks 8-byte args. Fills onstk[i] and word[i] — a core
+ * register index (0..3) when onstk[i]==0, else a WORD offset into the outgoing stack area. 64-bit args are
+ * even-aligned (may skip a register and/or pad the stack) and never split. Returns the stack size in words. */
+int aapcs_layout(const int *is64a, int n, int *onstk, int *word) {
+	int ncrn = 0, nsaa = 0;
+	for (int i = 0; i < n; i++) {
+		int w = is64a[i] ? 2 : 1;
+		if (is64a[i]) ncrn = (ncrn + 1) & ~1;             /* 64-bit: round the core reg up to even */
+		if (ncrn <= 4 - w) { onstk[i] = 0; word[i] = ncrn; ncrn += w; }
+		else { ncrn = 4; if (is64a[i]) nsaa = (nsaa + 1) & ~1; onstk[i] = 1; word[i] = nsaa; nsaa += w; }
+	}
+	return nsaa;
+}
 /* Widen the 32-bit value in r0 into the pair r0:r1 (sign- or zero-extend by the source's sign). */
 static void extend64(Type *from) {
 	fprintf(o, from && from->is_unsigned ? "\tmov r1, #0\n" : "\tasr r1, r0, #31\n");
@@ -229,8 +243,8 @@ static void gen_expr(Node *n) {
 		return;
 	case ND_VA_ARG:                                              /* fetch *ap, advance ap by the arg width */
 		gen_addr(n->lhs);
-		if (is64(n->type))   /* 64-bit: r0=low@[ap], r1=high@[ap+4]; ap += 8 */
-			fprintf(o, "\tldr r2, [r0]\n\tldr r1, [r2, #4]\n\tadd r3, r2, #8\n\tstr r3, [r0]\n\tldr r0, [r2]\n");
+		if (is64(n->type))   /* 64-bit: 8-align ap (AAPCS even-word), then r0=low@[ap], r1=high@[ap+4]; ap += 8 */
+			fprintf(o, "\tldr r2, [r0]\n\tadd r2, r2, #7\n\tbic r2, r2, #7\n\tldr r1, [r2, #4]\n\tadd r3, r2, #8\n\tstr r3, [r0]\n\tldr r0, [r2]\n");
 		else
 			fprintf(o, "\tldr r1, [r0]\n\tadd r2, r1, #4\n\tstr r2, [r0]\n\tldr r0, [r1]\n");
 		return;
@@ -265,22 +279,35 @@ static void gen_expr(Node *n) {
 		return;
 	}
 	case ND_CALL: {
-		Node *av[32]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 32) die("cc: too many args"); av[nargs++] = a; }
-		int words = 0; for (int i = 0; i < nargs; i++) words += is64(av[i]->type) ? 2 : 1;   /* 64-bit arg = 2 words */
-		int stackn = words > 4 ? words - 4 : 0;             /* words beyond the first 4 go on the stack */
-		int cw = n->lhs ? 4 : 0;                            /* indirect: the fn ptr is stashed below the stack args */
-		int pad = ((4 * stackn + cw) & 7) ? 4 : 0;          /* keep sp 8-aligned at the (b)lx (AAPCS)  */
-		if (pad) fprintf(o, "\tsub sp, sp, #4\n");
-		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tpush {r0}\n"); }   /* evaluate + stash the callee pointer */
-		for (int i = nargs - 1; i >= 0; i--) {              /* push args right-to-left; arg0's low word ends on top */
-			gen_expr(av[i]);
-			fprintf(o, is64(av[i]->type) ? "\tpush {r0, r1}\n" : "\tpush {r0}\n");   /* low at lower addr */
+		Node *av[16]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 16) die("cc: too many args"); av[nargs++] = a; }
+		int is64a[16], onstk[16], word[16];
+		const char *callee = n->lhs ? 0 : n->name;                 /* only a direct call has a known signature */
+		for (int i = 0; i < nargs; i++) {                          /* a 64-bit param is placed 64-bit even if the arg is narrower */
+			Type *pt = callee ? func_param_type(callee, i) : 0;
+			is64a[i] = pt ? is64(pt) : is64(av[i]->type);
 		}
-		int nreg = words < 4 ? words : 4;
-		for (int i = 0; i < nreg; i++) fprintf(o, "\tpop {r%d}\n", i);   /* first 4 words -> r0..r3 */
-		if (n->lhs) fprintf(o, "\tldr r12, [sp, #%d]\n\tblx r12\n", 4 * stackn);   /* indirect: call through the stashed ptr */
-		else        fprintf(o, "\tbl %s\n", n->name);                              /* direct; result in r0 */
-		if (stackn || cw || pad) fprintf(o, "\tadd sp, sp, #%d\n", 4 * stackn + cw + pad);   /* drop stack args + callee + pad */
+		int nstk = aapcs_layout(is64a, nargs, onstk, word);        /* AAPCS placement: reg index or stack word */
+		int regwords = 0; for (int i = 0; i < nargs; i++) if (!onstk[i]) regwords += is64a[i] ? 2 : 1;
+		int cw = n->lhs ? 1 : 0;                                    /* indirect: 1 staging word for the callee ptr */
+		/* Reserve one area from sp: [0, nstk) = outgoing stack args; [nstk, +regwords) = register-arg staging;
+		 * [.. ] = callee-ptr staging. Everything is addressed off sp, so nested-call arg evaluation (which
+		 * moves sp and restores it) never disturbs already-placed args. Pad so sp stays 8-aligned at the call. */
+		int stageb = nstk * 4, total = nstk + regwords + cw, resv = total * 4 + ((total * 4 & 7) ? 4 : 0);
+		if (resv) fprintf(o, "\tsub sp, sp, #%d\n", resv);
+		int stageword[16], si = 0;
+		for (int i = 0; i < nargs; i++) {
+			gen_expr_w(av[i], is64a[i]);   /* widen a narrow arg to a 64-bit param (sign/zero) */
+			if (onstk[i]) { fprintf(o, "\tstr r0, [sp, #%d]\n", word[i] * 4); if (is64a[i]) fprintf(o, "\tstr r1, [sp, #%d]\n", word[i] * 4 + 4); }
+			else { stageword[i] = si; fprintf(o, "\tstr r0, [sp, #%d]\n", stageb + si * 4); si++; if (is64a[i]) { fprintf(o, "\tstr r1, [sp, #%d]\n", stageb + si * 4); si++; } }
+		}
+		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tstr r0, [sp, #%d]\n", stageb + regwords * 4); }   /* callee ptr */
+		for (int i = 0; i < nargs; i++) if (!onstk[i]) {           /* load staged register args into r0..r3 */
+			fprintf(o, "\tldr r%d, [sp, #%d]\n", word[i], stageb + stageword[i] * 4);
+			if (is64a[i]) fprintf(o, "\tldr r%d, [sp, #%d]\n", word[i] + 1, stageb + (stageword[i] + 1) * 4);
+		}
+		if (n->lhs) fprintf(o, "\tldr r12, [sp, #%d]\n\tblx r12\n", stageb + regwords * 4);
+		else        fprintf(o, "\tbl %s\n", n->name);              /* result in r0(:r1) */
+		if (resv) fprintf(o, "\tadd sp, sp, #%d\n", resv);
 		return;
 	}
 	default: break;
