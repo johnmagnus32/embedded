@@ -14,6 +14,7 @@ static const char *KEYWORDS[] = {
 	"int", "char", "void", "short", "long", "signed", "unsigned",          /* base integer types      */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
+	"typeof", "__typeof__",                                                  /* GNU typeof(expr|type)   */
 	"__asm__", "__volatile__", "asm",                                       /* inline assembly         */
 	"return", "if", "else", "while", "do", "for", "break", "continue", "switch", "case", "default", "goto",  /* control flow */
 	NULL };

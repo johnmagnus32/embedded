@@ -56,7 +56,7 @@ typedef enum {
 	ND_AND, ND_OR,                                               /* && || (short-circuit)             */
 	ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR,              /* bitwise + shifts                  */
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
-	ND_COND, ND_CAST, ND_COMMA,                                  /* c?a:b ; (type)expr ; (a, b)       */
+	ND_COND, ND_CAST, ND_COMMA, ND_STMTEXPR,                     /* c?a:b ; (type)expr ; (a,b) ; ({...}) */
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
 	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, inline asm, block */

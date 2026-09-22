@@ -201,8 +201,10 @@ static void gen_expr(Node *n) {
 		else load_imm("r0", n->val);
 		return;
 	case ND_MEMBER:
-		if (n->bit_width) { gen_addr(n); gen_bitfield_load(n); return; }   /* bitfield: extract from its unit */
-		/* fall through to the ordinary lvalue load */
+		gen_addr(n);
+		if (n->bit_width) { gen_bitfield_load(n); return; }              /* bitfield: extract from its unit */
+		if (n->type->kind != TY_ARRAY) load(n->type);
+		return;
 	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load, arrays decay */
 		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
@@ -219,6 +221,9 @@ static void gen_expr(Node *n) {
 		else gen_cast(n->type);                                                   /* 64->32 keeps r0 low word; then narrow to char/short */
 		return;
 	case ND_COMMA:  gen_expr(n->lhs); gen_expr(n->rhs); return;   /* evaluate left (discard), then right */
+	case ND_STMTEXPR:                                            /* ({...}): run the block; the last expr leaves its value in r0(:r1) */
+		for (Node *s = n->body; s; s = s->next) gen_stmt(s);
+		return;
 	case ND_VA_START:                                            /* ap = &(first variadic arg) */
 		gen_addr(n->lhs); fprintf(o, "\tadd r1, r11, #%d\n\tstr r1, [r0]\n", 8 + 4 * cur_nfixed);
 		return;

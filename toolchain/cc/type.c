@@ -98,6 +98,11 @@ void add_type(Node *n) {
 		          ? usual_arith(n->then->type, n->els->type) : n->then->type;
 		return;
 	case ND_COMMA:  n->type = n->rhs->type; return;    /* value of the right operand */
+	case ND_STMTEXPR: {                                /* ({...}) — value/type of the last expression-statement */
+		Type *t = ty_int;
+		for (Node *c = n->body; c; c = c->next) if (c->kind == ND_EXPRSTMT && c->lhs && c->lhs->type) t = c->lhs->type;
+		n->type = t; return;
+	}
 	case ND_ADDR:   n->type = pointer_to(n->lhs->type); return;
 	case ND_DEREF:
 		if (!is_ptr_like(n->lhs->type)) die("cc: cannot dereference a non-pointer");

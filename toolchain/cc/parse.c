@@ -52,6 +52,8 @@ static int   enum_find(const char *n, long *v) { for (int i = 0; i < nenumc; i++
 
 static Type *struct_decl(void);
 static Type *enum_decl(void);
+static int is_typename(void);
+static Type *declarator(Type *base, char *name);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
 static long eval_const(Node *n); static Node *assign(void);
 /* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
@@ -95,6 +97,12 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("long"))     { base = (base == B_LONG) ? B_LLONG : B_LONG; seen = 1; continue; }
 		if (consume("struct") || consume("union")) { tagty = struct_decl(); seen = 1; continue; }
 		if (consume("enum")) { tagty = enum_decl(); seen = 1; continue; }
+		if (consume("typeof") || consume("__typeof__")) {   /* typeof(type) or typeof(expr) -> that type */
+			expect("(");
+			if (is_typename()) { char d[64]; tagty = declarator(declspec(NULL, NULL), d); }
+			else { Node *e = assign(); add_type(e); tagty = e->type ? e->type : ty_int; }   /* unevaluated: type only */
+			expect(")"); seen = 1; continue;
+		}
 		if (!seen && tk->kind == TK_IDENT && typedef_find(tk->text)) { tagty = typedef_find(tk->text); tk = tk->next; seen = 1; continue; }
 		break;
 	}
@@ -224,7 +232,7 @@ static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->n
 /* ---- node constructors --------------------------------------------------------------------------- */
 static int is_typename(void) {   /* does a declaration start at the cursor? */
 	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned")
-	    || is("struct") || is("union") || is("enum") || is("typedef")
+	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof") || is("__typeof__")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
@@ -236,11 +244,17 @@ static Node *num(long v) { Node *n = node(ND_NUM); n->val = v; return n; }
 /* ---- expression grammar (each returns the parsed subtree; result convention lives in gen.c) ------- */
 static Node *expr(void);
 static Node *assign(void);
+static Node *stmt(void);
 static Node *new_add(Node *l, Node *r);       /* +/- with pointer/array scaling (defined below) */
 static Node *new_sub(Node *l, Node *r);
 
 static Node *primary(void) {
-	if (consume("(")) { Node *n = expr(); expect(")"); return n; }
+	if (consume("(")) {
+		if (is("{")) {   /* GNU statement expression ({ stmts...; last-expr; }) — value is the last expr */
+			Node *n = node(ND_STMTEXPR); n->body = stmt()->body; expect(")"); return n;
+		}
+		Node *n = expr(); expect(")"); return n;
+	}
 	if (tk->kind == TK_NUM) { Node *n = num(tk->val); tk = tk->next; return n; }
 	if (tk->kind == TK_STR) {                                /* string literal -> anonymous .rodata array */
 		Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
