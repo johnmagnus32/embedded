@@ -33,7 +33,7 @@ $(BUILD):
 # .data/.bss) and prove our ld emits a valid ET_EXEC with the M2 properties: entry=_start, TWO PT_LOADs
 # split W^X (seg0 R-X, seg1 R-W, never R-W-X), a .bss whose memsz exceeds its filesz, and the R_ARM_CALL
 # placeholder (0xebfffffe) relocated to a real branch. Entry = LOAD_BASE + ehdr(52) + 2*phdr(64) = 0x10074.
-test: test-static test-pie
+test: test-static test-pie test-script
 
 test-static: $(BUILD)/ld
 	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc' (set GNU=<prefix>)"; exit 0; fi
@@ -109,7 +109,23 @@ test-pie: $(BUILD)/ld
 	rm -rf $$t; \
 	[ $$fail -eq 0 ] && echo "----- ld PIE OK -----" || { echo "----- FAILED -----"; exit 1; }
 
+# Linker-script gate (GNU-independent): our cc + as + `ld -T tests/prog.ld` build a program the script
+# places at 0x40000000 (with script-defined __bss_start/__bss_end referenced by the code + /DISCARD/), then
+# run it on qemu semihosting and check the exit code. Proves the script parser/layout/writer end-to-end.
+test-script: $(BUILD)/ld
+	@$(MAKE) -s -C ../cc build/cc >/dev/null; $(MAKE) -s -C ../as >/dev/null
+	@if [ ! -x "$$(command -v $(QEMU))" ]; then echo "SKIP: $(QEMU) not found"; exit 0; fi
+	@t=$$(mktemp -d); \
+	printf '%s\n' 'extern char __bss_start[], __bss_end[];' 'int g = 5; int z[8];' \
+	  'int main(void){ return (__bss_end >= __bss_start) && g==5 && z[0]==0 ? 42 : 1; }' > $$t/p.c; \
+	$(OURCC) -o $$t/p.s $$t/p.c && $(OURAS) -o $$t/p.o $$t/p.s && $(OURAS) -o $$t/crt.o ../cc/tests/crt.s \
+	  && $(BUILD)/ld -T tests/prog.ld -o $$t/p.elf $$t/crt.o $$t/p.o || { echo "FAIL: script link errored"; rm -rf $$t; exit 1; }; \
+	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/p.elf >/dev/null 2>&1; g=$$?; \
+	[ "$$g" = 42 ] && echo "PASS linker-script: placed + ran (__bss_start/__bss_end resolved) = $$g" \
+	              || { echo "FAIL linker-script: got $$g, want 42"; rm -rf $$t; exit 1; }; \
+	rm -rf $$t
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: clean test test-static test-pie
+.PHONY: clean test test-static test-pie test-script

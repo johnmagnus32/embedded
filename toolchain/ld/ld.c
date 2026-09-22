@@ -434,12 +434,135 @@ static int is_archive(const char *path) {
 /* Does a file exist and open? (probe before load_shared, which die()s on a missing path.) */
 static int file_exists(const char *p) { FILE *f = fopen(p, "rb"); if (f) { fclose(f); return 1; } return 0; }
 
+/* ================================ linker-script layout (subset) ================================= *
+ * Enough of the GNU linker-script language to place our own bare-metal scripts (libc/user.ld, sram.ld,
+ * …): ENTRY, top-level `SYM = expr;`, and a SECTIONS block with `. = expr;` (incl. ALIGN), `SYM = .;`,
+ * `PROVIDE(...)`, output sections `name : { *(.pat*) KEEP(*(...)) }`, and `/DISCARD/`. */
+OutSec outsecs[MAXOUTSEC]; int noutsec;
+int scripted;
+
+static char *stok[8192]; static int nstok;          /* script tokens */
+static int is_spunct(char c) { return strchr("{}():;=+?,", c) != NULL; }
+static void script_tokenize(char *s) {
+	while (*s) {
+		if (*s==' '||*s=='\t'||*s=='\n'||*s=='\r') { s++; continue; }
+		if (s[0]=='/'&&s[1]=='*') { s+=2; while (*s && !(s[0]=='*'&&s[1]=='/')) s++; if (*s) s+=2; continue; }
+		if (is_spunct(*s)) { char *t=malloc(2); t[0]=*s; t[1]=0; stok[nstok++]=t; s++; continue; }
+		char *b=s; while (*s && !is_spunct(*s) && *s!=' '&&*s!='\t'&&*s!='\n'&&*s!='\r') s++;
+		int n=(int)(s-b); char *t=malloc(n+1); memcpy(t,b,n); t[n]=0; stok[nstok++]=t;
+	}
+}
+/* expression evaluator over a token range [ev, ev_hi); `.` is the current location counter g_dot */
+static int ev, ev_hi; static u32 g_dot;
+static long e_tern(void);
+static long e_prim(void) {
+	if (ev >= ev_hi) return 0;
+	char *t = stok[ev++];
+	if (!strcmp(t,"(")) { long v=e_tern(); if (ev<ev_hi&&!strcmp(stok[ev],")")) ev++; return v; }
+	if (!strcmp(t,".")) return (long)g_dot;
+	if (!strcmp(t,"ALIGN")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; return (long)alignup((u32)g_dot,(u32)a); }
+	if (!strcmp(t,"ABSOLUTE")||!strcmp(t,"CONSTANT")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; long v=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; return v; }
+	if (!strcmp(t,"DEFINED")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; char *nm=stok[ev++]; if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; GSym*g=gsym_find(nm); return (g&&g->defined)?1:0; }
+	if (t[0]>='0'&&t[0]<='9') return (long)strtoul(t,NULL,0);
+	GSym *g=gsym_find(t); return (g&&g->defined)?(long)g->vaddr:0;   /* symbol */
+}
+static long e_mul(void) { long l=e_prim(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"*")){ev++; l*=e_prim();} else if(!strcmp(o,"/")){ev++; long r=e_prim(); l=r?l/r:0;} else break; } return l; }
+static long e_add(void) { long l=e_mul(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"+")){ev++; l+=e_mul();} else if(!strcmp(o,"-")){ev++; l-=e_mul();} else break; } return l; }
+static long e_tern(void) { long c=e_add(); if(ev<ev_hi&&!strcmp(stok[ev],"?")){ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],":"))ev++; long b=e_tern(); return c?a:b;} return c; }
+static long script_eval(int lo, int hi, u32 dot) { ev=lo; ev_hi=hi; g_dot=dot; return e_tern(); }
+
+/* wildcard match (supports '*') of an input-section name against a script pattern */
+static int glob(const char *p, const char *s) {
+	while (*p) {
+		if (*p=='*') { p++; if(!*p) return 1; for (; *s; s++) if (glob(p,s)) return 1; return glob(p,s); }
+		if (*p != *s) return 0;
+		p++; s++;
+	}
+	return *s==0;
+}
+
+int script_run(const char *path) {
+	FILE *f=fopen(path,"rb"); if(!f) die("cannot open linker script %s", path);
+	fseek(f,0,SEEK_END); long sz=ftell(f); fseek(f,0,SEEK_SET);
+	char *buf=malloc(sz+1); if(fread(buf,1,sz,f)!=(size_t)sz) die("read %s failed", path); buf[sz]=0; fclose(f);
+	script_tokenize(buf);
+	scripted = 1;
+	u32 dot = 0; int in_sections = 0;
+	int p = 0;
+	while (p < nstok) {
+		char *t = stok[p];
+		if (!strcmp(t,"ENTRY")) { p++; if(!strcmp(stok[p],"("))p++; entry_sym = stok[p++]; if(!strcmp(stok[p],")"))p++; continue; }
+		if (!strcmp(t,"SECTIONS")) { p++; if(!strcmp(stok[p],"{"))p++; in_sections=1; continue; }
+		if (in_sections && !strcmp(t,"}")) { p++; in_sections=0; continue; }
+		if (!strcmp(t,";")) { p++; continue; }
+		/* SYM = expr ;  or  . = expr ;  (top level or in SECTIONS) */
+		int provide = 0; char *nm = t;
+		if (!strcmp(t,"PROVIDE")||!strcmp(t,"PROVIDE_HIDDEN")) { provide=1; p++; if(!strcmp(stok[p],"("))p++; nm=stok[p]; }
+		if (p+1 < nstok && !strcmp(stok[p+1],"=")) {
+			int e0 = p+2, e1 = e0; while (e1<nstok && strcmp(stok[e1],";") && strcmp(stok[e1],")")) e1++;
+			long v = script_eval(e0, e1, dot);
+			if (!strcmp(nm,".")) dot = (u32)v;              /* move the location counter */
+			else { GSym *g=gsym_find(nm); if(!(provide && g && g->defined)) gsym_define(nm,(u32)v); }
+			p = e1; while (p<nstok && (!strcmp(stok[p],";")||!strcmp(stok[p],")"))) p++;
+			continue;
+		}
+		/* output section:  name : { in-specs }   or   /DISCARD/ : { ... } */
+		if (p+1 < nstok && !strcmp(stok[p+1],":")) {
+			int discard = !strcmp(nm, "/DISCARD/");
+			OutSec *os = discard ? NULL : &outsecs[noutsec];
+			if (os) { memset(os,0,sizeof*os); strncpy(os->name, nm, 63); }
+			p += 2;                                          /* skip name ':' */
+			while (p<nstok && strcmp(stok[p],"{")) p++;      /* skip AT(...) etc. up to '{' */
+			p++;                                             /* skip '{' */
+			if (os) { dot = alignup(dot, 4); os->vaddr = dot; }
+			while (p<nstok && strcmp(stok[p],"}")) {
+				int keep = 0;
+				if (!strcmp(stok[p],"KEEP")) { keep=1; p++; if(!strcmp(stok[p],"("))p++; }
+				(void)keep;
+				/* an in-body `SYM = .;` */
+				if (p+1<nstok && !strcmp(stok[p+1],"=")) { int e0=p+2,e1=e0; while(e1<nstok&&strcmp(stok[e1],";"))e1++; long v=script_eval(e0,e1,dot); if(strcmp(stok[p],".")) gsym_define(stok[p],(u32)v); else dot=(u32)v; p=e1; if(p<nstok&&!strcmp(stok[p],";"))p++; continue; }
+				if (!strcmp(stok[p],"*") || stok[p][0]=='.' || (stok[p][0]>='a'&&stok[p][0]<='z') || (stok[p][0]>='A'&&stok[p][0]<='Z')) {
+					/* file(patterns) — the file part is usually '*' (any). skip to '(' then read patterns */
+					if (p<nstok && strcmp(stok[p],"(")) p++;   /* skip the file spec (e.g. '*') */
+					if (p<nstok && !strcmp(stok[p],"(")) p++;  /* skip '(' */
+					while (p<nstok && strcmp(stok[p],")")) {
+						char *pat = stok[p++];
+						for (int oi=0; oi<nobj; oi++) { if(!objs[oi].active) continue;
+							for (int j=0;j<objs[oi].nsh;j++) { Elf32_Shdr *s=&objs[oi].sh[j];
+								if (!(s->sh_flags&SHF_ALLOC) || !s->sh_size) continue;
+								if (objs[oi].sec_vaddr[j]) continue;         /* already placed */
+								const char *shstr = (const char *)(objs[oi].data + objs[oi].sh[objs[oi].eh->e_shstrndx].sh_offset);
+								const char *snm = shstr + s->sh_name;       /* section-header string table (not the symbol strtab) */
+								if (!glob(pat, snm)) continue;
+								if (discard) { objs[oi].sec_vaddr[j] = 0; continue; }   /* dropped: leave unplaced */
+								dot = alignup(dot, s->sh_addralign ? s->sh_addralign : 4);
+								objs[oi].sec_vaddr[j] = dot; dot += s->sh_size;
+								if (s->sh_flags&SHF_EXECINSTR) os->exec=1;
+								if (s->sh_flags&SHF_WRITE) os->write=1;
+								if (s->sh_type==SHT_NOBITS) os->nobits=1; else os->nobits=0;
+							} }
+					}
+					if (p<nstok && !strcmp(stok[p],")")) p++;
+					if (keep && p<nstok && !strcmp(stok[p],")")) p++;   /* KEEP(...) close */
+				} else p++;
+			}
+			if (p<nstok && !strcmp(stok[p],"}")) p++;
+			if (os) { os->size = dot - os->vaddr; if (os->size) noutsec++; }
+			continue;
+		}
+		p++;   /* skip anything else (OUTPUT_FORMAT(...), etc.) */
+	}
+	return 1;
+}
+
 int main(int argc, char **argv) {
 	const char *out = "a.out";
+	const char *script_path = NULL;                      /* -T <linker script> */
 	const char *libnames[MAXSHLIB]; int nlibname = 0;    /* -l names, resolved to files after the parse loop */
 	const char *libdirs[32];        int nlibdir  = 0;    /* -L search directories */
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+		else if (!strcmp(argv[i], "-T") && i + 1 < argc) script_path = argv[++i];   /* linker script drives layout ("-T script.ld") */
 		else if (!strcmp(argv[i], "-Ttext") && i + 1 < argc) load_base = strtoul(argv[++i], NULL, 0);   /* text base */
 		else if (!strncmp(argv[i], "-Ttext=", 7)) load_base = strtoul(argv[i] + 7, NULL, 0);
 		else if ((!strcmp(argv[i], "-e") || !strcmp(argv[i], "--entry")) && i + 1 < argc) entry_sym = argv[++i];
@@ -467,6 +590,18 @@ int main(int argc, char **argv) {
 		if (!loaded) die("cannot find -l%s (searched %d -L dir(s) for lib%s.so)", libnames[i], nlibdir, libnames[i]);
 	}
 	pull_archive_members();
+
+	if (script_path) {                                   /* linker-script layout: place sections + define symbols per the script */
+		script_run(script_path);
+		build_globals();                                 /* global symbol vaddrs from their (script-placed) sections */
+		Layout L = {0};
+		u32 entry = 0; GSym *s = gsym_find(entry_sym);
+		if (s && s->defined) entry = s->vaddr;
+		else die("no '%s' symbol (entry point)", entry_sym);
+		relocate(&L);
+		elf_write_script(out, entry);
+		return 0;
+	}
 
 	Layout L = {0};
 	if (shared && !soname) { const char *b = strrchr(out, '/'); soname = b ? b + 1 : out; }

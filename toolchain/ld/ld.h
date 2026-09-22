@@ -86,6 +86,17 @@ typedef struct { u32 offset; u32 dynsym_index; } GlobDat;
 #define MAXGLOBDAT 8192
 extern GlobDat globdat[]; extern int nglobdat;
 
+/* Linker-script driven layout (subset): when `-T script.ld` is given, the script (not the built-in
+ * 2-segment model) places sections + defines symbols. outsecs[] is the resulting output-section list
+ * (name + placement), used to emit section headers; the actual bytes come from each input section's
+ * assigned sec_vaddr, exactly as the normal path. */
+typedef struct { char name[64]; u32 vaddr, size; int nobits; int exec, write; } OutSec;
+#define MAXOUTSEC 64
+extern OutSec outsecs[]; extern int noutsec;
+extern int scripted;                                               /* 1 = a linker script drives layout */
+int  script_run(const char *path);                                 /* parse + lay out per the script; 1 if used */
+void elf_write_script(const char *out, u32 entry);                 /* write the ET_EXEC from the script layout */
+
 void die(const char *fmt, ...);                                    /* front-end (ld.c) */
 u32  pick_nbucket(u32 nsyms);                                      /* .hash bucket count (ld.c; used by elf.c) */
 

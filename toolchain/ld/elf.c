@@ -279,6 +279,73 @@ static void write_dynamic(FILE *f, const Layout *L) {
  *   ET_DYN  (-pie):    base 0; absolute refs left at their link-time value with an R_ARM_RELATIVE in
  *                      .rel.dyn so a tiny crt can add the load bias at startup. .rel.dyn + .dynamic sit
  *                      at the tail of the R-X segment; a PT_DYNAMIC header points at .dynamic. */
+/* Write the ET_EXEC produced by a linker script: one PT_LOAD covering every placed section (bytes at
+ * their script-assigned vaddr), with the ELF headers mapped just below the lowest section. Simple RWX
+ * segment — bare-metal images don't need W^X, and they're usually objcopy'd to a raw binary anyway. */
+void elf_write_script(const char *out, u32 entry) {
+	struct { Obj *o; int j; u32 va, sz; int nobits; } seg[1024]; int nseg = 0;
+	u32 lo = 0xffffffffu, hiprog = 0, himem = 0;
+	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
+		Elf32_Shdr *s = &objs[i].sh[j];
+		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || !objs[i].sec_vaddr[j]) continue;   /* unplaced/discarded skipped */
+		u32 va = objs[i].sec_vaddr[j];
+		if (nseg < 1024) { seg[nseg].o=&objs[i]; seg[nseg].j=j; seg[nseg].va=va; seg[nseg].sz=s->sh_size; seg[nseg].nobits=(s->sh_type==SHT_NOBITS); nseg++; }
+		if (va < lo) lo = va;
+		if (va + s->sh_size > himem) himem = va + s->sh_size;
+		if (s->sh_type != SHT_NOBITS && va + s->sh_size > hiprog) hiprog = va + s->sh_size;
+	} }
+	if (!nseg) die("linker script placed no sections");
+	for (int a = 1; a < nseg; a++) for (int b = a; b > 0 && seg[b-1].va > seg[b].va; b--) {   /* insertion sort by vaddr */
+		Obj *o=seg[b].o; int j=seg[b].j, nb=seg[b].nobits; u32 va=seg[b].va, sz=seg[b].sz;
+		seg[b]=seg[b-1]; seg[b-1].o=o; seg[b-1].j=j; seg[b-1].nobits=nb; seg[b-1].va=va; seg[b-1].sz=sz;
+	}
+
+	u32 hdrsz = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);   /* one PT_LOAD */
+	u32 pv = lo - hdrsz;                                   /* headers map just below the first section */
+
+	/* .shstrtab: "\0" + each output-section name + ".shstrtab" */
+	char shstr[2048]; int slen = 0; shstr[slen++] = 0;
+	int nameoff[MAXOUTSEC];
+	for (int i = 0; i < noutsec; i++) { nameoff[i]=slen; strcpy(shstr+slen, outsecs[i].name); slen += (int)strlen(outsecs[i].name)+1; }
+	int shstr_nameoff = slen; strcpy(shstr+slen, ".shstrtab"); slen += 10;
+
+	u32 content_end = hdrsz + (hiprog - lo);               /* headers + PROGBITS span */
+	u32 shstr_off = content_end;
+	u32 shoff = alignup(shstr_off + (u32)slen, 4);
+
+	FILE *f = fopen(out, "wb"); if (!f) die("cannot open %s", out);
+	Elf32_Ehdr eh = {0};
+	memcpy(eh.e_ident, "\177ELF\1\1\1", 7);
+	eh.e_type = ET_EXEC; eh.e_machine = md_e_machine; eh.e_version = 1; eh.e_entry = entry; eh.e_flags = 0x05000000;
+	eh.e_phoff = sizeof(Elf32_Ehdr); eh.e_phentsize = sizeof(Elf32_Phdr); eh.e_phnum = 1;
+	eh.e_ehsize = sizeof(Elf32_Ehdr); eh.e_shentsize = sizeof(Elf32_Shdr);
+	eh.e_shnum = 1 + noutsec + 1; eh.e_shstrndx = noutsec + 1; eh.e_shoff = shoff;
+	Elf32_Phdr ph = { PT_LOAD, 0, pv, pv, hdrsz + (hiprog - lo), hdrsz + (himem - lo), PF_R|PF_W|PF_X, PAGE };
+	fwrite(&eh, sizeof eh, 1, f);
+	fwrite(&ph, sizeof ph, 1, f);
+	for (int i = 0; i < nseg; i++) {                       /* section bytes at (va - lo + hdrsz) */
+		if (seg[i].nobits) continue;
+		u32 off = seg[i].va - lo + hdrsz;
+		for (long p = ftell(f); p < (long)off; p++) fputc(0, f);
+		Elf32_Shdr *s = &seg[i].o->sh[seg[i].j];
+		fwrite(seg[i].o->data + s->sh_offset, 1, s->sh_size, f);
+	}
+	for (long p = ftell(f); p < (long)content_end; p++) fputc(0, f);
+	fwrite(shstr, 1, slen, f);
+	for (long p = ftell(f); p < (long)shoff; p++) fputc(0, f);
+	Elf32_Shdr sh = {0}; fwrite(&sh, sizeof sh, 1, f);     /* [0] null */
+	for (int i = 0; i < noutsec; i++) {
+		OutSec *os = &outsecs[i];
+		Elf32_Shdr s = { .sh_name=nameoff[i], .sh_type=os->nobits?SHT_NOBITS:SHT_PROGBITS,
+		    .sh_flags=SHF_ALLOC|(os->exec?SHF_EXECINSTR:0)|(os->write?SHF_WRITE:0),
+		    .sh_addr=os->vaddr, .sh_offset=os->nobits?content_end:(os->vaddr-lo+hdrsz), .sh_size=os->size, .sh_addralign=4 };
+		fwrite(&s, sizeof s, 1, f);
+	}
+	Elf32_Shdr ss = { .sh_name=shstr_nameoff, .sh_type=SHT_STRTAB, .sh_offset=shstr_off, .sh_size=(u32)slen, .sh_addralign=1 };
+	fwrite(&ss, sizeof ss, 1, f);
+	fclose(f);
+}
+
 void elf_write_exec(const char *out, u32 entry, const Layout *L) {
 	FILE *f = fopen(out, "wb"); if (!f) die("cannot open %s", out);
 	int need_dynamic = pie || shared || nimport || ngotent;           /* carries a .dynamic + PT_DYNAMIC */
