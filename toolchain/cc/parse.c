@@ -53,6 +53,20 @@ static int   enum_find(const char *n, long *v) { for (int i = 0; i < nenumc; i++
 static Type *struct_decl(void);
 static Type *enum_decl(void);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
+static long eval_const(Node *n); static Node *assign(void);
+/* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
+ * `packed` -> *packed=1, `aligned(N)` -> *alignb=N. Unknown attributes (with any (...) payload) are skipped.
+ * A name may be spelled bare or double-underscored (packed / __packed__). */
+static void parse_attribute(int *packed, int *alignb) {
+	expect("("); expect("(");
+	while (!is(")") && tk->kind != TK_EOF) {   /* attribute names are plain identifiers, so match on text */
+		if (!strcmp(tk->text, "packed") || !strcmp(tk->text, "__packed__")) { if (packed) *packed = 1; tk = tk->next; }
+		else if (!strcmp(tk->text, "aligned") || !strcmp(tk->text, "__aligned__")) { tk = tk->next; if (consume("(")) { int n = (int)eval_const(assign()); if (alignb && n > *alignb) *alignb = n; expect(")"); } }
+		else { tk = tk->next; if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); } }
+		if (!consume(",")) break;
+	}
+	expect(")"); expect(")");
+}
 
 /* declaration-specifiers: fold type keywords, qualifiers, and storage classes. Width comes from the
  * base keyword (char=1, short=2, int/long=4 — `long` is 32-bit on ARM32; `long long`/64-bit is TODO),
@@ -123,7 +137,39 @@ static Type *declarator(Type *base, char *name) {
 static struct { char name[64]; Type *type; } struct_tags[64]; static int nstruct_tags;
 static Type *tag_find(const char *name) { for (int i = 0; i < nstruct_tags; i++) if (!strcmp(struct_tags[i].name, name)) return struct_tags[i].type; return NULL; }
 static void  tag_add(const char *name, Type *t) { if (name[0] && nstruct_tags < 64) { strncpy(struct_tags[nstruct_tags].name, name, 63); struct_tags[nstruct_tags].type = t; nstruct_tags++; } }
+/* Assign every member a byte offset (and, for bitfields, a bit offset within its storage unit) and set the
+ * struct's size + alignment. Little-endian bit allocation, GCC/SysV rules: a bitfield lives entirely inside
+ * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed`
+ * removes all inter-member padding and caps the struct alignment at 1; `aligned(N)` raises it to N. */
+static void layout_struct(Type *ty, int packed, int alignb) {
+	int bitpos = 0, salign = 1;
+	for (Member *m = ty->members; m; m = m->next) {
+		int msz = m->type->size, ma = packed ? 1 : align_of(m->type);
+		if (m->is_bitfield) {
+			int unit = ma * 8;
+			if (m->bit_width == 0) { bitpos = (bitpos + unit - 1) / unit * unit; continue; }   /* :0 -> align, no storage */
+			if (!packed && (bitpos % unit) + m->bit_width > msz * 8)     /* would straddle the storage unit */
+				bitpos = (bitpos + unit - 1) / unit * unit;
+			m->offset = (bitpos / unit) * ma;
+			m->bit_offset = bitpos - m->offset * 8;
+			bitpos += m->bit_width;
+		} else {
+			int byte = ((bitpos + 7) / 8 + ma - 1) & ~(ma - 1);        /* next byte, aligned to the member */
+			m->offset = byte;
+			bitpos = (byte + msz) * 8;
+		}
+		if (ma > salign) salign = ma;
+	}
+	if (packed) salign = 1;
+	if (alignb > salign) salign = alignb;
+	int bytes = (bitpos + 7) / 8;
+	ty->size = (bytes + salign - 1) & ~(salign - 1);
+	ty->align = salign;
+}
+
 static Type *struct_decl(void) {
+	int packed = 0, alignb = 0;
+	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct __attribute__((packed)) S */
 	char tag[64] = ""; if (tk->kind == TK_IDENT) ident(tag);
 	if (!is("{")) {                                          /* a reference — forward-declare an incomplete type if new */
 		Type *t = tag_find(tag);
@@ -133,18 +179,23 @@ static Type *struct_decl(void) {
 	Type *ty = tag[0] ? tag_find(tag) : NULL;                /* a definition — fill an existing forward decl in place */
 	if (!ty) { ty = calloc(1, sizeof *ty); ty->kind = TY_STRUCT; tag_add(tag, ty); }
 	expect("{");
-	Member mh = {0}, *mc = &mh; int off = 0, salign = 1;
+	/* Collect the members first (with any bitfield widths), THEN lay them out — because `packed` may be
+	 * written after the closing brace (`struct {...} __packed;`, the common kernel form) and must repack. */
+	Member mh = {0}, *mc = &mh;
 	while (!consume("}")) {
 		Type *base = declspec(NULL, NULL);
+		if (consume(";")) continue;                          /* anonymous member of a nested struct/union def */
 		do {
 			char mname[64]; Type *mt = declarator(base, mname);
-			int a = align_of(mt); off = (off + a - 1) & ~(a - 1);   /* align this member */
-			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt; m->offset = off;
-			off += mt->size; if (a > salign) salign = a; mc = mc->next = m;
+			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt;
+			if (consume(":")) { m->is_bitfield = 1; m->bit_width = (int)eval_const(assign()); }   /* type name : width */
+			mc = mc->next = m;
 		} while (consume(","));
 		expect(";");
 	}
-	ty->members = mh.next; ty->size = (off + salign - 1) & ~(salign - 1);   /* fills the forward decl in place */
+	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct {...} __attribute__((packed)) */
+	ty->members = mh.next;
+	layout_struct(ty, packed, alignb);
 	return ty;
 }
 
@@ -235,7 +286,9 @@ static Node *struct_member(Node *base, const char *mname) {
 	add_type(base);
 	if (!base->type || base->type->kind != TY_STRUCT) die("parse: '.%s' on a non-struct", mname);
 	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
-		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type; return n;
+		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type;
+		if (m->is_bitfield) { n->bit_width = m->bit_width; n->bit_offset = m->bit_offset; }
+		return n;
 	}
 	die("parse: struct has no member '%s'", mname); return NULL;
 }

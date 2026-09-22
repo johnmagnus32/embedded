@@ -9,14 +9,14 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0 };
-static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1 };
-static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1 };   /* plain char = unsigned (ARM default) */
-static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0 };   /* signed char                        */
-static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0 };
-static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1 };
-static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0 };   /* long long          (r0:r1 pair)    */
-static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1 };   /* unsigned long long                 */
+static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0 };
+static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0 };
+static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0 };   /* plain char = unsigned (ARM default) */
+static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0 };   /* signed char                        */
+static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0 };
+static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0 };
+static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0 };   /* long long          (r0:r1 pair)    */
+static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0 };   /* unsigned long long                 */
 Type *ty_int  = &int_ty;   Type *ty_uint   = &uint_ty;
 Type *ty_char = &char_ty;  Type *ty_schar  = &schar_ty;
 Type *ty_short = &short_ty; Type *ty_ushort = &ushort_ty;
@@ -28,7 +28,10 @@ int   is_ptr(Type *t) { return t && t->kind == TY_PTR; }
 int   is_ptr_like(Type *t) { return t && (t->kind == TY_PTR || t->kind == TY_ARRAY); }
 int   align_of(Type *t) {
 	if (t->kind == TY_ARRAY) return align_of(t->base);
-	if (t->kind == TY_STRUCT) { int a = 1; for (Member *m = t->members; m; m = m->next) { int ma = align_of(m->type); if (ma > a) a = ma; } return a; }
+	if (t->kind == TY_STRUCT) {
+		if (t->align) return t->align;   /* forced by __attribute__((packed))=1 / ((aligned(N))) */
+		int a = 1; for (Member *m = t->members; m; m = m->next) { int ma = align_of(m->type); if (ma > a) a = ma; } return a;
+	}
 	return t->size;   /* scalars align to their own width: char=1, short=2, int/pointer=4 */
 }
 

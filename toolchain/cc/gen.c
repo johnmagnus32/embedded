@@ -171,17 +171,44 @@ static void gen_binary64(Node *n) {
 	}
 }
 
+/* Bitfield read: r0 = &storage-unit on entry -> r0 = the field value. Two shifts isolate the field —
+ * left so its top bit reaches bit 31, then right (asr signed / lsr unsigned) down to bit 0. Unit <= 32 bits. */
+static void gen_bitfield_load(Node *n) {
+	int sz = n->type->size, lsh = 32 - n->bit_offset - n->bit_width, rsh = 32 - n->bit_width;
+	fprintf(o, sz == 1 ? "\tldrb r0, [r0]\n" : sz == 2 ? "\tldrh r0, [r0]\n" : "\tldr r0, [r0]\n");
+	if (lsh) fprintf(o, "\tlsl r0, r0, #%d\n", lsh);
+	if (rsh) fprintf(o, n->type->is_unsigned ? "\tlsr r0, r0, #%d\n" : "\tasr r0, r0, #%d\n", rsh);
+}
+/* Bitfield write (read-modify-write): store rhs into lhs's field, leaving the storage unit's other bits.
+ * &unit -> r1, value -> r0; clear the field bits (bic) and OR the masked, shifted value back in. */
+static void gen_bitfield_store(Node *n) {
+	Node *lhs = n->lhs;
+	int sz = lhs->type->size, bo = lhs->bit_offset, bw = lhs->bit_width;
+	long mask = (bw >= 32) ? 0xffffffffL : ((1L << bw) - 1);
+	gen_addr(lhs); fprintf(o, "\tpush {r0}\n");
+	gen_expr(n->rhs); fprintf(o, "\tpop {r1}\n");                 /* r0 = value, r1 = &unit */
+	fprintf(o, sz == 1 ? "\tldrb r2, [r1]\n" : sz == 2 ? "\tldrh r2, [r1]\n" : "\tldr r2, [r1]\n");
+	load_imm("r3", mask); fprintf(o, "\tand r0, r0, r3\n");      /* value &= fieldmask */
+	if (bo) fprintf(o, "\tlsl r0, r0, #%d\n\tlsl r3, r3, #%d\n", bo, bo);   /* shift value + mask into place */
+	fprintf(o, "\tbic r2, r2, r3\n\torr r2, r2, r0\n");          /* clear field, OR the new bits in */
+	fprintf(o, sz == 1 ? "\tstrb r2, [r1]\n" : sz == 2 ? "\tstrh r2, [r1]\n" : "\tstr r2, [r1]\n");
+}
+
 static void gen_expr(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:                                                 /* 64-bit literal fills the pair r0:r1 */
 		if (is64(n->type)) { load_imm("r0", n->val & 0xffffffff); load_imm("r1", (n->val >> 32) & 0xffffffff); }
 		else load_imm("r0", n->val);
 		return;
-	case ND_VAR: case ND_GVAR: case ND_MEMBER:             /* address -> r0; scalars then load, arrays decay */
+	case ND_MEMBER:
+		if (n->bit_width) { gen_addr(n); gen_bitfield_load(n); return; }   /* bitfield: extract from its unit */
+		/* fall through to the ordinary lvalue load */
+	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load, arrays decay */
 		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:
+		if (n->lhs->kind == ND_MEMBER && n->lhs->bit_width) { gen_bitfield_store(n); return; }   /* bitfield RMW */
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
 		gen_expr_w(n->rhs, is64(n->lhs->type));             /* value in r0(:r1), widened to the dest width */
 		if (is64(n->lhs->type)) { fprintf(o, "\tpop {r2}\n"); store(n->lhs->type); }   /* addr r2; str r0:r1 */

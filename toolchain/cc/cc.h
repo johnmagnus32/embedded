@@ -29,9 +29,12 @@ Token *lex(const char *src);                 /* tokenize the whole source into a
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
-typedef struct Member { char name[64]; struct Type *type; int offset; struct Member *next; } Member;
-/* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing. */
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; } Type;
+/* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
+ * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
+typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; struct Member *next; } Member;
+/* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
+ * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; } Type;
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
@@ -67,6 +70,7 @@ typedef struct Node {
 	char name[64];               /* ND_VAR / ND_CALL name ; ND_ASM template                     */
 	char reg[8];                 /* ND_VAR pinned to a hard register (`register x __asm__("r7")`)*/
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
+	int bit_width, bit_offset;   /* ND_MEMBER on a bitfield: field width + bit offset in its unit (width 0 = not a bitfield) */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
 	struct Node *init, *inc;         /* ND_FOR: initializer statement + per-iteration step expr    */
 	struct Node *case_list, *case_next;  /* ND_SWITCH: its cases; ND_CASE: link in that list        */
