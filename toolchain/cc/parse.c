@@ -50,7 +50,7 @@ static void  add_typedef(const char *n, Type *t) { if (ntypedefs < 256) { strncp
 static struct { char name[64]; long val; } enumc[512]; static int nenumc;
 static int   enum_find(const char *n, long *v) { for (int i = 0; i < nenumc; i++) if (!strcmp(enumc[i].name, n)) { *v = enumc[i].val; return 1; } return 0; }
 
-static Type *struct_decl(void);
+static Type *struct_decl(int is_union);
 static Type *enum_decl(void);
 static int is_typename(void);
 static Type *declarator(Type *base, char *name);
@@ -87,15 +87,19 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("extern")) { if (sc) *sc |= SC_EXTERN; continue; }   /* file-scope: a reference, not a definition */
 		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
 		if (consume("const") || consume("volatile") || consume("restrict") || consume("register") || consume("inline")) continue;
+		if (consume("__const__") || consume("__const") || consume("__volatile__") || consume("__restrict__") || consume("__restrict") || consume("__inline__") || consume("__inline")) continue;   /* GNU alt spellings */
+		if (consume("__extension__")) continue;   /* GNU no-op prefix */
 		if (consume("__attribute__")) { skip_attribute(); continue; }
-		if (consume("signed"))   { saw_signed = 1; seen = 1; continue; }
+		if (consume("signed") || consume("__signed__")) { saw_signed = 1; seen = 1; continue; }
 		if (consume("unsigned")) { is_uns = 1;     seen = 1; continue; }
 		if (consume("void"))     { base = B_VOID;  seen = 1; continue; }
+		if (consume("_Bool"))    { base = B_CHAR;  is_uns = 1; seen = 1; continue; }   /* _Bool: 1-byte unsigned */
 		if (consume("char"))     { base = B_CHAR;  seen = 1; continue; }
 		if (consume("short"))    { base = B_SHORT; seen = 1; continue; }
 		if (consume("int"))      { if (base != B_SHORT && base != B_LONG && base != B_LLONG) base = B_INT; seen = 1; continue; }
 		if (consume("long"))     { base = (base == B_LONG) ? B_LLONG : B_LONG; seen = 1; continue; }
-		if (consume("struct") || consume("union")) { tagty = struct_decl(); seen = 1; continue; }
+		if (consume("struct")) { tagty = struct_decl(0); seen = 1; continue; }
+		if (consume("union"))  { tagty = struct_decl(1); seen = 1; continue; }
 		if (consume("enum")) { tagty = enum_decl(); seen = 1; continue; }
 		if (consume("typeof") || consume("__typeof__")) {   /* typeof(type) or typeof(expr) -> that type */
 			expect("(");
@@ -129,13 +133,15 @@ static Type *type_suffix(Type *base) {
  * (abstract declarators in prototypes/casts). A "(*name)(...)" grouping is a function pointer — we don't
  * model function types, so we treat it as a plain 4-byte pointer and skip the pointed-to parameter list. */
 static Type *declarator(Type *base, char *name) {
-	while (consume("*")) { base = pointer_to(base); while (consume("const") || consume("volatile") || consume("restrict")) ; }   /* `char * const` */
+	while (consume("*")) { base = pointer_to(base); while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }   /* `char * const` */
+	while (consume("__attribute__")) skip_attribute();       /* e.g. `void * __attribute__((...)) name` */
 	if (consume("(")) {                                      /* (*name)(...) : pointer to function/array */
 		expect("*"); name[0] = 0; if (tk->kind == TK_IDENT) ident(name); expect(")");
 		if (is("(")) skip_attribute(); else base = type_suffix(base);   /* skip the function's params */
 		return pointer_to(base);
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
+	while (consume("__attribute__")) skip_attribute();       /* trailing: `int x __attribute__((aligned(4)))` */
 	return type_suffix(base);
 }
 
@@ -149,8 +155,22 @@ static void  tag_add(const char *name, Type *t) { if (name[0] && nstruct_tags < 
  * struct's size + alignment. Little-endian bit allocation, GCC/SysV rules: a bitfield lives entirely inside
  * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed`
  * removes all inter-member padding and caps the struct alignment at 1; `aligned(N)` raises it to N. */
-static void layout_struct(Type *ty, int packed, int alignb) {
+static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 	int bitpos = 0, salign = 1;
+	if (is_union) {                         /* every member overlaps at offset 0; size = widest member */
+		int maxsz = 0;
+		for (Member *m = ty->members; m; m = m->next) {
+			int ma = packed ? 1 : align_of(m->type);
+			m->offset = 0; if (m->is_bitfield) m->bit_offset = 0;
+			if (m->type->size > maxsz) maxsz = m->type->size;
+			if (ma > salign) salign = ma;
+		}
+		if (packed) salign = 1;
+		if (alignb > salign) salign = alignb;
+		ty->size = (maxsz + salign - 1) & ~(salign - 1);
+		ty->align = salign;
+		return;
+	}
 	for (Member *m = ty->members; m; m = m->next) {
 		int msz = m->type->size, ma = packed ? 1 : align_of(m->type);
 		if (m->is_bitfield) {
@@ -175,7 +195,7 @@ static void layout_struct(Type *ty, int packed, int alignb) {
 	ty->align = salign;
 }
 
-static Type *struct_decl(void) {
+static Type *struct_decl(int is_union) {
 	int packed = 0, alignb = 0;
 	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct __attribute__((packed)) S */
 	char tag[64] = ""; if (tk->kind == TK_IDENT) ident(tag);
@@ -192,7 +212,10 @@ static Type *struct_decl(void) {
 	Member mh = {0}, *mc = &mh;
 	while (!consume("}")) {
 		Type *base = declspec(NULL, NULL);
-		if (consume(";")) continue;                          /* anonymous member of a nested struct/union def */
+		if (consume(";")) {                                  /* no declarator: an anonymous struct/union member */
+			if (base->kind == TY_STRUCT) { Member *m = calloc(1, sizeof *m); m->type = base; m->is_anon = 1; mc = mc->next = m; }
+			continue;
+		}
 		do {
 			char mname[64]; Type *mt = declarator(base, mname);
 			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt;
@@ -203,7 +226,17 @@ static Type *struct_decl(void) {
 	}
 	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct {...} __attribute__((packed)) */
 	ty->members = mh.next;
-	layout_struct(ty, packed, alignb);
+	layout_struct(ty, packed, alignb, is_union);
+	/* Promote members of anonymous struct/union members into this type (accessible directly), at the
+	 * anonymous block's offset + the sub-member's own offset. */
+	Member *ph = NULL, *pt = NULL;
+	for (Member *am = ty->members; am; am = am->next) if (am->is_anon)
+		for (Member *sm = am->type->members; sm; sm = sm->next) {
+			Member *pm = calloc(1, sizeof *pm); *pm = *sm;
+			pm->offset = am->offset + sm->offset; pm->is_anon = 0; pm->next = NULL;
+			if (pt) pt->next = pm; else ph = pm; pt = pm;
+		}
+	if (ph) { Member *t = ty->members; while (t->next) t = t->next; t->next = ph; }
 	return ty;
 }
 
@@ -214,7 +247,7 @@ static Type *enum_decl(void) {
 		long val = 0;
 		while (!is("}")) {
 			char nm[64]; ident(nm);
-			if (consume("=")) { if (tk->kind != TK_NUM) die("parse: enum value must be an integer constant (line %d)", tk->line); val = tk->val; tk = tk->next; }
+			if (consume("=")) val = eval_const(assign());   /* any const expr: another enum constant, 1<<N, … */
 			if (nenumc < 512) { strncpy(enumc[nenumc].name, nm, 63); enumc[nenumc].val = val; nenumc++; }
 			val++;
 			if (!consume(",")) break;
@@ -231,9 +264,10 @@ static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->n
 
 /* ---- node constructors --------------------------------------------------------------------------- */
 static int is_typename(void) {   /* does a declaration start at the cursor? */
-	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned")
+	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool")
 	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof") || is("__typeof__")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__")
+	    || is("__signed__") || is("__const__") || is("__const") || is("__volatile__") || is("__restrict__") || is("__restrict") || is("__inline__") || is("__inline") || is("__extension__")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
 static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
@@ -248,7 +282,25 @@ static Node *stmt(void);
 static Node *new_add(Node *l, Node *r);       /* +/- with pointer/array scaling (defined below) */
 static Node *new_sub(Node *l, Node *r);
 
-static Node *primary(void) {
+	/* C11 _Generic(ctrl, T1: e1, ..., default: eN): yield the association whose type matches ctrl's type
+	 * (first match; our long==int etc. means near-identical types tie, but they resolve to the same type). */
+	static int types_match(Type *a, Type *b) {
+		if (!a || !b || a->kind != b->kind) return 0;
+		if (a->kind == TY_PTR || a->kind == TY_ARRAY || a->kind == TY_STRUCT) return 1;   /* approx: any ptr/aggregate */
+		return a->size == b->size && a->is_unsigned == b->is_unsigned;
+	}
+	static Node *primary(void) {
+	while (consume("__extension__")) ;   /* GNU no-op prefix, e.g. __extension__ ({...}) */
+	if (consume("_Generic")) {
+		expect("("); Node *ctrl = assign(); add_type(ctrl);
+		Node *chosen = NULL, *deflt = NULL;
+		while (consume(",")) {
+			if (consume("default")) { expect(":"); Node *e = assign(); deflt = e; }
+			else { char d[64]; Type *t = declarator(declspec(NULL, NULL), d); expect(":"); Node *e = assign(); if (!chosen && types_match(ctrl->type, t)) chosen = e; }
+		}
+		expect(")");
+		return chosen ? chosen : (deflt ? deflt : num(0));
+	}
 	if (consume("(")) {
 		if (is("{")) {   /* GNU statement expression ({ stmts...; last-expr; }) — value is the last expr */
 			Node *n = node(ND_STMTEXPR); n->body = stmt()->body; expect(")"); return n;
@@ -403,10 +455,18 @@ static Node *init_of(Node *dest, Type *ty) {
 	expect("{");
 	Node blk = {0}, *c = &blk;
 	if (ty->kind == TY_STRUCT) {
-		for (Member *m = ty->members; m && !is("}"); m = m->next) {
+		Member *m = ty->members;
+		while (!is("}")) {
+			if (consume(".")) {                              /* designated: .field = value */
+				char mn[64]; ident(mn); consume("=");
+				for (m = ty->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
+				if (!m) die("parse: struct has no member '%s'", mn);
+			}
+			if (!m) break;
 			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = m->offset; dm->type = m->type;
+			if (m->is_bitfield) { dm->bit_width = m->bit_width; dm->bit_offset = m->bit_offset; }
 			c->next = is("{") ? init_of(dm, m->type) : unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, assign()));
-			c = c->next; if (!consume(",")) break;
+			c = c->next; m = m->next; if (!consume(",")) break;
 		}
 	} else if (ty->kind == TY_ARRAY) {
 		for (int i = 0; i < ty->len && !is("}"); i++) {
@@ -431,8 +491,10 @@ static Node *stmt(void) {
 	if (consume("case")) {                                   /* case CONST: */
 		if (!cur_switch) die("parse: 'case' outside switch");
 		Node *c = conditional(); if (c->kind != ND_NUM) die("parse: case label must be a constant (line %d)", tk->line);
+		Node *n = node(ND_CASE); n->val = c->val;
+		if (consume("...")) { Node *hi = conditional(); if (hi->kind != ND_NUM) die("parse: case range end must be a constant (line %d)", tk->line); n->val2 = hi->val; n->is_range = 1; }   /* GCC `case lo ... hi:` */
 		expect(":");
-		Node *n = node(ND_CASE); n->val = c->val; n->case_next = cur_switch->case_list; cur_switch->case_list = n;
+		n->case_next = cur_switch->case_list; cur_switch->case_list = n;
 		return n;
 	}
 	if (consume("default")) { if (!cur_switch) die("parse: 'default' outside switch"); expect(":");
@@ -507,7 +569,7 @@ static Func *function_tail(const char *name, Type *ret) {
 	if (is("void") && !strcmp(tk->next->text, ")")) tk = tk->next;   /* (void) = no params */
 	else if (!is(")")) {
 		do {
-			if (is(".")) { while (consume(".")) ; f->variadic = 1; break; }   /* `...` */
+			if (consume("...")) { f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
 			if (np < 16) { strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++; }

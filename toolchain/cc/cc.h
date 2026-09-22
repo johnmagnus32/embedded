@@ -31,7 +31,7 @@ Token *lex(const char *src);                 /* tokenize the whole source into a
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
-typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; struct Member *next; } Member;
+typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; struct Member *next; } Member;
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
 typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; } Type;
@@ -66,7 +66,8 @@ typedef struct Node {
 	NodeKind kind;
 	Type *type;                  /* result type (filled by add_type); drives ptr scaling + load width */
 	struct Node *lhs, *rhs;      /* binary/unary operands                                        */
-	long val;                    /* ND_NUM                                                       */
+	long val;                    /* ND_NUM ; ND_CASE low value                                   */
+	long val2; int is_range;     /* ND_CASE `low ... high` range (GCC case ranges)               */
 	char name[64];               /* ND_VAR / ND_CALL name                                        */
 	char reg[8];                 /* ND_VAR pinned to a hard register (`register x __asm__("r7")`)*/
 	char cons[8];                /* ND_ASM operand: its constraint ("r"/"=r"/"+r"/"i"/…)         */

@@ -14,12 +14,14 @@ static const char *KEYWORDS[] = {
 	"int", "char", "void", "short", "long", "signed", "unsigned",          /* base integer types      */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
+	"__signed__", "__const__", "__const", "__volatile__", "__restrict__", "__restrict", "__inline__", "__inline",  /* GNU alt spellings */
+	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
 	"typeof", "__typeof__",                                                  /* GNU typeof(expr|type)   */
 	"__asm__", "__volatile__", "asm",                                       /* inline assembly         */
 	"return", "if", "else", "while", "do", "for", "break", "continue", "switch", "case", "default", "goto",  /* control flow */
 	NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
-static const char *PUNCT[] = { "<<=", ">>=",                                        /* 3-char first    */
+static const char *PUNCT[] = { "<<=", ">>=", "...",                                 /* 3-char first    */
                                "<<", ">>", "==", "!=", "<=", ">=", "&&", "||", "->", "++", "--",
                                "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",       /* compound assign */
                                "+","-","*","/","%","(",")","{","}","[","]",";",",",".","=","<",">","&","|","^","~","!","?",":", NULL };
@@ -38,12 +40,21 @@ Token *lex(const char *src) {
 		if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }      /* line comment  */
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) { if(*p=='\n')line++; p++; } if(*p) p+=2; continue; }
 
-		if (*p == '\'') {                                                                /* char literal 'x' / '\n' */
+		if (*p == '\'') {                                                                /* char literal 'x' / '\n' / '\001' / '\xff' */
 			long v; p++;
 			if (*p == '\\') { p++;
-				switch (*p) { case 'n': v='\n'; break; case 't': v='\t'; break; case 'r': v='\r'; break;
-				              case '0': v=0; break; case '\\': v='\\'; break; case '\'': v='\''; break;
-				              case '"': v='"'; break; default: v=(unsigned char)*p; } p++;
+				switch (*p) {
+				case 'n': v='\n'; p++; break; case 't': v='\t'; p++; break; case 'r': v='\r'; p++; break;
+				case 'a': v='\a'; p++; break; case 'b': v='\b'; p++; break; case 'f': v='\f'; p++; break;
+				case 'v': v='\v'; p++; break; case '\\': v='\\'; p++; break; case '\'': v='\''; p++; break;
+				case '"': v='"'; p++; break; case '?': v='?'; p++; break;
+				case 'x': { p++; v = 0;                                          /* \xHH… hex escape */
+					for (int d; (d = (*p>='0'&&*p<='9') ? *p-'0' : (*p|32)>='a'&&(*p|32)<='f' ? (*p|32)-'a'+10 : -1) >= 0; p++) v = v*16 + d;
+					break; }
+				default:
+					if (*p >= '0' && *p <= '7') { v = 0; for (int k = 0; k < 3 && *p>='0' && *p<='7'; k++, p++) v = v*8 + (*p-'0'); }   /* \NNN octal */
+					else { v = (unsigned char)*p; p++; }
+				}
 			} else { v = (unsigned char)*p; p++; }
 			if (*p != '\'') die("lex: unterminated char literal on line %d", line);
 			p++;

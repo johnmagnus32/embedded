@@ -441,7 +441,14 @@ static void gen_stmt(Node *n) {
 		for (Node *c = n->case_list; c; c = c->case_next) {
 			c->offset = uniq();                             /* the label this case jumps to */
 			if (c->is_default) { def = c->offset; continue; }
-			load_imm("r1", c->val); fprintf(o, "\tcmp r0, r1\n\tbeq .L%d\n", c->offset);
+			if (c->is_range) {                                  /* case lo ... hi: match the inclusive range */
+				int skip = uniq();
+				load_imm("r1", c->val);  fprintf(o, "\tcmp r0, r1\n\tblt .L%d\n", skip);
+				load_imm("r1", c->val2); fprintf(o, "\tcmp r0, r1\n\tbgt .L%d\n", skip);
+				fprintf(o, "\tb .L%d\n.L%d:\n", c->offset, skip);
+			} else {
+				load_imm("r1", c->val); fprintf(o, "\tcmp r0, r1\n\tbeq .L%d\n", c->offset);
+			}
 		}
 		fprintf(o, "\tb .L%d\n", def ? def : end);          /* no match -> default, else past the switch */
 		gen_stmt(n->then);                                  /* body; ND_CASE nodes drop their labels inline */
