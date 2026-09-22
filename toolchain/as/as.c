@@ -256,6 +256,136 @@ static void reduce_local_relocs(void) {
 	}
 }
 
+/* ------------------------------------------------------------------ GAS macros -------------------- */
+/* A line-level preprocessing pass over the input: expand `.macro`/`.rept` and honour `.if`/`.else`, then
+ * hand real lines to parse_line. Recursive (macros expand into feed_line), so nested macros/rept/if work. */
+typedef struct { char name[64]; char params[16][32]; int nparams; char *body[2048]; int nbody; } Macro;
+static Macro macros[256]; static int nmacros;
+static Macro *macro_find(const char *n) { for (int i = 0; i < nmacros; i++) if (!strcmp(macros[i].name, n)) return &macros[i]; return NULL; }
+static int macuid;                                   /* \@ — a unique id per macro expansion */
+static struct { int active, taken; } ifs[64]; static int nifs;   /* .if stack */
+static int emitting(void) { for (int i = 0; i < nifs; i++) if (!ifs[i].active) return 0; return 1; }
+static char *xdup(const char *s) { char *p = malloc(strlen(s) + 1); strcpy(p, s); return p; }
+/* Leading whitespace-delimited word of a line -> w; returns the pointer just past it. */
+static const char *lead(const char *s, char *w) { while (*s==' '||*s=='\t') s++; int i=0; while (*s && *s!=' '&&*s!='\t'&&*s!=','&&i<63) w[i++]=*s++; w[i]=0; return s; }
+
+/* Tiny constant-expression evaluator for .if / .rept (numbers + the usual C operators, precedence-climbing).
+ * Identifiers that aren't numbers evaluate to 0 (macro args are substituted to numbers before we get here). */
+static const char *ep;
+static long ep_expr(int minp);
+static long ep_primary(void) {
+	while (*ep==' '||*ep=='\t') ep++;
+	if (*ep=='(') { ep++; long v=ep_expr(0); while(*ep==' ')ep++; if(*ep==')')ep++; return v; }
+	if (*ep=='!') { ep++; return !ep_primary(); }
+	if (*ep=='-') { ep++; return -ep_primary(); }
+	if (*ep=='~') { ep++; return ~ep_primary(); }
+	if (*ep=='\'') { ep++; long c=(unsigned char)*ep; if(*ep=='\\'){ep++; c=*ep=='n'?'\n':*ep=='t'?'\t':*ep=='0'?0:(unsigned char)*ep;} ep++; if(*ep=='\'')ep++; return c; }
+	if ((*ep>='0'&&*ep<='9')) { char *e; long v=strtol(ep,&e,0); ep=e; return v; }
+	while (*ep && (*ep=='_'||(*ep>='a'&&*ep<='z')||(*ep>='A'&&*ep<='Z')||(*ep>='0'&&*ep<='9'))) ep++;   /* unknown ident -> 0 */
+	return 0;
+}
+static int ep_op(int *prec, int *len) {   /* classify the operator at ep; returns an id, sets precedence+length */
+	const char *o=ep; while(*o==' '||*o=='\t')o++; int adv=(int)(o-ep);
+	struct { const char *s; int p; } t;
+	if(!strncmp(o,"&&",2)){*prec=2;*len=adv+2;return 1;} if(!strncmp(o,"||",2)){*prec=1;*len=adv+2;return 2;}
+	if(!strncmp(o,"==",2)){*prec=4;*len=adv+2;return 3;} if(!strncmp(o,"!=",2)){*prec=4;*len=adv+2;return 4;}
+	if(!strncmp(o,"<=",2)){*prec=5;*len=adv+2;return 5;} if(!strncmp(o,">=",2)){*prec=5;*len=adv+2;return 6;}
+	if(!strncmp(o,"<<",2)){*prec=6;*len=adv+2;return 9;} if(!strncmp(o,">>",2)){*prec=6;*len=adv+2;return 10;}
+	if(*o=='<'){*prec=5;*len=adv+1;return 7;} if(*o=='>'){*prec=5;*len=adv+1;return 8;}
+	if(*o=='+'){*prec=7;*len=adv+1;return 11;} if(*o=='-'){*prec=7;*len=adv+1;return 12;}
+	if(*o=='*'){*prec=8;*len=adv+1;return 13;} if(*o=='/'){*prec=8;*len=adv+1;return 14;} if(*o=='%'){*prec=8;*len=adv+1;return 15;}
+	if(*o=='&'){*prec=3;*len=adv+1;return 16;} if(*o=='|'){*prec=3;*len=adv+1;return 17;} if(*o=='^'){*prec=3;*len=adv+1;return 18;}
+	(void)t; return 0;
+}
+static long ep_expr(int minp) {
+	long l = ep_primary();
+	for (;;) { int prec, len, op = ep_op(&prec, &len); if (!op || prec < minp) break; ep += len;
+		long r = ep_expr(prec + 1);
+		switch (op) { case 1:l=l&&r;break; case 2:l=l||r;break; case 3:l=l==r;break; case 4:l=l!=r;break;
+			case 5:l=l<=r;break; case 6:l=l>=r;break; case 7:l=l<r;break; case 8:l=l>r;break; case 9:l=l<<r;break;
+			case 10:l=l>>r;break; case 11:l+=r;break; case 12:l-=r;break; case 13:l*=r;break; case 14:l=r?l/r:0;break;
+			case 15:l=r?l%r:0;break; case 16:l&=r;break; case 17:l|=r;break; case 18:l^=r;break; } }
+	return l;
+}
+static long eval_if(const char *s) { ep = s; return ep_expr(0); }
+
+/* Substitute \param -> arg, \@ -> uid, \() -> "" in a macro body line, into out. */
+static void subst(const char *in, Macro *m, char args[][256], int na, int uid, char *out) {
+	char *o = out;
+	for (const char *p = in; *p; ) {
+		if (*p == '\\') {
+			p++;
+			if (*p == '@') { p++; o += sprintf(o, "%d", uid); continue; }
+			if (*p == '(' && p[1] == ')') { p += 2; continue; }
+			char nm[32]; int i = 0; while (*p && (*p=='_'||(*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z')||(*p>='0'&&*p<='9')) && i<31) nm[i++]=*p++; nm[i]=0;
+			int found = 0;
+			for (int k = 0; k < m->nparams; k++) if (!strcmp(nm, m->params[k])) { if (k < na) { strcpy(o, args[k]); o += strlen(o); } found = 1; break; }
+			if (!found) { *o++ = '\\'; strcpy(o, nm); o += strlen(nm); }
+		} else *o++ = *p++;
+	}
+	*o = 0;
+}
+
+static void feed_line(char *line);
+static void expand_macro(Macro *m, const char *argline) {
+	char args[16][256]; int na = 0;                  /* split argline on commas, trimming spaces */
+	const char *p = argline; while (*p==' '||*p=='\t') p++;
+	while (*p && na < 16) { char *d = args[na]; int depth = 0;
+		while (*p && !(*p==',' && depth==0)) { if(*p=='(')depth++; else if(*p==')')depth--; *d++=*p++; }
+		*d = 0; char *e = args[na] + strlen(args[na]); while (e>args[na] && (e[-1]==' '||e[-1]=='\t')) *--e=0;
+		na++; if (*p==',') { p++; while(*p==' '||*p=='\t')p++; } }
+	int uid = macuid++;
+	for (int i = 0; i < m->nbody; i++) { char out[1024]; subst(m->body[i], m, args, na, uid, out); feed_line(out); }
+}
+
+/* Collection state for the body of a .macro / .rept being read. */
+static int coll_mode, coll_depth, coll_n; static char *coll_body[2048];
+static char coll_name[64], coll_params_src[256]; static long coll_reptn;
+
+static void feed_line(char *line) {
+	{ const char *q = line; while (*q==' '||*q=='\t') q++; if (*q == '#') return; }   /* cpp line marker / `#` comment */
+	char w[64]; const char *rest = lead(line, w);
+	if (coll_mode) {                                 /* gathering a macro/rept body until the matching end */
+		if (!strcmp(w,".macro")||!strcmp(w,".rept")||!strcmp(w,".irp")||!strcmp(w,".irpc")) coll_depth++;
+		if (!strcmp(w,".endm")||!strcmp(w,".endr")) { if (--coll_depth == 0) {
+			if (coll_mode == 1) {                    /* finish a .macro definition */
+				Macro *m = &macros[nmacros++]; memset(m, 0, sizeof *m); strncpy(m->name, coll_name, 63);
+				const char *s = coll_params_src;     /* params: comma/space separated */
+				while (*s) {
+					while (*s==' '||*s=='\t'||*s==',') s++;
+					if (!*s) break;
+					char *d = m->params[m->nparams]; int i = 0;
+					while (*s && *s!=' '&&*s!='\t'&&*s!=',' && i<31) d[i++] = *s++;
+					d[i] = 0;
+					if (d[0]) m->nparams++;
+				}
+				m->nbody = coll_n; for (int i=0;i<coll_n;i++) m->body[i]=coll_body[i];
+				coll_mode = 0; coll_n = 0;
+			} else {                                 /* finish a .rept: SNAPSHOT + reset BEFORE expanding, so
+			                                          * the body lines get processed rather than re-collected */
+				char *bd[2048]; int bn = coll_n; long rn = coll_reptn;
+				for (int i=0;i<bn;i++) bd[i]=coll_body[i];
+				coll_mode = 0; coll_n = 0;
+				for (long k=0;k<rn;k++) for (int i=0;i<bn;i++) { char *c=xdup(bd[i]); feed_line(c); free(c); }
+				for (int i=0;i<bn;i++) free(bd[i]);
+			}
+			return;
+		} }
+		coll_body[coll_n++] = xdup(line); return;
+	}
+	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[64]; const char *a=lead(r,nm); strncpy(coll_name,nm,63); strncpy(coll_params_src,a,255); coll_mode=1; coll_depth=1; coll_n=0; return; }
+	if (!strcmp(w, ".rept"))  { coll_reptn = emitting()?eval_if(rest):0; coll_mode=2; coll_depth=1; coll_n=0; return; }
+	if (!strcmp(w, ".if"))     { int on = emitting() && eval_if(rest)!=0; ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifdef"))  { char nm[64]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifndef")) { char nm[64]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".else"))   { if (nifs) { int parent=1; for(int i=0;i<nifs-1;i++) if(!ifs[i].active)parent=0; ifs[nifs-1].active = parent && !ifs[nifs-1].taken; if(ifs[nifs-1].active) ifs[nifs-1].taken=1; } return; }
+	if (!strcmp(w, ".endif"))  { if (nifs) nifs--; return; }
+	if (!emitting()) return;                         /* inside a false .if branch */
+	Macro *m = macro_find(w);
+	if (m) { expand_macro(m, rest); return; }
+	parse_line(line);
+}
+
 /* ------------------------------------------------------------------ driver ------------------------ */
 int main(int argc, char **argv) {
 	const char *out = "a.out", *in = NULL;
@@ -272,7 +402,9 @@ int main(int argc, char **argv) {
 
 	strip_comments(buf);
 	char *line = buf, *nl;
-	do { nl = strchr(line, '\n'); if (nl) *nl = 0; parse_line(line); line = nl ? nl + 1 : NULL; } while (line);
+	do { nl = strchr(line, '\n'); if (nl) *nl = 0; feed_line(line); line = nl ? nl + 1 : NULL; } while (line);
+	if (coll_mode) die("unterminated .macro/.rept");
+	if (nifs) die("unterminated .if");
 
 	resolve_fixups();
 	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
