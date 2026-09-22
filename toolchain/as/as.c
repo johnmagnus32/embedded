@@ -19,6 +19,7 @@
 
 /* ------------------------------------------------------------------ tables (the shared model) ----- */
 Section secs[MAXSEC]; int nsec; int cursec = -1;
+static int secstack[32], secsp;   /* .pushsection/.popsection stack; also drives .previous */
 Sym syms[MAXSYM]; int nsym;
 Reloc rels[MAXREL]; int nrel;
 Fixup fixes[MAXFIX]; int nfix;
@@ -117,21 +118,32 @@ static void emit_string(const char *tok, int add_nul) {
 }
 
 /* GENERIC directives (shared by every ELF target). Arch pseudo-ops fall through to md_directive(). */
+/* Switch to the section named in toks[1] (optional flag string in toks[2]), defaulting flags/type by the
+ * well-known name — the shared body of .section / .pushsection. */
+static void select_section(void) {
+	u32 type = SHT_PROGBITS, flags = 0; const char *nm = toks[1];
+	if      (!strncmp(nm, ".text",   5)) flags = SHF_ALLOC | SHF_EXECINSTR;
+	else if (!strncmp(nm, ".rodata", 7)) flags = SHF_ALLOC;
+	else if (!strncmp(nm, ".data",   5)) flags = SHF_ALLOC | SHF_WRITE;
+	else if (!strncmp(nm, ".bss",    4)) { flags = SHF_ALLOC | SHF_WRITE; type = SHT_NOBITS; }
+	if (ntok >= 3 && toks[2][0] == '"') { const char *f = toks[2]; flags = 0;   /* explicit "flags" overrides */
+		if (strchr(f, 'a')) flags |= SHF_ALLOC;
+		if (strchr(f, 'x')) flags |= SHF_EXECINSTR;
+		if (strchr(f, 'w')) flags |= SHF_WRITE; }
+	sec_get(nm, type, flags);
+}
+
 static void do_directive(void) {
 	const char *d = toks[0];
 	if (!strcmp(d, ".section")) {
-		/* Default flags/type by well-known name (as GNU as does when no flag string is given): .text is
-		 * code, .rodata read-only, .data writable, .bss NOBITS; unknown names get nothing (e.g. .note.*). */
-		u32 type = SHT_PROGBITS, flags = 0; const char *nm = toks[1];
-		if      (!strncmp(nm, ".text",   5)) flags = SHF_ALLOC | SHF_EXECINSTR;
-		else if (!strncmp(nm, ".rodata", 7)) flags = SHF_ALLOC;
-		else if (!strncmp(nm, ".data",   5)) flags = SHF_ALLOC | SHF_WRITE;
-		else if (!strncmp(nm, ".bss",    4)) { flags = SHF_ALLOC | SHF_WRITE; type = SHT_NOBITS; }
-		if (ntok >= 3) { const char *f = toks[2]; flags = 0;   /* an explicit "flags" string overrides the default */
-			if (strchr(f, 'a')) flags |= SHF_ALLOC;
-			if (strchr(f, 'x')) flags |= SHF_EXECINSTR;
-			if (strchr(f, 'w')) flags |= SHF_WRITE; }
-		sec_get(nm, type, flags);
+		select_section();   /* default flags/type by well-known name; an explicit "flags" string overrides */
+	} else if (!strcmp(d, ".pushsection")) {   /* save the current section, then switch (GAS section stack) */
+		if (secsp < 32) secstack[secsp++] = cursec;
+		select_section();
+	} else if (!strcmp(d, ".popsection")) {
+		if (secsp > 0) cursec = secstack[--secsp];
+	} else if (!strcmp(d, ".previous")) {       /* toggle back to the section switched away from */
+		if (secsp > 0) { int t = cursec; cursec = secstack[secsp - 1]; secstack[secsp - 1] = t; }
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
 	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].global = 1;
@@ -152,7 +164,7 @@ static void do_directive(void) {
 		u32 a = ntok >= 2 ? (u32)strtol(toks[1], NULL, 0) : 2;
 		u32 bytes = (!strcmp(d, ".balign")) ? a : (1u << a);
 		while (bytes && (secs[cursec].len % bytes)) { u8 z = 0; emit(&z, 1); }
-	} else if (!strcmp(d, ".word") || !strcmp(d, ".4byte")) {
+	} else if (!strcmp(d, ".word") || !strcmp(d, ".4byte") || !strcmp(d, ".long") || !strcmp(d, ".inst")) {
 		/* .word <number> emits the value; .word <symbol>[+addend] emits the addend in place + an
 		 * absolute (R_ARM_ABS32) relocation the linker fills with the symbol's address. */
 		char *end; long v = strtol(toks[1], &end, 0);

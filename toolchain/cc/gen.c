@@ -221,9 +221,11 @@ static void gen_expr(Node *n) {
 		return;
 	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load, arrays decay */
 		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
+	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:
+		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */
 		if (n->lhs->kind == ND_MEMBER && n->lhs->bit_width) { gen_bitfield_store(n); return; }   /* bitfield RMW */
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
 		gen_expr_w(n->rhs, is64(n->lhs->type));             /* value in r0(:r1), widened to the dest width */

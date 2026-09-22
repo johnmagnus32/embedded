@@ -31,7 +31,7 @@ const u32 md_r_got_prel = R_ARM_GOT_PREL; /* the front-end uses this for `.word 
 static struct { int sec; u32 off; char sym[64]; long addend; } ldrlit[256]; static int nldrlit;
 /* Named-symbol branches (b/bl <sym>): deferred to md_finish so we can RESOLVE ones defined in the same
  * section (like GNU as does for local labels) and only RELOCATE truly external/cross-section ones. */
-static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[1024]; static int nbrfix;
+static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[16384]; static int nbrfix;
 
 /* The current instruction's tokens (set by md_assemble; the enc_* helpers read them, like tc-arm.c). */
 static char **toks; static int ntok;
@@ -142,7 +142,7 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	}
 	/* named symbol: defer to md_finish — resolve if defined in THIS section (local label / same-file),
 	 * else relocate. The placeholder keeps the cond/101/L opcode byte; imm24 is filled in later. */
-	if (nbrfix >= 1024) die("too many branch fixups");
+	if (nbrfix >= 16384) die("too many branch fixups");
 	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl;
 	strncpy(brfix[nbrfix].sym, name, sizeof brfix[0].sym - 1); brfix[nbrfix].sym[sizeof brfix[0].sym - 1] = 0;
 	nbrfix++;
@@ -290,6 +290,44 @@ static void enc_svc(u32 cond) {
 	const char *t = toks[1]; emit32((cond << 28) | 0x0f000000u | ((u32)strtol(t[0] == '#' ? t + 1 : t, NULL, 0) & 0xffffff));
 }
 static void enc_blx(u32 cond) { emit32((cond << 28) | 0x012fff30u | need_reg(1)); }   /* blx Rm */
+static void enc_barrier(u32 base) {   /* dmb/dsb/isb {option} — memory/instruction barriers (unconditional) */
+	u32 opt = 15;   /* default 'sy' (full system) */
+	if (ntok >= 2) {
+		const char *o = toks[1];
+		if      (!strcmp(o, "sy"))    opt = 15; else if (!strcmp(o, "st"))    opt = 14;
+		else if (!strcmp(o, "ish"))   opt = 11; else if (!strcmp(o, "ishst")) opt = 10; else if (!strcmp(o, "ishld")) opt = 9;
+		else if (!strcmp(o, "nsh"))   opt = 7;  else if (!strcmp(o, "nshst")) opt = 6;
+		else if (!strcmp(o, "osh"))   opt = 3;  else if (!strcmp(o, "oshst")) opt = 2;
+		else opt = (u32)strtol(o[0] == '#' ? o + 1 : o, NULL, 0) & 15;
+	}
+	emit32(base | opt);
+}
+static void enc_mrs(u32 cond) {   /* mrs Rd, (c|s)psr */
+	u32 rd = need_reg(1);
+	u32 R = (toks[2][0] == 's' || toks[2][0] == 'S') ? (1u << 22) : 0;
+	emit32((cond << 28) | 0x010f0000u | R | (rd << 12));
+}
+static void enc_msr(u32 cond) {   /* msr (c|s)psr_<fields>, Rm | #imm  (fields: c=1 x=2 s=4 f=8) */
+	const char *p = toks[1];
+	u32 R = (p[0] == 's' || p[0] == 'S') ? (1u << 22) : 0, mask = 0;
+	const char *u = strchr(p, '_');
+	if (u) { for (const char *c = u + 1; *c; c++) { if (*c=='c') mask|=1; else if (*c=='x') mask|=2; else if (*c=='s') mask|=4; else if (*c=='f') mask|=8; } }
+	else mask = 0xf;   /* bare psr = all fields */
+	if (toks[2][0] == '#') emit32((cond << 28) | 0x0320f000u | R | (mask << 16) | modimm(imm(toks[2])));
+	else                   emit32((cond << 28) | 0x0120f000u | R | (mask << 16) | need_reg(2));
+}
+static void enc_cps(u32 base) {   /* cpsid/cpsie {a,i,f} — change interrupt-mask state (a=0x100 i=0x80 f=0x40) */
+	u32 f = 0;
+	if (ntok >= 2) for (const char *s = toks[1]; *s; s++) { if (*s=='a') f|=0x100; else if (*s=='i') f|=0x80; else if (*s=='f') f|=0x40; }
+	emit32(base | f);
+}
+static long numop(const char *t) { return strtol(t[0] == '#' ? t + 1 : t, NULL, 0); }
+static void enc_mcr(u32 cond, u32 L) {   /* mcr/mrc p<cp>, <opc1>, Rt, c<CRn>, c<CRm>{, <opc2>} */
+	u32 cp = (u32)strtol(toks[1] + 1, NULL, 10), opc1 = (u32)numop(toks[2]), rt = need_reg(3);
+	u32 crn = (u32)strtol(toks[4] + 1, NULL, 10), crm = (u32)strtol(toks[5] + 1, NULL, 10);
+	u32 opc2 = (ntok >= 7) ? (u32)numop(toks[6]) : 0;
+	emit32((cond << 28) | 0x0e000010u | L | (opc1 << 21) | (crn << 16) | (rt << 12) | (cp << 8) | (opc2 << 5) | crm);
+}
 
 /* extra load/store: ldrd/strd/ldrh/strh Rd, [Rn] | [Rn, #±imm].  cond 000 P U 1 W L Rn Rd immhi 1SH1 immlo */
 static void enc_xldst(u32 cond, int Lbit, u32 nib) {
@@ -304,6 +342,24 @@ static void enc_xldst(u32 cond, int Lbit, u32 nib) {
 	if (o) { if (o[0] != '#') die("%s: only immediate offset supported here", toks[0]); long v = strtol(o + 1, NULL, 0); if (v < 0) { U = 0; v = -v; } off = (u32)v; }
 	emit32((cond << 28) | (1u << 24) | (U << 23) | (1u << 22) | ((u32)Lbit << 20) | ((u32)rn << 16) | (rd << 12)
 	     | (((off >> 4) & 0xf) << 8) | (nib << 4) | (off & 0xf));
+}
+
+/* Extract the base register from a `[Rn]` operand spanning toks[start..] (exclusive loads/stores: no offset). */
+static int bracket_reg(int start) {
+	char buf[64]; size_t bl = 0;
+	for (int i = start; i < ntok && bl < sizeof buf - 1; i++) bl += (size_t)snprintf(buf + bl, sizeof buf - bl, "%s", toks[i]);
+	char *rb = strchr(buf, ']'); if (rb) *rb = 0;
+	char *lb = strchr(buf, '['); int rn = reg(lb ? lb + 1 : buf);
+	if (rn < 0) die("%s: bad base register", toks[0]);
+	return rn;
+}
+static void enc_ldrex(u32 cond, u32 base) {   /* ldrex{b,h} Rt, [Rn] */
+	u32 rt = need_reg(1), rn = (u32)bracket_reg(2);
+	emit32((cond << 28) | base | (rn << 16) | (rt << 12));
+}
+static void enc_strex(u32 cond, u32 base) {   /* strex{b,h} Rd, Rt, [Rn] */
+	u32 rd = need_reg(1), rt = need_reg(2), rn = (u32)bracket_reg(3);
+	emit32((cond << 28) | base | (rn << 16) | (rd << 12) | rt);
 }
 
 /* ------------------------------------------------------------------ md hooks ---------------------- */
@@ -333,6 +389,9 @@ void md_assemble(char **t, int n) {
 		if (L == 5 && m[1] == 'l' && m[2] == 'x' && lookup_cc(m + 3, &cond))      { enc_blx(cond); return; }
 	}
 
+	/* exclusive load/store (atomics): ldrex/strex {b,h}. Checked before the general ldr/str decode. */
+	if (!strncmp(m, "ldrex", 5)) { char c = m[5]; enc_ldrex(14, c=='b'?0x01d00f9fu : c=='h'?0x01f00f9fu : 0x01900f9fu); return; }
+	if (!strncmp(m, "strex", 5)) { char c = m[5]; enc_strex(14, c=='b'?0x01c00f90u : c=='h'?0x01e00f90u : 0x01800f90u); return; }
 	/* single data transfer: ldr/str {b|d|h}{cond}. Whole-suffix cond FIRST so "ldrhi"=ldr+hi. */
 	if (!strncmp(m, "ldr", 3) || !strncmp(m, "str", 3)) {
 		int is_load = (m[0] == 'l'); const char *suf = m + 3; cond = 14;
@@ -358,6 +417,10 @@ void md_assemble(char **t, int n) {
 	if (!strncmp(m, "uxth", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06ff0070u); return; }
 	if (!strncmp(m, "sxtb", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06af0070u); return; }
 	if (!strncmp(m, "sxth", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06bf0070u); return; }
+	if (!strncmp(m, "rev16", 5)) { if (!suffix_c(m + 5, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06bf0fb0u); return; }   /* byte-reverse in each halfword */
+	if (!strncmp(m, "revsh", 5)) { if (!suffix_c(m + 5, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06ff0fb0u); return; }   /* reverse + sign-extend halfword */
+	if (!strncmp(m, "rbit", 4))  { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06ff0f30u); return; }   /* reverse bit order */
+	if (!strncmp(m, "rev", 3))   { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06bf0f30u); return; }   /* byte-reverse word */
 	if (!strncmp(m, "movw", 4) || !strncmp(m, "movt", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_movw(m[3] == 't', cond); return; }
 	if (!strncmp(m, "mul", 3)) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_mul(cond, s); return; }
 	if (!strncmp(m, "mla", 3)) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_mla(cond, s); return; }
@@ -370,6 +433,17 @@ void md_assemble(char **t, int n) {
 	if (!strncmp(m, "sdiv", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_div(1, cond); return; }
 	if (!strncmp(m, "clz", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_clz(cond); return; }
 	if (!strncmp(m, "svc", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_svc(cond); return; }
+	if (!strcmp(m, "pld") || !strcmp(m, "pldw") || !strcmp(m, "pli")) { emit32(0xe320f000u); return; }   /* prefetch hints -> NOP (optional) */
+	if (!strcmp(m, "nop")) { emit32(0xe320f000u); return; }
+	if (!strcmp(m, "dmb")) { enc_barrier(0xf57ff050u); return; }
+	if (!strcmp(m, "dsb")) { enc_barrier(0xf57ff040u); return; }
+	if (!strcmp(m, "isb")) { enc_barrier(0xf57ff060u); return; }
+	if (!strncmp(m, "mrs", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_mrs(cond); return; }
+	if (!strncmp(m, "msr", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_msr(cond); return; }
+	if (!strcmp(m, "cpsid")) { enc_cps(0xf10c0000u); return; }
+	if (!strcmp(m, "cpsie")) { enc_cps(0xf1080000u); return; }
+	if (!strncmp(m, "mcr", 3) && m[3] != 'r') { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_mcr(cond, 0); return; }
+	if (!strncmp(m, "mrc", 3) && m[3] != 'r') { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_mcr(cond, 1u << 20); return; }
 	{ int st = shift_type(b3); if (st >= 0) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_shift(st, cond, s); return; } }
 
 	/* data-processing: 3-char base (add/mov/cmp/…) + optional {s}{cond} (UAL order). */

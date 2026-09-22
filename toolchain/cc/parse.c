@@ -87,7 +87,8 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("typedef")) { if (td) *td = 1; continue; }
 		if (consume("extern")) { if (sc) *sc |= SC_EXTERN; continue; }   /* file-scope: a reference, not a definition */
 		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
-		if (consume("const") || consume("volatile") || consume("restrict") || consume("register") || consume("inline")) continue;
+		if (consume("register")) { if (sc) *sc |= SC_REGISTER; continue; }   /* tracked: file-scope `register T x asm("rN")` */
+		if (consume("const") || consume("volatile") || consume("restrict") || consume("inline")) continue;
 		if (consume("__const__") || consume("__const") || consume("__volatile__") || consume("__restrict__") || consume("__restrict") || consume("__inline__") || consume("__inline")) continue;   /* GNU alt spellings */
 		if (consume("__extension__")) continue;   /* GNU no-op prefix */
 		if (consume("__attribute__")) { skip_attribute(); continue; }
@@ -260,6 +261,9 @@ static Type *enum_decl(void) {
 
 /* ---- file-scope objects: globals + string literals ----------------------------------------------- */
 Gvar *globals; static Gvar *gtail; static int str_id;
+/* File-scope register variables (`register T x asm("rN");`) — x aliases a hard register everywhere. */
+static struct { char name[64]; char reg[8]; } gregs[16]; static int ngregs;
+static const char *greg_find(const char *name) { for (int i = 0; i < ngregs; i++) if (!strcmp(gregs[i].name, name)) return gregs[i].reg; return NULL; }
 static Gvar *add_global(void) { Gvar *g = calloc(1, sizeof *g); if (gtail) gtail->next = g; else globals = g; gtail = g; return g; }
 static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !strcmp(g->name, name)) return g; return NULL; }
 
@@ -324,6 +328,7 @@ static Node *new_sub(Node *l, Node *r);
 		if (!strcmp(name, "__builtin_unreachable")) { expect("("); expect(")"); return num(0); }   /* no-op, not a call */
 		if (!strcmp(name, "__builtin_expect"))    { expect("("); Node *e = assign(); expect(","); assign(); expect(")"); return e; }   /* value is the 1st arg; the hint is ignored */
 		if (!strcmp(name, "__builtin_constant_p")) { expect("("); assign(); expect(")"); return num(0); }   /* conservatively "not constant" */
+		{ const char *rg = greg_find(name); if (rg) { Node *n = node(ND_REGVAR); strncpy(n->reg, rg, 7); n->type = ty_uint; return n; } }   /* global register variable */
 		if (!strcmp(name, "__builtin_offsetof")) {   /* constant byte offset of a member designator within a type */
 			expect("("); char d[64]; Type *t = declarator(declspec(NULL, NULL), d); expect(",");
 			long off = 0; char mn[64]; ident(mn);
@@ -358,7 +363,9 @@ static Node *new_sub(Node *l, Node *r);
 		Gvar *g = global_find(name);                         /* locals shadow globals */
 		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; return n; }
 		long ev; if (enum_find(name, &ev)) return num(ev);   /* enum constant -> integer literal */
-		die("parse: use of undeclared '%s' (line %d)", name, tk->line);
+		/* Otherwise-unresolved identifier = an external symbol (usually a function). Treat it as a function
+		 * designator (its address); the linker resolves it. Valid code only reaches here for externals. */
+		{ Node *gv = node(ND_GVAR); strncpy(gv->name, name, 63); gv->type = ty_char; return unary(ND_ADDR, gv); }
 	}
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
@@ -499,6 +506,7 @@ static Node *init_of(Node *dest, Type *ty) {
 }
 
 static Node *stmt(void) {
+	if (consume(";")) return node(ND_BLOCK);                  /* empty statement (e.g. `while (...) ;`) */
 	if (consume("switch")) {                                 /* switch (e) body ; cases attach to it */
 		Node *n = node(ND_SWITCH); expect("("); n->cond = expr(); expect(")");
 		Node *save = cur_switch; cur_switch = n; n->then = stmt(); cur_switch = save;
@@ -563,7 +571,13 @@ static Node *stmt(void) {
 		if (consume(";")) return node(ND_BLOCK);             /* type-only (e.g. a struct definition) */
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
 		do {
-			char nm[64]; Type *ty = declarator(base, nm); int off = add_local(nm, ty);
+			char nm[64]; Type *ty = declarator(base, nm);
+			if (is("(")) {   /* local function prototype `T name(params);` — record it, no local variable */
+				record_func_sig(nm, ty, 0, 0, 1);   /* params unknown -> callers fall back to arg types */
+				int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF);
+				continue;
+			}
+			int off = add_local(nm, ty);
 			if (consume("__asm__")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var */
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{")) bc = bc->next = init_of(v, ty);              /* aggregate initializer */
@@ -661,7 +675,7 @@ static long eval_const(Node *n) {
 	case ND_GT:     return eval_const(n->lhs) >  eval_const(n->rhs);
 	case ND_GE:     return eval_const(n->lhs) >= eval_const(n->rhs);
 	case ND_COND:   return eval_const(n->cond) ? eval_const(n->then) : eval_const(n->els);
-	default: die("parse: not a constant expression"); return 0;
+	default: die("parse: not a constant expression (node %d, near line %d)", n->kind, tk->line); return 0;
 	}
 }
 static Init *mkinit(int kind) { Init *i = calloc(1, sizeof *i); i->kind = kind; return i; }
@@ -686,8 +700,12 @@ static Init *global_init(Type *ty) {
 		expect("}");
 		return head.next;
 	}
-	if (consume("&")) { Init *i = mkinit(INIT_SYM); ident(i->sym); i->size = 4; return i; }   /* address of a global */
-	Init *i = mkinit(INIT_CONST); i->val = eval_const(conditional()); i->size = ty->size; return i;   /* 1/2/4 -> .byte/.hword/.word */
+	/* Scalar: an address constant (`&sym`, or `(cast)&sym`, or a bare function name) emits the symbol's
+	 * address; otherwise fold an integer constant. Peel casts + address-of down to the underlying symbol. */
+	Node *e = conditional(), *p = e;
+	while (p && (p->kind == ND_CAST || p->kind == ND_ADDR)) p = p->lhs;
+	if (p && (p->kind == ND_GVAR || p->kind == ND_VAR)) { Init *i = mkinit(INIT_SYM); strncpy(i->sym, p->name, 63); i->size = 4; return i; }
+	Init *i = mkinit(INIT_CONST); i->val = eval_const(e); i->size = ty->size; return i;   /* 1/2/4 -> .byte/.hword/.word */
 }
 
 /* Function-signature table: a callee's return + parameter types. The return type gives ND_CALL result
@@ -724,6 +742,11 @@ Func *parse(Token *tok) {
 		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); continue; }
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
 		if (is("(")) { Func *fn = function_tail(name, ty); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* records its own signature; NULL = prototype */
+		if (consume("asm") || consume("__asm__")) {          /* `register T x asm("rN")` (global reg var) or an asm rename */
+			expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind == TK_STR) tk = tk->next; expect(")");
+			if ((sc & SC_REGISTER) && ngregs < 16) { strncpy(gregs[ngregs].name, name, 63); strncpy(gregs[ngregs].reg, s, 7); ngregs++; expect(";"); continue; }
+			/* else: an asm symbol rename on a normal global — ignore the name, fall through as an ordinary global */
+		}
 		for (;;) {                                           /* global variable(s), comma-separated */
 			Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;
 			g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0;

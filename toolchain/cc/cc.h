@@ -58,7 +58,7 @@ typedef enum {
 	ND_AND, ND_OR,                                               /* && || (short-circuit)             */
 	ND_BITAND, ND_BITOR, ND_BITXOR, ND_SHL, ND_SHR,              /* bitwise + shifts                  */
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
-	ND_COND, ND_CAST, ND_COMMA, ND_STMTEXPR,                     /* c?a:b ; (type)expr ; (a,b) ; ({...}) */
+	ND_COND, ND_CAST, ND_COMMA, ND_STMTEXPR, ND_REGVAR,          /* c?a:b ; (type)expr ; (a,b) ; ({...}) ; global reg var */
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
 	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, inline asm, block */
@@ -114,6 +114,7 @@ typedef struct Init { int kind; long val; char sym[64]; int size; struct Init *n
 /* storage-class bits declspec() reports for file-scope objects (they set symbol binding). */
 #define SC_EXTERN 1   /* `extern` — a reference; emit no definition */
 #define SC_STATIC 2   /* `static` — file-local symbol (no .global)  */
+#define SC_REGISTER 4 /* `register` — for a file-scope `register T x asm("rN")` global register variable */
 typedef struct Gvar {
 	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
 	Type *type;
