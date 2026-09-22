@@ -318,6 +318,77 @@ static void gen_expr(Node *n) {
 	}
 }
 
+/* ---- extended inline asm --------------------------------------------------------------------------- */
+static int asm_regnum(const char *s) {   /* a pinned register var's name ("r7"/"sp"/…) -> number, else -1 */
+	if (!s || !s[0]) return -1;
+	if (!strcmp(s, "sp")) return 13;
+	if (!strcmp(s, "lr")) return 14;
+	if (!strcmp(s, "fp")) return 11;
+	if (!strcmp(s, "ip")) return 12;
+	if (!strcmp(s, "pc")) return 15;
+	if (s[0] == 'r' && s[1]) { int n = atoi(s + 1); if (n >= 0 && n <= 15) return n; }
+	return -1;
+}
+static const char *asm_regname(int n) {
+	static char b[4];
+	if (n == 13) return "sp";
+	if (n == 14) return "lr";
+	if (n == 15) return "pc";
+	snprintf(b, sizeof b, "r%d", n);
+	return b;
+}
+static int asm_is_input(const char *c)  { return !strchr(c, '=') || strchr(c, '+'); }   /* "r"/"+r"/"i" read */
+/* Emit the template, substituting %0..%9 with each operand's register (or immediate) and turning \n/\t
+ * escapes into real newlines/tabs so our as sees one instruction per line. %% -> %, %= (unique id) dropped,
+ * a leading modifier letter (%w0/%c0) is ignored. */
+static void emit_asm_template(const char *t, char subst[][24], int nops) {
+	fprintf(o, "\t");
+	for (const char *p = t; *p; ) {
+		if (*p == '%') {
+			p++;
+			if (*p == '%') { fputc('%', o); p++; }
+			else if (*p == '=') { p++; }
+			else {
+				if (*p && !(*p >= '0' && *p <= '9')) p++;   /* skip a modifier letter (%w0/%c0/…) */
+				if (*p >= '0' && *p <= '9') { int i = *p - '0'; p++; if (i < nops) fputs(subst[i], o); }
+			}
+		} else if (*p == '\\') {
+			p++;
+			if (*p == 'n') { fprintf(o, "\n\t"); p++; }
+			else if (*p == 't') { fputc('\t', o); p++; }
+			else if (*p) { fputc(*p, o); p++; }
+		} else { fputc(*p, o); p++; }
+	}
+	fputc('\n', o);
+}
+/* GCC extended asm: assign each operand a register (a pinned `register` var keeps its pin, "i" is an
+ * immediate, the rest are allocated), stage inputs onto the stack then pop them into their registers, emit
+ * the substituted template, then read outputs back into their lvalues. Operand regs may be r0..r10/r12 —
+ * our functions never preserve r4..r10, so clobbering them (and any listed in the ignored clobber set) is
+ * invisible to the rest of our code. Values are staged on the stack so operand regs and the r0..r3 scratch
+ * used by gen_expr/gen_addr never collide. */
+static void gen_asm(Node *n) {
+	Node *ops[16]; int nops = 0;
+	for (Node *a = n->args; a; a = a->next) { if (nops >= 16) die("cc: too many asm operands"); ops[nops++] = a; }
+	int nouts = n->val, regof[16], used = 0; char subst[16][24];
+	for (int i = 0; i < nops; i++) {                       /* immediates + pinned registers */
+		if (strchr(ops[i]->cons, 'i')) { regof[i] = -2; snprintf(subst[i], 24, "%ld", ops[i]->val); continue; }
+		int rn = asm_regnum(ops[i]->reg); regof[i] = rn; if (rn >= 0) used |= 1 << rn;
+	}
+	for (int i = 0; i < nops; i++) if (regof[i] == -1) {   /* allocate the unpinned ones (avoid r11/sp/lr/pc) */
+		int rn = -1;
+		for (int c = 0; c <= 12; c++) { if (c == 11) continue; if (!(used & (1 << c))) { rn = c; break; } }
+		if (rn < 0) die("cc: out of registers for asm operands");
+		regof[i] = rn; used |= 1 << rn;
+	}
+	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, "%s", asm_regname(regof[i]));
+	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && asm_is_input(ops[i]->cons)) { gen_expr(ops[i]); fprintf(o, "\tpush {r0}\n"); }
+	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && asm_is_input(ops[i]->cons)) fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
+	emit_asm_template(n->asm_tmpl, subst, nops);
+	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0) fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
+	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0) { gen_addr(ops[i]); fprintf(o, "\tmov r1, r0\n\tpop {r0}\n"); store(ops[i]->type); }
+}
+
 static void gen_stmt(Node *n) {
 	switch (n->kind) {
 	case ND_RETURN:   if (n->lhs) gen_expr_w(n->lhs, is64(cur_ret)); fprintf(o, "\tb .L%d\n", ret_label); return;   /* widen to the return type; lhs NULL for `return;` */
@@ -379,12 +450,7 @@ static void gen_stmt(Node *n) {
 		return;
 	}
 	case ND_CASE: fprintf(o, ".L%d:\n", n->offset); return;  /* label placed inline in the switch body */
-	case ND_ASM: {   /* load each register-pinned operand into its register, emit the template, store outputs */
-		for (Node *a = n->args; a; a = a->next) if (a->reg[0]) fprintf(o, "\tldr %s, [r11, #%d]\n", a->reg, a->offset);
-		fprintf(o, "\t%s\n", n->name);
-		int i = 0; for (Node *a = n->args; a && i < n->val; a = a->next, i++) if (a->reg[0]) fprintf(o, "\tstr %s, [r11, #%d]\n", a->reg, a->offset);
-		return;
-	}
+	case ND_ASM: gen_asm(n); return;   /* %N-substituted template + constraint-driven operand load/store */
 	case ND_GOTO:  fprintf(o, "\tb .L%d\n", clabel_id(n->name)); return;
 	case ND_LABEL: fprintf(o, ".L%d:\n", clabel_id(n->name)); return;
 	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;

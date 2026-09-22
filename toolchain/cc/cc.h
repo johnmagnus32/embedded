@@ -67,8 +67,10 @@ typedef struct Node {
 	Type *type;                  /* result type (filled by add_type); drives ptr scaling + load width */
 	struct Node *lhs, *rhs;      /* binary/unary operands                                        */
 	long val;                    /* ND_NUM                                                       */
-	char name[64];               /* ND_VAR / ND_CALL name ; ND_ASM template                     */
+	char name[64];               /* ND_VAR / ND_CALL name                                        */
 	char reg[8];                 /* ND_VAR pinned to a hard register (`register x __asm__("r7")`)*/
+	char cons[8];                /* ND_ASM operand: its constraint ("r"/"=r"/"+r"/"i"/…)         */
+	char *asm_tmpl;              /* ND_ASM: the (possibly multi-line, %N-bearing) template string */
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
 	int bit_width, bit_offset;   /* ND_MEMBER on a bitfield: field width + bit offset in its unit (width 0 = not a bitfield) */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */

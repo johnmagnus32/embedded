@@ -440,12 +440,24 @@ static Node *stmt(void) {
 	if (consume("break"))    { expect(";"); return node(ND_BREAK); }
 	if (consume("continue")) { expect(";"); return node(ND_CONTINUE); }
 	if (is("__asm__") || is("asm")) {                        /* __asm__ volatile("tmpl" : outs : ins : clobbers); */
-		tk = tk->next; consume("volatile"); consume("__volatile__");
-		expect("("); Node *n = node(ND_ASM); strncpy(n->name, tk->text, 63); tk = tk->next;   /* template string */
+		tk = tk->next; consume("volatile"); consume("__volatile__"); consume("goto");
+		expect("("); Node *n = node(ND_ASM);
+		char buf[1024]; size_t bl = 0; buf[0] = 0;           /* template: concatenate adjacent string literals */
+		while (tk->kind == TK_STR) { size_t l = strlen(tk->text); if (bl + l < sizeof buf - 1) { memcpy(buf + bl, tk->text, l); bl += l; buf[bl] = 0; } tk = tk->next; }
+		n->asm_tmpl = malloc(bl + 1); memcpy(n->asm_tmpl, buf, bl + 1);
 		Node oh = {0}, *oc = &oh; int nouts = 0;
-		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; expect("("); oc = oc->next = assign(); expect(")"); nouts++; if (!consume(",")) break; }
-		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; expect("("); oc = oc->next = assign(); expect(")"); if (!consume(",")) break; }
-		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; if (!consume(",")) break; }   /* clobbers — ignored */
+		if (consume(":")) while (tk->kind == TK_STR) {       /* outputs: "constraint"(lvalue) */
+			char c[8]; strncpy(c, tk->text, 7); c[7] = 0; tk = tk->next;
+			expect("("); Node *op = assign(); expect(")"); strncpy(op->cons, c, 7);
+			oc = oc->next = op; nouts++; if (!consume(",")) break;
+		}
+		if (consume(":")) while (tk->kind == TK_STR) {       /* inputs: "constraint"(expr) */
+			char c[8]; strncpy(c, tk->text, 7); c[7] = 0; tk = tk->next;
+			expect("("); Node *op = assign(); expect(")"); strncpy(op->cons, c, 7);
+			if (strchr(op->cons, 'i')) op->val = eval_const(op);   /* immediate: fold now, substitute the constant */
+			oc = oc->next = op; if (!consume(",")) break;
+		}
+		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; if (!consume(",")) break; }   /* clobbers — ignored (we never keep values in caller-saved regs across asm) */
 		expect(")"); expect(";");
 		n->args = oh.next; n->val = nouts;                   /* operands: outputs first, then inputs; val = #outputs */
 		return n;
