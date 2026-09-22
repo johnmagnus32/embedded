@@ -124,7 +124,7 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 | 70 | 2 | Buck-boost input caps | CL21A106KOQNNNE | C1713 | VIN (pins 10/11) → PGND | ✅ | JLC | 2×10 µF 16 V, local to the converter pins. |
 | 71 | 3 | Buck-boost output caps | CL21A226MAQNNNE | C45783 | VOUT (pins 4/5) → PGND | ✅ | JLC | 3×22 µF 25 V — stability-critical (Table-1). Min 2×22 µF. Place close. |
 | 72 | 1 | Buck-boost inductor | MWSA0503S-1R5MT | C408407 | L1/L2 | ✅ | JLC | 1.5 µH, Isat 9 A (≥4.5 A floor). 5.4×5.2 mm — flag size for layout. |
-| 73 | 1 | LiPo cell | Adafruit 2011 (2000 mAh) | — (Adafruit) | JST-PH 2-pin | ✅ | Hand | 3.7 V, integral PCM. **⚠️ Verify continuous ≥2 A + PCM trip >2 A on arrival.** ~60×36×7 mm — confirm enclosure fit. |
+| 73 | 1 | LiPo cell | **PKCELL LP-803860** (2000 mAh, 1S) | — (PKCELL, datasheet on file) | JST-PH 2-pin | ✅ | Hand | 3.7 V, integral PCM (R5402N101KD + SME8205). **Form factor datasheet-verified: max 62 × 38.5 × 8.5 mm** (L×W×T); leads 24 AWG ~100 mm exit a short (38.5 mm) end → place CN1 there. **PCB anchored to this footprint** — enclosure pocket ~64 × 40 × 10 mm (incl. ~10 % swell). Current: 1C = 2 A continuous ≈ the ~1.8 A worst-case peak — **OK**: the TPS63021 buck-boost holds 3.3 V through SYS sag and the PCM OCP trips well above 2 A (typical play ~1 A). A 2C `803860` is optional extra margin (same size → no board change). ⚠️ On arrival confirm PCM OCP >2 A + polarity red=+→BAT. |
 | 74 | 1 | Battery connector | S2B-PH-SM4-TB(LF)(SN) | C295747 | mates #73 | ✅ | JLC | JST-PH 2 mm, right-angle SMD. **⚠️ POLARITY: red = + → BQ24074 BAT (reversed = destroyed cell).** |
 | 75 | 1 | Fuel divider R_top | 0603WAF1803T5E | C22827 | BAT → GPADC0 | ✅ | JLC | 180 kΩ. Backup voltage sense (4.2 V→1.50 V, under 1.8 V AVCC). |
 | 76 | 1 | Fuel divider R_bot | 0603WAF1003T5E | C25803 | GPADC0 → GND | ✅ | JLC | 100 kΩ (ratio 0.357). |
@@ -225,7 +225,7 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 2. **FPC contact-side** for #26/#27 (physically confirmed bottom-contact; test-fit before locking footprints).
 3. **FT7311** I2C address (0x38 assumed) + report format — confirm on panel via `i2cdetect`.
 4. **Vybronics LRA (#46)** coil impedance ≥8 Ω + max drive vs DRV OD_CLAMP.
-5. **Adafruit 2011 cell (#73)** continuous ≥2 A + PCM trip >2 A.
+5. **Battery cell (#73)** — chosen: **PKCELL LP-803860** 2000 mAh 1S (datasheet on file); form factor 62 × 38.5 × 8.5 mm. 1C=2 A ≈ ~1.8 A peak but OK (buck-boost holds rails, OCP >2 A); a 2C `803860` is optional margin at the same size. On arrival confirm OCP >2 A + polarity red=+→BAT.
 
 **Symbol library** (`../../../cad/symbols/easyeda2kicad.*`): 59/62 parts fetched. Missing = **C2481 (SS16), C23179 (470 Ω), C33353 (2.2 nF)** — their footprints (SMA, R0603, C0603) are already present; re-fetch to match by LCSC#, or reuse the generic symbol. **BT830 (#99) needs a hand-drawn symbol+footprint.**
 
