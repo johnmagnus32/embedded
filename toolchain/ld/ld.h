@@ -34,7 +34,8 @@ typedef struct {
 	const char *path; u8 *data; long size;      /* whole file (mutable — relocations patch it in place) */
 	Elf32_Ehdr *eh; Elf32_Shdr *sh; int nsh;
 	Elf32_Sym *sym; int nsym; const char *strtab;
-	u32 *sec_vaddr;                              /* [nsh] assigned virtual address of each allocated section */
+	u32 *sec_vaddr;                              /* [nsh] assigned virtual (run) address of each allocated section */
+	u32 *sec_lma;                                /* [nsh] assigned load address (== sec_vaddr unless AT> in the script) */
 	int active;                                  /* 1 = contributes to output; archive members start 0 (lazy) */
 } Obj;
 #define MAXOBJ 32
@@ -90,7 +91,7 @@ extern GlobDat globdat[]; extern int nglobdat;
  * 2-segment model) places sections + defines symbols. outsecs[] is the resulting output-section list
  * (name + placement), used to emit section headers; the actual bytes come from each input section's
  * assigned sec_vaddr, exactly as the normal path. */
-typedef struct { char name[64]; u32 vaddr, size; int nobits; int exec, write; } OutSec;
+typedef struct { char name[64]; u32 vaddr, lma, size; int nobits; int exec, write; } OutSec;   /* lma: load addr (== vaddr unless AT>) */
 #define MAXOUTSEC 64
 extern OutSec outsecs[]; extern int noutsec;
 extern int scripted;                                               /* 1 = a linker script drives layout */

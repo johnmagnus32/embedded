@@ -123,6 +123,12 @@ test-script: $(BUILD)/ld
 	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/p.elf >/dev/null 2>&1; g=$$?; \
 	[ "$$g" = 42 ] && echo "PASS linker-script: placed + ran (__bss_start/__bss_end resolved) = $$g" \
 	              || { echo "FAIL linker-script: got $$g, want 42"; rm -rf $$t; exit 1; }; \
+	$(BUILD)/ld -T tests/flash.ld -o $$t/f.elf $$t/crt.o $$t/p.o || { echo "FAIL: flash.ld link errored"; rm -rf $$t; exit 1; }; \
+	if command -v readelf >/dev/null 2>&1; then \
+	  readelf -l $$t/f.elf | awk '/LOAD/ && $$3 ~ /^0x20000000/ && $$4 ~ /^0x080/ {ok=1} END{exit !ok}' \
+	    && echo "PASS linker-script AT>: .data runs in RAM (0x20000000), loads from flash (0x08...)" \
+	    || { echo "FAIL AT>: no RAM-VMA/flash-LMA LOAD segment"; rm -rf $$t; exit 1; }; \
+	else echo "SKIP flash.ld AT> check (no readelf)"; fi; \
 	rm -rf $$t
 
 clean:

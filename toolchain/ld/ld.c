@@ -442,6 +442,16 @@ OutSec outsecs[MAXOUTSEC]; int noutsec;
 int scripted;
 
 static char *stok[8192]; static int nstok;          /* script tokens */
+/* MEMORY regions: a named address window with its own allocation cursor (cur starts at origin). A
+ * section placed `> R` takes its VMA from R's cursor; `AT> R` takes a separate LMA from R's cursor. */
+static struct { char name[32]; u32 origin, length, cur; } regions[16]; static int nregion;
+static int region_find(const char *n) { for (int i=0;i<nregion;i++) if (!strcmp(regions[i].name,n)) return i; return -1; }
+static u32 outsec_lma(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].lma; return 0; }
+static long parse_num(const char *t) {   /* number with an optional K/M size suffix */
+	char *e; long v = strtol(t, &e, 0);
+	if (*e=='K'||*e=='k') v *= 1024; else if (*e=='M'||*e=='m') v *= 1024*1024;
+	return v;
+}
 static int is_spunct(char c) { return strchr("{}():;=+?,", c) != NULL; }
 static void script_tokenize(char *s) {
 	while (*s) {
@@ -463,7 +473,14 @@ static long e_prim(void) {
 	if (!strcmp(t,"ALIGN")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; return (long)alignup((u32)g_dot,(u32)a); }
 	if (!strcmp(t,"ABSOLUTE")||!strcmp(t,"CONSTANT")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; long v=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; return v; }
 	if (!strcmp(t,"DEFINED")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; char *nm=stok[ev++]; if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; GSym*g=gsym_find(nm); return (g&&g->defined)?1:0; }
-	if (t[0]>='0'&&t[0]<='9') return (long)strtoul(t,NULL,0);
+	if (!strcmp(t,"ORIGIN")||!strcmp(t,"LENGTH")||!strcmp(t,"LOADADDR")) {   /* ORIGIN(R)/LENGTH(R)/LOADADDR(sec) */
+		if (ev<ev_hi && !strcmp(stok[ev],"(")) ev++;
+		char *nm = stok[ev++];
+		if (ev<ev_hi && !strcmp(stok[ev],")")) ev++;
+		if (!strcmp(t,"LOADADDR")) return (long)outsec_lma(nm);
+		int r=region_find(nm); if(r<0) return 0; return (long)(!strcmp(t,"ORIGIN")?regions[r].origin:regions[r].length);
+	}
+	if (t[0]>='0'&&t[0]<='9') return parse_num(t);
 	GSym *g=gsym_find(t); return (g&&g->defined)?(long)g->vaddr:0;   /* symbol */
 }
 static long e_mul(void) { long l=e_prim(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"*")){ev++; l*=e_prim();} else if(!strcmp(o,"/")){ev++; long r=e_prim(); l=r?l/r:0;} else break; } return l; }
@@ -492,6 +509,25 @@ int script_run(const char *path) {
 	while (p < nstok) {
 		char *t = stok[p];
 		if (!strcmp(t,"ENTRY")) { p++; if(!strcmp(stok[p],"("))p++; entry_sym = stok[p++]; if(!strcmp(stok[p],")"))p++; continue; }
+		if (!strcmp(t,"MEMORY")) {   /* MEMORY { NAME (attrs) : ORIGIN = a, LENGTH = n  ... } */
+			p++; if (p<nstok && !strcmp(stok[p],"{")) p++;
+			while (p < nstok && strcmp(stok[p],"}")) {
+				char rn[32]; strncpy(rn, stok[p++], 31); rn[31]=0;
+				if (p<nstok && !strcmp(stok[p],"(")) { while (p<nstok && strcmp(stok[p],")")) p++; if(p<nstok) p++; }   /* skip (attrs) */
+				if (p<nstok && !strcmp(stok[p],":")) p++;
+				u32 org=0, len=0;
+				while (p<nstok && strcmp(stok[p],"}")) {         /* KEY = val [, KEY = val] */
+					char *key = stok[p++]; if (p<nstok && !strcmp(stok[p],"=")) p++;
+					long v = (p<nstok) ? parse_num(stok[p++]) : 0;
+					if (!strcmp(key,"ORIGIN")||!strcmp(key,"org")) org=(u32)v;
+					else if (!strcmp(key,"LENGTH")||!strcmp(key,"len")||!strcmp(key,"l")) len=(u32)v;
+					if (p<nstok && !strcmp(stok[p],",")) p++; else break;   /* no comma -> this region's attrs end */
+				}
+				if (nregion<16) { strncpy(regions[nregion].name, rn, 31); regions[nregion].origin=org; regions[nregion].length=len; regions[nregion].cur=org; nregion++; }
+			}
+			if (p<nstok) p++;   /* skip '}' */
+			continue;
+		}
 		if (!strcmp(t,"SECTIONS")) { p++; if(!strcmp(stok[p],"{"))p++; in_sections=1; continue; }
 		if (in_sections && !strcmp(t,"}")) { p++; in_sections=0; continue; }
 		if (!strcmp(t,";")) { p++; continue; }
@@ -514,48 +550,74 @@ int script_run(const char *path) {
 			p = e1; while (p<nstok && (!strcmp(stok[p],";")||!strcmp(stok[p],")"))) p++;
 			continue;
 		}
-		/* output section:  name : { in-specs }   or   /DISCARD/ : { ... } */
+		/* output section:  name : { in-specs } [> REGION] [AT> REGION | AT(expr)]   or   /DISCARD/ : { ... } */
 		if (p+1 < nstok && !strcmp(stok[p+1],":")) {
 			int discard = !strcmp(nm, "/DISCARD/");
 			OutSec *os = discard ? NULL : &outsecs[noutsec];
 			if (os) { memset(os,0,sizeof*os); strncpy(os->name, nm, 63); }
 			p += 2;                                          /* skip name ':' */
 			while (p<nstok && strcmp(stok[p],"{")) p++;      /* skip AT(...) etc. up to '{' */
-			p++;                                             /* skip '{' */
-			if (os) { dot = alignup(dot, 4); os->vaddr = dot; }
-			while (p<nstok && strcmp(stok[p],"}")) {
-				int keep = 0;
-				if (!strcmp(stok[p],"KEEP")) { keep=1; p++; if(!strcmp(stok[p],"("))p++; }
-				(void)keep;
-				/* an in-body `SYM = .;` */
-				if (p+1<nstok && !strcmp(stok[p+1],"=")) { int e0=p+2,e1=e0; while(e1<nstok&&strcmp(stok[e1],";"))e1++; long v=script_eval(e0,e1,dot); if(strcmp(stok[p],".")) gsym_define(stok[p],(u32)v); else dot=(u32)v; p=e1; if(p<nstok&&!strcmp(stok[p],";"))p++; continue; }
-				if (!strcmp(stok[p],"*") || stok[p][0]=='.' || (stok[p][0]>='a'&&stok[p][0]<='z') || (stok[p][0]>='A'&&stok[p][0]<='Z')) {
-					/* file(patterns) — the file part is usually '*' (any). skip to '(' then read patterns */
-					if (p<nstok && strcmp(stok[p],"(")) p++;   /* skip the file spec (e.g. '*') */
-					if (p<nstok && !strcmp(stok[p],"(")) p++;  /* skip '(' */
-					while (p<nstok && strcmp(stok[p],")")) {
-						char *pat = stok[p++];
+			int body = ++p;                                  /* first body token */
+			while (p<nstok && strcmp(stok[p],"}")) p++;      /* find the closing '}' (no nested braces here) */
+			int body_end = p; if (p<nstok) p++;              /* skip '}' */
+			/* trailing region specs: `> R` sets the VMA region, `AT> R`/`AT > R`/`AT(expr)` the LMA */
+			int vr = -1, lr = -1; long lma_at = -1;
+			while (p<nstok) {
+				if (!strcmp(stok[p],">")) { p++; vr = region_find(stok[p]); p++; }
+				else if (!strcmp(stok[p],"AT>")) { p++; lr = region_find(stok[p]); p++; }
+				else if (!strcmp(stok[p],"AT")) { p++;
+					if (p<nstok && !strcmp(stok[p],">")) { p++; lr = region_find(stok[p]); p++; }
+					else if (p<nstok && !strcmp(stok[p],"(")) { int e0=++p,d=1; while(p<nstok&&d){ if(!strcmp(stok[p],"("))d++; else if(!strcmp(stok[p],")"))d--; if(d)p++;} lma_at=script_eval(e0,p,dot); if(p<nstok)p++; }
+				} else break;
+			}
+			/* choose the VMA cursor (a region's, or the global dot); compute the LMA base + a fixed delta */
+			u32 *vc = (vr>=0) ? &regions[vr].cur : &dot;
+			*vc = alignup(*vc, 4);
+			u32 vbase = *vc, lbase = vbase;
+			if (lr>=0)      { regions[lr].cur = alignup(regions[lr].cur, 4); lbase = regions[lr].cur; }
+			else if (lma_at>=0) lbase = (u32)lma_at;
+			long delta = (long)lbase - (long)vbase;          /* LMA = VMA + delta for every section here */
+			if (os) { os->vaddr = vbase; os->lma = lbase; }
+			for (int q = body; q < body_end; ) {
+				if (!strcmp(stok[q],"KEEP")) { q++; if(q<body_end&&!strcmp(stok[q],"(")) q++; continue; }
+				if (q+1<body_end && !strcmp(stok[q+1],"=")) {  /* in-body `SYM = expr;` */
+					int e0=q+2,e1=e0; while(e1<body_end&&strcmp(stok[e1],";"))e1++;
+					long v=script_eval(e0,e1,*vc); if(strcmp(stok[q],".")) gsym_define(stok[q],(u32)v); else *vc=(u32)v;
+					q=e1; if(q<body_end&&!strcmp(stok[q],";"))q++; continue;
+				}
+				if (!strcmp(stok[q],"(")) { q++; continue; }
+				if (!strcmp(stok[q],")")) { q++; continue; }
+				if (!strcmp(stok[q],"*") || stok[q][0]=='.' || stok[q][0]=='_' || (stok[q][0]>='a'&&stok[q][0]<='z') || (stok[q][0]>='A'&&stok[q][0]<='Z')) {
+					if (q<body_end && strcmp(stok[q],"(")) q++;    /* skip the file spec ('*') */
+					if (q<body_end && !strcmp(stok[q],"(")) q++;   /* skip '(' */
+					while (q<body_end && strcmp(stok[q],")")) {
+						char *pat = stok[q++];
 						for (int oi=0; oi<nobj; oi++) { if(!objs[oi].active) continue;
 							for (int j=0;j<objs[oi].nsh;j++) { Elf32_Shdr *s=&objs[oi].sh[j];
 								if (!(s->sh_flags&SHF_ALLOC) || !s->sh_size) continue;
 								if (objs[oi].sec_vaddr[j]) continue;         /* already placed */
 								const char *shstr = (const char *)(objs[oi].data + objs[oi].sh[objs[oi].eh->e_shstrndx].sh_offset);
-								const char *snm = shstr + s->sh_name;       /* section-header string table (not the symbol strtab) */
-								if (!glob(pat, snm)) continue;
-								if (discard) { objs[oi].sec_vaddr[j] = 0; continue; }   /* dropped: leave unplaced */
-								dot = alignup(dot, s->sh_addralign ? s->sh_addralign : 4);
-								objs[oi].sec_vaddr[j] = dot; dot += s->sh_size;
+								if (!glob(pat, shstr + s->sh_name)) continue;
+								if (discard) continue;                       /* dropped: leave unplaced */
+								u32 a = s->sh_addralign ? s->sh_addralign : 4;
+								*vc = alignup(*vc, a);
+								objs[oi].sec_vaddr[j] = *vc;
+								objs[oi].sec_lma[j]   = (u32)((long)*vc + delta);
+								*vc += s->sh_size;
 								if (s->sh_flags&SHF_EXECINSTR) os->exec=1;
 								if (s->sh_flags&SHF_WRITE) os->write=1;
-								if (s->sh_type==SHT_NOBITS) os->nobits=1; else os->nobits=0;
+								os->nobits = (s->sh_type==SHT_NOBITS);
 							} }
 					}
-					if (p<nstok && !strcmp(stok[p],")")) p++;
-					if (keep && p<nstok && !strcmp(stok[p],")")) p++;   /* KEEP(...) close */
-				} else p++;
+					if (q<body_end && !strcmp(stok[q],")")) q++;
+				} else q++;
 			}
-			if (p<nstok && !strcmp(stok[p],"}")) p++;
-			if (os) { os->size = dot - os->vaddr; if (os->size) noutsec++; }
+			if (os) {
+				os->size = *vc - vbase;
+				if (lr>=0) regions[lr].cur = lbase + os->size;   /* consume the LMA region too */
+				dot = *vc;
+				if (os->size) noutsec++;
+			}
 			continue;
 		}
 		p++;   /* skip anything else (OUTPUT_FORMAT(...), etc.) */

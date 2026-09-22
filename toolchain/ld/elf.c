@@ -20,6 +20,7 @@ Obj *elf_parse(const char *path, u8 *data, long size, int active) {
 	if (o->eh->e_machine != md_e_machine) die("%s: wrong machine (e_machine=%u, want %u)", path, o->eh->e_machine, md_e_machine);
 	o->sh = (Elf32_Shdr *)(o->data + o->eh->e_shoff); o->nsh = o->eh->e_shnum;
 	o->sec_vaddr = calloc(o->nsh, sizeof(u32));
+	o->sec_lma   = calloc(o->nsh, sizeof(u32));
 	for (int i = 0; i < o->nsh; i++) if (o->sh[i].sh_type == SHT_SYMTAB) {
 		o->sym = (Elf32_Sym *)(o->data + o->sh[i].sh_offset);
 		o->nsym = o->sh[i].sh_size / sizeof(Elf32_Sym);
@@ -279,66 +280,90 @@ static void write_dynamic(FILE *f, const Layout *L) {
  *   ET_DYN  (-pie):    base 0; absolute refs left at their link-time value with an R_ARM_RELATIVE in
  *                      .rel.dyn so a tiny crt can add the load bias at startup. .rel.dyn + .dynamic sit
  *                      at the tail of the R-X segment; a PT_DYNAMIC header points at .dynamic. */
-/* Write the ET_EXEC produced by a linker script: one PT_LOAD covering every placed section (bytes at
- * their script-assigned vaddr), with the ELF headers mapped just below the lowest section. Simple RWX
- * segment — bare-metal images don't need W^X, and they're usually objcopy'd to a raw binary anyway. */
+/* Write the ET_EXEC produced by a linker script. PROGBITS bytes are laid out by LOAD address (LMA), so
+ * .data's init bytes sit where they're stored (e.g. flash); each PT_LOAD carries p_vaddr = run address
+ * (VMA) and p_paddr = load address (LMA). Sections are grouped into segments by VMA-contiguity + a constant
+ * VMA->LMA delta (a NOBITS section extends a segment's memsz with no file bytes). VMA==LMA is the common
+ * case (single segment) — the split only appears with `> RAM AT> FLASH`. */
 void elf_write_script(const char *out, u32 entry) {
-	struct { Obj *o; int j; u32 va, sz; int nobits; } seg[1024]; int nseg = 0;
-	u32 lo = 0xffffffffu, hiprog = 0, himem = 0;
+	struct { u32 vaddr, lma, sz; int nobits; Obj *o; int j; } P[1024]; int np = 0;
+	u32 minlma = 0xffffffffu, maxlma = 0;
 	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
 		Elf32_Shdr *s = &objs[i].sh[j];
-		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || !objs[i].sec_vaddr[j]) continue;   /* unplaced/discarded skipped */
-		u32 va = objs[i].sec_vaddr[j];
-		if (nseg < 1024) { seg[nseg].o=&objs[i]; seg[nseg].j=j; seg[nseg].va=va; seg[nseg].sz=s->sh_size; seg[nseg].nobits=(s->sh_type==SHT_NOBITS); nseg++; }
-		if (va < lo) lo = va;
-		if (va + s->sh_size > himem) himem = va + s->sh_size;
-		if (s->sh_type != SHT_NOBITS && va + s->sh_size > hiprog) hiprog = va + s->sh_size;
+		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || !objs[i].sec_vaddr[j]) continue;
+		if (np < 1024) { P[np].o=&objs[i]; P[np].j=j; P[np].vaddr=objs[i].sec_vaddr[j]; P[np].lma=objs[i].sec_lma[j];
+		                 P[np].sz=s->sh_size; P[np].nobits=(s->sh_type==SHT_NOBITS); np++; }
+		if (s->sh_type != SHT_NOBITS) { if (objs[i].sec_lma[j] < minlma) minlma = objs[i].sec_lma[j];
+		                                if (objs[i].sec_lma[j] + s->sh_size > maxlma) maxlma = objs[i].sec_lma[j] + s->sh_size; }
 	} }
-	if (!nseg) die("linker script placed no sections");
-	for (int a = 1; a < nseg; a++) for (int b = a; b > 0 && seg[b-1].va > seg[b].va; b--) {   /* insertion sort by vaddr */
-		Obj *o=seg[b].o; int j=seg[b].j, nb=seg[b].nobits; u32 va=seg[b].va, sz=seg[b].sz;
-		seg[b]=seg[b-1]; seg[b-1].o=o; seg[b-1].j=j; seg[b-1].nobits=nb; seg[b-1].va=va; seg[b-1].sz=sz;
+	if (!np) die("linker script placed no sections");
+	for (int a = 1; a < np; a++) for (int b = a; b > 0 && P[b-1].vaddr > P[b].vaddr; b--) {   /* sort by VMA */
+		Obj *o=P[b].o; int j=P[b].j, nb=P[b].nobits; u32 v=P[b].vaddr,l=P[b].lma,z=P[b].sz;
+		P[b]=P[b-1]; P[b-1].o=o; P[b-1].j=j; P[b-1].nobits=nb; P[b-1].vaddr=v; P[b-1].lma=l; P[b-1].sz=z;
+	}
+	if (minlma == 0xffffffffu) minlma = maxlma = P[0].vaddr;   /* no PROGBITS (all .bss) */
+
+	/* group into LOAD segments */
+	struct { u32 vaddr, memsz, lstart, filesz; int hasprog; long delta; } sg[64]; int ns = 0;
+	for (int i = 0; i < np; i++) {
+		int prog = !P[i].nobits;
+		if (ns > 0) {
+			int contv = (P[i].vaddr == sg[ns-1].vaddr + sg[ns-1].memsz);
+			int ok = contv && (P[i].nobits || !sg[ns-1].hasprog ||
+			         (P[i].lma == sg[ns-1].lstart + sg[ns-1].filesz && (long)P[i].lma-(long)P[i].vaddr == sg[ns-1].delta));
+			if (ok) { sg[ns-1].memsz += P[i].sz;
+				if (prog) { if(!sg[ns-1].hasprog){ sg[ns-1].lstart=P[i].lma; sg[ns-1].delta=(long)P[i].lma-(long)P[i].vaddr; sg[ns-1].hasprog=1; } sg[ns-1].filesz += P[i].sz; }
+				continue; }
+		}
+		sg[ns].vaddr=P[i].vaddr; sg[ns].memsz=P[i].sz;
+		if (prog) { sg[ns].lstart=P[i].lma; sg[ns].filesz=P[i].sz; sg[ns].hasprog=1; sg[ns].delta=(long)P[i].lma-(long)P[i].vaddr; }
+		else { sg[ns].lstart=P[i].vaddr; sg[ns].filesz=0; sg[ns].hasprog=0; sg[ns].delta=0; }
+		ns++;
 	}
 
-	u32 hdrsz = sizeof(Elf32_Ehdr) + sizeof(Elf32_Phdr);   /* one PT_LOAD */
-	u32 pv = lo - hdrsz;                                   /* headers map just below the first section */
+	u32 hdrsz = sizeof(Elf32_Ehdr) + (u32)ns * sizeof(Elf32_Phdr);
+	u32 content_end = hdrsz + (maxlma - minlma);           /* headers + PROGBITS span (by LMA) */
 
-	/* .shstrtab: "\0" + each output-section name + ".shstrtab" */
-	char shstr[2048]; int slen = 0; shstr[slen++] = 0;
+	char shstr[2048]; int slen = 0; shstr[slen++] = 0;     /* .shstrtab */
 	int nameoff[MAXOUTSEC];
 	for (int i = 0; i < noutsec; i++) { nameoff[i]=slen; strcpy(shstr+slen, outsecs[i].name); slen += (int)strlen(outsecs[i].name)+1; }
 	int shstr_nameoff = slen; strcpy(shstr+slen, ".shstrtab"); slen += 10;
-
-	u32 content_end = hdrsz + (hiprog - lo);               /* headers + PROGBITS span */
-	u32 shstr_off = content_end;
-	u32 shoff = alignup(shstr_off + (u32)slen, 4);
+	u32 shstr_off = content_end, shoff = alignup(shstr_off + (u32)slen, 4);
 
 	FILE *f = fopen(out, "wb"); if (!f) die("cannot open %s", out);
 	Elf32_Ehdr eh = {0};
 	memcpy(eh.e_ident, "\177ELF\1\1\1", 7);
 	eh.e_type = ET_EXEC; eh.e_machine = md_e_machine; eh.e_version = 1; eh.e_entry = entry; eh.e_flags = 0x05000000;
-	eh.e_phoff = sizeof(Elf32_Ehdr); eh.e_phentsize = sizeof(Elf32_Phdr); eh.e_phnum = 1;
+	eh.e_phoff = sizeof(Elf32_Ehdr); eh.e_phentsize = sizeof(Elf32_Phdr); eh.e_phnum = (u16)ns;
 	eh.e_ehsize = sizeof(Elf32_Ehdr); eh.e_shentsize = sizeof(Elf32_Shdr);
 	eh.e_shnum = 1 + noutsec + 1; eh.e_shstrndx = noutsec + 1; eh.e_shoff = shoff;
-	Elf32_Phdr ph = { PT_LOAD, 0, pv, pv, hdrsz + (hiprog - lo), hdrsz + (himem - lo), PF_R|PF_W|PF_X, PAGE };
 	fwrite(&eh, sizeof eh, 1, f);
-	fwrite(&ph, sizeof ph, 1, f);
-	for (int i = 0; i < nseg; i++) {                       /* section bytes at (va - lo + hdrsz) */
-		if (seg[i].nobits) continue;
-		u32 off = seg[i].va - lo + hdrsz;
+	for (int i = 0; i < ns; i++) {                         /* one PT_LOAD per segment; seg 0 also maps the headers */
+		u32 lstart = sg[i].hasprog ? sg[i].lstart : sg[i].vaddr;
+		u32 off  = (i==0) ? 0 : (lstart - minlma + hdrsz);
+		u32 va   = (i==0) ? sg[i].vaddr - hdrsz : sg[i].vaddr;
+		u32 pa   = (i==0) ? lstart - hdrsz      : lstart;
+		u32 fsz  = (i==0 ? hdrsz : 0) + sg[i].filesz;
+		u32 msz  = (i==0 ? hdrsz : 0) + sg[i].memsz;
+		Elf32_Phdr ph = { PT_LOAD, off, va, pa, fsz, msz, PF_R|PF_W|PF_X, PAGE };
+		fwrite(&ph, sizeof ph, 1, f);
+	}
+	for (int i = 0; i < np; i++) {                         /* PROGBITS bytes at (lma - minlma + hdrsz) */
+		if (P[i].nobits) continue;
+		u32 off = P[i].lma - minlma + hdrsz;
 		for (long p = ftell(f); p < (long)off; p++) fputc(0, f);
-		Elf32_Shdr *s = &seg[i].o->sh[seg[i].j];
-		fwrite(seg[i].o->data + s->sh_offset, 1, s->sh_size, f);
+		Elf32_Shdr *s = &P[i].o->sh[P[i].j];
+		fwrite(P[i].o->data + s->sh_offset, 1, s->sh_size, f);
 	}
 	for (long p = ftell(f); p < (long)content_end; p++) fputc(0, f);
 	fwrite(shstr, 1, slen, f);
 	for (long p = ftell(f); p < (long)shoff; p++) fputc(0, f);
-	Elf32_Shdr sh = {0}; fwrite(&sh, sizeof sh, 1, f);     /* [0] null */
+	Elf32_Shdr z = {0}; fwrite(&z, sizeof z, 1, f);        /* [0] null */
 	for (int i = 0; i < noutsec; i++) {
 		OutSec *os = &outsecs[i];
 		Elf32_Shdr s = { .sh_name=nameoff[i], .sh_type=os->nobits?SHT_NOBITS:SHT_PROGBITS,
 		    .sh_flags=SHF_ALLOC|(os->exec?SHF_EXECINSTR:0)|(os->write?SHF_WRITE:0),
-		    .sh_addr=os->vaddr, .sh_offset=os->nobits?content_end:(os->vaddr-lo+hdrsz), .sh_size=os->size, .sh_addralign=4 };
+		    .sh_addr=os->vaddr, .sh_offset=os->nobits?content_end:(os->lma-minlma+hdrsz), .sh_size=os->size, .sh_addralign=4 };
 		fwrite(&s, sizeof s, 1, f);
 	}
 	Elf32_Shdr ss = { .sh_name=shstr_nameoff, .sh_type=SHT_STRTAB, .sh_offset=shstr_off, .sh_size=(u32)slen, .sh_addralign=1 };
