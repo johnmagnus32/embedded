@@ -499,7 +499,15 @@ int script_run(const char *path) {
 		int provide = 0; char *nm = t;
 		if (!strcmp(t,"PROVIDE")||!strcmp(t,"PROVIDE_HIDDEN")) { provide=1; p++; if(!strcmp(stok[p],"("))p++; nm=stok[p]; }
 		if (p+1 < nstok && !strcmp(stok[p+1],"=")) {
-			int e0 = p+2, e1 = e0; while (e1<nstok && strcmp(stok[e1],";") && strcmp(stok[e1],")")) e1++;
+			/* expr runs to the next `;` (or, inside PROVIDE(...), the closing `)`) at PAREN DEPTH 0 — so
+			 * parens inside DEFINED()/ALIGN()/(a+b) don't truncate it (e.g. `DEFINED(X) ? X : 0x20000`). */
+			int e0 = p+2, e1 = e0, depth = 0;
+			while (e1 < nstok) {
+				if (!strcmp(stok[e1],"(")) depth++;
+				else if (!strcmp(stok[e1],")")) { if (depth==0) break; depth--; }
+				else if (!strcmp(stok[e1],";") && depth==0) break;
+				e1++;
+			}
 			long v = script_eval(e0, e1, dot);
 			if (!strcmp(nm,".")) dot = (u32)v;              /* move the location counter */
 			else { GSym *g=gsym_find(nm); if(!(provide && g && g->defined)) gsym_define(nm,(u32)v); }
