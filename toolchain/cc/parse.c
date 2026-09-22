@@ -54,35 +54,53 @@ static Type *struct_decl(void);
 static Type *enum_decl(void);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
 
-/* declaration-specifiers: fold type keywords, qualifiers, and storage classes. M1 approximations:
- * short/int/long/signed/unsigned all become 4-byte int; void ~ char (so void* scales like char*, per the
- * GNU extension); const/volatile/register/inline and __attribute__ are consumed and ignored.
+/* declaration-specifiers: fold type keywords, qualifiers, and storage classes. Width comes from the
+ * base keyword (char=1, short=2, int/long=4 — `long` is 32-bit on ARM32; `long long`/64-bit is TODO),
+ * SIGN from signed/unsigned (plain char defaults to unsigned, ARM's default); void ~ unsigned char (so
+ * void* scales like char*). const/volatile/register/inline and __attribute__ are consumed and ignored.
  * `td` is set iff `typedef` appears; `sc` collects the storage-class bits (SC_EXTERN/SC_STATIC). Both are
  * out-params (may be NULL), NOT globals — a recursive declspec (struct members) would clobber a global. */
 static Type *declspec(int *td, int *sc) {
 	if (td) *td = 0;
 	if (sc) *sc = 0;
-	Type *ty = ty_int; int seen = 0;
+	enum { B_NONE, B_VOID, B_CHAR, B_SHORT, B_INT, B_LONG, B_LLONG } base = B_NONE;
+	int is_uns = 0, saw_signed = 0, seen = 0;
+	Type *tagty = NULL;                                              /* struct/union/enum/typedef: a complete type */
 	for (;;) {
 		if (consume("typedef")) { if (td) *td = 1; continue; }
 		if (consume("extern")) { if (sc) *sc |= SC_EXTERN; continue; }   /* file-scope: a reference, not a definition */
 		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
-		if (consume("const") || consume("volatile") || consume("restrict") || consume("register") || consume("inline") || consume("signed")) continue;
+		if (consume("const") || consume("volatile") || consume("restrict") || consume("register") || consume("inline")) continue;
 		if (consume("__attribute__")) { skip_attribute(); continue; }
-		if (consume("unsigned")) { ty = ty_int;  seen = 1; continue; }
-		if (consume("void"))     { ty = ty_char; seen = 1; continue; }
-		if (consume("char"))     { ty = ty_char; seen = 1; continue; }
-		if (consume("short") || consume("int") || consume("long")) { ty = ty_int; seen = 1; continue; }
-		if (consume("struct") || consume("union")) { ty = struct_decl(); seen = 1; continue; }
-		if (consume("enum")) { ty = enum_decl(); seen = 1; continue; }
-		if (!seen && tk->kind == TK_IDENT && typedef_find(tk->text)) { ty = typedef_find(tk->text); tk = tk->next; seen = 1; continue; }
+		if (consume("signed"))   { saw_signed = 1; seen = 1; continue; }
+		if (consume("unsigned")) { is_uns = 1;     seen = 1; continue; }
+		if (consume("void"))     { base = B_VOID;  seen = 1; continue; }
+		if (consume("char"))     { base = B_CHAR;  seen = 1; continue; }
+		if (consume("short"))    { base = B_SHORT; seen = 1; continue; }
+		if (consume("int"))      { if (base != B_SHORT && base != B_LONG && base != B_LLONG) base = B_INT; seen = 1; continue; }
+		if (consume("long"))     { base = (base == B_LONG) ? B_LLONG : B_LONG; seen = 1; continue; }
+		if (consume("struct") || consume("union")) { tagty = struct_decl(); seen = 1; continue; }
+		if (consume("enum")) { tagty = enum_decl(); seen = 1; continue; }
+		if (!seen && tk->kind == TK_IDENT && typedef_find(tk->text)) { tagty = typedef_find(tk->text); tk = tk->next; seen = 1; continue; }
 		break;
 	}
-	return ty;
+	if (tagty) return tagty;
+	switch (base) {
+	case B_VOID:  return ty_char;                                   /* void ~ unsigned char (void* scales by 1) */
+	case B_CHAR:  return is_uns ? ty_char : (saw_signed ? ty_schar : ty_char);   /* plain char = unsigned (ARM) */
+	case B_SHORT: return is_uns ? ty_ushort : ty_short;
+	case B_LLONG: return is_uns ? ty_ullong : ty_llong;             /* long long = 64-bit (register pair) */
+	default:      return is_uns ? ty_uint : ty_int;                 /* int / long (32-bit on ARM32) */
+	}
 }
+static Node *assign(void);        /* fwd: array bounds may be a constant expression, e.g. [52 + 8*32] */
+static long eval_const(Node *n);
 static Type *type_suffix(Type *base) {
-	if (consume("[")) { int n = 0; if (tk->kind == TK_NUM) { n = tk->val; tk = tk->next; }   /* [] (param) allowed */
-		expect("]"); return array_of(type_suffix(base), n); }                                 /* outer dim wraps inner */
+	if (consume("[")) {                                       /* [] (param) allowed; else a constant expr */
+		int n = 0;
+		if (!consume("]")) { n = (int)eval_const(assign()); expect("]"); }
+		return array_of(type_suffix(base), n);                /* outer dim wraps inner */
+	}
 	return base;
 }
 /* declarator = "*"* ( "(" "*" name? ")" fn-or-array-suffix | name? ) array-suffix ; the name is optional
@@ -185,6 +203,7 @@ static Node *primary(void) {
 		if (!strcmp(name, "__builtin_va_start")) { expect("("); Node *n = node(ND_VA_START); n->lhs = assign(); expect(","); assign(); expect(")"); return n; }
 		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL, NULL), d); expect(")"); return n; }
 		if (!strcmp(name, "__builtin_va_end"))   { expect("("); assign(); expect(")"); return num(0); }
+		if (!strcmp(name, "__builtin_unreachable")) { expect("("); expect(")"); return num(0); }   /* no-op, not a call */
 		if (consume("(")) {                                  /* call: name(args) */
 			Node *n = node(ND_CALL);
 			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
@@ -401,8 +420,8 @@ static Node *stmt(void) {
 
 /* ---- functions ----------------------------------------------------------------------------------- */
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
-static Func *function_tail(const char *name) {
-	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63);
+static Func *function_tail(const char *name, Type *ret) {
+	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret;
 	nlocals = 0; local_bytes = 0;
 	expect("(");
 	struct { char name[64]; Type *ty; } prm[16]; int np = 0;   /* collect params, then assign offsets by kind */
@@ -417,22 +436,33 @@ static Func *function_tail(const char *name) {
 	}
 	expect(")");
 	f->nparams = np;
-	/* A variadic function spills r0..r3 into a contiguous incoming-arg block, so ALL params sit at
-	 * [r11, #8 + 4*i]. A normal function keeps r0..r3 in negative frame slots, stack args at +8. */
+	/* Assign each param to argument WORDS (64-bit = 2 words). A variadic function spills r0..r3 into a
+	 * contiguous incoming-arg block, so ALL params sit at [r11, #8 + 4*word]. A normal function keeps the
+	 * first 4 words in r0..r3 (spilled to negative frame slots in the prologue), later words at +8. */
+	int word = 0;
 	for (int i = 0; i < np; i++) {
-		if (!prm[i].name[0]) continue;                           /* abstract (prototype) param — no binding */
-		if (f->variadic)   add_local_at(prm[i].name, prm[i].ty, 8 + 4 * i);
-		else if (i < 4)    add_local(prm[i].name, prm[i].ty);
-		else               add_local_at(prm[i].name, prm[i].ty, 8 + 4 * (i - 4));
+		int nw = (prm[i].ty && prm[i].ty->size == 8) ? 2 : 1;
+		if (f->variadic) {
+			if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * word);
+		} else if (word + nw <= 4) {                             /* fully in registers r{word}..r{word+nw-1} */
+			int off = prm[i].name[0] ? add_local(prm[i].name, prm[i].ty) : 0;
+			for (int k = 0; k < nw && off; k++) f->arg_off[word + k] = off + 4 * k;   /* spill targets */
+			f->arg_regs = word + nw;
+		} else if (word >= 4) {                                  /* fully on the stack */
+			if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * (word - 4));
+		} else {
+			die("cc: 64-bit parameter split across registers and stack (not supported)");
+		}
+		word += nw;
 	}
+	f->nfixed_words = word;                                      /* words of fixed params, for va_start */
 	while (consume("__attribute__")) skip_attribute();       /* e.g. int f(void) __attribute__((noreturn)) { … } */
 	if (consume(";")) return NULL;                           /* a prototype — no body to compile */
 	expect("{");
 	Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt();
 	f->body = h.next;
-	for (Node *s = f->body; s; s = s->next) add_type(s);      /* annotate every node with its result type */
 	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
-	return f;
+	return f;   /* add_type runs in a final pass (parse()), once every function's return type is recorded */
 }
 
 /* Top level: read a type + name, then dispatch — "(" means a function, anything else a global variable
@@ -491,7 +521,19 @@ static Init *global_init(Type *ty) {
 		return head.next;
 	}
 	if (consume("&")) { Init *i = mkinit(INIT_SYM); ident(i->sym); i->size = 4; return i; }   /* address of a global */
-	Init *i = mkinit(INIT_CONST); i->val = eval_const(conditional()); i->size = (ty->size == 1) ? 1 : 4; return i;
+	Init *i = mkinit(INIT_CONST); i->val = eval_const(conditional()); i->size = ty->size; return i;   /* 1/2/4 -> .byte/.hword/.word */
+}
+
+/* Function-signature table: a called function's return type, so ND_CALL result nodes get the right width
+ * (a 64-bit return must not be truncated). Populated for every prototype/definition, consulted by add_type. */
+static struct { char name[64]; Type *ret; } func_sigs[512]; static int nfunc_sigs;
+static void record_func_sig(const char *name, Type *ret) {
+	for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) { func_sigs[i].ret = ret; return; }
+	if (nfunc_sigs < 512) { strncpy(func_sigs[nfunc_sigs].name, name, 63); func_sigs[nfunc_sigs].ret = ret; nfunc_sigs++; }
+}
+Type *func_ret_type(const char *name) {
+	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return func_sigs[i].ret;
+	return NULL;
 }
 
 Func *parse(Token *tok) {
@@ -504,7 +546,7 @@ Func *parse(Token *tok) {
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); continue; }
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
-		if (is("(")) { Func *fn = function_tail(name); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* NULL = prototype */
+		if (is("(")) { record_func_sig(name, ty); Func *fn = function_tail(name, ty); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* NULL = prototype */
 		for (;;) {                                           /* global variable(s), comma-separated */
 			Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;
 			g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0;
@@ -514,5 +556,7 @@ Func *parse(Token *tok) {
 		}
 		expect(";");
 	}
+	for (Func *f = head.next; f; f = f->next)                /* type every body now that all signatures are known */
+		for (Node *s = f->body; s; s = s->next) add_type(s);
 	return head.next;
 }

@@ -22,7 +22,9 @@ const u32 md_e_flags   = 0x05000000;  /* EF_ARM_EABI_VER5 */
 #define R_ARM_ABS32  2    /* .word <symbol> — 32-bit absolute */
 #define R_ARM_CALL   28   /* bl/blx to a symbol — imm24, addend held in-place */
 #define R_ARM_JUMP24 29   /* b to a symbol */
-const u32 md_r_abs32 = R_ARM_ABS32;   /* the front-end uses this for `.word <symbol>` */
+#define R_ARM_GOT_PREL 96 /* .word <symbol>(GOT) — PC-relative offset to the symbol's GOT slot (PIC) */
+const u32 md_r_abs32    = R_ARM_ABS32;    /* the front-end uses this for `.word <symbol>`       */
+const u32 md_r_got_prel = R_ARM_GOT_PREL; /* the front-end uses this for `.word <symbol>(GOT)`  */
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
  * code, so we emit `ldr Rd, [pc,#0]` and fix the 12-bit offset in md_finish once all labels are known. */
@@ -203,9 +205,9 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 	     | (W << 21) | ((u32)is_load << 20) | ((u32)rn << 16) | (rd << 12) | off);
 }
 
-static void enc_uxtb(u32 cond) {   /* uxtb{cond} Rd, Rm — zero-extend byte (rotate 0) */
+static void enc_extend(u32 cond, u32 base) {   /* {u,s}xt{b,h}{cond} Rd, Rm — zero/sign-extend byte/half (rotate 0) */
 	u32 rd = need_reg(1), rm = need_reg(2);
-	emit32((cond << 28) | 0x06ef0070u | (rd << 12) | rm);
+	emit32((cond << 28) | base | (rd << 12) | rm);
 }
 
 /* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
@@ -266,6 +268,10 @@ static void enc_mul(u32 cond, int s) {   /* mul Rd, Rn, Rm  (Rd=19:16, Rm=11:8, 
 static void enc_mla(u32 cond, int s) {   /* mla Rd, Rn, Rm, Ra */
 	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3), ra = need_reg(4);
 	emit32((cond << 28) | 0x00200000u | ((u32)s << 20) | (rd << 16) | (ra << 12) | (rm << 8) | 0x90 | rn);
+}
+static void enc_umull(u32 cond, u32 base) {   /* {u,s}mull/{u,s}mlal RdLo, RdHi, Rn, Rm (64-bit multiply) */
+	u32 rdlo = need_reg(1), rdhi = need_reg(2), rn = need_reg(3), rm = need_reg(4);
+	emit32((cond << 28) | base | (rdhi << 16) | (rdlo << 12) | (rm << 8) | rn);
 }
 static void enc_mls(u32 cond) {   /* mls Rd, Rn, Rm, Ra  (Rd = Ra - Rn*Rm) */
 	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3), ra = need_reg(4);
@@ -334,7 +340,9 @@ void md_assemble(char **t, int n) {
 		else if (suf[0] == 'b') { if (!suffix_c(suf + 1, &cond)) die("%s: bad suffix", m); enc_ldst(cond, is_load, 1); }
 		else if (suf[0] == 'd') { if (!suffix_c(suf + 1, &cond)) die("%s: bad suffix", m); enc_xldst(cond, 0, is_load ? 0xd : 0xf); }
 		else if (suf[0] == 'h') { if (!suffix_c(suf + 1, &cond)) die("%s: bad suffix", m); enc_xldst(cond, is_load ? 1 : 0, 0xb); }
-		else die("%s: ldr/str variant not supported (ldrsb/ldrsh?)", m);
+		else if (is_load && suf[0] == 's' && suf[1] == 'b') { if (!suffix_c(suf + 2, &cond)) die("%s: bad suffix", m); enc_xldst(cond, 1, 0xd); }   /* ldrsb: L=1, SH=10 */
+		else if (is_load && suf[0] == 's' && suf[1] == 'h') { if (!suffix_c(suf + 2, &cond)) die("%s: bad suffix", m); enc_xldst(cond, 1, 0xf); }   /* ldrsh: L=1, SH=11 */
+		else die("%s: ldr/str variant not supported", m);
 		return;
 	}
 	if (!strncmp(m, "ldm", 3) || !strncmp(m, "stm", 3)) {   /* load/store multiple, any addressing mode */
@@ -346,11 +354,18 @@ void md_assemble(char **t, int n) {
 		if (!suffix_c(suf, &cond)) die("%s: unsupported ldm/stm mode", m);
 		enc_ldstm(m[0] == 'l', cond, P, U); return;
 	}
-	if (!strncmp(m, "uxtb", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_uxtb(cond); return; }
+	if (!strncmp(m, "uxtb", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06ef0070u); return; }
+	if (!strncmp(m, "uxth", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06ff0070u); return; }
+	if (!strncmp(m, "sxtb", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06af0070u); return; }
+	if (!strncmp(m, "sxth", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_extend(cond, 0x06bf0070u); return; }
 	if (!strncmp(m, "movw", 4) || !strncmp(m, "movt", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_movw(m[3] == 't', cond); return; }
 	if (!strncmp(m, "mul", 3)) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_mul(cond, s); return; }
 	if (!strncmp(m, "mla", 3)) { if (!suffix_sc(m + 3, &cond, &s)) die("%s: bad suffix", m); enc_mla(cond, s); return; }
 	if (!strncmp(m, "mls", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_mls(cond); return; }
+	if (!strncmp(m, "umull", 5)) { if (!suffix_c(m + 5, &cond)) die("%s: bad suffix", m); enc_umull(cond, 0x00800090u); return; }
+	if (!strncmp(m, "umlal", 5)) { if (!suffix_c(m + 5, &cond)) die("%s: bad suffix", m); enc_umull(cond, 0x00a00090u); return; }
+	if (!strncmp(m, "smull", 5)) { if (!suffix_c(m + 5, &cond)) die("%s: bad suffix", m); enc_umull(cond, 0x00c00090u); return; }
+	if (!strncmp(m, "smlal", 5)) { if (!suffix_c(m + 5, &cond)) die("%s: bad suffix", m); enc_umull(cond, 0x00e00090u); return; }
 	if (!strncmp(m, "udiv", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_div(0, cond); return; }
 	if (!strncmp(m, "sdiv", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_div(1, cond); return; }
 	if (!strncmp(m, "clz", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_clz(cond); return; }

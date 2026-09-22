@@ -26,9 +26,9 @@ typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is a
 typedef struct { int sec; u32 off; int local_num; } Fixup;          /* forward local-label branch to patch */
 
 #define MAXSEC 32
-#define MAXSYM 256
-#define MAXFIX 256
-#define MAXREL 256
+#define MAXSYM 8192   /* generous: a big TU (e.g. ld.so's dl_main.c) emits many .L labels + symbols */
+#define MAXFIX 8192
+#define MAXREL 8192
 extern Section secs[]; extern int nsec, cursec;   /* cursec = active section index into secs[] */
 extern Sym syms[]; extern int nsym;
 extern Reloc rels[]; extern int nrel;
@@ -59,6 +59,7 @@ void md_finish(void);                       /* end of pass: resolve arch-interna
 extern const u16 md_e_machine;              /* ELF e_machine (EM_ARM) */
 extern const u32 md_e_flags;                /* ELF e_flags (EABI version) */
 extern const u32 md_r_abs32;                /* the arch's 32-bit absolute reloc (for `.word <symbol>`) */
+extern const u32 md_r_got_prel;             /* the arch's PC-relative GOT-entry reloc (for `.word <symbol>(GOT)`) */
 
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */
 void obj_write(const char *path);

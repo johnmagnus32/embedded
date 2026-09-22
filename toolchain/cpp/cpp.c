@@ -526,14 +526,15 @@ static void predef(const char *name, const char *val) {
 int main(int argc, char **argv) {
 	const char *in = NULL, *outpath = NULL;
 	predef("__STDC__", "1"); predef("__STDC_HOSTED__", "0"); predef("__arm__", "1"); predef("__ARM_EABI__", "1");
-	/* Compiler-predefined type macros (ARM32 EABI), as gcc supplies for <stdint.h> etc. Our cc collapses */
-	predef("__INT8_TYPE__", "signed char");   predef("__UINT8_TYPE__", "unsigned char");    /* all integer  */
-	predef("__INT16_TYPE__", "short");         predef("__UINT16_TYPE__", "unsigned short");  /* types to a   */
-	predef("__INT32_TYPE__", "int");           predef("__UINT32_TYPE__", "unsigned int");    /* 4-byte int,  */
-	predef("__INT64_TYPE__", "long long");     predef("__UINT64_TYPE__", "unsigned long long"); /* so exact  */
-	predef("__INTMAX_TYPE__", "long long");    predef("__UINTMAX_TYPE__", "unsigned long long"); /* names    */
-	predef("__INTPTR_TYPE__", "int");          predef("__UINTPTR_TYPE__", "unsigned int");   /* only matter  */
-	predef("__SIZE_TYPE__", "unsigned int");   predef("__PTRDIFF_TYPE__", "int");            /* for parsing. */
+	/* Compiler-predefined type macros (ARM32 EABI), as gcc supplies for <stdint.h> etc. cc now models each
+	 * width faithfully: char=1, short=2, int/long=4, long long=8 (register pair), signed + unsigned. */
+	predef("__INT8_TYPE__", "signed char");   predef("__UINT8_TYPE__", "unsigned char");
+	predef("__INT16_TYPE__", "short");         predef("__UINT16_TYPE__", "unsigned short");
+	predef("__INT32_TYPE__", "int");           predef("__UINT32_TYPE__", "unsigned int");
+	predef("__INT64_TYPE__", "long long");     predef("__UINT64_TYPE__", "unsigned long long");
+	predef("__INTMAX_TYPE__", "long long");    predef("__UINTMAX_TYPE__", "unsigned long long");
+	predef("__INTPTR_TYPE__", "int");          predef("__UINTPTR_TYPE__", "unsigned int");
+	predef("__SIZE_TYPE__", "unsigned int");   predef("__PTRDIFF_TYPE__", "int");
 	predef("__WCHAR_TYPE__", "unsigned int");  predef("__CHAR_BIT__", "8");
 	predef("__SIZEOF_INT__", "4"); predef("__SIZEOF_LONG__", "4"); predef("__SIZEOF_POINTER__", "4");
 	predef("__SCHAR_MAX__", "127"); predef("__SHRT_MAX__", "32767"); predef("__INT_MAX__", "2147483647");

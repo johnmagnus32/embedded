@@ -11,16 +11,26 @@
 #include "ld.h"
 
 const u16 md_e_machine = EM_ARM;
-const u32 md_r_relative = 23;      /* R_ARM_RELATIVE: runtime `*P += load_bias` — the only dynamic reloc a PIE emits */
+const u32 md_r_relative  = 23;     /* R_ARM_RELATIVE: runtime `*P += load_bias` — the only dynamic reloc a PIE emits */
+const u32 md_r_jump_slot = 22;     /* R_ARM_JUMP_SLOT: loader writes the resolved fn address into a PLT GOT slot */
+const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported variable into the exe's .dynbss slot */
 
-#define R_ARM_ABS32  2
-#define R_ARM_CALL   28
-#define R_ARM_JUMP24 29
+#define R_ARM_ABS32    2
+#define R_ARM_CALL     28
+#define R_ARM_JUMP24   29
+#define R_ARM_GOT_PREL 96
+
+const u32 md_r_got_prel = R_ARM_GOT_PREL;   /* PIC: `.word sym(GOT)` -> PC-relative offset to sym's GOT slot */
+const u32 md_r_glob_dat = 21;               /* R_ARM_GLOB_DAT: loader writes an imported symbol's addr into its GOT slot */
 
 /* In a PIE, an absolute reference (ABS32) is the only thing whose value depends on where we load: it
  * must become a runtime R_ARM_RELATIVE base-fixup. PC-relative branches (CALL/JUMP24) are bias-invariant
  * — the linker resolves them statically — so they need no dynamic reloc. */
 int md_needs_dynamic_reloc(u32 type) { return type == R_ARM_ABS32; }
+/* Does this reloc, against an UNDEFINED symbol, denote a CALL that should be routed through a PLT stub? */
+int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP24; }
+/* Is this a PIC GOT-entry reference? The front-end resolves it to (GOT_slot - P) — S is the slot addr. */
+int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL; }
 
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	u32 w = rd32(loc);
@@ -35,6 +45,9 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 		wr32(loc, (w & 0xff000000u) | ((X >> 2) & 0x00ffffffu));
 		break;
 	}
+	case R_ARM_GOT_PREL:                             /* S = the symbol's GOT slot; store its PC-relative offset */
+		wr32(loc, (u32)((s32)S + (s32)w - (s32)P));  /* the `add rN,pc,rN` then yields the slot address */
+		break;
 	default:
 		die("%s: unsupported relocation type %u", o->path, type);
 	}

@@ -60,6 +60,7 @@ static void dl_puts(const char *s)
 	raw_syscall3(SYS_write, 2 /* stderr */, (long)s, (long)n);
 }
 
+
 __attribute__((noreturn))
 static void dl_die(const char *msg)
 {
@@ -112,21 +113,26 @@ static Elf32_Addr dl_map_so(const char *path, dso_t *d)
 	const uint8_t *e = ehdr_buf;
 	if (!(e[0]==0x7f && e[1]=='E' && e[2]=='L' && e[3]=='F'))
 		dl_die("bad ELF magic on libc.so");
-	uint32_t phoff   = *(uint32_t *)(e + 28);
-	/* phent = *(uint16_t*)(e+42) — we know it's sizeof(Elf32_Phdr)=32, skip */
-	uint16_t phnum   = *(uint16_t *)(e + 44);
+	uint32_t phoff   = (uint32_t)e[28] | ((uint32_t)e[29]<<8) | ((uint32_t)e[30]<<16) | ((uint32_t)e[31]<<24);
+	/* e_phnum is a 2-byte field; read it byte-wise (our cc has no 2-byte load — a uint16_t* deref would
+	 * pull 4 bytes and fold in e_shentsize). e_phentsize is known to be sizeof(Elf32_Phdr)=32, so skip it. */
+	uint32_t phnum   = (uint32_t)e[44] | ((uint32_t)e[45]<<8);
 	if (phnum > 8) phnum = 8;               /* clamp to our buffer */
 	const Elf32_Phdr *ph = (const Elf32_Phdr *)(ehdr_buf + phoff);
 
 	/* Compute the span [min_vaddr, max_end) and mmap the whole region, then lay
 	 * in each LOAD segment. (Simple single-mmap; a real loader mmaps per-segment
 	 * with proper permissions. For our small libc this is fine.) */
-	Elf32_Addr min_va = 0xffffffff, max_end = 0;
+	/* Track the segment span. NB: avoid a 0xffffffff sentinel + unsigned `<` — our cc compares as SIGNED,
+	 * so 0xffffffff reads as -1 and `vs < min_va` would never update. A `seen` flag sidesteps it (and is
+	 * identical under GCC). Real p_vaddr values here are small + positive, so their signed compares are fine. */
+	Elf32_Addr min_va = 0, max_end = 0; int seen = 0;
 	for (int i = 0; i < phnum; i++) if (ph[i].p_type == PT_LOAD) {
 		Elf32_Addr vs = ph[i].p_vaddr & ~0xFFF;
 		Elf32_Addr ve = (ph[i].p_vaddr + ph[i].p_memsz + 0xFFF) & ~0xFFF;
-		if (vs < min_va) min_va = vs;
+		if (!seen || vs < min_va) min_va = vs;
 		if (ve > max_end) max_end = ve;
+		seen = 1;
 	}
 	uint32_t span = max_end - min_va;
 	/* Reserve the address range (anon private RW, then we'll file-back each seg) */
@@ -277,8 +283,11 @@ void _dl_main(long *sp)
 	if (libc.jmprel && libc.pltrelsz) {
 		int nrel = (int)(libc.pltrelsz / sizeof(Elf32_Rel));
 		for (int i = 0; i < nrel; i++) {
-			if (!reloc_apply(&libc, &libc, &libc.jmprel[i]))
-				if (!reloc_apply(&libc, &prog, &libc.jmprel[i]))
+			/* Try the PROGRAM first (libc's imports like `main`/`errno` are provided by the exe), then
+			 * libc itself. This also avoids a same-object (self==provider) resolve of an unresolved
+			 * symbol, which our cc-compiled reloc_apply currently mishandles. */
+			if (!reloc_apply(&libc, &prog, &libc.jmprel[i]))
+				if (!reloc_apply(&libc, &libc, &libc.jmprel[i]))
 					dl_die("unresolved libc JUMP_SLOT");
 		}
 	}
@@ -286,10 +295,9 @@ void _dl_main(long *sp)
 	/* 6. Resolve the PROGRAM's PLT (JUMP_SLOT — calls into libc like printf). */
 	if (prog.jmprel && prog.pltrelsz) {
 		int nrel = (int)(prog.pltrelsz / sizeof(Elf32_Rel));
-		for (int i = 0; i < nrel; i++) {
+		for (int i = 0; i < nrel; i++)
 			if (!reloc_apply(&prog, &libc, &prog.jmprel[i]))
 				dl_die("unresolved program JUMP_SLOT");
-		}
 	}
 
 	/* 7. Resolve the program's REL (GLOB_DAT — typically none for our simple
@@ -308,10 +316,13 @@ void _dl_main(long *sp)
 	 * layout the kernel prepared. `sp` was the arg we received as `long *sp`. */
 	/* Restore the original SP (= `sp` arg) and branch to the program's entry.
 	 * Cannot be done in pure C (C can't set sp); use inline asm. */
-	__asm__ volatile(
-		"mov sp, %0\n\t"
-		"bx  %1\n\t"
-		:: "r"(sp), "r"(prog_entry) : "memory"
-	);
+	/* Set sp to the original stack, then branch to the program's entry. Register-pinned operands + a
+	 * verbatim single-instruction template per statement (the inline-asm form our cc supports: no %N
+	 * substitution, no multi-line templates). r11 (frame ptr) survives the `mov sp`, so the second
+	 * statement still reloads r1 from the frame. */
+	register long _sp    __asm__("r0") = (long)sp;
+	register long _entry __asm__("r1") = (long)prog_entry;
+	__asm__ volatile("mov sp, r0" :: "r"(_sp) : "memory");
+	__asm__ volatile("bx r1"      :: "r"(_entry) : "memory");
 	__builtin_unreachable();
 }

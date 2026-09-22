@@ -12,12 +12,12 @@ The point is **understanding**: to see exactly what a libc, a crt0, a shell, and
 a rootfs image are made of, by writing each one against a known syscall ABI.
 
 > **How it's built into a rootfs (the package model).** libc + coreutils are repo-root
-> PROVIDERS; the ENGINE builds them as graph nodes. `make rootfs` walks the dependency
-> graph: the selected libc (libc here, via the `libc` class) builds first, then each
+> sources built by the os build (`os/`) as graph nodes. `MACHINE=<m> make rootfs` walks the
+> dependency graph: the selected libc (libc here, via the `libc` class) builds first, then each
 > package in `PACKAGES` links against it (coreutils via the `compile-c` class), installing
-> into a shared staging tree; the `rootfs` step (`forge/steps/rootfs/`) then overlay-merges
-> the product's `overlay/` (the PID-1 `init.sh`) + device table and packs the cpio — the
-> SAME pack tail every package set uses.
+> into a shared staging tree; the `rootfs` recipe (`os/meta/recipes-core/rootfs/`) then merges
+> each package's staged files + the selected INIT provider's `/init` + the device table and packs
+> the cpio — the SAME pack tail every package set uses.
 > This doc describes the library itself; paths below are relative to this `libc/` dir.
 
 ## Status
@@ -51,8 +51,8 @@ build it (yet). This is what keeps the rootfs runnable on our own kernel.
 
 ## Layout
 
-This dir is the **libc provider**; `coreutils/` is a sibling provider; the ENGINE
-(`forge/core/`) builds them into a rootfs from the product's data.
+This dir is the **libc source**; `coreutils/` is a sibling source; the os build engine
+(`os/engine/`) builds them into a rootfs from the product's selection.
 
 ```
   libc/                   ← THIS PROVIDER: the C library + dynamic linker
@@ -68,62 +68,67 @@ This dir is the **libc provider**; `coreutils/` is a sibling provider; the ENGIN
     user.ld               static link script (link low at 0x10000)
     ld/                   the from-scratch dynamic linker (ld.so.1)
     test/                 libc + linker host unit tests (dynamic.sh)
-  ../coreutils/           ← SIBLING PROVIDER: one .c per program — sh, echo,
+  ../coreutils/           ← SIBLING SOURCE: one .c per program — sh, echo,
                             cat, pwd, ls, wc, mount
-  ../forge/steps/rootfs/
-    build.sh              the ENGINE's rootfs pack step: overlay-merge + device table +
+  ../os/meta/recipes-core/rootfs/
+    recipe.sh             the rootfs recipe's pack step: merge staged files + device table +
                           walk + pack (runs after the package nodes populate the staging tree)
-  ../forge/core/classes/
-    libc.sh               the `libc` class: builds libc (libc.a/.so + crt0) for LIBC=custom
+    rootfs.devs           the base device table (proc/sys/dev + console/null)
+  ../os/meta/classes-recipe/
+    libc.sh               the `libc` class: builds libc (libc.a/.so + crt0) for the custom libc
     compile-c.sh          the `compile-c` class (one .c -> one ELF); our coreutils
-  ../forge/core/defaults/rootfs.devs  the ENGINE base device table (proc/sys/dev + console/null)
-  ../projects/gameboy-v3/ ← the PRODUCT (data): overlay/init.sh (rootfs.devs is
-                            OPTIONAL — augments the engine default; gameboy-v3 ships none)
+  ../projects/gameboy-v3/image/  ← the PRODUCT (selection): conf/local.conf picks providers +
+                            PACKAGES; a product rootfs.devs is OPTIONAL (augments the base table;
+                            gameboy-v3 ships none). /init comes from the selected INIT provider.
 ```
 
 ## Build & run
 
-The rootfs is built through the forge engine, not from this dir. From the product
-(`projects/gameboy-v3/`, after `make toolchain`):
+The rootfs is built through the os build, not from this dir. The selection lives in the
+product's `image/conf/local.conf` — set `PROVIDER_libc=libc-custom`, `PACKAGES="coreutils"`,
+and `LINKAGE` (static or dynamic). Then build from the product's `image/` dir, naming a
+`MACHINE` (`t113` or `qemu`; toolchains build on demand — no separate prereq step):
 
 ```bash
-make image KERNEL=custom BOOTLOADER=custom LIBC=custom PACKAGES=coreutils
-# → build/bundles/custom-custom-custom-coreutils/  (our libc + coreutils)
+cd projects/gameboy-v3/image
+MACHINE=qemu make image        # → build/qemu/bundle/   (our libc + coreutils)
 ```
 
-To build + boot JUST this rootfs under QEMU (the libc/linker dev loop), the
-`libc/test/dynamic.sh --gv3` harness drives the engine for you and boots the result
-on a reference kernel. Under the hood it just runs `make rootfs` with the dynamic +
-emulator-board selectors:
+To build + boot JUST this rootfs under QEMU (the libc/linker dev loop), build the rootfs
+node, then boot it with the `libc/test/dynamic.sh` harness. That harness is self-contained
+(it knows nothing about the os build): it takes a mainline reference kernel and our rootfs
+as paths and boots them under QEMU `-M virt`:
 
 ```bash
-# builds the VFP-free dynamic rootfs (ships ld.so.1) via the forge graph
-make -C projects/gameboy-v3 rootfs LIBC=custom PACKAGES=coreutils LINKAGE=dynamic BOARD=virt
+# build the VFP-free dynamic rootfs (ships ld.so.1) — LINKAGE=dynamic in local.conf + MACHINE=qemu (virt)
+cd projects/gameboy-v3/image
+MACHINE=qemu make rootfs       # → build/qemu/output/initramfs-*-dynamic.cpio.gz
 ```
 
-- **`BOARD`** — `t113-gameboy` (default) or `virt`. `virt` adds `-mgeneral-regs-only`
-  (no VFP) to match the kernel's own user programs and the `-M virt` test harness.
+- **`MACHINE`** — `t113` (the handheld) or `qemu`. `qemu` builds for QEMU `-M virt` with
+  `-mgeneral-regs-only` (no VFP), matching the kernel's own user programs and the `-M virt`
+  test harness. Required — no default.
 - **`LINKAGE`** — `static` (default) or `dynamic` (PIC programs + shared `libc.so`,
-  loaded by `ld.so.1`).
+  loaded by `ld.so.1`); set in `local.conf`.
 - Boots to an interactive `gv3$` shell: `cd`/`pwd`/`exit`/`exec` builtins plus
-  fork+exec of the coreutils. `/init` is the product's
-  `../projects/gameboy-v3/overlay/init.sh`, launched via the kernel's `#!`-shebang
-  path, which `exec`s the interactive shell as PID 1.
+  fork+exec of the coreutils. `/init` comes from the selected INIT provider — for this
+  dev loop the `init-shell` recipe (`os/meta/recipes-core/init-shell/init`), a `#!/bin/sh`
+  script that mounts the API filesystems and `exec`s the interactive shell as PID 1.
 
 ## The build pattern (staging tree + walk + device table)
 
 Packaging follows the same shape as Buildroot / Yocto / the kernel's own initramfs
-builder — and is now UNIFIED in the engine: every package set flows through the same
-graph (libc → packages → `rootfs` step) and its shared pack tail:
+builder — and is UNIFIED in the os build: every package set flows through the same
+graph (libc → packages → `rootfs` recipe) and its shared pack tail:
 
 1. **Auto-discover** — every `../coreutils/*.c` is a program, every `src/*.c` is a
-   libc unit. Adding a coreutil is a one-file drop into the provider, no recipe edit.
+   libc unit. Adding a coreutil is a one-file drop into the source, no recipe edit.
 2. **Staging tree** — the compile-c class installs programs into a staging dir
    (mirrors the final `/`).
-3. **Overlay-merge** — the shared tail layers the product's
-   `../projects/gameboy-v3/overlay/` on top (its `init.sh` → `/init`).
-4. **Device table + walk + pack** — the shared tail emits the engine's base
-   `forge/core/defaults/rootfs.devs` (the `/dev` nodes + proc/sys/dev mountpoints
+3. **Merge** — the shared tail merges each selected package's staged files plus the
+   selected INIT provider's `/init` into the staging tree.
+4. **Device table + walk + pack** — the shared tail emits the base
+   `os/meta/recipes-core/rootfs/rootfs.devs` (the `/dev` nodes + proc/sys/dev mountpoints
    that can't exist as real host files) plus any OPTIONAL product `rootfs.devs`
    appended, walks the tree, and packs the `gen_init_cpio` cpio.gz.
 
@@ -190,10 +195,12 @@ Two automated paths, both green:
 - **`libc/ld/test/run.sh`** — host (x86) unit tests of the linker's pure logic:
   relocation arithmetic + SysV-hash symbol lookup (`test_reloc.c`), and parsing a
   REAL `libc.so`'s `.dynamic` (`test_parse.c`). Fast, no target needed.
-- **`libc/test/dynamic.sh --gv3`** — full-system boot test. Runs a known-good
-  musl-dynamic binary (proves the harness) AND our dynamic rootfs under a mainline
-  reference kernel (built once into `build/refkernel/`). To boot the same rootfs
-  on our OWN kernel: `make BOARD=virt qemu` after `make LINK=dynamic`.
+- **`libc/test/dynamic.sh`** — full-system boot test. Self-contained (knows nothing
+  about the os build): give it `REFKERNEL` (a mainline `-M virt` zImage) and
+  `DYNAMIC_INITRD` (our dynamically-linked rootfs cpio.gz) as paths, and it boots them
+  under QEMU `-M virt`. PASS = our `ld.so.1` maps `/lib/libc.so`, relocates, and reaches
+  the interactive `gv3$` prompt. To boot the same rootfs on our OWN kernel, point that
+  kernel's `make BOARD=virt qemu` at the cpio (see [`kernel/`](../kernel)).
 
 | Runner | Status | Notes |
 |---|---|---|

@@ -7,7 +7,7 @@ CFLAGS ?= -O0 -g -Wall -Wextra -std=gnu11
 OURCC := ../cc/build/cc
 OURAS := ../as/build/as
 OURLD := ../ld/build/ld
-GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
+GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
 $(BUILD)/cpp: cpp.c | $(BUILD)

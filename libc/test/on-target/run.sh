@@ -13,7 +13,7 @@
 #
 # ---- INPUT CONTRACT (environment) -------------------------------------------
 #   CROSS_COMPILE   (required) cross-gcc prefix whose BAKED SYSROOT is the custom libc under
-#                   test, e.g. /path/to/arm-forge-linux-gnueabihf- . A normal static link
+#                   test, e.g. /path/to/arm-none-linux-gnueabihf- . A normal static link
 #                   (-static) against this toolchain pulls in that sysroot's libc + crt.
 #   KERNEL          (required) path to a bootable QEMU `virt` zImage (mainline ARM, honors
 #                   WNOHANG etc.). Booted with rdinit=/init, panic=1.

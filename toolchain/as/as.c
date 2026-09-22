@@ -135,7 +135,9 @@ static void do_directive(void) {
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
 	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].global = 1;
-	} else if (!strcmp(d, ".type")) { int i = sym_intern(toks[1]); if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;
+	} else if (!strcmp(d, ".type")) { int i = sym_intern(toks[1]);
+		if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;
+		else if (toks[2] && strstr(toks[2], "object")) syms[i].type = STT_OBJECT;
 	} else if (!strcmp(d, ".size")) {
 		/* .size <sym>, . - <label>  — the one expression form our startup asm needs. */
 		int i = sym_intern(toks[1]);
@@ -156,15 +158,23 @@ static void do_directive(void) {
 		char *end; long v = strtol(toks[1], &end, 0);
 		if (*end == 0) { emit32((u32)v); }
 		else {
+			/* `.word <sym>[+addend]` -> R_ARM_ABS32; `.word <sym>(GOT)` -> R_ARM_GOT_PREL (PIC: the
+			 * linker fills it with the PC-relative offset to <sym>'s GOT slot). */
+			char raw[160]; strncpy(raw, toks[1], sizeof raw - 1); raw[sizeof raw - 1] = 0;
+			u32 rtype = md_r_abs32;
+			char *got = strstr(raw, "(GOT)");
+			if (got && got[5] == 0) { *got = 0; rtype = md_r_got_prel; }
 			char name[128]; long addend = 0;
-			char *plus = strpbrk(toks[1], "+-");
-			if (plus) { addend = strtol(plus, NULL, 0); size_t k = plus - toks[1]; if (k >= sizeof name) k = sizeof name - 1; memcpy(name, toks[1], k); name[k] = 0; }
-			else { strncpy(name, toks[1], sizeof name - 1); name[sizeof name - 1] = 0; }
+			char *plus = strpbrk(raw, "+-");
+			if (plus) { addend = strtol(plus, NULL, 0); size_t k = plus - raw; if (k >= sizeof name) k = sizeof name - 1; memcpy(name, raw, k); name[k] = 0; }
+			else { strncpy(name, raw, sizeof name - 1); name[sizeof name - 1] = 0; }
 			u32 off = secs[cursec].len; emit32((u32)addend);
-			add_reloc(cursec, off, sym_intern(name), md_r_abs32);
+			add_reloc(cursec, off, sym_intern(name), rtype);
 		}
 	} else if (!strcmp(d, ".byte")) {
 		for (int i = 1; i < ntok; i++) { u8 b = (u8)strtol(toks[i], NULL, 0); emit(&b, 1); }   /* one byte per value */
+	} else if (!strcmp(d, ".hword") || !strcmp(d, ".2byte") || !strcmp(d, ".short")) {
+		for (int i = 1; i < ntok; i++) { long v = strtol(toks[i], NULL, 0); u8 h[2] = { (u8)(v & 0xff), (u8)((v >> 8) & 0xff) }; emit(h, 2); }   /* little-endian 16-bit */
 	} else if (!strcmp(d, ".bss")) {
 		sec_get(".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE);
 	} else if (!strcmp(d, ".space") || !strcmp(d, ".skip") || !strcmp(d, ".zero")) {

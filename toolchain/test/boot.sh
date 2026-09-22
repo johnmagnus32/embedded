@@ -10,7 +10,7 @@
 # libc/test/dynamic.sh). So it stays a component test, decoupled from the engine.
 #
 # ---- INPUT CONTRACT (environment) -------------------------------------------
-#   CC             (required) our gcc-shaped driver, e.g. .../bin/arm-forge-custom-gcc
+#   CC             (required) our gcc-shaped driver, e.g. .../bin/arm-os-custom-gcc
 #   LIBC_STAGE     (required) dir holding crt0.S.o + libc.a (the static libc stage)
 #   LIBC_INCLUDE   (required) our libc headers dir (-I)
 #   UAPI_INCLUDE   (required) staged kernel UAPI headers dir (-I)
@@ -20,7 +20,7 @@
 #
 # Exit 0 iff the program booted and printed its marker.
 set -u
-: "${CC:?boot.sh: set CC=<forge-cc driver>}"
+: "${CC:?boot.sh: set CC=<os-cc driver>}"
 : "${LIBC_STAGE:?boot.sh: set LIBC_STAGE=<dir with crt0.S.o + libc.a>}"
 : "${LIBC_INCLUDE:?boot.sh: set LIBC_INCLUDE=<our libc headers dir>}"
 : "${UAPI_INCLUDE:?boot.sh: set UAPI_INCLUDE=<staged kernel UAPI headers dir>}"

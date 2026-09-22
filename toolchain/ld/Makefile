@@ -9,7 +9,7 @@ CFLAGS += -I$(COMMON)
 
 OURAS := ../as/build/as
 OURCC := ../cc/build/cc
-GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
+GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
 QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent

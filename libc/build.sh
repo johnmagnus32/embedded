@@ -1,7 +1,7 @@
 # libc/build.sh — libc's BUILD PROCEDURE (how to BUILD this libc).
 #
 # The libc-provider analogue of the kernel/u-boot providers' build.sh: the engine
-# (forge/core/classes/libc.sh) stays libc-agnostic and runs this when the selected
+# (os/meta/classes-recipe/libc.sh) stays libc-agnostic and runs this when the selected
 # libc is this from-source provider. All libc build knowledge — compile crt0 +
 # every unit, archive (static) or shared-lib + the ld.so.1 dynamic linker
 # (dynamic), and stage the kernel UAPI snapshot — lives HERE, with the libc. A
@@ -47,12 +47,21 @@ done
 
 # 4. archive (static) and/or shared lib + the dynamic linker (dynamic).
 if [ "${PKG_LINK}" = dynamic ]; then
-  "${PKG_CC}" ${PKG_CFLAGS} -fPIC -shared -nostdlib -Wl,--build-id=none \
-    -Wl,-soname,libc.so "${OBJS[@]}" ${LIBGCC} -o "${LIBC_STAGE_DIR}/libc.so"
-  # the from-scratch dynamic linker rides WITH the libc (ld/ Makefile), built into
-  # the libc staging dir.
-  make -C "${LIBC_PROVIDER_DIR}/ld" BUILD="${LIBC_STAGE_DIR}/ld-build" BOARD="${ROOTFS_TARGET}" >/dev/null 2>&1
-  cp -f "${LIBC_STAGE_DIR}/ld-build/ld.so.1" "${LIBC_STAGE_DIR}/ld.so.1"
+  if [ "${PROVIDER_cross_cc}" = toolchain-custom ]; then
+    # OUR from-scratch PIC toolchain: os-cc-native flags (it drops -Wl,/-nostdlib; PKG_CFLAGS carries -fPIC;
+    # no libgcc). libc.so is W^X-clean (globals/strings via the GOT). ld.so.1 built inline: dl_entry.S (self-
+    # relocating _start) + dl_main.c, -e _start. Both are ET_DYN, position-independent.
+    "${PKG_CC}" ${PKG_CFLAGS} -shared -soname libc.so.1 "${OBJS[@]}" -o "${LIBC_STAGE_DIR}/libc.so"
+    "${PKG_CC}" ${PKG_CFLAGS} -I"${LIBC_PROVIDER_DIR}/ld/src" -c "${LIBC_PROVIDER_DIR}/ld/src/dl_main.c" -o "${LIBC_STAGE_DIR}/dl_main.o"
+    "${PKG_CC}" -c "${LIBC_PROVIDER_DIR}/ld/src/dl_entry.S" -o "${LIBC_STAGE_DIR}/dl_entry.o"
+    "${PKG_CC}" -shared -e _start -soname ld.so.1 "${LIBC_STAGE_DIR}/dl_entry.o" "${LIBC_STAGE_DIR}/dl_main.o" -o "${LIBC_STAGE_DIR}/ld.so.1"
+  else
+    "${PKG_CC}" ${PKG_CFLAGS} -fPIC -shared -nostdlib -Wl,--build-id=none \
+      -Wl,-soname,libc.so "${OBJS[@]}" ${LIBGCC} -o "${LIBC_STAGE_DIR}/libc.so"
+    # the from-scratch dynamic linker rides WITH the libc (ld/ Makefile), built into the libc staging dir.
+    make -C "${LIBC_PROVIDER_DIR}/ld" BUILD="${LIBC_STAGE_DIR}/ld-build" BOARD="${ROOTFS_TARGET}" >/dev/null 2>&1
+    cp -f "${LIBC_STAGE_DIR}/ld-build/ld.so.1" "${LIBC_STAGE_DIR}/ld.so.1"
+  fi
   echo "  [libc] libc.so + ld.so.1 -> ${LIBC_STAGE_DIR}"
   # PRODUCE-ONLY: libc.so + ld.so.1 land in LIBC_STAGE_DIR, a self-contained artifact.
   # INSTALLING them into the image's /lib is the ROOTFS assembler's job (§3f) — a producer

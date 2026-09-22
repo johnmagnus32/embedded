@@ -83,6 +83,7 @@ typedef struct {
 
 /* ARM relocation types we handle (the only ones our binaries emit). */
 #define R_ARM_ABS32     2   /* S + A                                    */
+#define R_ARM_COPY      20  /* copy st_size bytes from S into the slot  */
 #define R_ARM_GLOB_DAT  21  /* GOT data word:  S + A                    */
 #define R_ARM_JUMP_SLOT 22  /* PLT slot:       S (+ A)                  */
 #define R_ARM_RELATIVE  23  /* base-relative:  B + A  (no symbol)       */

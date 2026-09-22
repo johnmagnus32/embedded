@@ -3,8 +3,8 @@
  * alignment, and a growable string-table builder (used to assemble .strtab/.shstrtab). Pure utilities,
  * no tool logic — the reusable primitives underneath both the assembler's and linker's ELF writers.
  */
-#ifndef FORGE_ELFUTIL_H
-#define FORGE_ELFUTIL_H
+#ifndef OS_ELFUTIL_H
+#define OS_ELFUTIL_H
 #include <stddef.h>
 #include "elf.h"
 

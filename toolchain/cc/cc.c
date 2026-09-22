@@ -17,10 +17,13 @@ void die(const char *fmt, ...) {
 	fputs("cc: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
+int pic = 0;   /* -fPIC: emit position-independent code (global/string access via the GOT) */
+
 int main(int argc, char **argv) {
 	const char *out = "a.s", *in = NULL;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
+		else if (!strcmp(argv[i], "-fPIC") || !strcmp(argv[i], "-fpic")) pic = 1;
 		else if (argv[i][0] != '-') in = argv[i];
 		else die("unknown option '%s'", argv[i]);
 	}

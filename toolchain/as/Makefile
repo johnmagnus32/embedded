@@ -9,7 +9,7 @@ CFLAGS += -I$(COMMON)
 
 # GNU binutils prefix used as the GOLD reference for `make test` (default: our stage-1 from-source
 # toolchain). Override on the CLI, e.g. `make test GNU=arm-linux-gnueabihf-`. Tests SKIP if it's absent.
-GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
+GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
 
 # Test inputs as `source.s:codesection` pairs — our .o's <codesection> bytes must match GNU as's exactly.
 TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_data.s:.text tests/m2_wide.s:.text tests/m2_secsym.s:.rodata tests/m1_branch.s:.text tests/m2_branch.s:.text ../../libc/src/crt/crt0.S:.text._start \

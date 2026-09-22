@@ -28,10 +28,15 @@ typedef struct Token {
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
-typedef enum { TY_INT, TY_CHAR, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
+typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
 typedef struct Member { char name[64]; struct Type *type; int offset; struct Member *next; } Member;
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; } Type;
-extern Type *ty_int, *ty_char;               /* the two scalar singletons */
+/* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing. */
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; } Type;
+extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
+extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
+extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
+Type *usual_arith(Type *a, Type *b);         /* usual-arithmetic-conversion result type (drives op width+sign) */
+Type *func_ret_type(const char *name);       /* a called function's declared return type (NULL if unknown) */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
 Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);
@@ -74,7 +79,14 @@ typedef struct Node {
 /* A compiled function: name, its parameter count, the total stack frame it needs, and its body list. */
 typedef struct Func {
 	char name[64];
+	Type *ret_type;              /* declared return type (so `return e` widens to 64-bit when needed) */
 	int nparams;                 /* number of NAMED params (excludes the variadic `...`)         */
+	/* 64-bit args occupy TWO consecutive argument WORDS; the first 4 words arrive in r0..r3, the rest on
+	 * the stack. arg_regs = how many of r0..r3 hold incoming words; arg_off[w] = the frame byte offset the
+	 * prologue spills register-word w to (0 = skip); nfixed_words = word count of the fixed params (va_start). */
+	int nfixed_words;
+	int arg_regs;
+	int arg_off[4];
 	int variadic;                /* 1 if declared with `...` (needs the register-save prologue)  */
 	int is_static;               /* 1 if `static` — file-local symbol, emit no .global            */
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
@@ -104,6 +116,7 @@ typedef struct Gvar {
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
+extern int pic;                  /* -fPIC: global/string access goes through the GOT (position-independent) */
 
 Func *parse(Token *tok);         /* tokens -> a list of functions (+ fills `globals`) */
 

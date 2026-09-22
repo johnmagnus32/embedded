@@ -43,7 +43,7 @@ static inline uint32_t elf_hash(const char *name)
 	while (*name) {
 		h = (h << 4) + (unsigned char)*name++;
 		g = h & 0xf0000000u;
-		if (g) h ^= g >> 24;
+		if (g) h ^= g >> 24;   /* g is uint32_t -> a logical shift (our cc now emits lsr for unsigned) */
 		h &= ~g;
 	}
 	return h;
@@ -55,6 +55,9 @@ static inline uint32_t elf_hash(const char *name)
  * symbol is undefined (SHN_UNDEF) in this object. Only GLOBAL/WEAK defined
  * symbols are considered (the export set of a .so).
  */
+/* Symbol fields are read with natural struct access: our cc now has a 2-byte type (short/uint16_t), so it
+ * lays Elf32_Sym out exactly as the ABI does — st_shndx@14, sizeof 16 — and symtab[i] strides correctly.
+ * (DT_SYMENT is 16 for every ELF32; d->syment carries it but the layout is the same either way.) */
 static inline Elf32_Addr dso_lookup(const dso_t *d, const char *name)
 {
 	if (!d->hash || !d->symtab || !d->strtab)
@@ -66,18 +69,18 @@ static inline Elf32_Addr dso_lookup(const dso_t *d, const char *name)
 
 	uint32_t h = elf_hash(name);
 	for (uint32_t i = bucket[h % nbucket]; i != 0 /*STN_UNDEF*/; i = chain[i]) {
-		const Elf32_Sym *s = &d->symtab[i];
-		if (s->st_shndx == SHN_UNDEF)          /* imported here, not a definition */
+		const Elf32_Sym *sym = &d->symtab[i];
+		if (sym->st_shndx == SHN_UNDEF)        /* imported here, not a definition */
 			continue;
-		int bind = ELF32_ST_BIND(s->st_info);
+		int bind = ELF32_ST_BIND(sym->st_info);
 		if (bind != STB_GLOBAL && bind != STB_WEAK)
 			continue;
-		const char *sname = d->strtab + s->st_name;
+		const char *sname = d->strtab + sym->st_name;
 		/* inline strcmp (no libc dependency) */
 		const char *a = sname, *b = name;
 		while (*a && *a == *b) { a++; b++; }
 		if (*a == *b)
-			return s->st_value + d->base;
+			return sym->st_value + d->base;
 	}
 	return 0;
 }
@@ -139,13 +142,28 @@ static inline int reloc_apply(const dso_t *self, const dso_t *provider,
 	Elf32_Addr S = 0;
 	int is_weak = 0;
 	if (type != R_ARM_RELATIVE) {
-		const Elf32_Sym *sym = &self->symtab[symidx];
-		const char *name = self->strtab + sym->st_name;
+		const char *name = self->strtab + self->symtab[symidx].st_name;
 		S = dso_lookup(provider, name);
 		if (S == 0)
 			S = dso_lookup(self, name);   /* local definition fallback */
+		if (S == 0) {
+			int bind = ELF32_ST_BIND(self->symtab[symidx].st_info);   /* bind on its own line (cc shift-compare) */
+			if (bind == STB_WEAK) is_weak = 1;
+		}
+	}
+
+	/* R_ARM_COPY (non-PIC exe importing a variable): the linker put a slot in our .dynbss at r_offset
+	 * and every ref points there; here we copy the variable's bytes from its provider definition (S)
+	 * into that slot. Length is the import's st_size (recorded by the linker in our .dynsym). Not a
+	 * value-store, so it's handled before reloc_value(). */
+	if (type == R_ARM_COPY) {
 		if (S == 0)
-			is_weak = (ELF32_ST_BIND(sym->st_info) == STB_WEAK);
+			return 0;   /* unresolved definition */
+		uint8_t *dst = (uint8_t *)where, *src = (uint8_t *)(uintptr_t)S;
+		uint32_t n = self->symtab[symidx].st_size;
+		for (uint32_t i = 0; i < n; i++)
+			dst[i] = src[i];
+		return 1;
 	}
 
 	reloc_value_t rv = reloc_value(type, self->base, S, addend);
@@ -156,9 +174,11 @@ static inline int reloc_apply(const dso_t *self, const dso_t *provider,
 		 * imports __register_frame_info/__deregister_frame_info as WEAK and NULL-checks
 		 * them, so a minimal libc that doesn't provide them is fine. (The -nostartfiles
 		 * LIBC=custom binaries carry no such weak imports, so this path is unreachable there.) */
-		if (is_weak && (type == R_ARM_JUMP_SLOT || type == R_ARM_GLOB_DAT || type == R_ARM_ABS32)) {
-			*where = 0;
-			return 1;
+		if (is_weak) {
+			if (type == R_ARM_JUMP_SLOT || type == R_ARM_GLOB_DAT || type == R_ARM_ABS32) {
+				*where = 0;
+				return 1;
+			}
 		}
 		return 0;
 	}

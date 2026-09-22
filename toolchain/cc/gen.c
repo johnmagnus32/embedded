@@ -21,7 +21,9 @@ static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none
  * address is fetched pc-relative from a `.word <sym>` we drop just past the function's code. */
 static int cur_func_id, func_seq;
 static int cur_nfixed, cur_variadic;   /* current function's fixed-param count + whether it's variadic */
+static Type *cur_ret;                  /* current function's return type (so `return e` widens to 64-bit) */
 static char pool[64][64]; static int npool;
+static int ngot;   /* -fPIC: per-function counter for GOT-access labels (.LGOT/.LGA) */
 
 /* Per-function C-label -> asm-label-id map (goto/label; forward references get an id on first sight). */
 static struct { char name[64]; int id; } clabels[128]; static int nclabels;
@@ -34,6 +36,7 @@ static int clabel_id(const char *name) {
 static void gen_expr(Node *n);
 static void gen_stmt(Node *n);
 static void gen_addr(Node *n);
+static void gen_binary64(Node *n);
 
 /* Materialize a 32-bit constant into r0 with movw (+movt for the high half) — no literal pool needed. */
 static void load_imm(const char *reg, long v) {
@@ -42,14 +45,50 @@ static void load_imm(const char *reg, long v) {
 	if (u >> 16) fprintf(o, "\tmovt %s, #%u\n", reg, (u >> 16) & 0xffff);
 }
 
-/* Emit `cmp r0,r1` then set r0 to 0/1 by the signed condition — the shape of every comparison operator. */
+/* Emit `cmp r0,r1` then set r0 to 0/1 by the given condition — the shape of every comparison operator. */
 static void gen_setcc(const char *cc) {
 	fprintf(o, "\tcmp r0, r1\n\tmov r0, #0\n\tmov%s r0, #1\n", cc);
 }
 
-/* Load/store through an address by WIDTH: char is one byte (ldrb/strb, zero-extended), int/pointer four. */
-static void load(Type *ty)  { fprintf(o, ty->size == 1 ? "\tldrb r0, [r0]\n" : "\tldr r0, [r0]\n"); }   /* r0=addr -> r0=value */
-static void store(Type *ty) { fprintf(o, ty->size == 1 ? "\tstrb r0, [r1]\n" : "\tstr r0, [r1]\n"); }   /* r1=addr, r0=value */
+/* Is a scalar type unsigned AFTER integer promotion? (char/short promote to signed int; unsigned int/long/
+ * long long stay unsigned.) Drives lsr-vs-asr and the shift result sign. */
+static int uns(Type *t) { return t && t->is_unsigned && t->size >= 4; }
+/* Signedness of a binary op under the usual arithmetic conversions (correct across mixed 32/64 widths). */
+static int op_uns(Node *n) { return usual_arith(n->lhs->type, n->rhs->type)->is_unsigned; }
+
+/* A 64-bit value lives in the register PAIR r0(low):r1(high); everything else lives in r0. */
+static int is64(Type *t) { return t && t->size == 8; }
+/* Widen the 32-bit value in r0 into the pair r0:r1 (sign- or zero-extend by the source's sign). */
+static void extend64(Type *from) {
+	fprintf(o, from && from->is_unsigned ? "\tmov r1, #0\n" : "\tasr r1, r0, #31\n");
+}
+/* Evaluate n; if the surrounding context wants 64 bits but n is 32-bit, widen r0 into r0:r1. */
+static void gen_expr_w(Node *n, int want64) {
+	gen_expr(n);
+	if (want64 && !is64(n->type)) extend64(n->type);
+}
+
+/* Load/store through an address by WIDTH: 1/2/4 -> ldrb|ldrsb / ldrh|ldrsh / ldr (narrow loads sign- or
+ * zero-extend by the type's sign); 8 -> a register pair (r0=low, r1=high). Stores don't care about sign. */
+static void load(Type *ty) {   /* r0=addr -> r0(:r1)=value */
+	if      (ty->size == 1) fprintf(o, ty->is_unsigned ? "\tldrb r0, [r0]\n"  : "\tldrsb r0, [r0]\n");
+	else if (ty->size == 2) fprintf(o, ty->is_unsigned ? "\tldrh r0, [r0]\n"  : "\tldrsh r0, [r0]\n");
+	else if (ty->size == 8) fprintf(o, "\tldr r1, [r0, #4]\n\tldr r0, [r0]\n");   /* high first (r0 is the addr) */
+	else                    fprintf(o, "\tldr r0, [r0]\n");
+}
+static void store(Type *ty) {   /* addr in r1 (32-bit) / r2 (64-bit); value in r0(:r1) */
+	if      (ty->size == 1) fprintf(o, "\tstrb r0, [r1]\n");
+	else if (ty->size == 2) fprintf(o, "\tstrh r0, [r1]\n");
+	else if (ty->size == 8) fprintf(o, "\tstr r0, [r2]\n\tstr r1, [r2, #4]\n");   /* value pair r0:r1, addr r2 */
+	else                    fprintf(o, "\tstr r0, [r1]\n");
+}
+/* (type) cast on the value in r0: narrowing to char/short truncates + re-extends per the target's sign;
+ * widening to int/pointer is a no-op (a narrow load already extended). Non-scalar targets: nothing to do. */
+static void gen_cast(Type *ty) {
+	if (ty->kind == TY_PTR || ty->kind == TY_ARRAY || ty->kind == TY_STRUCT) return;
+	if      (ty->size == 1) fprintf(o, ty->is_unsigned ? "\tuxtb r0, r0\n" : "\tsxtb r0, r0\n");
+	else if (ty->size == 2) fprintf(o, ty->is_unsigned ? "\tuxth r0, r0\n" : "\tsxth r0, r0\n");
+}
 
 /* Put the ADDRESS of an lvalue in r0. A variable's address is fp+offset; *p's address is p's value. */
 static void gen_addr(Node *n) {
@@ -60,7 +99,23 @@ static void gen_addr(Node *n) {
 		return;
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
 	case ND_MEMBER: gen_addr(n->lhs); if (n->offset) fprintf(o, "\tadd r0, r0, #%d\n", n->offset); return;
-	case ND_GVAR: {                                                          /* address via the literal pool */
+	case ND_GVAR: {
+		if (pic) {
+			/* PIC: r0 = &sym via the GOT. The `add` sits exactly 8 bytes before the inline literal so
+			 * its pc equals the literal's address (P) — the R_ARM_GOT_PREL is then just GOT(sym)-P.
+			 * A branch skips the literal so it isn't executed. No absolute address touches .text. */
+			int g = ngot++;
+			fprintf(o,
+			    "\tldr r0, .LGOT%d_%d\n"        /* r0 = GOT(sym) - P  (P = address of the .word below) */
+			    "\tadd r0, pc, r0\n"            /* r0 = &GOT[sym]     (pc here == P)                    */
+			    "\tb .LGA%d_%d\n"               /* skip the inline literal                              */
+			    ".LGOT%d_%d:\n\t.word %s(GOT)\n"
+			    ".LGA%d_%d:\n"
+			    "\tldr r0, [r0]\n",             /* r0 = GOT[sym] = &sym                                 */
+			    cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+			return;
+		}
+		/* non-PIC: address via the per-function literal pool (`ldr r0,.LCPIk` + `.word sym` past the code) */
 		if (npool >= 64) die("cc: too many pooled addresses in one function");
 		int k = npool++; strncpy(pool[k], n->name, 63);
 		fprintf(o, "\tldr r0, .LCPI%d_%d\n", cur_func_id, k);
@@ -70,29 +125,91 @@ static void gen_addr(Node *n) {
 	}
 }
 
+/* Variable 64-bit shift of the pair r0:r1 by the count in r2 (0..63), result in r0:r1. Uses the canonical
+ * predicated sequence (no branches): `subs r12,r2,#32` splits the count<32 (mi) and count>=32 (pl) cases;
+ * r3 = 32-count feeds the cross-word carry. `right`=1 shifts right (`arith`=1 -> asr sign fill, else lsr);
+ * `right`=0 is left. r12/r3 are caller-saved scratch. */
+static void gen_shift64(int right, int arith) {
+	fprintf(o, "\tsubs r12, r2, #32\n\trsb r3, r2, #32\n");
+	if (!right)          /* LSL */
+		fprintf(o, "\tmovpl r1, r0, lsl r12\n\tmovmi r1, r1, lsl r2\n\torrmi r1, r1, r0, lsr r3\n\tlsl r0, r0, r2\n");
+	else if (arith)      /* ASR (signed) */
+		fprintf(o, "\tmovpl r0, r1, asr r12\n\tmovmi r0, r0, lsr r2\n\torrmi r0, r0, r1, lsl r3\n\tasr r1, r1, r2\n");
+	else                 /* LSR (unsigned) */
+		fprintf(o, "\tmovpl r0, r1, lsr r12\n\tmovmi r0, r0, lsr r2\n\torrmi r0, r0, r1, lsl r3\n\tlsr r1, r1, r2\n");
+}
+
+/* A binary op whose operands are 64-bit: evaluate lhs -> r0:r1 (widened), stash it, evaluate rhs -> r2:r3,
+ * restore lhs, then combine into r0:r1 (a comparison instead leaves a 32-bit 0/1 in r0). Signedness `u`
+ * (usual arithmetic conversions) selects lsr/asr, the signed/unsigned divmod helper, and compare conditions. */
+static void gen_binary64(Node *n) {
+	int u = op_uns(n);
+	gen_expr_w(n->lhs, 1); fprintf(o, "\tpush {r0, r1}\n");
+	gen_expr_w(n->rhs, 1); fprintf(o, "\tmov r2, r0\n\tmov r3, r1\n\tpop {r0, r1}\n");   /* rhs->r2:r3, lhs->r0:r1 */
+	switch (n->kind) {
+	case ND_ADD:    fprintf(o, "\tadds r0, r0, r2\n\tadc r1, r1, r3\n"); return;
+	case ND_SUB:    fprintf(o, "\tsubs r0, r0, r2\n\tsbc r1, r1, r3\n"); return;
+	case ND_BITAND: fprintf(o, "\tand r0, r0, r2\n\tand r1, r1, r3\n"); return;
+	case ND_BITOR:  fprintf(o, "\torr r0, r0, r2\n\torr r1, r1, r3\n"); return;
+	case ND_BITXOR: fprintf(o, "\teor r0, r0, r2\n\teor r1, r1, r3\n"); return;
+	case ND_MUL:    /* low 64 of the product: al*bl (full) + (al*bh + ah*bl)<<32 */
+		fprintf(o, "\tmul r1, r1, r2\n\tmla r1, r0, r3, r1\n\tumull r0, r12, r0, r2\n\tadd r1, r1, r12\n"); return;
+	case ND_SHL:    gen_shift64(0, 0);   return;   /* shift count is already in r2 (rhs low word) */
+	case ND_SHR:    gen_shift64(1, !u);  return;   /* right: logical if unsigned, arithmetic if signed */
+	case ND_DIV:    fprintf(o, u ? "\tbl __udivdi3\n" : "\tbl __divdi3\n"); return; /* n=r0:r1 d=r2:r3 -> q=r0:r1 */
+	case ND_MOD:    fprintf(o, u ? "\tbl __umoddi3\n" : "\tbl __moddi3\n"); return; /*                 -> r=r0:r1 */
+	case ND_EQ:     fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
+	case ND_NE:     fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tmov r0, #0\n\tmovne r0, #1\n"); return;
+	/* ordering via a full 64-bit subtract (subs/sbcs set N,V,C for the whole result); only lt/ge (signed)
+	 * or lo/hs (unsigned) are used — they don't need Z, which sbcs sets from the high word alone. a>b and
+	 * a<=b subtract in the reverse order (b-a) so the same two conditions cover all four. */
+	case ND_LT: fprintf(o, "\tsubs r0, r0, r2\n\tsbcs r1, r1, r3\n\tmov r0, #0\n\tmov%s r0, #1\n", u ? "lo" : "lt"); return;
+	case ND_GE: fprintf(o, "\tsubs r0, r0, r2\n\tsbcs r1, r1, r3\n\tmov r0, #0\n\tmov%s r0, #1\n", u ? "hs" : "ge"); return;
+	case ND_GT: fprintf(o, "\tsubs r0, r2, r0\n\tsbcs r1, r3, r1\n\tmov r0, #0\n\tmov%s r0, #1\n", u ? "lo" : "lt"); return;
+	case ND_LE: fprintf(o, "\tsubs r0, r2, r0\n\tsbcs r1, r3, r1\n\tmov r0, #0\n\tmov%s r0, #1\n", u ? "hs" : "ge"); return;
+	default: die("cc: unsupported 64-bit operator (node %d)", n->kind);
+	}
+}
+
 static void gen_expr(Node *n) {
 	switch (n->kind) {
-	case ND_NUM:  load_imm("r0", n->val); return;
+	case ND_NUM:                                                 /* 64-bit literal fills the pair r0:r1 */
+		if (is64(n->type)) { load_imm("r0", n->val & 0xffffffff); load_imm("r1", (n->val >> 32) & 0xffffffff); }
+		else load_imm("r0", n->val);
+		return;
 	case ND_VAR: case ND_GVAR: case ND_MEMBER:             /* address -> r0; scalars then load, arrays decay */
 		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
-		gen_expr(n->rhs); fprintf(o, "\tpop {r1}\n");       /* value in r0, address in r1 */
-		store(n->lhs->type);                                /* store by width; r0 keeps the value (assignment result) */
+		gen_expr_w(n->rhs, is64(n->lhs->type));             /* value in r0(:r1), widened to the dest width */
+		if (is64(n->lhs->type)) { fprintf(o, "\tpop {r2}\n"); store(n->lhs->type); }   /* addr r2; str r0:r1 */
+		else { fprintf(o, "\tpop {r1}\n"); store(n->lhs->type); }                      /* addr r1; store by width */
+		return;                                             /* r0(:r1) keeps the value (assignment result) */
+	case ND_CAST:   gen_expr(n->lhs);
+		if (is64(n->type)) { if (!is64(n->lhs->type)) extend64(n->lhs->type); }   /* widen 32->64 (sign/zero) */
+		else gen_cast(n->type);                                                   /* 64->32 keeps r0 low word; then narrow to char/short */
 		return;
-	case ND_CAST:   gen_expr(n->lhs); if (n->type->size == 1) fprintf(o, "\tand r0, r0, #255\n"); return;   /* char cast truncates */
 	case ND_COMMA:  gen_expr(n->lhs); gen_expr(n->rhs); return;   /* evaluate left (discard), then right */
 	case ND_VA_START:                                            /* ap = &(first variadic arg) */
 		gen_addr(n->lhs); fprintf(o, "\tadd r1, r11, #%d\n\tstr r1, [r0]\n", 8 + 4 * cur_nfixed);
 		return;
-	case ND_VA_ARG:                                              /* r0 = *ap; ap += 4 */
+	case ND_VA_ARG:                                              /* fetch *ap, advance ap by the arg width */
 		gen_addr(n->lhs);
-		fprintf(o, "\tldr r1, [r0]\n\tadd r2, r1, #4\n\tstr r2, [r0]\n\tldr r0, [r1]\n");
+		if (is64(n->type))   /* 64-bit: r0=low@[ap], r1=high@[ap+4]; ap += 8 */
+			fprintf(o, "\tldr r2, [r0]\n\tldr r1, [r2, #4]\n\tadd r3, r2, #8\n\tstr r3, [r0]\n\tldr r0, [r2]\n");
+		else
+			fprintf(o, "\tldr r1, [r0]\n\tadd r2, r1, #4\n\tstr r2, [r0]\n\tldr r0, [r1]\n");
 		return;
-	case ND_NEG:    gen_expr(n->lhs); fprintf(o, "\trsb r0, r0, #0\n"); return;
-	case ND_BITNOT: gen_expr(n->lhs); fprintf(o, "\tmvn r0, r0\n"); return;
+	case ND_NEG:    gen_expr_w(n->lhs, is64(n->type));
+		if (is64(n->type)) fprintf(o, "\trsbs r0, r0, #0\n\trsc r1, r1, #0\n");   /* 0 - value (64-bit) */
+		else               fprintf(o, "\trsb r0, r0, #0\n");
+		return;
+	case ND_BITNOT: gen_expr_w(n->lhs, is64(n->type));
+		if (is64(n->type)) fprintf(o, "\tmvn r0, r0\n\tmvn r1, r1\n");
+		else               fprintf(o, "\tmvn r0, r0\n");
+		return;
 	case ND_NOT:    gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
 	case ND_AND: {                                          /* a && b — short-circuit */
 		int f = uniq(), e = uniq();
@@ -108,23 +225,27 @@ static void gen_expr(Node *n) {
 		fprintf(o, "\tmov r0, #0\n\tb .L%d\n.L%d:\n\tmov r0, #1\n.L%d:\n", e, t, e);
 		return;
 	}
-	case ND_COND: {                                         /* cond ? then : els */
-		int els = uniq(), end = uniq();
+	case ND_COND: {                                         /* cond ? then : els — both arms widened to the result width */
+		int els = uniq(), end = uniq(), w = is64(n->type);
 		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", els);
-		gen_expr(n->then); fprintf(o, "\tb .L%d\n.L%d:\n", end, els);
-		gen_expr(n->els);  fprintf(o, ".L%d:\n", end);
+		gen_expr_w(n->then, w); fprintf(o, "\tb .L%d\n.L%d:\n", end, els);
+		gen_expr_w(n->els, w);  fprintf(o, ".L%d:\n", end);
 		return;
 	}
 	case ND_CALL: {
 		Node *av[32]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 32) die("cc: too many args"); av[nargs++] = a; }
-		int stackn = nargs > 4 ? nargs - 4 : 0;             /* args beyond the 4th go on the stack   */
+		int words = 0; for (int i = 0; i < nargs; i++) words += is64(av[i]->type) ? 2 : 1;   /* 64-bit arg = 2 words */
+		int stackn = words > 4 ? words - 4 : 0;             /* words beyond the first 4 go on the stack */
 		int cw = n->lhs ? 4 : 0;                            /* indirect: the fn ptr is stashed below the stack args */
 		int pad = ((4 * stackn + cw) & 7) ? 4 : 0;          /* keep sp 8-aligned at the (b)lx (AAPCS)  */
 		if (pad) fprintf(o, "\tsub sp, sp, #4\n");
 		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tpush {r0}\n"); }   /* evaluate + stash the callee pointer */
-		for (int i = nargs - 1; i >= 0; i--) { gen_expr(av[i]); fprintf(o, "\tpush {r0}\n"); }  /* arg0 ends on top */
-		int nreg = nargs < 4 ? nargs : 4;
-		for (int i = 0; i < nreg; i++) fprintf(o, "\tpop {r%d}\n", i);   /* r0..r3; sp then points at arg4 */
+		for (int i = nargs - 1; i >= 0; i--) {              /* push args right-to-left; arg0's low word ends on top */
+			gen_expr(av[i]);
+			fprintf(o, is64(av[i]->type) ? "\tpush {r0, r1}\n" : "\tpush {r0}\n");   /* low at lower addr */
+		}
+		int nreg = words < 4 ? words : 4;
+		for (int i = 0; i < nreg; i++) fprintf(o, "\tpop {r%d}\n", i);   /* first 4 words -> r0..r3 */
 		if (n->lhs) fprintf(o, "\tldr r12, [sp, #%d]\n\tblx r12\n", 4 * stackn);   /* indirect: call through the stashed ptr */
 		else        fprintf(o, "\tbl %s\n", n->name);                              /* direct; result in r0 */
 		if (stackn || cw || pad) fprintf(o, "\tadd sp, sp, #%d\n", 4 * stackn + cw + pad);   /* drop stack args + callee + pad */
@@ -133,6 +254,12 @@ static void gen_expr(Node *n) {
 	default: break;
 	}
 
+	/* 64-bit operand(s) -> the register-pair path. A comparison yields a 32-bit bool but reads 64-bit
+	 * operands, so decide by the operands; every other op's result width is exactly n->type (add_type set
+	 * shifts to promote(lhs), arithmetic to usual_arith), so decide by that. */
+	int is_cmp = n->kind==ND_EQ||n->kind==ND_NE||n->kind==ND_LT||n->kind==ND_LE||n->kind==ND_GT||n->kind==ND_GE;
+	if (is_cmp ? (is64(n->lhs->type) || is64(n->rhs->type)) : is64(n->type)) { gen_binary64(n); return; }
+
 	/* binary operators: left -> r0 (saved), right -> r1, combine into r0 */
 	gen_expr(n->lhs); fprintf(o, "\tpush {r0}\n");
 	gen_expr(n->rhs); fprintf(o, "\tmov r1, r0\n\tpop {r0}\n");
@@ -140,26 +267,28 @@ static void gen_expr(Node *n) {
 	case ND_ADD:    fprintf(o, "\tadd r0, r0, r1\n"); break;
 	case ND_SUB:    fprintf(o, "\tsub r0, r0, r1\n"); break;
 	case ND_MUL:    fprintf(o, "\tmul r0, r0, r1\n"); break;
-	case ND_DIV:    fprintf(o, "\tsdiv r0, r0, r1\n"); break;
-	case ND_MOD:    fprintf(o, "\tsdiv r2, r0, r1\n\tmls r0, r2, r1, r0\n"); break;   /* r0 = r0 - (r0/r1)*r1 */
+	case ND_DIV:    fprintf(o, op_uns(n) ? "\tudiv r0, r0, r1\n" : "\tsdiv r0, r0, r1\n"); break;
+	case ND_MOD:    fprintf(o, op_uns(n) ? "\tudiv r2, r0, r1\n\tmls r0, r2, r1, r0\n"      /* r0 = r0 - (r0/r1)*r1 */
+	                                     : "\tsdiv r2, r0, r1\n\tmls r0, r2, r1, r0\n"); break;
 	case ND_BITAND: fprintf(o, "\tand r0, r0, r1\n"); break;
 	case ND_BITOR:  fprintf(o, "\torr r0, r0, r1\n"); break;
 	case ND_BITXOR: fprintf(o, "\teor r0, r0, r1\n"); break;
 	case ND_SHL:    fprintf(o, "\tlsl r0, r0, r1\n"); break;
-	case ND_SHR:    fprintf(o, "\tasr r0, r0, r1\n"); break;                          /* arithmetic (signed int) */
+	case ND_SHR:    fprintf(o, uns(n->lhs->type) ? "\tlsr r0, r0, r1\n"                     /* unsigned: logical */
+	                                             : "\tasr r0, r0, r1\n"); break;            /* signed: arithmetic */
 	case ND_EQ: gen_setcc("eq"); break;
 	case ND_NE: gen_setcc("ne"); break;
-	case ND_LT: gen_setcc("lt"); break;
-	case ND_LE: gen_setcc("le"); break;
-	case ND_GT: gen_setcc("gt"); break;
-	case ND_GE: gen_setcc("ge"); break;
+	case ND_LT: gen_setcc(op_uns(n) ? "lo" : "lt"); break;   /* unsigned lower / signed less-than       */
+	case ND_LE: gen_setcc(op_uns(n) ? "ls" : "le"); break;   /* unsigned lower-or-same / signed <=       */
+	case ND_GT: gen_setcc(op_uns(n) ? "hi" : "gt"); break;   /* unsigned higher / signed greater-than    */
+	case ND_GE: gen_setcc(op_uns(n) ? "hs" : "ge"); break;   /* unsigned higher-or-same / signed >=      */
 	default: die("cc: unhandled expr node %d", n->kind);
 	}
 }
 
 static void gen_stmt(Node *n) {
 	switch (n->kind) {
-	case ND_RETURN:   if (n->lhs) gen_expr(n->lhs); fprintf(o, "\tb .L%d\n", ret_label); return;   /* lhs NULL for `return;` */
+	case ND_RETURN:   if (n->lhs) gen_expr_w(n->lhs, is64(cur_ret)); fprintf(o, "\tb .L%d\n", ret_label); return;   /* widen to the return type; lhs NULL for `return;` */
 	case ND_EXPRSTMT: gen_expr(n->lhs); return;
 	case ND_BLOCK:    for (Node *s = n->body; s; s = s->next) gen_stmt(s); return;
 	case ND_IF: {
@@ -233,14 +362,14 @@ static void gen_stmt(Node *n) {
 }
 
 static void gen_func(Func *f) {
-	ret_label = uniq(); cur_func_id = func_seq++; npool = 0; nclabels = 0;
-	cur_nfixed = f->nparams; cur_variadic = f->variadic;
+	ret_label = uniq(); cur_func_id = func_seq++; npool = 0; nclabels = 0; ngot = 0;
+	cur_nfixed = f->nfixed_words; cur_variadic = f->variadic; cur_ret = f->ret_type;
 	if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
 	if (f->variadic) fprintf(o, "\tpush {r0, r1, r2, r3}\n");   /* save area: args become contiguous at [r11,#8+4i] */
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);
-	if (!f->variadic) for (int i = 0; i < f->nparams && i < 4; i++) fprintf(o, "\tstr r%d, [r11, #%d]\n", i, -4 * (i + 1));   /* spill r0..r3 */
+	if (!f->variadic) for (int w = 0; w < f->arg_regs; w++) if (f->arg_off[w]) fprintf(o, "\tstr r%d, [r11, #%d]\n", w, f->arg_off[w]);   /* spill incoming r0..r3 to param slots (word-based) */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
 	if (f->variadic) fprintf(o, "\tadd sp, sp, #16\n");        /* discard the r0..r3 save area */
@@ -258,19 +387,26 @@ static void gen_data(void) {
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
 		fprintf(o, "\t.data\n");
 		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
-		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n");
+		fprintf(o, "\t.type %s, %%object\n", g->name);      /* STT_OBJECT + a real .size -> exported size (copy relocs) */
+		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n"); else if (align_of(g->type) == 2) fprintf(o, "\t.align 1\n");
 		fprintf(o, "%s:\n", g->name);
 		for (Init *it = g->init; it; it = it->next) {
-			if (it->kind == INIT_CONST) fprintf(o, it->size == 1 ? "\t.byte %ld\n" : "\t.word %ld\n", it->val);
+			if (it->kind == INIT_CONST) {
+				if (it->size == 8) fprintf(o, "\t.word %ld\n\t.word %ld\n", it->val & 0xffffffff, (it->val >> 32) & 0xffffffff);   /* low, high */
+				else fprintf(o, it->size == 1 ? "\t.byte %ld\n" : it->size == 2 ? "\t.hword %ld\n" : "\t.word %ld\n", it->val);
+			}
 			else if (it->kind == INIT_SYM) fprintf(o, "\t.word %s\n", it->sym);
 			else fprintf(o, "\t.space %d\n", it->size);
 		}
+		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->init && !g->is_extern) {
 		fprintf(o, "\t.bss\n");
 		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
-		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n");
+		fprintf(o, "\t.type %s, %%object\n", g->name);
+		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n"); else if (align_of(g->type) == 2) fprintf(o, "\t.align 1\n");
 		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
+		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}
 }
 

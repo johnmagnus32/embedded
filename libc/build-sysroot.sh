@@ -1,12 +1,12 @@
 # libc/build-sysroot.sh — build this libc into a CONFORMING SYSROOT (TOOLCHAIN=source path).
 #
-# Sourced by forge/core/classes/libc.sh when TOOLCHAIN=source. Compiles the libc with the STAGE-1
+# Sourced by os/meta/classes-recipe/libc.sh when TOOLCHAIN=source. Compiles the libc with the STAGE-1
 # ("initial") from-source gcc into a Linux-style sysroot (headers + crt1/crti/crtn + libc.a + libc.so
 # + /lib/ld.so.1) at LIBC_STAGE_DIR. The stage-2 ("final") gcc is then built --with-sysroot=that, so
 # packages cross-link NORMALLY against our libc. Complete (both .a AND .so) so the final gcc serves
 # static + dynamic without a per-link rebuild of its sysroot contents.
 #
-# Contract (env in): LIBC_STAGE_DIR (output sysroot), REPO_ROOT, CROSS_COMPILE (arm-forge-…-),
+# Contract (env in): LIBC_STAGE_DIR (output sysroot), REPO_ROOT, CROSS_COMPILE (arm-none-…-),
 #   LIBC_TC_DIR (the stage-1 toolchain prefix — its bin/ has the gcc we build with),
 #   ROOTFS_TARGET (t113|virt, for the ld/ sub-make). This runs in run-recipe.sh's shell.
 : "${LIBC_STAGE_DIR:?build-sysroot.sh: LIBC_STAGE_DIR unset}"
@@ -15,7 +15,7 @@
 LIBC_PROVIDER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UAPI="${REPO_ROOT}/kernel/include/uapi"
 # stage-1 gcc by FULL PATH (NOT on PATH — packages get the stage-2 gcc via TOOLCHAIN_DIR; both
-# share the arm-forge- prefix, so we must be explicit about which one builds the libc).
+# share the arm-none- prefix, so we must be explicit about which one builds the libc).
 _CC="${LIBC_TC_DIR}/bin/${CROSS_COMPILE}gcc"
 _AR="${LIBC_TC_DIR}/bin/${CROSS_COMPILE}ar"
 [ -x "${_CC}" ] || die "build-sysroot.sh: stage-1 gcc missing: ${_CC}"

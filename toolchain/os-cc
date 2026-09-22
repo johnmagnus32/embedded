@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# forge-cc — the DRIVER for our from-scratch toolchain (the gcc-front-end analogue).
+# os-cc — the DRIVER for our from-scratch toolchain (the gcc-front-end analogue).
 #
 # Our toolchain is five separate programs (cpp, cc, as, ar, ld); a build system expects ONE
 # compiler command that behaves like `gcc`: take a .c/.S/.s (+ -I/-D/-o/-c/-E/-S), run the right
 # stages, and emit a .o or a linked ELF. This script is that front end. It parses the subset of the
-# gcc CLI that forge's compile classes and our libc's build.sh actually use, ignores the codegen/
+# gcc CLI that the os build's compile classes and our libc's build.sh actually use, ignores the codegen/
 # warning/arch flags our tools don't need, and chains the stages:
 #
 #     .c  --cpp-->  .i  --cc-->  .s  --as-->  .o   [ --ld-->  ELF ]
@@ -12,14 +12,14 @@
 #     .s            --as-->  .o
 #
 # Modes: -E (preprocess only), -S (stop at asm), -c (stop at .o), default (compile+link).
-# The real tools are installed BESIDE this script (forge-cpp/forge-cc1/forge-as/forge-ld); we find
+# The real tools are installed BESIDE this script (os-cpp/os-cc1/os-as/os-ld); we find
 # them by our own location so the driver is relocatable.
 # (No `set -u`: several arg arrays are legitimately empty — e.g. a source with no -I — and expanding
 #  an empty array under nounset aborts on older bash. Every scalar below is explicitly initialized.)
 set -eo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
-CPP="${here}/forge-cpp"; CC1="${here}/forge-cc1"; AS="${here}/forge-as"; LD="${here}/forge-ld"
+CPP="${here}/os-cpp"; CC1="${here}/os-cc1"; AS="${here}/os-as"; LD="${here}/os-ld"
 
 mode=link            # link | compile | asm | preprocess
 out=""
@@ -28,8 +28,12 @@ inputs=()            # .c/.S/.s/.i sources to run through the pipeline
 linkobjs=()          # .o/.a already-built, passed straight to ld
 ttext=""             # -Ttext <addr> forwarded to ld
 entry=""             # -e <sym> forwarded to ld
+picflag=""           # -fPIC -> forwarded to cc1 (position-independent codegen)
+shared=""            # -shared -> build a .so (ld -shared; no -Ttext/-e)
+soname=""            # -soname NAME -> ld -soname
+libargs=()           # -l<name> / -L<dir> -> forwarded to ld (dynamic link against a .so)
 
-die() { echo "forge-cc: $*" >&2; exit 1; }
+die() { echo "os-cc: $*" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,13 +49,20 @@ while [ $# -gt 0 ]; do
     -Ttext) ttext="$2"; shift ;;
     -Ttext=*) ttext="${1#-Ttext=}" ;;
     -e|--entry) entry="$2"; shift ;;
+    -shared) shared=1 ;;                     # build a shared object (ld -shared)
+    -soname) soname="$2"; shift ;;
+    -soname=*) soname="${1#-soname=}" ;;
+    -l) libargs+=("-l$2"); shift ;;          # dynamic link: -l<name> / -L<dir> forwarded to ld
+    -l*) libargs+=("$1") ;;
+    -L) libargs+=("-L$2"); shift ;;
+    -L*) libargs+=("$1") ;;
     # Flags our tools neither need nor understand — accept and ignore, like a lenient driver:
     # optimization, warnings, dialect, arch/ABI tuning, and freestanding/link toggles handled
     # implicitly by our tools (static ELF, no host libc, no PIC unless -pie is passed to ld).
+    -fPIC|-fpic) picflag="-fPIC" ;;          # position-independent codegen -> forwarded to cc1
     -O*|-g*|-W*|-f*|-m*|-std=*|-pipe|-pedantic|-ansi) ;;
-    -static|-nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s|-shared|-fPIC|-fpic) ;;
+    -static|-nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
     -Wl,*|-Wa,*|-Wp,*) ;;                    # toolchain-passthrough we don't forward (unsupported opts)
-    -l*|-L*) ;;                              # libraries are passed as explicit .a paths, not -l
     -pie|--pie) linkpie=1 ;;
     -*.o|-*.a) die "unexpected option '$1'" ;;
     *.c|*.i) inputs+=("$1") ;;
@@ -75,11 +86,11 @@ compile_one() {
     c)
       "${CPP}" "${cppargs[@]}" "${src}" > "${i}"
       [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${i}" "${out}"; else cat "${i}"; fi; return 0; }
-      "${CC1}" -o "${s}" "${i}"
+      "${CC1}" ${picflag} -o "${s}" "${i}"
       ;;
     i)
       [ "${mode}" = preprocess ] && { cat "${src}"; return 0; }
-      "${CC1}" -o "${s}" "${src}"
+      "${CC1}" ${picflag} -o "${s}" "${src}"
       ;;
     S)
       "${CPP}" "${cppargs[@]}" "${src}" > "${s}"
@@ -121,7 +132,12 @@ for src in "${inputs[@]}"; do
 done
 : "${out:=a.out}"
 ldflags=()
-[ -n "${linkpie}" ] && ldflags+=(-pie)
-[ -n "${ttext}" ] && ldflags+=(-Ttext "${ttext}")
-[ -n "${entry}" ] && ldflags+=(-e "${entry}")
-"${LD}" "${ldflags[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}"
+if [ -n "${shared}" ]; then                  # a .so: ET_DYN, base 0, no entry — -Ttext/-e don't apply
+  ldflags+=(-shared)
+  [ -n "${soname}" ] && ldflags+=(-soname "${soname}")
+else
+  [ -n "${linkpie}" ] && ldflags+=(-pie)
+  [ -n "${ttext}" ] && ldflags+=(-Ttext "${ttext}")
+  [ -n "${entry}" ] && ldflags+=(-e "${entry}")
+fi
+"${LD}" "${ldflags[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}"

@@ -7,7 +7,7 @@ COMMON := ../common
 CFLAGS += -I$(COMMON)
 
 OURAS := ../as/build/as
-GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-forge-linux-gnueabihf-
+GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
 
 $(BUILD)/ar: ar.c $(COMMON)/elf.h | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ ar.c

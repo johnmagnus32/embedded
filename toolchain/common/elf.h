@@ -5,8 +5,8 @@
  * format: no tool logic, no architecture specifics (a machine's relocation TYPES live in that tool's
  * arch backend; only the generic EM_/ET_/SHT_/… enumerations that are part of the ELF standard are here).
  */
-#ifndef FORGE_ELF_H
-#define FORGE_ELF_H
+#ifndef OS_ELF_H
+#define OS_ELF_H
 #include <stdint.h>
 
 typedef uint32_t u32; typedef uint16_t u16; typedef uint8_t u8; typedef int32_t s32;
@@ -34,6 +34,8 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define SHT_NOBITS   8
 #define SHT_REL      9
 #define SHT_DYNAMIC  6
+#define SHT_HASH     5
+#define SHT_DYNSYM   11
 #define SHF_WRITE      1
 #define SHF_ALLOC      2
 #define SHF_EXECINSTR  4
@@ -43,7 +45,9 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 /* --- symbol table: st_info bind/type ------------------------------------------------------------- */
 #define STB_LOCAL  0
 #define STB_GLOBAL 1
+#define STB_WEAK   2
 #define STT_NOTYPE  0
+#define STT_OBJECT  1
 #define STT_FUNC    2
 #define STT_SECTION 3
 #define ELF32_ST_INFO(b,t) (((b)<<4)|((t)&0xf))
@@ -56,6 +60,7 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define ELF32_R_INFO(s,t) (((s)<<8)|((t)&0xff))
 #define PT_LOAD    1
 #define PT_DYNAMIC 2     /* points the loader/self-relocator at the .dynamic array */
+#define PT_INTERP  3     /* names the runtime loader (ld.so) for a dynamically-linked consumer */
 #define PF_X 1
 #define PF_W 2
 #define PF_R 4
@@ -66,5 +71,18 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define DT_RELSZ    18           /* total size of that table, in bytes            */
 #define DT_RELENT   19           /* size of one Elf32_Rel entry (8)               */
 #define DT_RELCOUNT 0x6ffffffau  /* number of leading R_ARM_RELATIVE entries      */
+/* .dynamic tags for a shared object's exported symbol table (SysV hash) */
+#define DT_HASH     4            /* address of the SysV symbol hash table         */
+#define DT_STRTAB   5            /* address of .dynstr                            */
+#define DT_SYMTAB   6            /* address of .dynsym                            */
+#define DT_STRSZ    10           /* size of .dynstr, in bytes                     */
+#define DT_SYMENT   11           /* size of one Elf32_Sym (16 bytes)              */
+#define DT_SONAME   14           /* .dynstr offset of this object's soname        */
+/* .dynamic tags a dynamically-linked CONSUMER carries: its dependencies + PLT relocations */
+#define DT_NEEDED   1            /* .dynstr offset of a needed library's soname   */
+#define DT_PLTGOT   3            /* address of the PLT's GOT (.got.plt)           */
+#define DT_PLTRELSZ 2            /* total size of the PLT relocation table        */
+#define DT_PLTREL   20           /* type of the PLT relocs: DT_REL (our ARM REL)  */
+#define DT_JMPREL   23           /* address of the PLT relocation table (JUMP_SLOTs) */
 
 #endif
