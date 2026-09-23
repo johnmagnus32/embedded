@@ -564,6 +564,9 @@ static Node *stmt(void) {
 		do { if (tk->kind == TK_IDENT) tk = tk->next; } while (consume(","));
 		expect(";"); return node(ND_BLOCK);
 	}
+	if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) {   /* block-scope _Static_assert (e.g. in container_of's stmt-expr) — skip */
+		tk = tk->next; skip_attribute(); consume(";"); return node(ND_BLOCK);
+	}
 	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
 		Node *n = node(ND_LABEL); ident(n->name); expect(":"); return n;
