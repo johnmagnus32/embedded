@@ -577,9 +577,8 @@ static Node *stmt(void) {
 	}
 	if (consume("case")) {                                   /* case CONST: */
 		if (!cur_switch) die("parse: 'case' outside switch");
-		Node *c = conditional(); if (c->kind != ND_NUM) die("parse: case label must be a constant (line %d)", tk->line);
-		Node *n = node(ND_CASE); n->val = c->val;
-		if (consume("...")) { Node *hi = conditional(); if (hi->kind != ND_NUM) die("parse: case range end must be a constant (line %d)", tk->line); n->val2 = hi->val; n->is_range = 1; }   /* GCC `case lo ... hi:` */
+		Node *n = node(ND_CASE); n->val = eval_const(conditional());   /* folds casts etc: `case (blk_status_t)1:` */
+		if (consume("...")) { n->val2 = eval_const(conditional()); n->is_range = 1; }   /* GCC `case lo ... hi:` */
 		expect(":");
 		n->case_next = cur_switch->case_list; cur_switch->case_list = n;
 		return n;
@@ -795,6 +794,9 @@ static long eval_try(Node *n, int *ok) {
 			if (!strcmp(n->name, "__builtin_ctzll") || !strcmp(n->name, "__builtin_ctzl")) return ctz_bits((unsigned long long)a, 64);
 			if (!strcmp(n->name, "__builtin_ffs"))    return a ? ctz_bits((unsigned int)a, 32) + 1 : 0;
 			if (!strcmp(n->name, "__builtin_ffsll"))  return a ? ctz_bits((unsigned long long)a, 64) + 1 : 0;
+			if (!strcmp(n->name, "__builtin_bswap16")) { unsigned u = (unsigned)a; return ((u & 0xff) << 8) | ((u >> 8) & 0xff); }
+			if (!strcmp(n->name, "__builtin_bswap32")) { unsigned u = (unsigned)a; return (long)(((u & 0xffu) << 24) | ((u & 0xff00u) << 8) | ((u >> 8) & 0xff00u) | ((u >> 24) & 0xffu)); }
+			if (!strcmp(n->name, "__builtin_bswap64")) { unsigned long long u = (unsigned long long)a, r = 0; for (int i = 0; i < 8; i++) r = (r << 8) | ((u >> (8 * i)) & 0xff); return (long)r; }
 		}
 		*ok = 0; return 0;
 	default: *ok = 0; return 0;
