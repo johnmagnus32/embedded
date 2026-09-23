@@ -16,6 +16,8 @@ const u32 md_r_jump_slot = 22;     /* R_ARM_JUMP_SLOT: loader writes the resolve
 const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported variable into the exe's .dynbss slot */
 
 #define R_ARM_ABS32    2
+#define R_ARM_MOVW_ABS_NC 43
+#define R_ARM_MOVT_ABS    44
 #define R_ARM_CALL     28
 #define R_ARM_JUMP24   29
 #define R_ARM_GOT_PREL 96
@@ -45,6 +47,8 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 		wr32(loc, (w & 0xff000000u) | ((X >> 2) & 0x00ffffffu));
 		break;
 	}
+	case R_ARM_MOVW_ABS_NC: { u32 v = S & 0xffffu;         wr32(loc, (w & ~0x000f0fffu) | ((v >> 12) << 16) | (v & 0xfff)); break; }   /* imm16 = lower16(S) */
+	case R_ARM_MOVT_ABS:    { u32 v = (S >> 16) & 0xffffu; wr32(loc, (w & ~0x000f0fffu) | ((v >> 12) << 16) | (v & 0xfff)); break; }   /* imm16 = upper16(S) */
 	case R_ARM_GOT_PREL:                             /* S = the symbol's GOT slot; store its PC-relative offset */
 		wr32(loc, (u32)((s32)S + (s32)w - (s32)P));  /* the `add rN,pc,rN` then yields the slot address */
 		break;

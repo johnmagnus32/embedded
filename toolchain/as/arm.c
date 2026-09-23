@@ -23,15 +23,17 @@ const u32 md_e_flags   = 0x05000000;  /* EF_ARM_EABI_VER5 */
 #define R_ARM_CALL   28   /* bl/blx to a symbol — imm24, addend held in-place */
 #define R_ARM_JUMP24 29   /* b to a symbol */
 #define R_ARM_GOT_PREL 96 /* .word <symbol>(GOT) — PC-relative offset to the symbol's GOT slot (PIC) */
+#define R_ARM_MOVW_ABS_NC 43 /* movw Rd, #:lower16:sym — imm16 = (S+A) & 0xffff */
+#define R_ARM_MOVT_ABS    44 /* movt Rd, #:upper16:sym — imm16 = ((S+A) >> 16) & 0xffff */
 const u32 md_r_abs32    = R_ARM_ABS32;    /* the front-end uses this for `.word <symbol>`       */
 const u32 md_r_got_prel = R_ARM_GOT_PREL; /* the front-end uses this for `.word <symbol>(GOT)`  */
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
  * code, so we emit `ldr Rd, [pc,#0]` and fix the 12-bit offset in md_finish once all labels are known. */
-static struct { int sec; u32 off; char sym[64]; long addend; } ldrlit[256]; static int nldrlit;
+static struct { int sec; u32 off; char sym[64]; long addend; } ldrlit[16384]; static int nldrlit;
 /* Named-symbol branches (b/bl <sym>): deferred to md_finish so we can RESOLVE ones defined in the same
  * section (like GNU as does for local labels) and only RELOCATE truly external/cross-section ones. */
-static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[16384]; static int nbrfix;
+static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[65536]; static int nbrfix;
 
 /* The current instruction's tokens (set by md_assemble; the enc_* helpers read them, like tc-arm.c). */
 static char **toks; static int ntok;
@@ -142,7 +144,7 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	}
 	/* named symbol: defer to md_finish — resolve if defined in THIS section (local label / same-file),
 	 * else relocate. The placeholder keeps the cond/101/L opcode byte; imm24 is filled in later. */
-	if (nbrfix >= 16384) die("too many branch fixups");
+	if (nbrfix >= 65536) die("too many branch fixups");
 	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl;
 	strncpy(brfix[nbrfix].sym, name, sizeof brfix[0].sym - 1); brfix[nbrfix].sym[sizeof brfix[0].sym - 1] = 0;
 	nbrfix++;
@@ -162,7 +164,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 	u32 rd = need_reg(1);
 	if (ntok >= 3 && toks[2][0] != '[') {   /* pc-relative literal load: ldr Rd, label[+/-N] */
 		if (is_byte || !is_load) die("%s: literal form supported for word ldr only", toks[0]);
-		if (nldrlit >= 256) die("too many ldr literals");
+		if (nldrlit >= 16384) die("too many ldr literals");
 		u32 off = here(); emit32((cond << 28) | 0x059f0000u | (rd << 12));   /* ldr Rd, [pc, #0] placeholder */
 		char *plus = strpbrk(toks[2], "+-");
 		size_t k = plus ? (size_t)(plus - toks[2]) : strlen(toks[2]);
@@ -256,7 +258,17 @@ static void enc_shift(int st, u32 cond, int s) {
 
 /* movw/movt Rd, #imm16 — 16-bit immediate (imm4:imm12 split). */
 static void enc_movw(int is_movt, u32 cond) {
-	u32 rd = need_reg(1), v = imm(toks[2]) & 0xffff;
+	u32 rd = need_reg(1);
+	if (toks[2][0] == '#' && toks[2][1] == ':') {   /* #:lower16:sym / #:upper16:sym -> a MOVW/MOVT_ABS relocation */
+		int lower = !strncmp(toks[2], "#:lower16:", 10), upper = !strncmp(toks[2], "#:upper16:", 10);
+		if (!lower && !upper) die("movw/movt: bad relocation operand '%s'", toks[2]);
+		char nm[128]; strncpy(nm, toks[2] + 10, sizeof nm - 1); nm[sizeof nm - 1] = 0;
+		u32 off = here();
+		emit32((cond << 28) | (is_movt ? 0x03400000u : 0x03000000u) | (rd << 12));   /* imm16 = 0 placeholder */
+		add_reloc(cursec, off, sym_intern(nm), lower ? R_ARM_MOVW_ABS_NC : R_ARM_MOVT_ABS);
+		return;
+	}
+	u32 v = imm(toks[2]) & 0xffff;
 	emit32((cond << 28) | (is_movt ? 0x03400000u : 0x03000000u) | ((v >> 12) << 16) | (rd << 12) | (v & 0xfff));
 }
 

@@ -17,12 +17,10 @@ static int ret_label;                /* the current function's return label id *
 static int brk_lbl, cont_lbl;        /* innermost loop's break/continue targets (0 = not in a loop) */
 static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none" sentinel */
 
-/* Per-function literal pool: ARM can't load a 32-bit symbol address in one instruction, so a global's
- * address is fetched pc-relative from a `.word <sym>` we drop just past the function's code. */
+/* A per-function id (used to name this function's PIC .LGOT/.LGA labels). */
 static int cur_func_id, func_seq;
 static int cur_nfixed, cur_variadic;   /* current function's fixed-param count + whether it's variadic */
 static Type *cur_ret;                  /* current function's return type (so `return e` widens to 64-bit) */
-static char pool[64][64]; static int npool;
 static int ngot;   /* -fPIC: per-function counter for GOT-access labels (.LGOT/.LGA) */
 
 /* Per-function C-label -> asm-label-id map (goto/label; forward references get an id on first sight). */
@@ -140,10 +138,7 @@ static void gen_addr(Node *n) {
 			    cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
 			return;
 		}
-		/* non-PIC: address via the per-function literal pool (`ldr r0,.LCPIk` + `.word sym` past the code) */
-		if (npool >= 64) die("cc: too many pooled addresses in one function");
-		int k = npool++; strncpy(pool[k], n->name, 63);
-		fprintf(o, "\tldr r0, .LCPI%d_%d\n", cur_func_id, k);
+		fprintf(o, "\tmovw r0, #:lower16:%s\n\tmovt r0, #:upper16:%s\n", n->name, n->name);   /* address via movw/movt (no literal pool -> no ±4095 range limit) */
 		return;
 	}
 	case ND_STMTEXPR:   /* ({ ...; lvalue; }) as an lvalue: run the body, take the last expr's address */
@@ -241,11 +236,9 @@ static void gen_expr(Node *n) {
 		gen_addr(n); if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type); return;
 	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
-	case ND_LABELADDR: {                                    /* &&label -> the label's code address via the pool */
+	case ND_LABELADDR: {                                    /* &&label -> the label's code address (movw/movt) */
 		int id = clabel_id(n->name);
-		if (npool >= 64) die("cc: too many pooled addresses in one function");
-		int k = npool++; snprintf(pool[k], sizeof pool[k], ".L%d", id);
-		fprintf(o, "\tldr r0, .LCPI%d_%d\n", cur_func_id, k);
+		fprintf(o, "\tmovw r0, #:lower16:.L%d\n\tmovt r0, #:upper16:.L%d\n", id, id);   /* label address via movw/movt */
 		return;
 	}
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
@@ -533,7 +526,7 @@ static void gen_stmt(Node *n) {
 }
 
 static void gen_func(Func *f) {
-	ret_label = uniq(); cur_func_id = func_seq++; npool = 0; nclabels = 0; ngot = 0;
+	ret_label = uniq(); cur_func_id = func_seq++; nclabels = 0; ngot = 0;
 	cur_nfixed = f->nfixed_words; cur_variadic = f->variadic; cur_ret = f->ret_type;
 	if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
@@ -545,8 +538,6 @@ static void gen_func(Func *f) {
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
 	if (f->variadic) fprintf(o, "\tadd sp, sp, #16\n");        /* discard the r0..r3 save area */
 	fprintf(o, "\tbx lr\n");
-	if (npool) { fprintf(o, "\t.align 2\n");                                     /* address pool, past the code */
-		for (int k = 0; k < npool; k++) fprintf(o, ".LCPI%d_%d:\n\t.word %s\n", cur_func_id, k, pool[k]); }
 }
 
 /* Emit the file-scope objects: string literals in .rodata, initialized globals in .data, zero-init in .bss;
