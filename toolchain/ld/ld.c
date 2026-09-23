@@ -459,6 +459,7 @@ static void script_tokenize(char *s) {
 	while (*s) {
 		if (*s==' '||*s=='\t'||*s=='\n'||*s=='\r') { s++; continue; }
 		if (s[0]=='/'&&s[1]=='*') { s+=2; while (*s && !(s[0]=='*'&&s[1]=='/')) s++; if (*s) s+=2; continue; }
+		if (nstok >= 8192) die("linker script: too many tokens (>8192)");
 		if ((s[0]=='<'&&s[1]=='<')||(s[0]=='>'&&s[1]=='>')) { char *t=malloc(3); t[0]=s[0]; t[1]=s[1]; t[2]=0; stok[nstok++]=t; s+=2; continue; }   /* 2-char shift ops before single-char punct */
 		if (is_spunct(*s)) { char *t=malloc(2); t[0]=*s; t[1]=0; stok[nstok++]=t; s++; continue; }
 		char *b=s; while (*s && !is_spunct(*s) && *s!=' '&&*s!='\t'&&*s!='\n'&&*s!='\r') s++;
@@ -536,7 +537,8 @@ int script_run(const char *path) {
 					else if (!strcmp(key,"LENGTH")||!strcmp(key,"len")||!strcmp(key,"l")) len=(u32)v;
 					if (p<nstok && !strcmp(stok[p],",")) p++; else break;   /* no comma -> this region's attrs end */
 				}
-				if (nregion<16) { strncpy(regions[nregion].name, rn, 31); regions[nregion].origin=org; regions[nregion].length=len; regions[nregion].cur=org; nregion++; }
+				if (nregion >= 16) die("linker script: too many MEMORY regions (>16)");
+				strncpy(regions[nregion].name, rn, 31); regions[nregion].origin=org; regions[nregion].length=len; regions[nregion].cur=org; nregion++;
 			}
 			if (p<nstok) p++;   /* skip '}' */
 			continue;

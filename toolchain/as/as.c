@@ -138,7 +138,7 @@ static void do_directive(void) {
 	if (!strcmp(d, ".section")) {
 		select_section();   /* default flags/type by well-known name; an explicit "flags" string overrides */
 	} else if (!strcmp(d, ".pushsection")) {   /* save the current section, then switch (GAS section stack) */
-		if (secsp < 32) secstack[secsp++] = cursec;
+		if (secsp >= 32) die("too many nested .pushsection (>32)"); secstack[secsp++] = cursec;
 		select_section();
 	} else if (!strcmp(d, ".popsection")) {
 		if (secsp > 0) cursec = secstack[--secsp];
@@ -334,6 +334,7 @@ static void expand_macro(Macro *m, const char *argline) {
 		while (*p && !(*p==',' && depth==0)) { if(*p=='(')depth++; else if(*p==')')depth--; *d++=*p++; }
 		*d = 0; char *e = args[na] + strlen(args[na]); while (e>args[na] && (e[-1]==' '||e[-1]=='\t')) *--e=0;
 		na++; if (*p==',') { p++; while(*p==' '||*p=='\t')p++; } }
+	if (*p) die("macro invoked with too many args (>16)");
 	int uid = macuid++;
 	for (int i = 0; i < m->nbody; i++) { char out[1024]; subst(m->body[i], m, args, na, uid, out); feed_line(out); }
 }
@@ -349,6 +350,7 @@ static void feed_line(char *line) {
 		if (!strcmp(w,".macro")||!strcmp(w,".rept")||!strcmp(w,".irp")||!strcmp(w,".irpc")) coll_depth++;
 		if (!strcmp(w,".endm")||!strcmp(w,".endr")) { if (--coll_depth == 0) {
 			if (coll_mode == 1) {                    /* finish a .macro definition */
+				if (nmacros >= 256) die("too many .macro definitions (>256)");
 				Macro *m = &macros[nmacros++]; memset(m, 0, sizeof *m); strncpy(m->name, coll_name, 63);
 				const char *s = coll_params_src;     /* params: comma/space separated */
 				while (*s) {
@@ -371,13 +373,13 @@ static void feed_line(char *line) {
 			}
 			return;
 		} }
-		coll_body[coll_n++] = xdup(line); return;
+		if (coll_n >= 2048) die("macro/.rept body too long (>2048 lines)"); coll_body[coll_n++] = xdup(line); return;
 	}
 	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[64]; const char *a=lead(r,nm); strncpy(coll_name,nm,63); strncpy(coll_params_src,a,255); coll_mode=1; coll_depth=1; coll_n=0; return; }
 	if (!strcmp(w, ".rept"))  { coll_reptn = emitting()?eval_if(rest):0; coll_mode=2; coll_depth=1; coll_n=0; return; }
-	if (!strcmp(w, ".if"))     { int on = emitting() && eval_if(rest)!=0; ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
-	if (!strcmp(w, ".ifdef"))  { char nm[64]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
-	if (!strcmp(w, ".ifndef")) { char nm[64]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".if"))     { int on = emitting() && eval_if(rest)!=0; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifdef"))  { char nm[64]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifndef")) { char nm[64]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
 	if (!strcmp(w, ".else"))   { if (nifs) { int parent=1; for(int i=0;i<nifs-1;i++) if(!ifs[i].active)parent=0; ifs[nifs-1].active = parent && !ifs[nifs-1].taken; if(ifs[nifs-1].active) ifs[nifs-1].taken=1; } return; }
 	if (!strcmp(w, ".endif"))  { if (nifs) nifs--; return; }
 	if (!emitting()) return;                         /* inside a false .if branch */

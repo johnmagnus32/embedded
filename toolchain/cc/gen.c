@@ -29,7 +29,8 @@ static int ngot;   /* -fPIC: per-function counter for GOT-access labels (.LGOT/.
 static struct { char name[64]; int id; } clabels[128]; static int nclabels;
 static int clabel_id(const char *name) {
 	for (int i = 0; i < nclabels; i++) if (!strcmp(clabels[i].name, name)) return clabels[i].id;
-	int id = uniq(); if (nclabels < 128) { strncpy(clabels[nclabels].name, name, 63); clabels[nclabels].id = id; nclabels++; }
+	int id = uniq(); if (nclabels >= 128) die("cc: too many labels in one function (>128) — raise clabels[]");
+	strncpy(clabels[nclabels].name, name, 63); clabels[nclabels].id = id; nclabels++;
 	return id;
 }
 

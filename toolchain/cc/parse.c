@@ -49,7 +49,8 @@ static void add_local_at(const char *name, Type *ty, int off) {
 static struct { char name[64]; Type *type; } typedefs[MAXTYPEDEFS]; static int ntypedefs;
 static Type *typedef_find(const char *n) { for (int i = 0; i < ntypedefs; i++) if (!strcmp(typedefs[i].name, n)) return typedefs[i].type; return NULL; }
 static void  add_typedef(const char *n, Type *t) { if (ntypedefs >= MAXTYPEDEFS) die("cc: too many typedefs (>%d) — raise MAXTYPEDEFS", MAXTYPEDEFS); strncpy(typedefs[ntypedefs].name, n, 63); typedefs[ntypedefs].type = t; ntypedefs++; }
-static struct { char name[64]; long val; } enumc[512]; static int nenumc;
+#define MAXENUMC 16384   /* a kernel TU has thousands of enum constants (was 512 -> silently dropped) */
+static struct { char name[64]; long val; } enumc[MAXENUMC]; static int nenumc;
 static int   enum_find(const char *n, long *v) { for (int i = 0; i < nenumc; i++) if (!strcmp(enumc[i].name, n)) { *v = enumc[i].val; return 1; } return 0; }
 
 static Type *struct_decl(int is_union);
@@ -258,7 +259,8 @@ static Type *enum_decl(void) {
 		while (!is("}")) {
 			char nm[64]; ident(nm);
 			if (consume("=")) val = eval_const(assign());   /* any const expr: another enum constant, 1<<N, … */
-			if (nenumc < 512) { strncpy(enumc[nenumc].name, nm, 63); enumc[nenumc].val = val; nenumc++; }
+			if (nenumc >= MAXENUMC) die("parse: too many enum constants (>%d) — raise MAXENUMC", MAXENUMC);
+			strncpy(enumc[nenumc].name, nm, 63); enumc[nenumc].val = val; nenumc++;
 			val++;
 			if (!consume(",")) break;
 		}
@@ -669,7 +671,8 @@ static Func *function_tail(const char *name, Type *ret) {
 			if (consume("...")) { f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
-			if (np < 16) { strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++; }
+			if (np >= 16) die("parse: too many function parameters (>16) — raise prm[]");
+			strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++;
 		} while (consume(","));
 	}
 	expect(")");

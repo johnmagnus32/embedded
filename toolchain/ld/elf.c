@@ -291,8 +291,9 @@ void elf_write_script(const char *out, u32 entry) {
 	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
 		Elf32_Shdr *s = &objs[i].sh[j];
 		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || !objs[i].sec_vaddr[j]) continue;
-		if (np < 1024) { P[np].o=&objs[i]; P[np].j=j; P[np].vaddr=objs[i].sec_vaddr[j]; P[np].lma=objs[i].sec_lma[j];
-		                 P[np].sz=s->sh_size; P[np].nobits=(s->sh_type==SHT_NOBITS); np++; }
+		if (np >= 1024) die("too many placed sections (>1024)");
+		P[np].o=&objs[i]; P[np].j=j; P[np].vaddr=objs[i].sec_vaddr[j]; P[np].lma=objs[i].sec_lma[j];
+		P[np].sz=s->sh_size; P[np].nobits=(s->sh_type==SHT_NOBITS); np++;
 		if (s->sh_type != SHT_NOBITS) { if (objs[i].sec_lma[j] < minlma) minlma = objs[i].sec_lma[j];
 		                                if (objs[i].sec_lma[j] + s->sh_size > maxlma) maxlma = objs[i].sec_lma[j] + s->sh_size; }
 	} }
@@ -315,6 +316,7 @@ void elf_write_script(const char *out, u32 entry) {
 				if (prog) { if(!sg[ns-1].hasprog){ sg[ns-1].lstart=P[i].lma; sg[ns-1].delta=(long)P[i].lma-(long)P[i].vaddr; sg[ns-1].hasprog=1; } sg[ns-1].filesz += P[i].sz; }
 				continue; }
 		}
+		if (ns >= 64) die("too many load segments (>64)");
 		sg[ns].vaddr=P[i].vaddr; sg[ns].memsz=P[i].sz;
 		if (prog) { sg[ns].lstart=P[i].lma; sg[ns].filesz=P[i].sz; sg[ns].hasprog=1; sg[ns].delta=(long)P[i].lma-(long)P[i].vaddr; }
 		else { sg[ns].lstart=P[i].vaddr; sg[ns].filesz=0; sg[ns].hasprog=0; sg[ns].delta=0; }

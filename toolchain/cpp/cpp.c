@@ -396,6 +396,7 @@ static char *find_include(const char *name, int angle) {
 static struct { int active, taken, parent; } cond[256]; static int ncond;
 static int active_now(void) { return ncond == 0 ? 1 : cond[ncond - 1].active; }
 static void push_cond(int parent, int cond_true) {   /* open a new #if frame */
+	if (ncond >= 256) die("too many nested #if (>256)");
 	cond[ncond].parent = parent;
 	cond[ncond].active = cond_true;
 	cond[ncond].taken  = cond_true;
@@ -413,6 +414,7 @@ static void do_define(Tok *t) {
 		m->func = 1; Tok *p = t->next->next;
 		char *params[64]; int np = 0;
 		while (p && !is_p(p, ")")) {
+			if (np >= 64) die("too many macro parameters (>64)");
 			if (is_p(p, "...")) { m->variadic = 1; params[np++] = xstrdup("__VA_ARGS__"); p = p->next; break; }
 			if (p->kind == TIDENT) params[np++] = xstrdup(p->text);
 			p = p->next; if (p && is_p(p, ",")) p = p->next;
@@ -541,6 +543,7 @@ int main(int argc, char **argv) {
 	predef("__LONG_MAX__", "2147483647L"); predef("__LONG_LONG_MAX__", "9223372036854775807LL");
 	predef("__INTMAX_MAX__", "9223372036854775807LL"); predef("__WCHAR_MAX__", "2147483647"); predef("__SIZE_MAX__", "4294967295U");
 	for (int i = 1; i < argc; i++) {
+		if (!strncmp(argv[i], "-I", 2) || !strcmp(argv[i], "-isystem")) { if (n_inc_dirs >= 64) die("too many -I/-isystem dirs (>64)"); }
 		if (!strncmp(argv[i], "-I", 2)) inc_dirs[n_inc_dirs++] = argv[i][2] ? argv[i] + 2 : argv[++i];
 		else if (!strcmp(argv[i], "-isystem")) inc_dirs[n_inc_dirs++] = argv[++i];
 		else if (!strncmp(argv[i], "-D", 2)) {
