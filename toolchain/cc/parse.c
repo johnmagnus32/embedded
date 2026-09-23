@@ -336,6 +336,10 @@ static Node *new_sub(Node *l, Node *r);
 			expect("("); Node *c = assign(); expect(","); Node *a = assign(); expect(","); Node *b = assign(); expect(")");
 			return eval_const(c) ? a : b;
 		}
+		if (!strcmp(name, "__builtin_types_compatible_p")) {   /* two TYPE args -> 1 if compatible, else 0 */
+			expect("("); char d[64]; Type *ta = declarator(declspec(NULL, NULL), d); expect(","); Type *tb = declarator(declspec(NULL, NULL), d); expect(")");
+			return num(types_match(ta, tb) ? 1 : 0);
+		}
 		{ const char *rg = greg_find(name); if (rg) { Node *n = node(ND_REGVAR); strncpy(n->reg, rg, 7); n->type = ty_uint; return n; } }   /* global register variable */
 		if (!strcmp(name, "__builtin_offsetof")) {   /* constant byte offset of a member designator within a type */
 			expect("("); char d[64]; Type *t = declarator(declspec(NULL, NULL), d); expect(",");
@@ -713,6 +717,8 @@ static long eval_const(Node *n) {
 	case ND_LE:     return eval_const(n->lhs) <= eval_const(n->rhs);
 	case ND_GT:     return eval_const(n->lhs) >  eval_const(n->rhs);
 	case ND_GE:     return eval_const(n->lhs) >= eval_const(n->rhs);
+	case ND_AND:    return eval_const(n->lhs) && eval_const(n->rhs);
+	case ND_OR:     return eval_const(n->lhs) || eval_const(n->rhs);
 	case ND_COND:   return eval_const(n->cond) ? eval_const(n->then) : eval_const(n->els);
 	default: die("parse: not a constant expression (node %d, near line %d)", n->kind, tk->line); return 0;
 	}
