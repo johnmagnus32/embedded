@@ -322,7 +322,13 @@ static Node *new_sub(Node *l, Node *r);
 	if (tk->kind == TK_STR) {                                /* string literal -> anonymous .rodata array */
 		Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
 		snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
-		strncpy(g->str, tk->text, sizeof g->str - 1); tk = tk->next;
+		size_t len = 0;
+		while (tk->kind == TK_STR) {                         /* adjacent string literals concatenate: "a" "b" -> "ab" */
+			size_t n = strlen(tk->text);
+			if (len + n >= sizeof g->str) die("parse: string literal too long (>%d) — raise Gvar.str", (int)sizeof g->str);
+			memcpy(g->str + len, tk->text, n); len += n; tk = tk->next;
+		}
+		g->str[len] = 0;
 		Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = ty_char;
 		return unary(ND_ADDR, gv);                           /* its value is &(first byte) : char* */
 	}

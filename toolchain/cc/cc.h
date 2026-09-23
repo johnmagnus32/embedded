@@ -122,7 +122,7 @@ typedef struct Gvar {
 	int is_extern;               /* 1 = `extern` decl -> reference only, emit no storage           */
 	int is_static;               /* 1 = `static` -> file-local symbol, emit no .global             */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
-	char str[64];                /* is_str: the raw string bytes (escapes as spelled)             */
+	char str[1024];              /* is_str: the decoded string bytes (adjacent literals concatenated) */
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
