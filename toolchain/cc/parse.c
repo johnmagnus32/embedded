@@ -44,9 +44,11 @@ static void add_local_at(const char *name, Type *ty, int off) {
 }
 
 /* ---- typedef names + enum constants (both resolved at parse time) -------------------------------- */
-static struct { char name[64]; Type *type; } typedefs[256]; static int ntypedefs;
+#define MAXTYPEDEFS 16384   /* a preprocessed kernel TU has thousands of typedefs; at 256 the table overflowed
+                             * silently -> a later typedef (e.g. Elf64_Sxword) wasn't recognized as a typename. */
+static struct { char name[64]; Type *type; } typedefs[MAXTYPEDEFS]; static int ntypedefs;
 static Type *typedef_find(const char *n) { for (int i = 0; i < ntypedefs; i++) if (!strcmp(typedefs[i].name, n)) return typedefs[i].type; return NULL; }
-static void  add_typedef(const char *n, Type *t) { if (ntypedefs < 256) { strncpy(typedefs[ntypedefs].name, n, 63); typedefs[ntypedefs].type = t; ntypedefs++; } }
+static void  add_typedef(const char *n, Type *t) { if (ntypedefs >= MAXTYPEDEFS) die("cc: too many typedefs (>%d) — raise MAXTYPEDEFS", MAXTYPEDEFS); strncpy(typedefs[ntypedefs].name, n, 63); typedefs[ntypedefs].type = t; ntypedefs++; }
 static struct { char name[64]; long val; } enumc[512]; static int nenumc;
 static int   enum_find(const char *n, long *v) { for (int i = 0; i < nenumc; i++) if (!strcmp(enumc[i].name, n)) { *v = enumc[i].val; return 1; } return 0; }
 
