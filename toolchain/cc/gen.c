@@ -217,10 +217,10 @@ static void gen_expr(Node *n) {
 	case ND_MEMBER:
 		gen_addr(n);
 		if (n->bit_width) { gen_bitfield_load(n); return; }              /* bitfield: extract from its unit */
-		if (n->type->kind != TY_ARRAY) load(n->type);
+		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type);   /* struct member that is itself an aggregate decays to its address */
 		return;
-	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load, arrays decay */
-		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
+	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load; arrays/structs decay to their address */
+		gen_addr(n); if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type); return;
 	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_LABELADDR: {                                    /* &&label -> the label's code address via the pool */
@@ -234,6 +234,15 @@ static void gen_expr(Node *n) {
 	case ND_ASSIGN:
 		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */
 		if (n->lhs->kind == ND_MEMBER && n->lhs->bit_width) { gen_bitfield_store(n); return; }   /* bitfield RMW */
+		if (n->lhs->type && n->lhs->type->kind == TY_STRUCT) {   /* whole struct/union copy — memcpy, not a scalar store */
+			gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");   /* dest addr */
+			gen_expr(n->rhs);                                /* a struct-typed rhs leaves its ADDRESS in r0 */
+			fprintf(o, "\tpop {r1}\n");                      /* r1 = dest, r0 = src */
+			int sz = n->lhs->type->size, i;
+			for (i = 0; i + 4 <= sz; i += 4) fprintf(o, "\tldr r2, [r0, #%d]\n\tstr r2, [r1, #%d]\n", i, i);
+			for (; i < sz; i++) fprintf(o, "\tldrb r2, [r0, #%d]\n\tstrb r2, [r1, #%d]\n", i, i);
+			return;
+		}
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
 		gen_expr_w(n->rhs, is64(n->lhs->type));             /* value in r0(:r1), widened to the dest width */
 		if (is64(n->lhs->type)) { fprintf(o, "\tpop {r2}\n"); store(n->lhs->type); }   /* addr r2; str r0:r1 */

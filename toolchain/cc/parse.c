@@ -54,6 +54,7 @@ static Type *struct_decl(int is_union);
 static Type *enum_decl(void);
 static int is_typename(void);
 static Type *declarator(Type *base, char *name);
+static Node *init_of(Node *dest, Type *ty);   /* aggregate brace-initializer (defined later; used by compound literals) */
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
 static long eval_const(Node *n); static Node *assign(void);
@@ -417,6 +418,16 @@ static int cast_ahead(void) {
 static Node *unary_expr(void) {
 	if (cast_ahead()) {                                      /* (type) expr — re-types the operand */
 		char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
+		if (is("{")) {   /* compound literal (type){init}: an anonymous initialized object, yields its lvalue */
+			static int cl_seq;
+			char nm[32]; snprintf(nm, sizeof nm, ".Lcl%d", cl_seq++);
+			int off = add_local(nm, t);
+			Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = t;
+			Node *initb = init_of(v, t);                     /* block of member/element assignments to v */
+			Node *y = node(ND_VAR); strncpy(y->name, nm, 63); y->offset = off; y->type = t;
+			initb->next = unary(ND_EXPRSTMT, y);             /* ...then the statement-expression yields v */
+			Node *se = node(ND_STMTEXPR); se->body = initb; se->type = t; return se;
+		}
 		Node *n = node(ND_CAST); n->lhs = unary_expr(); n->type = t; return n;
 	}
 	if (consume("sizeof")) {                                 /* sizeof(type) or sizeof expr -> a constant */
