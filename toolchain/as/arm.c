@@ -30,7 +30,7 @@ const u32 md_r_got_prel = R_ARM_GOT_PREL; /* the front-end uses this for `.word 
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
  * code, so we emit `ldr Rd, [pc,#0]` and fix the 12-bit offset in md_finish once all labels are known. */
-static struct { int sec; u32 off; char sym[64]; long addend; } ldrlit[16384]; static int nldrlit;
+static struct { int sec; u32 off; char sym[64]; long addend; int kind; } ldrlit[16384]; static int nldrlit;   /* kind: 0 = ldr Rd,literal ; 1 = adr Rd,label */
 /* Named-symbol branches (b/bl <sym>): deferred to md_finish so we can RESOLVE ones defined in the same
  * section (like GNU as does for local labels) and only RELOCATE truly external/cross-section ones. */
 static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[65536]; static int nbrfix;
@@ -172,6 +172,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
 		memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0;
 		ldrlit[nldrlit].addend = plus ? strtol(plus, NULL, 0) : 0;
+		ldrlit[nldrlit].kind = 0;
 		nldrlit++;
 		return;
 	}
@@ -207,6 +208,32 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 	     | (W << 21) | ((u32)is_load << 20) | ((u32)rn << 16) | (rd << 12) | off);
 }
 
+/* Patch an `add Rd,pc,#0` placeholder (at sec:off) into add/sub Rd,pc,#modimm(delta). */
+static void patch_adr(int sec, u32 off, int32_t delta) {
+	u32 w = read32(sec, off), cond = (w >> 28) & 0xf, rd = (w >> 12) & 0xf;
+	u32 mag = (u32)(delta < 0 ? -delta : delta);
+	patch32(sec, off, (cond << 28) | (delta >= 0 ? 0x028f0000u : 0x024f0000u) | (rd << 12) | modimm(mag));
+}
+static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-8) */
+	u32 rd = need_reg(1);
+	u32 off = here();
+	emit32((cond << 28) | 0x028f0000u | (rd << 12));   /* add Rd, pc, #0 placeholder */
+	const char *name = toks[2];
+	if (isdigit((unsigned char)name[0]) && (name[1] == 'b' || name[1] == 'f') && name[2] == 0) {   /* numeric local label */
+		int n = name[0] - '0';
+		if (name[1] == 'b') { if (!local_defined(n)) die("adr: backward local %db undefined", n); patch_adr(cursec, off, (int32_t)local_value(n) - (int32_t)(off + 8)); }
+		else add_fixup_kind(cursec, off, n, 1);   /* forward: resolved at end */
+		return;
+	}
+	if (nldrlit >= 16384) die("too many pc-relative fixups");   /* named symbol: resolve in md_finish */
+	char *plus = strpbrk(toks[2], "+-");
+	size_t k = plus ? (size_t)(plus - toks[2]) : strlen(toks[2]);
+	if (k >= sizeof ldrlit[0].sym) k = sizeof ldrlit[0].sym - 1;
+	ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
+	memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0;
+	ldrlit[nldrlit].addend = plus ? strtol(plus, NULL, 0) : 0;
+	ldrlit[nldrlit].kind = 1; nldrlit++;
+}
 static void enc_extend(u32 cond, u32 base) {   /* {u,s}xt{b,h}{cond} Rd, Rm — zero/sign-extend byte/half (rotate 0) */
 	u32 rd = need_reg(1), rm = need_reg(2);
 	emit32((cond << 28) | base | (rd << 12) | rm);
@@ -405,6 +432,7 @@ void md_assemble(char **t, int n) {
 	if (!strncmp(m, "ldrex", 5)) { char c = m[5]; enc_ldrex(14, c=='b'?0x01d00f9fu : c=='h'?0x01f00f9fu : 0x01900f9fu); return; }
 	if (!strncmp(m, "strex", 5)) { char c = m[5]; enc_strex(14, c=='b'?0x01c00f90u : c=='h'?0x01e00f90u : 0x01800f90u); return; }
 	/* single data transfer: ldr/str {b|d|h}{cond}. Whole-suffix cond FIRST so "ldrhi"=ldr+hi. */
+	if (!strncmp(m, "adr", 3)) { const char *suf = m + 3; u32 cond = 14; if (!*suf || lookup_cc(suf, &cond)) { enc_adr(cond); return; } }
 	if (!strncmp(m, "ldr", 3) || !strncmp(m, "str", 3)) {
 		int is_load = (m[0] == 'l'); const char *suf = m + 3; cond = 14;
 		if (!*suf || lookup_cc(suf, &cond)) enc_ldst(cond, is_load, 0);            /* word */
@@ -475,7 +503,8 @@ void md_assemble(char **t, int n) {
 	die("unknown mnemonic '%s' (not in the ARM backend's instruction set yet)", m);
 }
 
-void md_apply_fix(const Fixup *f) {   /* resolve a forward local branch: OR the pc-relative offset in */
+void md_apply_fix(const Fixup *f) {   /* resolve a forward local ref: branch (OR pc-rel offset) or adr (add/sub pc) */
+	if (f->kind == 1) { patch_adr(f->sec, f->off, (int32_t)local_value(f->local_num) - (int32_t)(f->off + 8)); return; }
 	u32 base = read32(f->sec, f->off);
 	int32_t rel = (int32_t)local_value(f->local_num) - (int32_t)(f->off + 8);
 	patch32(f->sec, f->off, base | ((rel >> 2) & 0xffffff));
@@ -501,10 +530,13 @@ void md_finish(void) {
 		int32_t target = (int32_t)syms[si].value + (int32_t)ldrlit[i].addend;
 		int32_t delta = target - (int32_t)(ldrlit[i].off + 8);
 		u32 mag = (u32)(delta < 0 ? -delta : delta);
-		if (mag > 0xfff) die("ldr literal '%s': offset %d out of +/-4095 range", ldrlit[i].sym, delta);
-		u32 w = read32(ldrlit[i].sec, ldrlit[i].off);
-		w = (w & ~((1u << 23) | 0xfffu)) | ((delta >= 0 ? 1u : 0u) << 23) | mag;   /* set U + offset12 */
-		patch32(ldrlit[i].sec, ldrlit[i].off, w);
+		if (ldrlit[i].kind == 1) { patch_adr(ldrlit[i].sec, ldrlit[i].off, delta); }   /* adr Rd, named-label */
+		else {
+			u32 w = read32(ldrlit[i].sec, ldrlit[i].off);
+			if (mag > 0xfff) die("ldr literal '%s': offset %d out of +/-4095 range", ldrlit[i].sym, delta);
+			w = (w & ~((1u << 23) | 0xfffu)) | ((delta >= 0 ? 1u : 0u) << 23) | mag;   /* set U + offset12 */
+			patch32(ldrlit[i].sec, ldrlit[i].off, w);
+		}
 	}
 	for (int i = 0; i < nbrfix; i++) {   /* named branches: resolve intra-section, else relocate */
 		int si = sym_find(brfix[i].sym);

@@ -23,7 +23,7 @@ typedef struct { char *name; int sec; u32 value, size; int global, type, defined
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
-typedef struct { int sec; u32 off; int local_num; } Fixup;          /* forward local-label branch to patch */
+typedef struct { int sec; u32 off; int local_num; int kind; } Fixup;   /* forward local-label ref to patch; kind: 0 = branch, 1 = adr */
 
 #define MAXSEC 32
 #define MAXSYM 65536  /* a big preprocessed kernel .c emits tens of thousands of .L labels + symbols */
@@ -47,6 +47,7 @@ int  sym_find(const char *name);
 int  sym_intern(const char *name);                      /* find-or-create an (undefined) symbol */
 void add_reloc(int sec, u32 off, int symidx, u32 type);
 void add_fixup(int sec, u32 off, int local_num);
+void add_fixup_kind(int sec, u32 off, int local_num, int kind);
 void local_define(int n, u32 value);                    /* numeric local label N: at value */
 int  local_defined(int n);
 u32  local_value(int n);

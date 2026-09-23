@@ -55,7 +55,8 @@ int sym_intern(const char *name) {
 	return nsym++;
 }
 void add_reloc(int sec, u32 off, int symidx, u32 type) { if (nrel >= MAXREL) die("too many relocations"); rels[nrel++] = (Reloc){ sec, off, symidx, type }; }
-void add_fixup(int sec, u32 off, int local_num) { if (nfix >= MAXFIX) die("too many fixups"); fixes[nfix++] = (Fixup){ sec, off, local_num }; }
+void add_fixup(int sec, u32 off, int local_num) { if (nfix >= MAXFIX) die("too many fixups"); fixes[nfix++] = (Fixup){ sec, off, local_num, 0 }; }
+void add_fixup_kind(int sec, u32 off, int local_num, int kind) { if (nfix >= MAXFIX) die("too many fixups"); fixes[nfix++] = (Fixup){ sec, off, local_num, kind }; }
 void local_define(int n, u32 value) { local_last[n] = value; local_seen[n] = 1; }
 int  local_defined(int n) { return local_seen[n]; }
 u32  local_value(int n) { return local_last[n]; }
