@@ -278,7 +278,7 @@ static int is_typename(void) {   /* does a declaration start at the cursor? */
 	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool")
 	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof") || is("__typeof__")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__")
-	    || is("__signed__") || is("__const__") || is("__const") || is("__volatile__") || is("__restrict__") || is("__restrict") || is("__inline__") || is("__inline") || is("__extension__")
+	    || is("__signed__") || is("__const__") || is("__const") || is("__volatile__") || is("__restrict__") || is("__restrict") || is("__inline__") || is("__inline") || is("__extension__") || is("__auto_type")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
 static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
@@ -607,6 +607,20 @@ static Node *stmt(void) {
 		expect(")"); n->body = stmt(); return n;
 	}
 	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
+	if (is("__auto_type")) {   /* GNU __auto_type: the local's type is inferred from its initializer (kernel min/max) */
+		tk = tk->next;
+		Node blk = {0}, *bc = &blk;
+		do {
+			char nm[64]; ident(nm); expect("=");
+			Node *init = assign(); add_type(init);
+			Type *ty = init->type ? init->type : ty_int;
+			int off = add_local(nm, ty);
+			Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
+			bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, init));
+		} while (consume(","));
+		expect(";");
+		Node *n = node(ND_BLOCK); n->body = blk.next; return n;
+	}
 	if (is_typename()) {                                     /* local declaration(s): `T a, b = e, c;` */
 		int td; Type *base = declspec(&td, NULL);
 		if (td) { char nm[64]; Type *ty = declarator(base, nm);

@@ -20,6 +20,7 @@ static const char *KEYWORDS[] = {
 	"typeof", "__typeof__",                                                  /* GNU typeof(expr|type)   */
 	"__asm__", "__volatile__", "asm",                                       /* inline assembly         */
 	"__label__",                                                            /* GNU local-label declaration */
+	"__auto_type",                                                          /* GNU type inference (kernel min/max) */
 	"return", "if", "else", "while", "do", "for", "break", "continue", "switch", "case", "default", "goto",  /* control flow */
 	NULL };
 /* Longest punctuators first so a prefix (e.g. "<") never shadows a longer match (e.g. "<<" / "<="). */
