@@ -366,12 +366,18 @@ static Node *new_sub(Node *l, Node *r);
 			Member *m = NULL; for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
 			if (!m) die("parse: __builtin_offsetof: no member '%s'", mn);
 			off = m->offset; t = m->type;
+			Node *rt = NULL;   /* runtime index terms (container_of uses offsetof(t, arr[i]) with a variable i) */
 			for (;;) {
 				if (consume(".")) { ident(mn); for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break; if (!m) die("parse: __builtin_offsetof: no member '%s'", mn); off += m->offset; t = m->type; }
-				else if (consume("[")) { long idx = eval_const(assign()); expect("]"); if (t->base) off += idx * t->base->size, t = t->base; }
+				else if (consume("[")) {
+					Node *ie = assign(); expect("]"); int elem = t->base ? t->base->size : 1; int ok = 1; long idx = eval_try(ie, &ok);
+					if (ok) off += idx * elem;                                  /* constant index folds into off */
+					else { Node *term = binary(ND_MUL, ie, num(elem)); rt = rt ? binary(ND_ADD, rt, term) : term; }   /* runtime index -> a term */
+					if (t->base) t = t->base;
+				}
 				else break;
 			}
-			expect(")"); return num(off);
+			expect(")"); return rt ? binary(ND_ADD, num(off), rt) : num(off);
 		}
 		if (consume("(")) {                                  /* call: name(args) */
 			Node *n = node(ND_CALL);
