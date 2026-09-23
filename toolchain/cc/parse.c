@@ -138,10 +138,12 @@ static Type *type_suffix(Type *base) {
 static Type *declarator(Type *base, char *name) {
 	while (consume("*")) { base = pointer_to(base); while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }   /* `char * const` */
 	while (consume("__attribute__")) skip_attribute();       /* e.g. `void * __attribute__((...)) name` */
-	if (consume("(")) {                                      /* (*name)(...) : pointer to function/array */
-		expect("*"); name[0] = 0; if (tk->kind == TK_IDENT) ident(name); expect(")");
-		if (is("(")) skip_attribute(); else base = type_suffix(base);   /* skip the function's params */
-		return pointer_to(base);
+	if (consume("(")) {                                      /* grouped declarator: (*name)... = pointer ; (name)... = plain grouping (e.g. function-type typedef `T (name)(params)`) */
+		int ptr = 0;
+		while (consume("*")) { ptr = 1; while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }
+		name[0] = 0; if (tk->kind == TK_IDENT) ident(name); expect(")");
+		if (is("(")) skip_attribute(); else base = type_suffix(base);   /* skip a function param list, or apply an array suffix */
+		return ptr ? pointer_to(base) : base;
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
 	while (consume("__attribute__")) skip_attribute();       /* trailing: `int x __attribute__((aligned(4)))` */
