@@ -419,6 +419,7 @@ static Node *unary_expr(void) {
 	}
 	if (consume("++")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_add(x, num(1))); }   /* ++x */
 	if (consume("--")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_sub(x, num(1))); }   /* --x */
+	if (consume("&&")) { Node *n = node(ND_LABELADDR); ident(n->name); return n; }   /* &&label : GNU address-of-label */
 	if (consume("&")) return unary(ND_ADDR, unary_expr());   /* address-of */
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
 	if (consume("-")) return unary(ND_NEG, unary_expr());
@@ -554,6 +555,10 @@ static Node *stmt(void) {
 		expect(")"); expect(";");
 		n->args = oh.next; n->val = nouts;                   /* operands: outputs first, then inputs; val = #outputs */
 		return n;
+	}
+	if (consume("__label__")) {   /* GNU local-label declaration: `__label__ a, b;` — labels work regardless, so skip */
+		do { if (tk->kind == TK_IDENT) tk = tk->next; } while (consume(","));
+		expect(";"); return node(ND_BLOCK);
 	}
 	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */

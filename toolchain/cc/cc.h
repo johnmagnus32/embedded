@@ -61,7 +61,7 @@ typedef enum {
 	ND_COND, ND_CAST, ND_COMMA, ND_STMTEXPR, ND_REGVAR,          /* c?a:b ; (type)expr ; (a,b) ; ({...}) ; global reg var */
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
-	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, inline asm, block */
+	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_LABELADDR, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, &&label, inline asm, block */
 } NodeKind;
 
 typedef struct Node {

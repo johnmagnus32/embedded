@@ -223,6 +223,13 @@ static void gen_expr(Node *n) {
 		gen_addr(n); if (n->type->kind != TY_ARRAY) load(n->type); return;
 	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
+	case ND_LABELADDR: {                                    /* &&label -> the label's code address via the pool */
+		int id = clabel_id(n->name);
+		if (npool >= 64) die("cc: too many pooled addresses in one function");
+		int k = npool++; snprintf(pool[k], sizeof pool[k], ".L%d", id);
+		fprintf(o, "\tldr r0, .LCPI%d_%d\n", cur_func_id, k);
+		return;
+	}
 	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
 	case ND_ASSIGN:
 		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */

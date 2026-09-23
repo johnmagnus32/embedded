@@ -104,6 +104,7 @@ void add_type(Node *n) {
 		n->type = t; return;
 	}
 	case ND_ADDR:   n->type = pointer_to(n->lhs->type); return;
+	case ND_LABELADDR: n->type = pointer_to(ty_char); return;   /* &&label : a code address (void*-like) */
 	case ND_DEREF:
 		if (!is_ptr_like(n->lhs->type)) die("cc: cannot dereference a non-pointer");
 		n->type = n->lhs->type->base; return;
