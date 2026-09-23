@@ -718,11 +718,12 @@ static Init *global_init(Type *ty) {
  * nodes the right width; the parameter types let a caller place/widen each argument per AAPCS (a 64-bit
  * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
  * Populated for every prototype/definition. */
-static struct { char name[64]; Type *ret; Type *params[16]; int nparams; int variadic; } func_sigs[512]; static int nfunc_sigs;
+#define MAXFUNCSIG 32768   /* a preprocessed kernel TU declares thousands of functions (was 512 -> silently dropped) */
+static struct { char name[64]; Type *ret; Type *params[16]; int nparams; int variadic; } func_sigs[MAXFUNCSIG]; static int nfunc_sigs;
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic) {
 	int idx = -1;
 	for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) { idx = i; break; }
-	if (idx < 0) { if (nfunc_sigs >= 512) return; idx = nfunc_sigs++; strncpy(func_sigs[idx].name, name, 63); }
+	if (idx < 0) { if (nfunc_sigs >= MAXFUNCSIG) die("cc: too many function signatures (>%d) — raise MAXFUNCSIG", MAXFUNCSIG); idx = nfunc_sigs++; strncpy(func_sigs[idx].name, name, 63); }
 	func_sigs[idx].ret = ret; func_sigs[idx].variadic = variadic;
 	func_sigs[idx].nparams = np < 16 ? np : 16;
 	for (int i = 0; i < func_sigs[idx].nparams; i++) func_sigs[idx].params[i] = params[i];
