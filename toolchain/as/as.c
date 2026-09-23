@@ -380,6 +380,14 @@ static void feed_line(char *line) {
 	if (!strcmp(w, ".if"))     { int on = emitting() && eval_if(rest)!=0; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
 	if (!strcmp(w, ".ifdef"))  { char nm[64]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
 	if (!strcmp(w, ".ifndef")) { char nm[64]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifc") || !strcmp(w, ".ifnc")) {   /* GAS string compare: .ifc a,b (same) / .ifnc a,b (differ) */
+		const char *comma = strchr(rest, ','); char a[128] = "", b[128] = "";
+		if (comma) { int la = (int)(comma - rest); if (la > 127) la = 127; memcpy(a, rest, la); a[la] = 0; strncpy(b, comma + 1, 127); }
+		char *pa = a; while (*pa==' '||*pa=='\t') pa++; { char *e = pa + strlen(pa); while (e>pa && (e[-1]==' '||e[-1]=='\t'||e[-1]=='\n'||e[-1]=='\r')) *--e = 0; }
+		char *pb = b; while (*pb==' '||*pb=='\t') pb++; { char *e = pb + strlen(pb); while (e>pb && (e[-1]==' '||e[-1]=='\t'||e[-1]=='\n'||e[-1]=='\r')) *--e = 0; }
+		int same = !strcmp(pa, pb), on = emitting() && (!strcmp(w, ".ifc") ? same : !same);
+		if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return;
+	}
 	if (!strcmp(w, ".else"))   { if (nifs) { int parent=1; for(int i=0;i<nifs-1;i++) if(!ifs[i].active)parent=0; ifs[nifs-1].active = parent && !ifs[nifs-1].taken; if(ifs[nifs-1].active) ifs[nifs-1].taken=1; } return; }
 	if (!strcmp(w, ".endif"))  { if (nifs) nifs--; return; }
 	if (!emitting()) return;                         /* inside a false .if branch */
