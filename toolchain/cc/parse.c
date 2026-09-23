@@ -410,6 +410,10 @@ static Node *unary_expr(void) {
 		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return num(t->size); }
 		Node *e = unary_expr(); add_type(e); return num(e->type ? e->type->size : 4);
 	}
+	if (consume("__alignof__") || consume("__alignof") || consume("_Alignof") || consume("alignof")) {   /* __alignof__(type|expr) -> a constant */
+		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return num(align_of(t)); }
+		Node *e = unary_expr(); add_type(e); return num(e->type ? align_of(e->type) : 4);
+	}
 	if (consume("++")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_add(x, num(1))); }   /* ++x */
 	if (consume("--")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_sub(x, num(1))); }   /* --x */
 	if (consume("&")) return unary(ND_ADDR, unary_expr());   /* address-of */
