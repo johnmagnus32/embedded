@@ -555,10 +555,17 @@ static Node *init_of(Node *dest, Type *ty) {
 			c = c->next; m = m->next; if (!consume(",")) break;
 		}
 	} else if (ty->kind == TY_ARRAY) {
-		for (int i = 0; i < ty->len && !is("}"); i++) {
-			Node *de = unary(ND_DEREF, new_add(dest, num(i)));   /* dest[i] */
-			c->next = is("{") ? init_of(de, ty->base) : unary(ND_EXPRSTMT, binary(ND_ASSIGN, de, assign()));
-			c = c->next; if (!consume(",")) break;
+		int i = 0;
+		while (!is("}") && (ty->len == 0 || i < ty->len)) {
+			int lo = i, hi = i;
+			if (is("[")) {   /* [idx] or GNU range [lo ... hi] designator */
+				expect("["); lo = hi = (int)eval_const(assign());
+				if (consume("...")) hi = (int)eval_const(assign());
+				expect("]"); consume("=");
+			}
+			if (is("{")) { Node *de = unary(ND_DEREF, new_add(dest, num(lo))); c->next = init_of(de, ty->base); c = c->next; i = lo + 1; }
+			else { Node *val = assign(); for (int k = lo; k <= hi; k++) { Node *de = unary(ND_DEREF, new_add(dest, num(k))); c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, de, val)); c = c->next; } i = hi + 1; }
+			if (!consume(",")) break;
 		}
 	} else {   /* scalar in braces: {e} */
 		c = c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dest, assign()));
@@ -813,11 +820,17 @@ static Init *global_init(Type *ty) {
 		expect("{");
 		Init head = {0}, *c = &head;
 		if (ty->kind == TY_STRUCT) {
-			int cur = 0;
-			for (Member *m = ty->members; m && !is("}"); m = m->next) {
+			int cur = 0; Member *m = ty->members;
+			while (m && !is("}")) {
+				if (is(".")) {   /* designated: .field = value */
+					expect("."); char mn[64]; ident(mn); consume("=");
+					for (m = ty->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
+					if (!m) die("parse: struct has no member '%s'", mn);
+				}
+				if (!m) break;
 				if (m->offset > cur) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset - cur; c = c->next; }
 				c->next = global_init(m->type); while (c->next) c = c->next;   /* append member's items */
-				cur = m->offset + m->type->size;
+				cur = m->offset + m->type->size; m = m->next;
 				if (!consume(",")) break;
 			}
 			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
