@@ -601,19 +601,36 @@ static Node *stmt(void) {
 		while (tk->kind == TK_STR) { size_t l = strlen(tk->text); if (bl + l < sizeof buf - 1) { memcpy(buf + bl, tk->text, l); bl += l; buf[bl] = 0; } tk = tk->next; }
 		n->asm_tmpl = malloc(bl + 1); memcpy(n->asm_tmpl, buf, bl + 1);
 		Node oh = {0}, *oc = &oh; int nouts = 0;
-		if (consume(":")) while (tk->kind == TK_STR) {       /* outputs: "constraint"(lvalue) */
+		char opn[16][32]; int nn = 0;                        /* per-operand [name] (by position: outputs then inputs) */
+		for (int i = 0; i < 16; i++) opn[i][0] = 0;
+		if (consume(":")) while (tk->kind == TK_STR || is("[")) {   /* outputs: [name] "constraint"(lvalue) */
+			if (consume("[")) { if (nn < 16) strncpy(opn[nn], tk->text, 31); tk = tk->next; expect("]"); }
 			char c[8]; strncpy(c, tk->text, 7); c[7] = 0; tk = tk->next;
 			expect("("); Node *op = assign(); expect(")"); strncpy(op->cons, c, 7);
-			oc = oc->next = op; nouts++; if (!consume(",")) break;
+			oc = oc->next = op; nouts++; nn++; if (!consume(",")) break;
 		}
-		if (consume(":")) while (tk->kind == TK_STR) {       /* inputs: "constraint"(expr) */
+		if (consume(":")) while (tk->kind == TK_STR || is("[")) {   /* inputs: [name] "constraint"(expr) */
+			if (consume("[")) { if (nn < 16) strncpy(opn[nn], tk->text, 31); tk = tk->next; expect("]"); }
 			char c[8]; strncpy(c, tk->text, 7); c[7] = 0; tk = tk->next;
 			expect("("); Node *op = assign(); expect(")"); strncpy(op->cons, c, 7);
 			if (strchr(op->cons, 'i')) op->val = eval_const(op);   /* immediate: fold now, substitute the constant */
-			oc = oc->next = op; if (!consume(",")) break;
+			oc = oc->next = op; nn++; if (!consume(",")) break;
 		}
 		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; if (!consume(",")) break; }   /* clobbers — ignored (we never keep values in caller-saved regs across asm) */
 		expect(")"); expect(";");
+		{   /* rewrite %[name] -> %N (operand position) so gen's %N substitution handles named operands */
+			char rw[1024]; size_t k = 0; const char *s = n->asm_tmpl;
+			while (*s && k < sizeof rw - 8) {
+				if (s[0] == '%' && s[1] == '[') {
+					const char *e = strchr(s + 2, ']');
+					if (e) { char nm[32]; size_t l = (size_t)(e - (s + 2)); if (l > 31) l = 31; memcpy(nm, s + 2, l); nm[l] = 0;
+						int idx = -1; for (int i = 0; i < nn; i++) if (opn[i][0] && !strcmp(opn[i], nm)) { idx = i; break; }
+						if (idx >= 0) { k += (size_t)snprintf(rw + k, sizeof rw - k, "%%%d", idx); s = e + 1; continue; } }
+				}
+				rw[k++] = *s++;
+			}
+			rw[k] = 0; n->asm_tmpl = malloc(k + 1); memcpy(n->asm_tmpl, rw, k + 1);
+		}
 		n->args = oh.next; n->val = nouts;                   /* operands: outputs first, then inputs; val = #outputs */
 		return n;
 	}
