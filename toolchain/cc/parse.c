@@ -494,7 +494,10 @@ static Node *bitor(void) { Node *n = bitxor();      while (consume("|")) n = bin
 static Node *logand(void){ Node *n = bitor();       while (consume("&&")) n = binary(ND_AND, n, bitor()); return n; }
 static Node *logor(void) { Node *n = logand();      while (consume("||")) n = binary(ND_OR, n, logand()); return n; }
 static Node *conditional(void){ Node *c = logor(); if (!consume("?")) return c;   /* c ? then : els */
-	Node *n = node(ND_COND); n->cond = c; n->then = expr(); expect(":"); n->els = conditional(); return n; }
+	Node *n = node(ND_COND); n->cond = c;
+	if (is(":")) n->then = c;                    /* GNU `a ?: b` == `a ? a : b` (a re-evaluated; fine for side-effect-free) */
+	else n->then = expr();
+	expect(":"); n->els = conditional(); return n; }
 /* assignment, incl. compound forms desugared to `a = a OP b` (new_add/new_sub keep pointer scaling). */
 static Node *assign(void) {
 	Node *n = conditional();
