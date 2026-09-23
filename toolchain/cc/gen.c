@@ -136,7 +136,14 @@ static void gen_addr(Node *n) {
 		fprintf(o, "\tldr r0, .LCPI%d_%d\n", cur_func_id, k);
 		return;
 	}
-	default: die("cc: not an lvalue");
+	case ND_STMTEXPR:   /* ({ ...; lvalue; }) as an lvalue: run the body, take the last expr's address */
+		for (Node *s = n->body; s; s = s->next) {
+			if (!s->next && s->kind == ND_EXPRSTMT) { gen_addr(s->lhs); return; }
+			gen_stmt(s);
+		}
+		die("cc: statement-expression has no lvalue result");
+		return;
+	default: die("cc: not an lvalue (nodekind=%d)", n->kind);
 	}
 }
 
