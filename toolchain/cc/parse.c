@@ -583,7 +583,7 @@ static Node *stmt(void) {
 				continue;
 			}
 			int off = add_local(nm, ty);
-			if (consume("__asm__")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var */
+			if (consume("__asm__") || consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{")) bc = bc->next = init_of(v, ty);              /* aggregate initializer */
 				else bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, assign())); }
