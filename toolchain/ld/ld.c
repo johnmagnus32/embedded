@@ -447,16 +447,19 @@ static char *stok[8192]; static int nstok;          /* script tokens */
 static struct { char name[32]; u32 origin, length, cur; } regions[16]; static int nregion;
 static int region_find(const char *n) { for (int i=0;i<nregion;i++) if (!strcmp(regions[i].name,n)) return i; return -1; }
 static u32 outsec_lma(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].lma; return 0; }
+static u32 outsec_addr(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].vaddr; return 0; }
+static u32 outsec_size(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].size; return 0; }
 static long parse_num(const char *t) {   /* number with an optional K/M size suffix */
 	char *e; long v = strtol(t, &e, 0);
 	if (*e=='K'||*e=='k') v *= 1024; else if (*e=='M'||*e=='m') v *= 1024*1024;
 	return v;
 }
-static int is_spunct(char c) { return strchr("{}():;=+?,", c) != NULL; }
+static int is_spunct(char c) { return strchr("{}():;=+?,<>&|^%~", c) != NULL; }   /* '-' is NOT punct: section names contain it (.note.GNU-stack) */
 static void script_tokenize(char *s) {
 	while (*s) {
 		if (*s==' '||*s=='\t'||*s=='\n'||*s=='\r') { s++; continue; }
 		if (s[0]=='/'&&s[1]=='*') { s+=2; while (*s && !(s[0]=='*'&&s[1]=='/')) s++; if (*s) s+=2; continue; }
+		if ((s[0]=='<'&&s[1]=='<')||(s[0]=='>'&&s[1]=='>')) { char *t=malloc(3); t[0]=s[0]; t[1]=s[1]; t[2]=0; stok[nstok++]=t; s+=2; continue; }   /* 2-char shift ops before single-char punct */
 		if (is_spunct(*s)) { char *t=malloc(2); t[0]=*s; t[1]=0; stok[nstok++]=t; s++; continue; }
 		char *b=s; while (*s && !is_spunct(*s) && *s!=' '&&*s!='\t'&&*s!='\n'&&*s!='\r') s++;
 		int n=(int)(s-b); char *t=malloc(n+1); memcpy(t,b,n); t[n]=0; stok[nstok++]=t;
@@ -480,12 +483,22 @@ static long e_prim(void) {
 		if (!strcmp(t,"LOADADDR")) return (long)outsec_lma(nm);
 		int r=region_find(nm); if(r<0) return 0; return (long)(!strcmp(t,"ORIGIN")?regions[r].origin:regions[r].length);
 	}
+	if (!strcmp(t,"SIZEOF")||!strcmp(t,"ADDR")) {   /* SIZEOF(sec)/ADDR(sec) — from an ALREADY-placed output section (backward ref) */
+		if (ev<ev_hi && !strcmp(stok[ev],"(")) ev++;
+		char *nm = stok[ev++];
+		if (ev<ev_hi && !strcmp(stok[ev],")")) ev++;
+		return (long)(!strcmp(t,"SIZEOF") ? outsec_size(nm) : outsec_addr(nm));
+	}
 	if (t[0]>='0'&&t[0]<='9') return parse_num(t);
 	GSym *g=gsym_find(t); return (g&&g->defined)?(long)g->vaddr:0;   /* symbol */
 }
-static long e_mul(void) { long l=e_prim(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"*")){ev++; l*=e_prim();} else if(!strcmp(o,"/")){ev++; long r=e_prim(); l=r?l/r:0;} else break; } return l; }
+static long e_mul(void) { long l=e_prim(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"*")){ev++; l*=e_prim();} else if(!strcmp(o,"/")){ev++; long r=e_prim(); l=r?l/r:0;} else if(!strcmp(o,"%")){ev++; long r=e_prim(); l=r?l%r:0;} else break; } return l; }
 static long e_add(void) { long l=e_mul(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"+")){ev++; l+=e_mul();} else if(!strcmp(o,"-")){ev++; l-=e_mul();} else break; } return l; }
-static long e_tern(void) { long c=e_add(); if(ev<ev_hi&&!strcmp(stok[ev],"?")){ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],":"))ev++; long b=e_tern(); return c?a:b;} return c; }
+static long e_shift(void) { long l=e_add(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"<<")){ev++; l<<=e_add();} else if(!strcmp(o,">>")){ev++; l>>=e_add();} else break; } return l; }
+static long e_band(void)  { long l=e_shift(); while(ev<ev_hi&&!strcmp(stok[ev],"&")){ev++; l&=e_shift();} return l; }
+static long e_bxor(void)  { long l=e_band();  while(ev<ev_hi&&!strcmp(stok[ev],"^")){ev++; l^=e_band();}  return l; }
+static long e_bor(void)   { long l=e_bxor();  while(ev<ev_hi&&!strcmp(stok[ev],"|")){ev++; l|=e_bxor();}  return l; }
+static long e_tern(void) { long c=e_bor(); if(ev<ev_hi&&!strcmp(stok[ev],"?")){ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],":"))ev++; long b=e_tern(); return c?a:b;} return c; }
 static long script_eval(int lo, int hi, u32 dot) { ev=lo; ev_hi=hi; g_dot=dot; return e_tern(); }
 
 /* wildcard match (supports '*') of an input-section name against a script pattern */
@@ -620,7 +633,18 @@ int script_run(const char *path) {
 			}
 			continue;
 		}
-		p++;   /* skip anything else (OUTPUT_FORMAT(...), etc.) */
+		/* recognized-but-ignored file/format directives: consume the keyword + any (...) argument */
+		if (!strcmp(t,"OUTPUT_ARCH")||!strcmp(t,"OUTPUT_FORMAT")||!strcmp(t,"OUTPUT")||!strcmp(t,"TARGET")||
+		    !strcmp(t,"GROUP")||!strcmp(t,"INPUT")||!strcmp(t,"SEARCH_DIR")||!strcmp(t,"STARTUP")||!strcmp(t,"FORCE_COMMON_ALLOCATION")) {
+			p++;
+			if (p<nstok && !strcmp(stok[p],"(")) { int d=1; p++; while (p<nstok && d) { if(!strcmp(stok[p],"("))d++; else if(!strcmp(stok[p],")"))d--; p++; } }
+			continue;
+		}
+		/* constructs the subset parser does NOT model: FAIL LOUD rather than silently mislay the image */
+		if (!strcmp(t,"OVERLAY")||!strcmp(t,"NOCROSSREFS")||!strcmp(t,"ASSERT")||!strcmp(t,"PHDRS")||
+		    !strcmp(t,"VERSION")||!strcmp(t,"INCLUDE")||!strcmp(t,"OUTPUT_FORMAT_ELF"))
+			die("linker script %s: unsupported construct '%s' (subset parser: no PHDRS/OVERLAY/ASSERT/...)", path, t);
+		die("linker script %s: unexpected token '%s'", path, t);
 	}
 	return 1;
 }
