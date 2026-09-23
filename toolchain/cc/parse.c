@@ -835,17 +835,27 @@ static Init *global_init(Type *ty) {
 			}
 			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
 		} else if (ty->kind == TY_ARRAY) {
-			int cnt = 0;
-			while (!is("}") && (ty->len == 0 || cnt < ty->len)) {
-				if (is("[")) {   /* designated: [idx] = value (assumes non-decreasing indices; zero-fills gaps) */
-					expect("["); long idx = eval_const(assign()); expect("]"); consume("=");
-					if (idx > cnt) { c->next = mkinit(INIT_ZERO); c->next->size = (idx - cnt) * ty->base->size; c = c->next; cnt = (int)idx; }
-				}
-				c->next = global_init(ty->base); while (c->next) c = c->next; cnt++;
+			/* index-keyed: one pass buffering (index,item) pairs handles sized+unsized, out-of-order, range
+			 * and gapped designators uniformly (kernel asn1_op_lengths[] lists [RETURN]=0x28 before [END_SEQ]). */
+			int cap = 8192, ne = 0, cur = 0, maxidx = -1;
+			struct { int idx; Init *item; } *elems = malloc(cap * sizeof *elems);   /* heap: global_init recurses for nested aggregates */
+			while (!is("}")) {
+				int lo = cur, hi = cur;
+				if (is("[")) { expect("["); lo = hi = (int)eval_const(assign()); if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("="); }
+				Init *item = global_init(ty->base);
+				for (int k = lo; k <= hi; k++) { if (ne >= cap) die("parse: too many array initializers (>%d)", cap); elems[ne].idx = k; elems[ne].item = item; ne++; if (k > maxidx) maxidx = k; }
+				cur = hi + 1;
 				if (!consume(",")) break;
 			}
-			if (ty->len == 0) { ty->len = cnt; ty->size = cnt * ty->base->size; }   /* unsized `[]`: length from initializer count */
-			else if (cnt * ty->base->size < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cnt * ty->base->size; c = c->next; }
+			int len = ty->len > 0 ? ty->len : maxidx + 1;
+			Init **slots = calloc(len > 0 ? len : 1, sizeof *slots);
+			for (int i = 0; i < ne; i++) if (elems[i].idx < len) slots[elems[i].idx] = elems[i].item;   /* last writer wins */
+			free(elems);
+			for (int k = 0; k < len; k++) {
+				if (slots[k]) { for (Init *it = slots[k]; it; it = it->next) { c->next = mkinit(it->kind); *c->next = *it; c->next->next = NULL; c = c->next; } }   /* copy (a range shares one item) */
+				else { c->next = mkinit(INIT_ZERO); c->next->size = ty->base->size; c = c->next; }
+			}
+			if (ty->len == 0) { ty->len = len; ty->size = len * ty->base->size; }
 		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
 		expect("}");
 		return head.next;
