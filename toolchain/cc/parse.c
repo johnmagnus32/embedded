@@ -804,7 +804,14 @@ static Init *global_init(Type *ty) {
 			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
 		} else if (ty->kind == TY_ARRAY) {
 			int cnt = 0;
-			while (!is("}") && (ty->len == 0 || cnt < ty->len)) { c->next = global_init(ty->base); while (c->next) c = c->next; cnt++; if (!consume(",")) break; }
+			while (!is("}") && (ty->len == 0 || cnt < ty->len)) {
+				if (is("[")) {   /* designated: [idx] = value (assumes non-decreasing indices; zero-fills gaps) */
+					expect("["); long idx = eval_const(assign()); expect("]"); consume("=");
+					if (idx > cnt) { c->next = mkinit(INIT_ZERO); c->next->size = (idx - cnt) * ty->base->size; c = c->next; cnt = (int)idx; }
+				}
+				c->next = global_init(ty->base); while (c->next) c = c->next; cnt++;
+				if (!consume(",")) break;
+			}
 			if (ty->len == 0) { ty->len = cnt; ty->size = cnt * ty->base->size; }   /* unsized `[]`: length from initializer count */
 			else if (cnt * ty->base->size < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cnt * ty->base->size; c = c->next; }
 		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
