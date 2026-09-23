@@ -146,6 +146,7 @@ static Type *declarator(Type *base, char *name) {
 		while (consume("*")) { ptr = 1; while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }
 		name[0] = 0; if (tk->kind == TK_IDENT) ident(name); expect(")");
 		if (is("(")) skip_attribute(); else base = type_suffix(base);   /* skip a function param list, or apply an array suffix */
+		while (consume("__attribute__")) skip_attribute();              /* trailing: `void (*f)(args) __attribute__((noreturn))` */
 		return ptr ? pointer_to(base) : base;
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
