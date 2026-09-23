@@ -592,7 +592,9 @@ static Node *stmt(void) {
 	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
 	if (is_typename()) {                                     /* local declaration(s): `T a, b = e, c;` */
 		int td; Type *base = declspec(&td, NULL);
-		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); return node(ND_BLOCK); }
+		if (td) { char nm[64]; Type *ty = declarator(base, nm);
+			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }   /* function-type typedef `typedef R name(params)` — skip params, name aliases the return type (used via pointer) */
+			add_typedef(nm, ty); expect(";"); return node(ND_BLOCK); }
 		if (consume(";")) return node(ND_BLOCK);             /* type-only (e.g. a struct definition) */
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
 		do {
@@ -767,7 +769,9 @@ Func *parse(Token *tok) {
 		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_attribute(); consume(";"); continue; }
 		int td, sc; Type *base = declspec(&td, &sc);               /* type keywords/qualifiers + storage class; struct/enum defs register */
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
-		if (td) { char nm[64]; Type *ty = declarator(base, nm); add_typedef(nm, ty); expect(";"); continue; }
+		if (td) { char nm[64]; Type *ty = declarator(base, nm);
+			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }   /* function-type typedef `typedef R name(params)` — skip params, name aliases the return type (used via pointer) */
+			add_typedef(nm, ty); expect(";"); continue; }
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
 		if (is("(")) { Func *fn = function_tail(name, ty); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* records its own signature; NULL = prototype */
 		if (consume("asm") || consume("__asm__")) {          /* `register T x asm("rN")` (global reg var) or an asm rename */
