@@ -331,6 +331,10 @@ static Node *new_sub(Node *l, Node *r);
 		if (!strcmp(name, "__builtin_unreachable")) { expect("("); expect(")"); return num(0); }   /* no-op, not a call */
 		if (!strcmp(name, "__builtin_expect"))    { expect("("); Node *e = assign(); expect(","); assign(); expect(")"); return e; }   /* value is the 1st arg; the hint is ignored */
 		if (!strcmp(name, "__builtin_constant_p")) { expect("("); assign(); expect(")"); return num(0); }   /* conservatively "not constant" */
+		if (!strcmp(name, "__builtin_choose_expr")) {   /* compile-time ?: — pick an arm by the constant cond; the other is discarded */
+			expect("("); Node *c = assign(); expect(","); Node *a = assign(); expect(","); Node *b = assign(); expect(")");
+			return eval_const(c) ? a : b;
+		}
 		{ const char *rg = greg_find(name); if (rg) { Node *n = node(ND_REGVAR); strncpy(n->reg, rg, 7); n->type = ty_uint; return n; } }   /* global register variable */
 		if (!strcmp(name, "__builtin_offsetof")) {   /* constant byte offset of a member designator within a type */
 			expect("("); char d[64]; Type *t = declarator(declspec(NULL, NULL), d); expect(",");
