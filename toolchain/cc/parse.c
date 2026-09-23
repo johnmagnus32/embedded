@@ -350,6 +350,11 @@ static Node *new_sub(Node *l, Node *r);
 			expect("("); Node *c = assign(); expect(","); Node *a = assign(); expect(","); Node *b = assign(); expect(")");
 			return eval_const(c) ? a : b;
 		}
+		if (!strcmp(name, "__builtin_has_attribute")) {   /* (expr, attr) -> we track no decl attributes, so 0 */
+			expect("("); assign(); expect(",");
+			while (!is(")") && tk->kind != TK_EOF) tk = tk->next;   /* skip the attribute name */
+			expect(")"); return num(0);
+		}
 		if (!strcmp(name, "__builtin_types_compatible_p")) {   /* two TYPE args -> 1 if compatible, else 0 */
 			expect("("); char d[64]; Type *ta = declarator(declspec(NULL, NULL), d); expect(","); Type *tb = declarator(declspec(NULL, NULL), d); expect(")");
 			return num(types_match(ta, tb) ? 1 : 0);
