@@ -575,6 +575,7 @@ static Node *stmt(void) {
 			if (is("(")) {   /* local function prototype `T name(params);` — record it, no local variable */
 				record_func_sig(nm, ty, 0, 0, 1);   /* params unknown -> callers fall back to arg types */
 				int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF);
+				while (consume("__attribute__")) skip_attribute();   /* trailing: `void h(void) __attribute__((error("...")))` */
 				continue;
 			}
 			int off = add_local(nm, ty);
@@ -693,9 +694,10 @@ static Init *global_init(Type *ty) {
 			}
 			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
 		} else if (ty->kind == TY_ARRAY) {
-			int i = 0;
-			for (; i < ty->len && !is("}"); i++) { c->next = global_init(ty->base); while (c->next) c = c->next; if (!consume(",")) break; }
-			if (i * ty->base->size < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - i * ty->base->size; c = c->next; }
+			int cnt = 0;
+			while (!is("}") && (ty->len == 0 || cnt < ty->len)) { c->next = global_init(ty->base); while (c->next) c = c->next; cnt++; if (!consume(",")) break; }
+			if (ty->len == 0) { ty->len = cnt; ty->size = cnt * ty->base->size; }   /* unsized `[]`: length from initializer count */
+			else if (cnt * ty->base->size < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cnt * ty->base->size; c = c->next; }
 		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
 		expect("}");
 		return head.next;
