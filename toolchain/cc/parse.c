@@ -332,9 +332,9 @@ static Node *new_sub(Node *l, Node *r);
 		snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
 		size_t len = 0;
 		while (tk->kind == TK_STR) {                         /* adjacent string literals concatenate: "a" "b" -> "ab" */
-			size_t n = strlen(tk->text);
+			size_t n = strlen(tk->sval);
 			if (len + n >= sizeof g->str) die("parse: string literal too long (>%d) — raise Gvar.str", (int)sizeof g->str);
-			memcpy(g->str + len, tk->text, n); len += n; tk = tk->next;
+			memcpy(g->str + len, tk->sval, n); len += n; tk = tk->next;
 		}
 		g->str[len] = 0;
 		Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = ty_char;
@@ -597,8 +597,8 @@ static Node *stmt(void) {
 	if (is("__asm__") || is("asm")) {                        /* __asm__ volatile("tmpl" : outs : ins : clobbers); */
 		tk = tk->next; consume("volatile"); consume("__volatile__"); consume("goto");
 		expect("("); Node *n = node(ND_ASM);
-		char buf[1024]; size_t bl = 0; buf[0] = 0;           /* template: concatenate adjacent string literals */
-		while (tk->kind == TK_STR) { size_t l = strlen(tk->text); if (bl + l < sizeof buf - 1) { memcpy(buf + bl, tk->text, l); bl += l; buf[bl] = 0; } tk = tk->next; }
+		char buf[4096]; size_t bl = 0; buf[0] = 0;           /* template: concatenate adjacent string literals */
+		while (tk->kind == TK_STR) { size_t l = strlen(tk->sval); if (bl + l >= sizeof buf) die("parse: asm template too long (>%d)", (int)sizeof buf); memcpy(buf + bl, tk->sval, l); bl += l; buf[bl] = 0; tk = tk->next; }
 		n->asm_tmpl = malloc(bl + 1); memcpy(n->asm_tmpl, buf, bl + 1);
 		Node oh = {0}, *oc = &oh; int nouts = 0;
 		char opn[16][32]; int nn = 0;                        /* per-operand [name] (by position: outputs then inputs) */

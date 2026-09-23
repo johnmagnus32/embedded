@@ -21,7 +21,8 @@ typedef struct Token {
 	TokKind kind;
 	struct Token *next;
 	long val;              /* TK_NUM: the integer value                         */
-	char text[64];         /* the raw lexeme (ident/keyword name, or punctuator) */
+	char text[64];         /* the raw lexeme (ident/keyword name, or punctuator; truncated for long strings) */
+	char *sval;            /* TK_STR: the full (untruncated) raw string contents — asm templates/format strings exceed text[64] */
 	int line;              /* source line, for diagnostics                       */
 } Token;
 

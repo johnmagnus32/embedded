@@ -67,8 +67,10 @@ Token *lex(const char *src) {
 			const char *s = ++p;                                                         /* skip opening quote */
 			while (*p && *p != '"') { if (*p == '\\' && p[1]) p += 2; else p++; }         /* keep escapes intact */
 			Token *t = new_tok(TK_STR, line);
-			size_t n = p - s; if (n >= sizeof t->text) n = sizeof t->text - 1;
-			memcpy(t->text, s, n); t->text[n] = 0;                                       /* raw inner text (as spelled) */
+			size_t full = p - s;
+			t->sval = malloc(full + 1); memcpy(t->sval, s, full); t->sval[full] = 0;     /* full raw text (as spelled) — unbounded */
+			size_t n = full; if (n >= sizeof t->text) n = sizeof t->text - 1;
+			memcpy(t->text, s, n); t->text[n] = 0;                                       /* truncated preview */
 			if (*p == '"') p++;                                                          /* skip closing quote */
 			cur = cur->next = t; continue;
 		}
