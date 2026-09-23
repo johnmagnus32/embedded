@@ -151,8 +151,10 @@ static Type *declarator(Type *base, char *name) {
 		return ptr ? pointer_to(base) : base;
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
-	while (consume("__attribute__")) skip_attribute();       /* trailing: `int x __attribute__((aligned(4)))` */
-	return type_suffix(base);
+	while (consume("__attribute__")) skip_attribute();       /* trailing attr before the suffix: `int __attribute__((x)) v` */
+	base = type_suffix(base);
+	while (consume("__attribute__")) skip_attribute();       /* trailing attr after the suffix: `int v[N] __attribute__((aligned(64)))` */
+	return base;
 }
 
 /* struct-spec = "struct" tag? ( "{" (declspec declarator ("," declarator)* ";")* "}" )?  — a named
