@@ -664,6 +664,23 @@ static Node *stmt(void) {
 				while (consume("__attribute__")) skip_attribute();   /* trailing: `void h(void) __attribute__((error("...")))` */
 				continue;
 			}
+			if (ty->kind == TY_ARRAY && ty->len == 0 && is("=")) {   /* unsized local array `T x[] = {...}`: size the frame slot from the initializer BEFORE add_local */
+				Token *sv = tk; tk = tk->next;
+				if (is("{")) {
+					int bd = 0, pd = 0, cnt = 0, any = 0;
+					for (Token *t = tk; t && t->kind != TK_EOF; t = t->next) {
+						const char *x = t->text;
+						if (!strcmp(x, "{")) { bd++; continue; }
+						if (!strcmp(x, "}")) { if (--bd == 0) break; continue; }
+						if (!strcmp(x, "(") || !strcmp(x, "[")) pd++;
+						else if (!strcmp(x, ")") || !strcmp(x, "]")) pd--;
+						if (bd == 1) { any = 1; if (pd == 0 && !strcmp(x, ",")) cnt++; }
+					}
+					if (any) cnt++;
+					ty->len = cnt; ty->size = cnt * (ty->base ? ty->base->size : 1);
+				}
+				tk = sv;
+			}
 			int off = add_local(nm, ty);
 			if (consume("__asm__") || consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
