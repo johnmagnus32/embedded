@@ -398,6 +398,12 @@ static Node *postfix(void) {
 		else if (consume("->")) { char m[64]; ident(m); n = struct_member(unary(ND_DEREF, n), m); }
 		else if (consume("++")) n = new_sub(binary(ND_ASSIGN, n, new_add(n, num(1))), num(1));   /* x++ = (x=x+1)-1 */
 		else if (consume("--")) n = new_add(binary(ND_ASSIGN, n, new_sub(n, num(1))), num(1));   /* x-- = (x=x-1)+1 */
+		else if (consume("(")) {   /* call on an arbitrary expr: _Generic(...)(args), (fp)(args), f(x)(y) — indirect via lhs */
+			Node *c = node(ND_CALL); c->lhs = n;
+			Node argh = {0}, *ac = &argh;
+			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }
+			expect(")"); c->args = argh.next; n = c;
+		}
 		else return n;
 	}
 }
