@@ -572,10 +572,38 @@ static void gen_data(void) {
 	}
 }
 
+/* Dead-code elimination: a kernel .c pulls in thousands of static inline functions from headers; GCC drops
+ * the unused ones. We keep every non-static (exported) function + any function referenced by a global's
+ * initializer as roots, then transitively keep whatever they reference (any node->name matching a defined
+ * function — direct calls and function designators both surface the name), and drop the rest. */
+static Func *find_func(Func *prog, const char *name) {
+	if (!name || !name[0]) return NULL;
+	for (Func *f = prog; f; f = f->next) if (!strcmp(f->name, name)) return f;
+	return NULL;
+}
+static void dce_mark(Func *prog, Node *n) {   /* mark functions referenced anywhere in n's subtree */
+	if (!n) return;
+	Func *g = find_func(prog, n->name); if (g && !g->reachable) g->reachable = 1;   /* queue newly-seen */
+	dce_mark(prog, n->lhs); dce_mark(prog, n->rhs); dce_mark(prog, n->cond);
+	dce_mark(prog, n->then); dce_mark(prog, n->els); dce_mark(prog, n->init); dce_mark(prog, n->inc);
+	for (Node *c = n->body; c; c = c->next) dce_mark(prog, c);
+	for (Node *a = n->args; a; a = a->next) dce_mark(prog, a);
+}
+static void dce(Func *prog) {
+	for (Func *f = prog; f; f = f->next) f->reachable = f->is_static ? 0 : 1;   /* roots: exported functions */
+	for (Gvar *gv = globals; gv; gv = gv->next)                                 /* + functions in data initializers */
+		for (Init *it = gv->init; it; it = it->next)
+			if (it->kind == INIT_SYM) { Func *fn = find_func(prog, it->sym); if (fn) fn->reachable = 1; }
+	for (int changed = 1; changed; ) {                                          /* fixpoint over the call graph */
+		changed = 0;
+		for (Func *f = prog; f; f = f->next) if (f->reachable == 1) { f->reachable = 2; changed = 1; for (Node *s = f->body; s; s = s->next) dce_mark(prog, s); }
+	}
+}
 void gen(Func *prog, const char *out) {
 	o = fopen(out, "w"); if (!o) die("cc: cannot open %s", out);
 	fprintf(o, "\t.text\n");
-	for (Func *f = prog; f; f = f->next) gen_func(f);
+	dce(prog);
+	for (Func *f = prog; f; f = f->next) if (f->reachable) gen_func(f);
 	gen_data();
 	fclose(o);
 }

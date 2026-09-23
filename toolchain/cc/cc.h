@@ -99,6 +99,7 @@ typedef struct Func {
 	int arg_off[4];
 	int variadic;                /* 1 if declared with `...` (needs the register-save prologue)  */
 	int is_static;               /* 1 if `static` — file-local symbol, emit no .global            */
+	int reachable;               /* DCE: 0 = unreachable (drop), 1 = reachable/queued, 2 = walked  */
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
 	Node *body;                  /* statement list                                               */
 	struct Func *next;
