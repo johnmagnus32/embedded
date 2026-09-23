@@ -434,7 +434,13 @@ void md_assemble(char **t, int n) {
 	if (!strncmp(m, "clz", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_clz(cond); return; }
 	if (!strncmp(m, "svc", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_svc(cond); return; }
 	if (!strcmp(m, "pld") || !strcmp(m, "pldw") || !strcmp(m, "pli")) { emit32(0xe320f000u); return; }   /* prefetch hints -> NOP (optional) */
-	if (!strcmp(m, "nop")) { emit32(0xe320f000u); return; }
+	{   /* NOP-space hints, optionally conditional (e.g. `wfene` in spinlock loops) */
+		static const struct { const char *n; u32 h; } hn[] = { {"nop",0},{"yield",1},{"wfe",2},{"wfi",3},{"sev",4},{"sevl",5} };
+		for (unsigned i = 0; i < sizeof hn/sizeof *hn; i++) { size_t l = strlen(hn[i].n);
+			if (!strncmp(m, hn[i].n, l)) { u32 cc = 14;
+				if (m[l] == 0 || (strlen(m+l) == 2 && lookup_cc(m+l, &cc))) { emit32((cc << 28) | 0x0320f000u | hn[i].h); return; }
+			} }
+	}
 	if (!strcmp(m, "dmb")) { enc_barrier(0xf57ff050u); return; }
 	if (!strcmp(m, "dsb")) { enc_barrier(0xf57ff040u); return; }
 	if (!strcmp(m, "isb")) { enc_barrier(0xf57ff060u); return; }

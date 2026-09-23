@@ -344,6 +344,15 @@ static int coll_mode, coll_depth, coll_n; static char *coll_body[2048];
 static char coll_name[64], coll_params_src[256]; static long coll_reptn;
 
 static void feed_line(char *line) {
+	if (!coll_mode) {   /* GAS ';' statement separator: split one line into statements (quote-aware; '@' = comment) */
+		int inq = 0; char qc = 0;
+		for (char *p = line; *p; p++) {
+			if (inq) { if (*p == qc) inq = 0; else if (*p == '\\' && p[1]) p++; }
+			else if (*p == '"' || *p == '\'') { inq = 1; qc = *p; }
+			else if (*p == '@') break;
+			else if (*p == ';') { *p = 0; feed_line(line); feed_line(p + 1); return; }
+		}
+	}
 	{ const char *q = line; while (*q==' '||*q=='\t') q++; if (*q == '#') return; }   /* cpp line marker / `#` comment */
 	char w[64]; const char *rest = lead(line, w);
 	if (coll_mode) {                                 /* gathering a macro/rept body until the matching end */
@@ -390,6 +399,7 @@ static void feed_line(char *line) {
 	}
 	if (!strcmp(w, ".else"))   { if (nifs) { int parent=1; for(int i=0;i<nifs-1;i++) if(!ifs[i].active)parent=0; ifs[nifs-1].active = parent && !ifs[nifs-1].taken; if(ifs[nifs-1].active) ifs[nifs-1].taken=1; } return; }
 	if (!strcmp(w, ".endif"))  { if (nifs) nifs--; return; }
+	if (!strcmp(w, ".err"))    { if (emitting()) die(".err directive reached (assembly assertion failed)"); return; }
 	if (!emitting()) return;                         /* inside a false .if branch */
 	Macro *m = macro_find(w);
 	if (m) { expand_macro(m, rest); return; }
