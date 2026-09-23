@@ -444,12 +444,15 @@ static void gen_asm(Node *n) {
 		if (rn < 0) die("cc: out of registers for asm operands");
 		regof[i] = rn; used |= 1 << rn;
 	}
-	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, "%s", asm_regname(regof[i]));
-	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && asm_is_input(ops[i]->cons)) { gen_expr(ops[i]); fprintf(o, "\tpush {r0}\n"); }
-	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && asm_is_input(ops[i]->cons)) fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
+	/* an "m" operand references memory: hold its ADDRESS in the reg and substitute "[reg]" */
+	#define ASM_MEM(i) (strpbrk(ops[i]->cons, "mQoV") != NULL)   /* memory constraints: m/o/V general, Q = single-register address (ARM) */
+	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
+	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) { if (ASM_MEM(i)) gen_addr(ops[i]); else gen_expr(ops[i]); fprintf(o, "\tpush {r0}\n"); }
+	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
 	emit_asm_template(n->asm_tmpl, subst, nops);
-	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0) fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
-	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0) { gen_addr(ops[i]); fprintf(o, "\tmov r1, r0\n\tpop {r0}\n"); store(ops[i]->type); }
+	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
+	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) { gen_addr(ops[i]); fprintf(o, "\tmov r1, r0\n\tpop {r0}\n"); store(ops[i]->type); }
+	#undef ASM_MEM
 }
 
 static void gen_stmt(Node *n) {
