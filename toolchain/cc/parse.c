@@ -150,9 +150,12 @@ static Type *declarator(Type *base, char *name) {
 /* struct-spec = "struct" tag? ( "{" (declspec declarator ("," declarator)* ";")* "}" )?  — a named
  * definition registers the tag; a bare "struct tag" looks it up. Member offsets are assigned with each
  * member aligned to its own alignment, and the struct's size rounded up to its max member alignment. */
-static struct { char name[64]; Type *type; } struct_tags[64]; static int nstruct_tags;
+#define MAXTAGS 16384   /* a preprocessed kernel TU declares thousands of struct/union tags; at 64 the table
+                         * overflowed silently -> a forward decl + its later definition bound to DIFFERENT
+                         * Type objects, so `ptr->member` saw an empty (opaque) struct. */
+static struct { char name[64]; Type *type; } struct_tags[MAXTAGS]; static int nstruct_tags;
 static Type *tag_find(const char *name) { for (int i = 0; i < nstruct_tags; i++) if (!strcmp(struct_tags[i].name, name)) return struct_tags[i].type; return NULL; }
-static void  tag_add(const char *name, Type *t) { if (name[0] && nstruct_tags < 64) { strncpy(struct_tags[nstruct_tags].name, name, 63); struct_tags[nstruct_tags].type = t; nstruct_tags++; } }
+static void  tag_add(const char *name, Type *t) { if (!name[0]) return; if (nstruct_tags >= MAXTAGS) die("cc: too many struct/union tags (>%d) — raise MAXTAGS", MAXTAGS); strncpy(struct_tags[nstruct_tags].name, name, 63); struct_tags[nstruct_tags].type = t; nstruct_tags++; }
 /* Assign every member a byte offset (and, for bitfields, a bit offset within its storage unit) and set the
  * struct's size + alignment. Little-endian bit allocation, GCC/SysV rules: a bitfield lives entirely inside
  * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed`
