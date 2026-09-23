@@ -58,6 +58,7 @@ static Type *enum_decl(void);
 static int is_typename(void);
 static Type *declarator(Type *base, char *name);
 static Node *init_of(Node *dest, Type *ty);   /* aggregate brace-initializer (defined later; used by compound literals) */
+static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
 static long eval_const(Node *n); static Node *assign(void);
@@ -344,7 +345,7 @@ static Node *new_sub(Node *l, Node *r);
 		if (!strcmp(name, "__builtin_va_end"))   { expect("("); assign(); expect(")"); return num(0); }
 		if (!strcmp(name, "__builtin_unreachable")) { expect("("); expect(")"); return num(0); }   /* no-op, not a call */
 		if (!strcmp(name, "__builtin_expect"))    { expect("("); Node *e = assign(); expect(","); assign(); expect(")"); return e; }   /* value is the 1st arg; the hint is ignored */
-		if (!strcmp(name, "__builtin_constant_p")) { expect("("); assign(); expect(")"); return num(0); }   /* conservatively "not constant" */
+		if (!strcmp(name, "__builtin_constant_p")) { expect("("); Node *e = assign(); expect(")"); int ok = 1; eval_try(e, &ok); return num(ok ? 1 : 0); }   /* 1 iff the arg folds to an integer constant */
 		if (!strcmp(name, "__builtin_choose_expr")) {   /* compile-time ?: — pick an arm by the constant cond; the other is discarded */
 			expect("("); Node *c = assign(); expect(","); Node *a = assign(); expect(","); Node *b = assign(); expect(")");
 			return eval_const(c) ? a : b;
@@ -722,34 +723,54 @@ static Func *function_tail(const char *name, Type *ret) {
  * following the type's layout: struct members get padding for alignment gaps + a zero tail for missing
  * fields; array elements likewise. Recurses for nested braces. */
 /* Fold a constant expression (for initializers, case labels, enum values, array sizes). */
-static long eval_const(Node *n) {
+static long clz_bits(unsigned long long v, int bits) { int c = 0; for (int i = bits - 1; i >= 0; i--) { if (v & (1ULL << i)) break; c++; } return c; }
+static long ctz_bits(unsigned long long v, int bits) { if (!v) return bits; int c = 0; while (c < bits && !((v >> c) & 1)) c++; return c; }
+/* Non-dying constant folder: sets *ok=0 if `n` is not an integer constant expression (so __builtin_constant_p
+ * can probe without aborting). eval_const() is the strict wrapper that die()s on failure. */
+static long eval_try(Node *n, int *ok) {
 	switch (n->kind) {
 	case ND_NUM:    return n->val;
-	case ND_NEG:    return -eval_const(n->lhs);
-	case ND_BITNOT: return ~eval_const(n->lhs);
-	case ND_NOT:    return !eval_const(n->lhs);
-	case ND_CAST:   return eval_const(n->lhs);
-	case ND_ADD:    return eval_const(n->lhs) +  eval_const(n->rhs);
-	case ND_SUB:    return eval_const(n->lhs) -  eval_const(n->rhs);
-	case ND_MUL:    return eval_const(n->lhs) *  eval_const(n->rhs);
-	case ND_DIV:    return eval_const(n->lhs) /  eval_const(n->rhs);
-	case ND_MOD:    return eval_const(n->lhs) %  eval_const(n->rhs);
-	case ND_BITAND: return eval_const(n->lhs) &  eval_const(n->rhs);
-	case ND_BITOR:  return eval_const(n->lhs) |  eval_const(n->rhs);
-	case ND_BITXOR: return eval_const(n->lhs) ^  eval_const(n->rhs);
-	case ND_SHL:    return eval_const(n->lhs) << eval_const(n->rhs);
-	case ND_SHR:    return eval_const(n->lhs) >> eval_const(n->rhs);
-	case ND_EQ:     return eval_const(n->lhs) == eval_const(n->rhs);
-	case ND_NE:     return eval_const(n->lhs) != eval_const(n->rhs);
-	case ND_LT:     return eval_const(n->lhs) <  eval_const(n->rhs);
-	case ND_LE:     return eval_const(n->lhs) <= eval_const(n->rhs);
-	case ND_GT:     return eval_const(n->lhs) >  eval_const(n->rhs);
-	case ND_GE:     return eval_const(n->lhs) >= eval_const(n->rhs);
-	case ND_AND:    return eval_const(n->lhs) && eval_const(n->rhs);
-	case ND_OR:     return eval_const(n->lhs) || eval_const(n->rhs);
-	case ND_COND:   return eval_const(n->cond) ? eval_const(n->then) : eval_const(n->els);
-	default: die("parse: not a constant expression (node %d, near line %d)", n->kind, tk->line); return 0;
+	case ND_NEG:    return -eval_try(n->lhs, ok);
+	case ND_BITNOT: return ~eval_try(n->lhs, ok);
+	case ND_NOT:    return !eval_try(n->lhs, ok);
+	case ND_CAST:   return eval_try(n->lhs, ok);
+	case ND_ADD:    return eval_try(n->lhs, ok) +  eval_try(n->rhs, ok);
+	case ND_SUB:    return eval_try(n->lhs, ok) -  eval_try(n->rhs, ok);
+	case ND_MUL:    return eval_try(n->lhs, ok) *  eval_try(n->rhs, ok);
+	case ND_DIV:    { long d = eval_try(n->rhs, ok); return d ? eval_try(n->lhs, ok) / d : (eval_try(n->lhs, ok), 0); }
+	case ND_MOD:    { long d = eval_try(n->rhs, ok); return d ? eval_try(n->lhs, ok) % d : (eval_try(n->lhs, ok), 0); }
+	case ND_BITAND: return eval_try(n->lhs, ok) &  eval_try(n->rhs, ok);
+	case ND_BITOR:  return eval_try(n->lhs, ok) |  eval_try(n->rhs, ok);
+	case ND_BITXOR: return eval_try(n->lhs, ok) ^  eval_try(n->rhs, ok);
+	case ND_SHL:    return eval_try(n->lhs, ok) << eval_try(n->rhs, ok);
+	case ND_SHR:    return eval_try(n->lhs, ok) >> eval_try(n->rhs, ok);
+	case ND_EQ:     return eval_try(n->lhs, ok) == eval_try(n->rhs, ok);
+	case ND_NE:     return eval_try(n->lhs, ok) != eval_try(n->rhs, ok);
+	case ND_LT:     return eval_try(n->lhs, ok) <  eval_try(n->rhs, ok);
+	case ND_LE:     return eval_try(n->lhs, ok) <= eval_try(n->rhs, ok);
+	case ND_GT:     return eval_try(n->lhs, ok) >  eval_try(n->rhs, ok);
+	case ND_GE:     return eval_try(n->lhs, ok) >= eval_try(n->rhs, ok);
+	case ND_AND:    return eval_try(n->lhs, ok) && eval_try(n->rhs, ok);
+	case ND_OR:     return eval_try(n->lhs, ok) || eval_try(n->rhs, ok);
+	case ND_COND:   return eval_try(n->cond, ok) ? eval_try(n->then, ok) : eval_try(n->els, ok);
+	case ND_CALL:   /* fold the __attribute__((const)) bit-count builtins over a constant argument */
+		if (n->name[0] && n->args) {
+			long a = eval_try(n->args, ok);
+			if (!strcmp(n->name, "__builtin_clz"))    return clz_bits((unsigned int)a, 32);
+			if (!strcmp(n->name, "__builtin_clzll") || !strcmp(n->name, "__builtin_clzl")) return clz_bits((unsigned long long)a, 64);
+			if (!strcmp(n->name, "__builtin_ctz"))    return ctz_bits((unsigned int)a, 32);
+			if (!strcmp(n->name, "__builtin_ctzll") || !strcmp(n->name, "__builtin_ctzl")) return ctz_bits((unsigned long long)a, 64);
+			if (!strcmp(n->name, "__builtin_ffs"))    return a ? ctz_bits((unsigned int)a, 32) + 1 : 0;
+			if (!strcmp(n->name, "__builtin_ffsll"))  return a ? ctz_bits((unsigned long long)a, 64) + 1 : 0;
+		}
+		*ok = 0; return 0;
+	default: *ok = 0; return 0;
 	}
+}
+static long eval_const(Node *n) {
+	int ok = 1; long v = eval_try(n, &ok);
+	if (!ok) die("parse: not a constant expression (node %d, near line %d)", n->kind, tk->line);
+	return v;
 }
 static Init *mkinit(int kind) { Init *i = calloc(1, sizeof *i); i->kind = kind; return i; }
 static Init *global_init(Type *ty) {
