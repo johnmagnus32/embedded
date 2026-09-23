@@ -26,9 +26,9 @@ typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is a
 typedef struct { int sec; u32 off; int local_num; } Fixup;          /* forward local-label branch to patch */
 
 #define MAXSEC 32
-#define MAXSYM 8192   /* generous: a big TU (e.g. ld.so's dl_main.c) emits many .L labels + symbols */
-#define MAXFIX 8192
-#define MAXREL 8192
+#define MAXSYM 65536  /* a big preprocessed kernel .c emits tens of thousands of .L labels + symbols */
+#define MAXFIX 65536
+#define MAXREL 65536
 extern Section secs[]; extern int nsec, cursec;   /* cursec = active section index into secs[] */
 extern Sym syms[]; extern int nsym;
 extern Reloc rels[]; extern int nrel;

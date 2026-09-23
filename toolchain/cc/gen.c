@@ -105,15 +105,25 @@ static void gen_cast(Type *ty) {
 	else if (ty->size == 2) fprintf(o, ty->is_unsigned ? "\tuxth r0, r0\n" : "\tsxth r0, r0\n");
 }
 
+/* Is v an ARM data-processing modified-immediate (an 8-bit value rotated right by an even amount)? */
+static int arm_enc(unsigned v) { for (int r = 0; r < 16; r++) { unsigned s = 2u * r; unsigned x = (v << s) | (v >> ((32 - s) & 31)); if (x <= 0xffu) return 1; } return 0; }
+/* Emit `dst = src +/- imm`, materializing a non-encodable immediate via ip (movw/movt) — a struct-member
+ * offset or frame size can exceed the ARM modified-immediate range. */
+static void emit_addimm(const char *dst, const char *src, int imm) {
+	if (imm == 0) { if (strcmp(dst, src)) fprintf(o, "\tmov %s, %s\n", dst, src); return; }
+	int neg = imm < 0; unsigned a = neg ? (unsigned)(-imm) : (unsigned)imm;
+	if (arm_enc(a)) { fprintf(o, "\t%s %s, %s, #%u\n", neg ? "sub" : "add", dst, src, a); return; }
+	fprintf(o, "\tmovw ip, #%u\n", a & 0xffffu); if (a >> 16) fprintf(o, "\tmovt ip, #%u\n", a >> 16);
+	fprintf(o, "\t%s %s, %s, ip\n", neg ? "sub" : "add", dst, src);
+}
 /* Put the ADDRESS of an lvalue in r0. A variable's address is fp+offset; *p's address is p's value. */
 static void gen_addr(Node *n) {
 	switch (n->kind) {
 	case ND_VAR:   /* fp-relative: locals are below fp (negative), stack params above it (positive) */
-		if (n->offset < 0) fprintf(o, "\tsub r0, r11, #%d\n", -n->offset);
-		else               fprintf(o, "\tadd r0, r11, #%d\n",  n->offset);
+		emit_addimm("r0", "r11", n->offset);
 		return;
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
-	case ND_MEMBER: gen_addr(n->lhs); if (n->offset) fprintf(o, "\tadd r0, r0, #%d\n", n->offset); return;
+	case ND_MEMBER: gen_addr(n->lhs); emit_addimm("r0", "r0", n->offset); return;
 	case ND_GVAR: {
 		if (pic) {
 			/* PIC: r0 = &sym via the GOT. The `add` sits exactly 8 bytes before the inline literal so
@@ -265,7 +275,7 @@ static void gen_expr(Node *n) {
 		for (Node *s = n->body; s; s = s->next) gen_stmt(s);
 		return;
 	case ND_VA_START:                                            /* ap = &(first variadic arg) */
-		gen_addr(n->lhs); fprintf(o, "\tadd r1, r11, #%d\n\tstr r1, [r0]\n", 8 + 4 * cur_nfixed);
+		gen_addr(n->lhs); emit_addimm("r1", "r11", 8 + 4 * cur_nfixed); fprintf(o, "\tstr r1, [r0]\n");
 		return;
 	case ND_VA_ARG:                                              /* fetch *ap, advance ap by the arg width */
 		gen_addr(n->lhs);
@@ -319,7 +329,7 @@ static void gen_expr(Node *n) {
 		 * [.. ] = callee-ptr staging. Everything is addressed off sp, so nested-call arg evaluation (which
 		 * moves sp and restores it) never disturbs already-placed args. Pad so sp stays 8-aligned at the call. */
 		int stageb = nstk * 4, total = nstk + regwords + cw, resv = total * 4 + ((total * 4 & 7) ? 4 : 0);
-		if (resv) fprintf(o, "\tsub sp, sp, #%d\n", resv);
+		if (resv) emit_addimm("sp", "sp", -resv);
 		int stageword[16], si = 0;
 		for (int i = 0; i < nargs; i++) {
 			gen_expr_w(av[i], is64a[i]);   /* widen a narrow arg to a 64-bit param (sign/zero) */
@@ -333,7 +343,7 @@ static void gen_expr(Node *n) {
 		}
 		if (n->lhs) fprintf(o, "\tldr r12, [sp, #%d]\n\tblx r12\n", stageb + regwords * 4);
 		else        fprintf(o, "\tbl %s\n", n->name);              /* result in r0(:r1) */
-		if (resv) fprintf(o, "\tadd sp, sp, #%d\n", resv);
+		if (resv) emit_addimm("sp", "sp", resv);
 		return;
 	}
 	default: break;
@@ -526,7 +536,7 @@ static void gen_func(Func *f) {
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
 	if (f->variadic) fprintf(o, "\tpush {r0, r1, r2, r3}\n");   /* save area: args become contiguous at [r11,#8+4i] */
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
-	if (f->frame) fprintf(o, "\tsub sp, sp, #%d\n", f->frame);
+	if (f->frame) emit_addimm("sp", "sp", -f->frame);   /* ip is free here; frame may exceed the imm range */
 	if (!f->variadic) for (int w = 0; w < f->arg_regs; w++) if (f->arg_off[w]) fprintf(o, "\tstr r%d, [r11, #%d]\n", w, f->arg_off[w]);   /* spill incoming r0..r3 to param slots (word-based) */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
