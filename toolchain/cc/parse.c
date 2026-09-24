@@ -58,6 +58,14 @@ static Type *enum_decl(void);
 static int is_typename(void);
 static Type *declarator(Type *base, char *name);
 static Node *init_of(Node *dest, Type *ty);   /* aggregate brace-initializer (defined later; used by compound literals) */
+
+/* One shared initializer traversal (like a real compiler's InitListChecker): parse the initializer syntax
+ * ONCE into a neutral list of scalar leaf placements, then lower to either a .data byte image (globals) or
+ * a block of runtime stores (locals). Kills the old global_init/init_of fork that drifted in capability. */
+typedef struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset; struct InitPlace *next; } InitPlace;
+static int   parse_init(Type *ty, int base, InitPlace **tail);
+static Init *lower_global(InitPlace *places, int total);
+static Node *lower_local(Node *dest, InitPlace *places, int total);
 static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
 static void skip_attribute(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }
@@ -541,42 +549,12 @@ static Node *expr(void)  { Node *n = assign(); while (consume(",")) n = binary(N
 /* Aggregate/brace initializer for a local: `{ e0, e1, ... }` -> a block of member/element assignments to
  * `dest` (an lvalue). Recurses for nested braces; a scalar with braces takes the first element. Partial
  * initializers just stop (the rest is left as-is — no zero-fill, an M1 simplification). */
+/* Aggregate/brace initializer for a local (and for compound literals): parse into placements via the shared
+ * traversal, then lower to a block of stores against `dest`. */
 static Node *init_of(Node *dest, Type *ty) {
-	expect("{");
-	Node blk = {0}, *c = &blk;
-	if (ty->kind == TY_STRUCT) {
-		Member *m = ty->members;
-		while (!is("}")) {
-			if (consume(".")) {                              /* designated: .field = value */
-				char mn[64]; ident(mn); consume("=");
-				for (m = ty->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
-				if (!m) die("parse: struct has no member '%s'", mn);
-			}
-			if (!m) break;
-			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = m->offset; dm->type = m->type;
-			if (m->is_bitfield) { dm->bit_width = m->bit_width; dm->bit_offset = m->bit_offset; }
-			c->next = is("{") ? init_of(dm, m->type) : unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, assign()));
-			c = c->next; m = m->next; if (!consume(",")) break;
-		}
-	} else if (ty->kind == TY_ARRAY) {
-		int i = 0;
-		while (!is("}") && (ty->len == 0 || i < ty->len)) {
-			int lo = i, hi = i;
-			if (is("[")) {   /* [idx] or GNU range [lo ... hi] designator */
-				expect("["); lo = hi = (int)eval_const(assign());
-				if (consume("...")) hi = (int)eval_const(assign());
-				expect("]"); consume("=");
-			}
-			if (is("{")) { Node *de = unary(ND_DEREF, new_add(dest, num(lo))); c->next = init_of(de, ty->base); c = c->next; i = lo + 1; }
-			else { Node *val = assign(); for (int k = lo; k <= hi; k++) { Node *de = unary(ND_DEREF, new_add(dest, num(k))); c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, de, val)); c = c->next; } i = hi + 1; }
-			if (!consume(",")) break;
-		}
-	} else {   /* scalar in braces: {e} */
-		c = c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dest, assign()));
-		consume(",");
-	}
-	expect("}");
-	Node *n = node(ND_BLOCK); n->body = blk.next; return n;
+	InitPlace head = {0}, *tail = &head;
+	parse_init(ty, 0, &tail);
+	return lower_local(dest, head.next, ty->size);
 }
 
 static Node *stmt(void) {
@@ -863,139 +841,173 @@ static int str_decode(const char *s, unsigned char *out, int cap) {
 	}
 	return n;
 }
-static Init *global_init(Type *ty) {
+static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo) {
+	InitPlace *p = calloc(1, sizeof *p);
+	p->off = off; p->ty = ty; p->expr = expr; p->bit_width = bw; p->bit_offset = bo;
+	(*tail)->next = p; *tail = p; return p;
+}
+struct pp_ent { int off, seq; Type *ty; Node *expr; };
+static int cmp_pp(const void *a, const void *b) {
+	const struct pp_ent *x = a, *y = b;
+	if (x->off != y->off) return x->off - y->off;
+	return x->seq - y->seq;
+}
+
+/* Parse the initializer for an object of type `ty` sitting at absolute byte offset `base`, appending scalar
+ * leaf placements. Returns the byte extent (used to size an unsized top-level array). Handles: braces,
+ * positional + `.field`/`[i]` designators (absolute-seek cursor; last-writer-wins is applied at lowering),
+ * chained/braceless designators (`.a.b = v`), GNU ranges `[lo...hi]`, `char[] = "..."` (inline bytes), and
+ * compound literals `(T){...}`. This is the ONE place that understands initializer syntax. */
+static int parse_init(Type *ty, int base, InitPlace **tail) {
 	if (is("{")) {
 		expect("{");
-		Init head = {0}, *c = &head;
 		if (ty->kind == TY_STRUCT) {
-			/* slot model (mirrors the TY_ARRAY branch below + how GCC/Clang do it): a `.field` designator is an
-			 * ABSOLUTE seek of the "current object" cursor, positional elements advance it one member at a time,
-			 * and a later write to a slot overrides an earlier one (last writer wins). The reader loop is driven
-			 * by the brace list — NEVER by whether a "next member" still exists — so out-of-order designators,
-			 * gaps, and overrides all fall out uniformly. Emission walks members in offset order, emitting only
-			 * initialized members + zero-filling the gaps, which keeps unions right (an uninitialized member is
-			 * covered by padding, not by its own zero run). */
-			int nm = 0; for (Member *mm = ty->members; mm; mm = mm->next) nm++;
+			int nm = 0; for (Member *m = ty->members; m; m = m->next) nm++;
 			Member **marr = malloc((nm ? nm : 1) * sizeof *marr);
-			{ int i = 0; for (Member *mm = ty->members; mm; mm = mm->next) marr[i++] = mm; }
-			Init **slots = calloc(nm ? nm : 1, sizeof *slots);
-			int at = 0;   /* cursor: member index the next positional element initializes */
+			{ int i = 0; for (Member *m = ty->members; m; m = m->next) marr[i++] = m; }
+			int at = 0;
 			while (!is("}")) {
-				if (is(".")) {   /* designated: .field = value — reposition the cursor absolutely */
+				if (is(".")) {   /* designated: reposition the member cursor absolutely */
 					expect("."); char mn[64]; ident(mn); consume("=");
 					int f = -1; for (int i = 0; i < nm; i++) if (!strcmp(marr[i]->name, mn)) { f = i; break; }
 					if (f < 0) die("parse: struct has no member '%s'", mn);
 					at = f;
 				}
 				if (at >= nm) die("parse: excess elements in struct initializer");
-				slots[at] = global_init(marr[at]->type);   /* last writer wins */
+				Member *m = marr[at];
+				if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset); }
+				else parse_init(m->type, base + m->offset, tail);
 				at++;
 				if (!consume(",")) break;
 			}
-			int cur = 0;
-			for (int i = 0; i < nm; i++) {
-				if (!slots[i]) continue;
-				Member *m = marr[i];
-				if (m->offset > cur) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset - cur; c = c->next; }
-				c->next = slots[i]; while (c->next) c = c->next;   /* splice the member's items */
-				int end = m->offset + m->type->size; if (end > cur) cur = end;
-			}
-			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
-			free(marr); free(slots);
-		} else if (ty->kind == TY_ARRAY) {
-			/* index-keyed: one pass buffering (index,item) pairs handles sized+unsized, out-of-order, range
-			 * and gapped designators uniformly (kernel asn1_op_lengths[] lists [RETURN]=0x28 before [END_SEQ]). */
-			int cap = 8192, ne = 0, cur = 0, maxidx = -1;
-			struct { int idx; Init *item; } *elems = malloc(cap * sizeof *elems);   /* heap: global_init recurses for nested aggregates */
+			free(marr); expect("}"); return ty->size;
+		}
+		if (ty->kind == TY_ARRAY) {
+			int esz = ty->base->size, idx = 0, maxidx = -1;
 			while (!is("}")) {
-				int lo = cur, hi = cur;
+				int lo = idx, hi = idx;
 				if (is("[")) { expect("["); lo = hi = (int)eval_const(assign()); if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("="); }
-				Init *item = global_init(ty->base);
-				for (int k = lo; k <= hi; k++) { if (ne >= cap) die("parse: too many array initializers (>%d)", cap); elems[ne].idx = k; elems[ne].item = item; ne++; if (k > maxidx) maxidx = k; }
-				cur = hi + 1;
+				InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);   /* parse element once, replicate across the range */
+				for (int k = lo; k <= hi; k++) {
+					if (ty->len > 0 && k >= ty->len) continue;   /* sized array: drop excess elements */
+					for (InitPlace *p = th.next; p; p = p->next) pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset);
+					if (k > maxidx) maxidx = k;
+				}
+				idx = hi + 1;
 				if (!consume(",")) break;
 			}
-			int len = ty->len > 0 ? ty->len : maxidx + 1;
-			Init **slots = calloc(len > 0 ? len : 1, sizeof *slots);
-			for (int i = 0; i < ne; i++) if (elems[i].idx < len) slots[elems[i].idx] = elems[i].item;   /* last writer wins */
-			free(elems);
-			for (int k = 0; k < len; k++) {
-				if (slots[k]) { for (Init *it = slots[k]; it; it = it->next) { c->next = mkinit(it->kind); *c->next = *it; c->next->next = NULL; c = c->next; } }   /* copy (a range shares one item) */
-				else { c->next = mkinit(INIT_ZERO); c->next->size = ty->base->size; c = c->next; }
-			}
-			if (ty->len == 0) { ty->len = len; ty->size = len * ty->base->size; }
-		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
-		expect("}");
-		return head.next;
+			expect("}");
+			if (ty->len == 0) { ty->len = maxidx + 1; ty->size = (maxidx + 1) * esz; }
+			return ty->size;
+		}
+		Node *e = assign(); pi_append(tail, base, ty, e, 0, 0);   /* scalar in braces: { e } */
+		while (consume(",")) { if (is("}")) break; assign(); }
+		expect("}"); return ty->size;
 	}
-	/* Braceless designated continuation: `.a.b = v` is parsed as (outer) member a := global_init(a-type)
-	 * facing a bare `.b = v` — i.e. `.a = { .b = v }`. The kernel's trace-event structs use `.event.funcs =
-	 * ...`. Initialize the one named leaf (recursing for deeper `.x`/`[i]` chains) and zero-fill the rest of
-	 * `ty`. NOTE: chained designators to the SAME member don't merge (last writer wins); the patterns that
-	 * reach here name each member once. */
-	if (ty->kind == TY_STRUCT && is(".")) {
+	if (ty->kind == TY_STRUCT && is(".")) {   /* braceless designated continuation: `.a.b = v` == `.a = { .b = v }` */
 		expect("."); char mn[64]; ident(mn);
 		Member *m = NULL; for (Member *mm = ty->members; mm; mm = mm->next) if (!strcmp(mm->name, mn)) { m = mm; break; }
 		if (!m) die("parse: struct has no member '%s'", mn);
 		consume("=");
-		Init head = {0}, *c = &head;
-		if (m->offset > 0) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset; c = c->next; }
-		c->next = global_init(m->type); while (c->next) c = c->next;
-		int end = m->offset + m->type->size;
-		if (end < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - end; c = c->next; }
-		return head.next;
+		if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset); }
+		else parse_init(m->type, base + m->offset, tail);
+		return ty->size;
 	}
-	if (ty->kind == TY_ARRAY && is("[")) {
-		expect("["); int lo = (int)eval_const(assign()); int hi = lo;
-		if (consume("...")) hi = (int)eval_const(assign());
-		expect("]"); consume("=");
-		if (ty->len <= 0) die("parse: braceless '[i]' designator on an unsized array");
+	if (ty->kind == TY_ARRAY && is("[")) {   /* braceless `[i] = v` continuation */
 		int esz = ty->base->size;
-		Init *sub = global_init(ty->base);
-		Init head = {0}, *c = &head;
-		if (lo > 0) { c->next = mkinit(INIT_ZERO); c->next->size = lo * esz; c = c->next; }
-		for (int k = lo; k <= hi; k++) for (Init *it = sub; it; it = it->next) { c->next = mkinit(it->kind); *c->next = *it; c->next->next = NULL; c = c->next; }
-		if (hi + 1 < ty->len) { c->next = mkinit(INIT_ZERO); c->next->size = (ty->len - hi - 1) * esz; c = c->next; }
-		return head.next;
+		expect("["); int lo = (int)eval_const(assign()); int hi = lo; if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("=");
+		InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);
+		for (int k = lo; k <= hi; k++) for (InitPlace *p = th.next; p; p = p->next) pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset);
+		return ty->size;
 	}
-	/* `char arr[] = "..."` / `char arr[N] = "..."`: emit the string BYTES inline under the array symbol,
-	 * NOT a 4-byte pointer to an anonymous .LSTR (that is the `char *p = "..."` case). Decode escapes so the
-	 * length is right, size an unsized array from it, then zero-fill the tail (the NUL + any slack). */
-	if (ty->kind == TY_ARRAY && ty->base->kind == TY_CHAR && tk->kind == TK_STR) {
+	if (ty->kind == TY_ARRAY && ty->base->kind == TY_CHAR && tk->kind == TK_STR) {   /* char arr[] = "..." -> inline bytes */
 		char raw[4096]; size_t rl = 0;
-		while (tk->kind == TK_STR) {   /* adjacent string literals concatenate */
-			size_t n = strlen(tk->sval);
-			if (rl + n >= sizeof raw) die("parse: string initializer too long (>%d)", (int)sizeof raw);
-			memcpy(raw + rl, tk->sval, n); rl += n; tk = tk->next;
-		}
+		while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); if (rl + n >= sizeof raw) die("parse: string initializer too long (>%d)", (int)sizeof raw); memcpy(raw + rl, tk->sval, n); rl += n; tk = tk->next; }
 		raw[rl] = 0;
-		unsigned char dbuf[4096];
-		int dl = str_decode(raw, dbuf, sizeof dbuf);
-		int total = ty->len > 0 ? ty->len : dl + 1;   /* unsized -> decoded bytes + NUL */
+		unsigned char dbuf[4096]; int dl = str_decode(raw, dbuf, sizeof dbuf);
+		int total = ty->len > 0 ? ty->len : dl + 1;
 		if (ty->len == 0) { ty->len = total; ty->size = total; }
-		Init head = {0}, *c = &head;
-		for (int i = 0; i < total; i++) { c->next = mkinit(INIT_CONST); c->next->val = (i < dl) ? dbuf[i] : 0; c->next->size = 1; c = c->next; }
-		return head.next;
+		for (int i = 0; i < dl && i < total; i++) pi_append(tail, base + i, ty_char, num((unsigned char)dbuf[i]), 0, 0);
+		return total;
 	}
-	/* Compound literal `(T){...}` as an initializer value (kernel spinlock/rwsem macros: `.wait_lock =
-	 * (raw_spinlock_t){...}`). At file scope it has static storage, so it initializes the object exactly as
-	 * if the braces were written directly — recurse on its own type. (unary_expr's compound-literal path is
-	 * for function bodies: it emits add_local + an ND_STMTEXPR, which is meaningless here.) */
-	if (cast_ahead()) {
+	if (cast_ahead()) {   /* compound literal (T){...}: initialize as if the braces were written directly */
 		Token *save = tk; char d[64];
 		expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
-		if (is("{")) return global_init(t);
-		tk = save;   /* just a cast of a constant — re-parse it as an ordinary scalar below */
+		if (is("{")) return parse_init(t, base, tail);
+		tk = save;   /* just a cast of a constant — fall through to the scalar leaf */
 	}
-	/* Scalar: an address constant (`&sym`, `(cast)&sym`, `&sym.member` (kernel LIST_HEAD_INIT self-refs),
-	 * or a bare function name) emits `symbol [+ byte offset]`; otherwise fold an integer constant. Peel
-	 * casts + address-of, then a `.member` chain (each ND_MEMBER carries its offset), down to the symbol. */
-	Node *e = conditional(), *p = e;
-	long addend = 0;
-	while (p && (p->kind == ND_CAST || p->kind == ND_ADDR)) p = p->lhs;
-	while (p && p->kind == ND_MEMBER) { addend += p->offset; p = p->lhs; }
-	if (p && (p->kind == ND_GVAR || p->kind == ND_VAR)) { Init *i = mkinit(INIT_SYM); strncpy(i->sym, p->name, 63); i->val = addend; i->size = 4; return i; }
-	Init *i = mkinit(INIT_CONST); i->val = eval_const(e); i->size = ty->size; return i;   /* 1/2/4 -> .byte/.hword/.word */
+	Node *e = assign(); pi_append(tail, base, ty, e, 0, 0);   /* scalar (or whole-aggregate copy) leaf */
+	return ty->size;
+}
+
+/* Lower placements to a .data byte image: fold each leaf to a const/symbol, apply last-writer-wins per
+ * offset, and zero-fill the gaps in offset order (union-safe: only initialized leaves are emitted). */
+static Init *lower_global(InitPlace *places, int total) {
+	Init head = {0}, *c = &head;
+	int n = 0; for (InitPlace *p = places; p; p = p->next) n++;
+	if (n == 0) { if (total > 0) { c->next = mkinit(INIT_ZERO); c->next->size = total; } return head.next; }
+	struct pp_ent *a = malloc(n * sizeof *a);
+	{ int i = 0; for (InitPlace *p = places; p; p = p->next) { a[i].off = p->off; a[i].seq = i; a[i].ty = p->ty; a[i].expr = p->expr; i++; } }
+	qsort(a, n, sizeof *a, cmp_pp);
+	int cur = 0;
+	for (int i = 0; i < n; ) {
+		int off = a[i].off, j = i; while (j + 1 < n && a[j + 1].off == off) j++;   /* run of equal offset -> keep the last (highest seq) */
+		struct pp_ent *pp = &a[j];
+		if (off < cur) { i = j + 1; continue; }   /* overlaps a wider earlier leaf (invalid C) -> skip */
+		if (off > cur) { c->next = mkinit(INIT_ZERO); c->next->size = off - cur; c = c->next; }
+		Node *e = pp->expr, *q = e; long addend = 0;
+		while (q && (q->kind == ND_CAST || q->kind == ND_ADDR)) q = q->lhs;
+		while (q && q->kind == ND_MEMBER) { addend += q->offset; q = q->lhs; }
+		if (q && (q->kind == ND_GVAR || q->kind == ND_VAR)) { Init *it = mkinit(INIT_SYM); strncpy(it->sym, q->name, 63); it->val = addend; it->size = 4; c->next = it; c = c->next; cur = off + 4; }
+		else { Init *it = mkinit(INIT_CONST); it->val = eval_const(e); it->size = pp->ty->size; c->next = it; c = c->next; cur = off + pp->ty->size; }
+		i = j + 1;
+	}
+	if (cur < total) { c->next = mkinit(INIT_ZERO); c->next->size = total - cur; c = c->next; }
+	free(a);
+	return head.next;
+}
+
+/* Zero the byte range [off, off+len) of `dest` with word stores (4-aligned bulk) + byte stores (remainder). */
+static void emit_zero_local(Node *dest, int off, int len, Node **c) {
+	int p = off, end = off + len;
+	while (p < end) {
+		int word = (p % 4 == 0 && end - p >= 4);
+		Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = p; dm->type = word ? ty_int : ty_char;
+		(*c)->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, num(0))); *c = (*c)->next;
+		p += word ? 4 : 1;
+	}
+}
+
+/* Lower placements to runtime stores against `dest`: zero the never-covered gaps (C-correct partial init),
+ * then store each leaf in SOURCE order so a later designator override wins at runtime. */
+static Node *lower_local(Node *dest, InitPlace *places, int total) {
+	Node blk = {0}, *c = &blk;
+	int n = 0; for (InitPlace *p = places; p; p = p->next) n++;
+	if (n == 0) { emit_zero_local(dest, 0, total, &c); }
+	else {
+		struct pp_ent *a = malloc(n * sizeof *a);
+		{ int i = 0; for (InitPlace *p = places; p; p = p->next) { a[i].off = p->off; a[i].seq = i; a[i].ty = p->ty; a[i].expr = p->expr; i++; } }
+		qsort(a, n, sizeof *a, cmp_pp);
+		int cur = 0;
+		for (int i = 0; i < n; i++) {
+			if (a[i].off > cur) emit_zero_local(dest, cur, a[i].off - cur, &c);
+			int e = a[i].off + a[i].ty->size; if (e > cur) cur = e;
+		}
+		if (cur < total) emit_zero_local(dest, cur, total - cur, &c);
+		free(a);
+		for (InitPlace *p = places; p; p = p->next) {
+			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = p->off; dm->type = p->ty;
+			if (p->bit_width) { dm->bit_width = p->bit_width; dm->bit_offset = p->bit_offset; }
+			c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, p->expr)); c = c->next;
+		}
+	}
+	Node *nn = node(ND_BLOCK); nn->body = blk.next; return nn;
+}
+
+static Init *global_init(Type *ty) {
+	InitPlace head = {0}, *tail = &head;
+	int sz = parse_init(ty, 0, &tail);
+	return lower_global(head.next, ty->size ? ty->size : sz);
 }
 
 /* Function-signature table: a callee's return + parameter types. The return type gives ND_CALL result
