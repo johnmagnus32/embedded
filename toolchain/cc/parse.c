@@ -837,20 +837,40 @@ static Init *global_init(Type *ty) {
 		expect("{");
 		Init head = {0}, *c = &head;
 		if (ty->kind == TY_STRUCT) {
-			int cur = 0; Member *m = ty->members;
-			while (m && !is("}")) {
-				if (is(".")) {   /* designated: .field = value */
+			/* slot model (mirrors the TY_ARRAY branch below + how GCC/Clang do it): a `.field` designator is an
+			 * ABSOLUTE seek of the "current object" cursor, positional elements advance it one member at a time,
+			 * and a later write to a slot overrides an earlier one (last writer wins). The reader loop is driven
+			 * by the brace list — NEVER by whether a "next member" still exists — so out-of-order designators,
+			 * gaps, and overrides all fall out uniformly. Emission walks members in offset order, emitting only
+			 * initialized members + zero-filling the gaps, which keeps unions right (an uninitialized member is
+			 * covered by padding, not by its own zero run). */
+			int nm = 0; for (Member *mm = ty->members; mm; mm = mm->next) nm++;
+			Member **marr = malloc((nm ? nm : 1) * sizeof *marr);
+			{ int i = 0; for (Member *mm = ty->members; mm; mm = mm->next) marr[i++] = mm; }
+			Init **slots = calloc(nm ? nm : 1, sizeof *slots);
+			int at = 0;   /* cursor: member index the next positional element initializes */
+			while (!is("}")) {
+				if (is(".")) {   /* designated: .field = value — reposition the cursor absolutely */
 					expect("."); char mn[64]; ident(mn); consume("=");
-					for (m = ty->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
-					if (!m) die("parse: struct has no member '%s'", mn);
+					int f = -1; for (int i = 0; i < nm; i++) if (!strcmp(marr[i]->name, mn)) { f = i; break; }
+					if (f < 0) die("parse: struct has no member '%s'", mn);
+					at = f;
 				}
-				if (!m) break;
-				if (m->offset > cur) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset - cur; c = c->next; }
-				c->next = global_init(m->type); while (c->next) c = c->next;   /* append member's items */
-				cur = m->offset + m->type->size; m = m->next;
+				if (at >= nm) die("parse: excess elements in struct initializer");
+				slots[at] = global_init(marr[at]->type);   /* last writer wins */
+				at++;
 				if (!consume(",")) break;
 			}
+			int cur = 0;
+			for (int i = 0; i < nm; i++) {
+				if (!slots[i]) continue;
+				Member *m = marr[i];
+				if (m->offset > cur) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset - cur; c = c->next; }
+				c->next = slots[i]; while (c->next) c = c->next;   /* splice the member's items */
+				int end = m->offset + m->type->size; if (end > cur) cur = end;
+			}
 			if (cur < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - cur; c = c->next; }
+			free(marr); free(slots);
 		} else if (ty->kind == TY_ARRAY) {
 			/* index-keyed: one pass buffering (index,item) pairs handles sized+unsized, out-of-order, range
 			 * and gapped designators uniformly (kernel asn1_op_lengths[] lists [RETURN]=0x28 before [END_SEQ]). */
