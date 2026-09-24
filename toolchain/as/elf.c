@@ -39,13 +39,13 @@ static void build_symtab(Obj *o) {
 	for (int pass = 0; pass < 2; pass++) {                    /* pass 0 = locals, pass 1 = globals */
 		if (pass == 1) o->first_global = o->ne;
 		for (int i = 0; i < nsym; i++) {
-			int is_local = syms[i].defined && !syms[i].global;
+			int is_local = syms[i].defined && !syms[i].global && !syms[i].weak;   /* weak binds like global (comes after locals) */
 			if (!syms[i].name || is_local != (pass == 0)) continue;
 			int e = o->ne++; o->symmap[i] = e;
 			o->esym[e].st_name  = (syms[i].type == STT_SECTION) ? 0 : str_add(&o->str, syms[i].name);   /* section syms are nameless (GNU) */
 			o->esym[e].st_value = syms[i].value;
 			o->esym[e].st_size  = syms[i].size;
-			o->esym[e].st_info  = ELF32_ST_INFO(is_local ? STB_LOCAL : STB_GLOBAL, syms[i].type);
+			o->esym[e].st_info  = ELF32_ST_INFO(syms[i].weak ? STB_WEAK : (is_local ? STB_LOCAL : STB_GLOBAL), syms[i].type);
 			o->esym[e].st_shndx = syms[i].defined ? secs[syms[i].sec].shndx : SHN_UNDEF;
 		}
 	}

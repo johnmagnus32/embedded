@@ -148,6 +148,7 @@ static void do_directive(void) {
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR);
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
 	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].global = 1;
+	} else if (!strcmp(d, ".weak")) { syms[sym_intern(toks[1])].weak = 1;   /* STB_WEAK binding (kernel COND_SYSCALL) */
 	} else if (!strcmp(d, ".type")) { int i = sym_intern(toks[1]);
 		if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;
 		else if (toks[2] && strstr(toks[2], "object")) syms[i].type = STT_OBJECT;
@@ -197,12 +198,18 @@ static void do_directive(void) {
 	} else if (!strcmp(d, ".ascii") || !strcmp(d, ".asciz") || !strcmp(d, ".string")) {
 		emit_string(toks[1], strcmp(d, ".ascii") != 0);   /* .ascii: no NUL; .asciz/.string: add NUL */
 	} else if (!strcmp(d, ".set") || !strcmp(d, ".equ")) {
-		/* the one form our compiler output uses: `.set name, . [+ N]` — an anchor at the current spot. */
+		/* two forms: `.set name, . [+ N]` (anchor at the current spot) and `.set name, othersym`
+		 * (a symbol ALIAS — kernel COND_SYSCALL weak-aliases an unimplemented syscall to sys_ni_syscall). */
 		int i = sym_intern(toks[1]);
-		u32 base = secs[cursec].len; long addend = 0;
-		if (ntok >= 3 && !strcmp(toks[2], ".")) { if (ntok >= 5 && !strcmp(toks[3], "+")) addend = strtol(toks[4], NULL, 0); }
-		else die(".set: only 'name, . [+ N]' supported");
-		syms[i].sec = cursec; syms[i].value = base + (u32)addend; syms[i].defined = 1;
+		if (ntok >= 3 && !strcmp(toks[2], ".")) {
+			long addend = 0; if (ntok >= 5 && !strcmp(toks[3], "+")) addend = strtol(toks[4], NULL, 0);
+			syms[i].sec = cursec; syms[i].value = secs[cursec].len + (u32)addend; syms[i].defined = 1;
+		} else if (ntok >= 3) {   /* alias: copy the target's location/type (target must be defined by now) */
+			int j = sym_find(toks[2]);
+			if (j < 0 || !syms[j].defined) die(".set: alias target '%s' undefined", toks[2]);
+			syms[i].sec = syms[j].sec; syms[i].value = syms[j].value; syms[i].defined = 1;
+			if (!syms[i].type) syms[i].type = syms[j].type;
+		} else die(".set: expected 'name, . [+ N]' or 'name, target'");
 	} else if (!md_directive(toks, ntok)) {
 		die("unknown directive '%s'", d);
 	}

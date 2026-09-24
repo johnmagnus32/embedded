@@ -19,7 +19,7 @@
 /* The assembler's INTERNAL tables (not the ELF on-disk structs — those are Elf32_* in elf.h): the
  * section byte buffers, symbol records, relocations, and forward-local-branch fixups the front-end owns. */
 typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shndx; } Section;
-typedef struct { char *name; int sec; u32 value, size; int global, type, defined; } Sym;
+typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak; } Sym;
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
