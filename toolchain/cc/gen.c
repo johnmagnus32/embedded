@@ -148,6 +148,7 @@ static void gen_addr(Node *n) {
 		}
 		die("cc: statement-expression has no lvalue result");
 		return;
+	case ND_ADDR: gen_addr(n->lhs); return;                                  /* &(addr-expr): a function designator is ND_ADDR(GVAR), so `&func` == `func` (and `&*p` == p) */
 	default: die("cc: not an lvalue (nodekind=%d)", n->kind);
 	}
 }

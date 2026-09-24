@@ -989,6 +989,9 @@ static int as_addr_const(Node *e, char *sym, long *ad) {
 	case ND_SUB:
 		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad -= c; return 1; }
 		return 0;
+	case ND_COND:   /* CONST ? addrA : addrB (kernel: `(false) ? fnA : fnB`) -> fold the taken branch */
+		c = eval_try(e->cond, &ok); if (!ok) return 0;
+		return as_addr_const(c ? e->then : e->els, sym, ad);
 	default: return 0;
 	}
 }
