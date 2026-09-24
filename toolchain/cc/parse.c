@@ -897,11 +897,24 @@ static Init *global_init(Type *ty) {
 		expect("}");
 		return head.next;
 	}
-	/* Scalar: an address constant (`&sym`, or `(cast)&sym`, or a bare function name) emits the symbol's
-	 * address; otherwise fold an integer constant. Peel casts + address-of down to the underlying symbol. */
+	/* Compound literal `(T){...}` as an initializer value (kernel spinlock/rwsem macros: `.wait_lock =
+	 * (raw_spinlock_t){...}`). At file scope it has static storage, so it initializes the object exactly as
+	 * if the braces were written directly — recurse on its own type. (unary_expr's compound-literal path is
+	 * for function bodies: it emits add_local + an ND_STMTEXPR, which is meaningless here.) */
+	if (cast_ahead()) {
+		Token *save = tk; char d[64];
+		expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
+		if (is("{")) return global_init(t);
+		tk = save;   /* just a cast of a constant — re-parse it as an ordinary scalar below */
+	}
+	/* Scalar: an address constant (`&sym`, `(cast)&sym`, `&sym.member` (kernel LIST_HEAD_INIT self-refs),
+	 * or a bare function name) emits `symbol [+ byte offset]`; otherwise fold an integer constant. Peel
+	 * casts + address-of, then a `.member` chain (each ND_MEMBER carries its offset), down to the symbol. */
 	Node *e = conditional(), *p = e;
+	long addend = 0;
 	while (p && (p->kind == ND_CAST || p->kind == ND_ADDR)) p = p->lhs;
-	if (p && (p->kind == ND_GVAR || p->kind == ND_VAR)) { Init *i = mkinit(INIT_SYM); strncpy(i->sym, p->name, 63); i->size = 4; return i; }
+	while (p && p->kind == ND_MEMBER) { addend += p->offset; p = p->lhs; }
+	if (p && (p->kind == ND_GVAR || p->kind == ND_VAR)) { Init *i = mkinit(INIT_SYM); strncpy(i->sym, p->name, 63); i->val = addend; i->size = 4; return i; }
 	Init *i = mkinit(INIT_CONST); i->val = eval_const(e); i->size = ty->size; return i;   /* 1/2/4 -> .byte/.hword/.word */
 }
 

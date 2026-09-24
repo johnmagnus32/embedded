@@ -557,7 +557,7 @@ static void gen_data(void) {
 				if (it->size == 8) fprintf(o, "\t.word %ld\n\t.word %ld\n", it->val & 0xffffffff, (it->val >> 32) & 0xffffffff);   /* low, high */
 				else fprintf(o, it->size == 1 ? "\t.byte %ld\n" : it->size == 2 ? "\t.hword %ld\n" : "\t.word %ld\n", it->val);
 			}
-			else if (it->kind == INIT_SYM) fprintf(o, "\t.word %s\n", it->sym);
+			else if (it->kind == INIT_SYM) { if (it->val) fprintf(o, "\t.word %s+%ld\n", it->sym, it->val); else fprintf(o, "\t.word %s\n", it->sym); }   /* val = byte addend for &sym.member / &sym[i] */
 			else fprintf(o, "\t.space %d\n", it->size);
 		}
 		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
