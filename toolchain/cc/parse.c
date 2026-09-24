@@ -930,6 +930,19 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 		for (int i = 0; i < dl && i < total; i++) pi_append(tail, base + i, ty_char, num((unsigned char)dbuf[i]), 0, 0);
 		return total;
 	}
+	if (is("(") && !cast_ahead()) {   /* grouping parens around a compound literal: ((T){...}) (kernel cap_t/kuid_t macros) */
+		Token *save = tk; int np = 0;
+		while (is("(")) {
+			tk = tk->next; np++;
+			if (cast_ahead()) {
+				char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
+				if (is("{")) { int r = parse_init(t, base, tail); while (np--) expect(")"); return r; }
+				break;   /* a cast, not a compound literal */
+			}
+			if (!is("(")) break;   /* not nested grouping */
+		}
+		tk = save;   /* ordinary parenthesized expression — fall through to the scalar leaf */
+	}
 	if (cast_ahead()) {   /* compound literal (T){...}: initialize as if the braces were written directly */
 		Token *save = tk; char d[64];
 		expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
@@ -938,6 +951,40 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 	}
 	Node *e = assign(); pi_append(tail, base, ty, e, 0, 0);   /* scalar (or whole-aggregate copy) leaf */
 	return ty->size;
+}
+
+/* Fold an initializer expression to a link-time address constant `symbol + byte-addend` (returns 0 if it
+ * isn't one). Handles &sym, &sym.member, &arr[i] (new_add bakes the *elem-size scale into an ND_MUL, so the
+ * addend reads straight out of the tree), pointer +/- constant, casts, and a bare array/function/global name
+ * that decays to its address. Mirrors a real compiler's constant-address evaluator. */
+static int as_addr_const(Node *e, char *sym, long *ad);
+static int addr_of_lval(Node *lv, char *sym, long *ad) {
+	if (!lv) return 0;
+	switch (lv->kind) {
+	case ND_GVAR: case ND_VAR: strncpy(sym, lv->name, 63); return 1;
+	case ND_MEMBER: { int r = addr_of_lval(lv->lhs, sym, ad); *ad += lv->offset; return r; }
+	case ND_DEREF:  return as_addr_const(lv->lhs, sym, ad);   /* &*p == p */
+	case ND_CAST:   return addr_of_lval(lv->lhs, sym, ad);
+	default: return 0;
+	}
+}
+static int as_addr_const(Node *e, char *sym, long *ad) {
+	if (!e) return 0;
+	int ok = 1; long c;
+	switch (e->kind) {
+	case ND_ADDR: return addr_of_lval(e->lhs, sym, ad);
+	case ND_CAST: return as_addr_const(e->lhs, sym, ad);
+	case ND_GVAR: case ND_VAR: strncpy(sym, e->name, 63); return 1;   /* bare name -> its address (array/func decay) */
+	case ND_ADD:
+		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad += c; return 1; }
+		ok = 1;
+		if (as_addr_const(e->rhs, sym, ad)) { c = eval_try(e->lhs, &ok); if (!ok) return 0; *ad += c; return 1; }
+		return 0;
+	case ND_SUB:
+		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad -= c; return 1; }
+		return 0;
+	default: return 0;
+	}
 }
 
 /* Lower placements to a .data byte image: fold each leaf to a const/symbol, apply last-writer-wins per
@@ -955,11 +1002,9 @@ static Init *lower_global(InitPlace *places, int total) {
 		struct pp_ent *pp = &a[j];
 		if (off < cur) { i = j + 1; continue; }   /* overlaps a wider earlier leaf (invalid C) -> skip */
 		if (off > cur) { c->next = mkinit(INIT_ZERO); c->next->size = off - cur; c = c->next; }
-		Node *e = pp->expr, *q = e; long addend = 0;
-		while (q && (q->kind == ND_CAST || q->kind == ND_ADDR)) q = q->lhs;
-		while (q && q->kind == ND_MEMBER) { addend += q->offset; q = q->lhs; }
-		if (q && (q->kind == ND_GVAR || q->kind == ND_VAR)) { Init *it = mkinit(INIT_SYM); strncpy(it->sym, q->name, 63); it->val = addend; it->size = 4; c->next = it; c = c->next; cur = off + 4; }
-		else { Init *it = mkinit(INIT_CONST); it->val = eval_const(e); it->size = pp->ty->size; c->next = it; c = c->next; cur = off + pp->ty->size; }
+		char sym[64] = ""; long addend = 0;
+		if (as_addr_const(pp->expr, sym, &addend)) { Init *it = mkinit(INIT_SYM); strncpy(it->sym, sym, 63); it->val = addend; it->size = 4; c->next = it; c = c->next; cur = off + 4; }
+		else { Init *it = mkinit(INIT_CONST); it->val = eval_const(pp->expr); it->size = pp->ty->size; c->next = it; c = c->next; cur = off + pp->ty->size; }
 		i = j + 1;
 	}
 	if (cur < total) { c->next = mkinit(INIT_ZERO); c->next->size = total - cur; c = c->next; }

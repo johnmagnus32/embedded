@@ -87,6 +87,7 @@ Token *lex(const char *src) {
 			Token *t = new_tok(TK_IDENT, line);
 			size_t n = p - s; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, s, n); t->text[n] = 0;
+			if (!strcmp(t->text, "__attribute")) strcpy(t->text, "__attribute__");   /* GCC accepts the trailing-__-less spelling (kernel noinstr) */
 			for (int i = 0; KEYWORDS[i]; i++) if (!strcmp(t->text, KEYWORDS[i])) { t->kind = TK_KW; break; }
 			cur = cur->next = t; continue;
 		}
