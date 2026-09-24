@@ -435,9 +435,22 @@ static Node *new_sub(Node *l, Node *r);
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
 
+/* Materialize an rvalue into a fresh temp local, yielding an lvalue for it: `({ __t = e; __t; })`. Used so
+ * a `.member` access on a struct-returning CALL has an address to work from (kernel swp_offset(f(x)) etc.). */
+static Node *materialize(Node *e) {
+	static int mseq;
+	char nm[32]; snprintf(nm, sizeof nm, ".Lmat%d", mseq++);
+	int off = add_local(nm, e->type);
+	Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = e->type;
+	Node *st = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, e));
+	Node *v2 = node(ND_VAR); strncpy(v2->name, nm, 63); v2->offset = off; v2->type = e->type;
+	st->next = unary(ND_EXPRSTMT, v2);
+	Node *se = node(ND_STMTEXPR); se->body = st; se->type = e->type; return se;
+}
 /* base.member — resolve the member's offset+type on the struct; ND_MEMBER holds the base lvalue. */
 static Node *struct_member(Node *base, const char *mname) {
 	add_type(base);
+	if (base->kind == ND_CALL && base->type && base->type->kind == TY_STRUCT) base = materialize(base);   /* f(x).m: spill the returned struct to a temp */
 	if (!base->type || base->type->kind != TY_STRUCT) die("parse: '.%s' on a non-struct", mname);
 	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
 		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type;

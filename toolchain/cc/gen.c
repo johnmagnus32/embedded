@@ -19,6 +19,7 @@ static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none
 
 /* A per-function id (used to name this function's PIC .LGOT/.LGA labels). */
 static int cur_func_id, func_seq;
+static const char *cur_gen_func = "?";   /* name of the function being emitted, for diagnostics */
 static int cur_nfixed, cur_variadic;   /* current function's fixed-param count + whether it's variadic */
 static Type *cur_ret;                  /* current function's return type (so `return e` widens to 64-bit) */
 static int ngot;   /* -fPIC: per-function counter for GOT-access labels (.LGOT/.LGA) */
@@ -149,7 +150,7 @@ static void gen_addr(Node *n) {
 		die("cc: statement-expression has no lvalue result");
 		return;
 	case ND_ADDR: gen_addr(n->lhs); return;                                  /* &(addr-expr): a function designator is ND_ADDR(GVAR), so `&func` == `func` (and `&*p` == p) */
-	default: die("cc: not an lvalue (nodekind=%d)", n->kind);
+	default: die("cc: not an lvalue (nodekind=%d) in %s", n->kind, cur_gen_func);
 	}
 }
 
@@ -527,7 +528,7 @@ static void gen_stmt(Node *n) {
 }
 
 static void gen_func(Func *f) {
-	ret_label = uniq(); cur_func_id = func_seq++; nclabels = 0; ngot = 0;
+	ret_label = uniq(); cur_func_id = func_seq++; nclabels = 0; ngot = 0; cur_gen_func = f->name;
 	cur_nfixed = f->nfixed_words; cur_variadic = f->variadic; cur_ret = f->ret_type;
 	if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
