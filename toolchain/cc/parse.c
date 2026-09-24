@@ -108,7 +108,7 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("struct")) { tagty = struct_decl(0); seen = 1; continue; }
 		if (consume("union"))  { tagty = struct_decl(1); seen = 1; continue; }
 		if (consume("enum")) { tagty = enum_decl(); seen = 1; continue; }
-		if (consume("typeof") || consume("__typeof__")) {   /* typeof(type) or typeof(expr) -> that type */
+		if (consume("typeof") || consume("__typeof__") || consume("__typeof")) {   /* typeof(type) or typeof(expr) -> that type */
 			expect("(");
 			if (is_typename()) { char d[64]; tagty = declarator(declspec(NULL, NULL), d); }
 			else { Node *e = assign(); add_type(e); tagty = e->type ? e->type : ty_int; }   /* unevaluated: type only */
@@ -284,7 +284,7 @@ static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->n
 /* ---- node constructors --------------------------------------------------------------------------- */
 static int is_typename(void) {   /* does a declaration start at the cursor? */
 	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool")
-	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof") || is("__typeof__")
+	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof") || is("__typeof__") || is("__typeof")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__")
 	    || is("__signed__") || is("__const__") || is("__const") || is("__volatile__") || is("__restrict__") || is("__restrict") || is("__inline__") || is("__inline") || is("__extension__") || is("__auto_type")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
@@ -926,6 +926,36 @@ static Init *global_init(Type *ty) {
 			if (ty->len == 0) { ty->len = len; ty->size = len * ty->base->size; }
 		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
 		expect("}");
+		return head.next;
+	}
+	/* Braceless designated continuation: `.a.b = v` is parsed as (outer) member a := global_init(a-type)
+	 * facing a bare `.b = v` — i.e. `.a = { .b = v }`. The kernel's trace-event structs use `.event.funcs =
+	 * ...`. Initialize the one named leaf (recursing for deeper `.x`/`[i]` chains) and zero-fill the rest of
+	 * `ty`. NOTE: chained designators to the SAME member don't merge (last writer wins); the patterns that
+	 * reach here name each member once. */
+	if (ty->kind == TY_STRUCT && is(".")) {
+		expect("."); char mn[64]; ident(mn);
+		Member *m = NULL; for (Member *mm = ty->members; mm; mm = mm->next) if (!strcmp(mm->name, mn)) { m = mm; break; }
+		if (!m) die("parse: struct has no member '%s'", mn);
+		consume("=");
+		Init head = {0}, *c = &head;
+		if (m->offset > 0) { c->next = mkinit(INIT_ZERO); c->next->size = m->offset; c = c->next; }
+		c->next = global_init(m->type); while (c->next) c = c->next;
+		int end = m->offset + m->type->size;
+		if (end < ty->size) { c->next = mkinit(INIT_ZERO); c->next->size = ty->size - end; c = c->next; }
+		return head.next;
+	}
+	if (ty->kind == TY_ARRAY && is("[")) {
+		expect("["); int lo = (int)eval_const(assign()); int hi = lo;
+		if (consume("...")) hi = (int)eval_const(assign());
+		expect("]"); consume("=");
+		if (ty->len <= 0) die("parse: braceless '[i]' designator on an unsized array");
+		int esz = ty->base->size;
+		Init *sub = global_init(ty->base);
+		Init head = {0}, *c = &head;
+		if (lo > 0) { c->next = mkinit(INIT_ZERO); c->next->size = lo * esz; c = c->next; }
+		for (int k = lo; k <= hi; k++) for (Init *it = sub; it; it = it->next) { c->next = mkinit(it->kind); *c->next = *it; c->next->next = NULL; c = c->next; }
+		if (hi + 1 < ty->len) { c->next = mkinit(INIT_ZERO); c->next->size = (ty->len - hi - 1) * esz; c = c->next; }
 		return head.next;
 	}
 	/* `char arr[] = "..."` / `char arr[N] = "..."`: emit the string BYTES inline under the array symbol,

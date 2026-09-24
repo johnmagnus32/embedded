@@ -17,7 +17,7 @@ static const char *KEYWORDS[] = {
 	"__signed__", "__const__", "__const", "__volatile__", "__restrict__", "__restrict", "__inline__", "__inline",  /* GNU alt spellings */
 	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
 	"__alignof__", "__alignof", "_Alignof", "alignof",                      /* alignof operator (type|expr) */
-	"typeof", "__typeof__",                                                  /* GNU typeof(expr|type)   */
+	"typeof", "__typeof__", "__typeof",                                      /* GNU typeof(expr|type) — all three spellings */
 	"__asm__", "__volatile__", "asm",                                       /* inline assembly         */
 	"__label__",                                                            /* GNU local-label declaration */
 	"__auto_type",                                                          /* GNU type inference (kernel min/max) */
