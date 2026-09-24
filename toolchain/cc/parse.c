@@ -832,6 +832,33 @@ static long eval_const(Node *n) {
 	return v;
 }
 static Init *mkinit(int kind) { Init *i = calloc(1, sizeof *i); i->kind = kind; return i; }
+
+/* Decode a raw string-literal body (escapes kept intact by the lexer) into bytes. Returns the byte count;
+ * writes up to `cap` bytes into `out`. Mirrors the char-literal escapes the lexer already handles, so a
+ * `char arr[] = "..."` global lowers to the same bytes GCC would emit. */
+static int str_decode(const char *s, unsigned char *out, int cap) {
+	int n = 0;
+	while (*s) {
+		unsigned char v;
+		if (*s == '\\') {
+			s++;
+			switch (*s) {
+			case 'n': v = '\n'; s++; break;  case 't': v = '\t'; s++; break;  case 'r': v = '\r'; s++; break;
+			case 'a': v = '\a'; s++; break;  case 'b': v = '\b'; s++; break;  case 'f': v = '\f'; s++; break;
+			case 'v': v = '\v'; s++; break;  case '\\': v = '\\'; s++; break;
+			case '"': v = '"'; s++; break;   case '\'': v = '\''; s++; break; case '?': v = '?'; s++; break;
+			case 'x': { s++; v = 0; while ((*s >= '0' && *s <= '9') || (*s >= 'a' && *s <= 'f') || (*s >= 'A' && *s <= 'F')) {
+				int d = *s <= '9' ? *s - '0' : (*s | 0x20) - 'a' + 10; v = (v << 4) | d; s++; } break; }
+			case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': {
+				v = 0; int k = 0; while (k < 3 && *s >= '0' && *s <= '7') { v = (v << 3) | (*s - '0'); s++; k++; } break; }
+			default: v = (unsigned char)*s; if (*s) s++; break;
+			}
+		} else { v = (unsigned char)*s; s++; }
+		if (n < cap) out[n] = v;
+		n++;
+	}
+	return n;
+}
 static Init *global_init(Type *ty) {
 	if (is("{")) {
 		expect("{");
@@ -895,6 +922,25 @@ static Init *global_init(Type *ty) {
 			if (ty->len == 0) { ty->len = len; ty->size = len * ty->base->size; }
 		} else { c->next = global_init(ty); while (c->next) c = c->next; }   /* scalar in braces */
 		expect("}");
+		return head.next;
+	}
+	/* `char arr[] = "..."` / `char arr[N] = "..."`: emit the string BYTES inline under the array symbol,
+	 * NOT a 4-byte pointer to an anonymous .LSTR (that is the `char *p = "..."` case). Decode escapes so the
+	 * length is right, size an unsized array from it, then zero-fill the tail (the NUL + any slack). */
+	if (ty->kind == TY_ARRAY && ty->base->kind == TY_CHAR && tk->kind == TK_STR) {
+		char raw[4096]; size_t rl = 0;
+		while (tk->kind == TK_STR) {   /* adjacent string literals concatenate */
+			size_t n = strlen(tk->sval);
+			if (rl + n >= sizeof raw) die("parse: string initializer too long (>%d)", (int)sizeof raw);
+			memcpy(raw + rl, tk->sval, n); rl += n; tk = tk->next;
+		}
+		raw[rl] = 0;
+		unsigned char dbuf[4096];
+		int dl = str_decode(raw, dbuf, sizeof dbuf);
+		int total = ty->len > 0 ? ty->len : dl + 1;   /* unsized -> decoded bytes + NUL */
+		if (ty->len == 0) { ty->len = total; ty->size = total; }
+		Init head = {0}, *c = &head;
+		for (int i = 0; i < total; i++) { c->next = mkinit(INIT_CONST); c->next->val = (i < dl) ? dbuf[i] : 0; c->next->size = 1; c = c->next; }
 		return head.next;
 	}
 	/* Compound literal `(T){...}` as an initializer value (kernel spinlock/rwsem macros: `.wait_lock =
