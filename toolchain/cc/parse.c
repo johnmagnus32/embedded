@@ -972,7 +972,7 @@ static int as_addr_const(Node *e, char *sym, long *ad) {
 	if (!e) return 0;
 	int ok = 1; long c;
 	switch (e->kind) {
-	case ND_ADDR: return addr_of_lval(e->lhs, sym, ad);
+	case ND_ADDR: { long s = *ad; if (addr_of_lval(e->lhs, sym, ad)) return 1; *ad = s; return as_addr_const(e->lhs, sym, ad); }   /* &lval, or &&func: a bare function name is already ND_ADDR(GVAR), so `&func` == `func` */
 	case ND_CAST: return as_addr_const(e->lhs, sym, ad);
 	case ND_GVAR: case ND_VAR: strncpy(sym, e->name, 63); return 1;   /* bare name -> its address (array/func decay) */
 	case ND_ADD:
