@@ -153,10 +153,14 @@ static Type *declarator(Type *base, char *name) {
 	if (consume("(")) {                                      /* grouped declarator: (*name)... = pointer ; (name)... = plain grouping (e.g. function-type typedef `T (name)(params)`) */
 		int ptr = 0;
 		while (consume("*")) { ptr = 1; while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }
-		name[0] = 0; if (tk->kind == TK_IDENT) ident(name); expect(")");
+		name[0] = 0; if (tk->kind == TK_IDENT) ident(name);
+		int arrlen = -1;                                                /* array-of-pointers: `void (*fns[N])(args)` */
+		if (consume("[")) { arrlen = is("]") ? 0 : (int)eval_const(assign()); expect("]"); }
+		expect(")");
 		if (is("(")) skip_attribute(); else base = type_suffix(base);   /* skip a function param list, or apply an array suffix */
 		while (consume("__attribute__")) skip_attribute();              /* trailing: `void (*f)(args) __attribute__((noreturn))` */
-		return ptr ? pointer_to(base) : base;
+		base = ptr ? pointer_to(base) : base;
+		return arrlen >= 0 ? array_of(base, arrlen) : base;
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
 	while (consume("__attribute__")) skip_attribute();       /* trailing attr before the suffix: `int __attribute__((x)) v` */
@@ -710,6 +714,7 @@ static Func *function_tail(const char *name, Type *ret) {
 		do {
 			if (consume("...")) { f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
+			if (is("(")) { skip_attribute(); ty = pointer_to(ty); }   /* function-typed param `R name(args)` -> function pointer */
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
 			if (np >= 16) die("parse: too many function parameters (>16) — raise prm[]");
 			strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++;
@@ -975,6 +980,7 @@ static int as_addr_const(Node *e, char *sym, long *ad) {
 	case ND_ADDR: { long s = *ad; if (addr_of_lval(e->lhs, sym, ad)) return 1; *ad = s; return as_addr_const(e->lhs, sym, ad); }   /* &lval, or &&func: a bare function name is already ND_ADDR(GVAR), so `&func` == `func` */
 	case ND_CAST: return as_addr_const(e->lhs, sym, ad);
 	case ND_GVAR: case ND_VAR: strncpy(sym, e->name, 63); return 1;   /* bare name -> its address (array/func decay) */
+	case ND_MEMBER: if (e->type && e->type->kind == TY_ARRAY) return addr_of_lval(e, sym, ad); return 0;   /* an array-typed member used as a value decays to its address (&s.arr[0]) */
 	case ND_ADD:
 		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad += c; return 1; }
 		ok = 1;
