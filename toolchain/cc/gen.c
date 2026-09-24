@@ -309,8 +309,8 @@ static void gen_expr(Node *n) {
 		return;
 	}
 	case ND_CALL: {
-		Node *av[16]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 16) die("cc: too many args"); av[nargs++] = a; }
-		int is64a[16], onstk[16], word[16];
+		Node *av[64]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 64) die("cc: too many call args (>64)"); av[nargs++] = a; }
+		int is64a[64], onstk[64], word[64];
 		const char *callee = n->lhs ? 0 : n->name;                 /* only a direct call has a known signature */
 		for (int i = 0; i < nargs; i++) {                          /* a 64-bit param is placed 64-bit even if the arg is narrower */
 			Type *pt = callee ? func_param_type(callee, i) : 0;

@@ -937,13 +937,15 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 		return ty->size;
 	}
 	if (ty->kind == TY_ARRAY && ty->base->kind == TY_CHAR && tk->kind == TK_STR) {   /* char arr[] = "..." -> inline bytes */
-		char raw[4096]; size_t rl = 0;
-		while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); if (rl + n >= sizeof raw) die("parse: string initializer too long (>%d)", (int)sizeof raw); memcpy(raw + rl, tk->sval, n); rl += n; tk = tk->next; }
+		size_t cap = 1; for (Token *t = tk; t && t->kind == TK_STR; t = t->next) cap += strlen(t->sval);   /* size the buffer to the literal(s) — no fixed cap */
+		char *raw = malloc(cap); size_t rl = 0;
+		while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); memcpy(raw + rl, tk->sval, n); rl += n; tk = tk->next; }
 		raw[rl] = 0;
-		unsigned char dbuf[4096]; int dl = str_decode(raw, dbuf, sizeof dbuf);
+		unsigned char *dbuf = malloc(rl + 1); int dl = str_decode(raw, dbuf, (int)(rl + 1));
 		int total = ty->len > 0 ? ty->len : dl + 1;
 		if (ty->len == 0) { ty->len = total; ty->size = total; }
 		for (int i = 0; i < dl && i < total; i++) pi_append(tail, base + i, ty_char, num((unsigned char)dbuf[i]), 0, 0);
+		free(raw); free(dbuf);
 		return total;
 	}
 	if (is("(") && !cast_ahead()) {   /* grouping parens around a compound literal: ((T){...}) (kernel cap_t/kuid_t macros) */
