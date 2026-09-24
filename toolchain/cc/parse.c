@@ -385,14 +385,18 @@ static Node *new_sub(Node *l, Node *r);
 			Node *n = node(ND_CALL);
 			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
 			 * variable holding a function pointer — a param/local, or a global. n->lhs = the callee. */
-			if (local_exists(name)) {
+			if (local_exists(name)) {                        /* a local/param fn-ptr shadows everything -> indirect */
 				Node *c = node(ND_VAR); strncpy(c->name, name, 63);
 				c->offset = local_offset(name); c->type = local_type(name); strncpy(c->reg, local_reg(name), 7);
 				n->lhs = c;
+			} else if (func_declared(name)) {
+				strncpy(n->name, name, 63);                 /* a known FUNCTION -> direct `bl` (wins over a same-named
+				                                             * global: EXPORT_SYMBOL emits `extern typeof(fn) fn;`,
+				                                             * which we'd otherwise mistake for a fn-ptr variable) */
 			} else {
 				Gvar *gv = global_find(name);
-				if (gv) { Node *c = node(ND_GVAR); strncpy(c->name, name, 63); c->type = gv->type; n->lhs = c; }
-				else strncpy(n->name, name, 63);            /* a function name -> direct call */
+				if (gv) { Node *c = node(ND_GVAR); strncpy(c->name, name, 63); c->type = gv->type; n->lhs = c; }   /* a real fn-ptr global -> indirect */
+				else strncpy(n->name, name, 63);            /* an as-yet-undeclared external -> direct call */
 			}
 			Node argh = {0}, *ac = &argh;
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
@@ -981,6 +985,10 @@ static void record_func_sig(const char *name, Type *ret, Type **params, int np, 
 Type *func_ret_type(const char *name) {
 	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return func_sigs[i].ret;
 	return NULL;
+}
+int func_declared(const char *name) {
+	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return 1;
+	return 0;
 }
 Type *func_param_type(const char *name, int i) {
 	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name))
