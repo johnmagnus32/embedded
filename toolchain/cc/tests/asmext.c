@@ -13,7 +13,7 @@ int main(void) {
 	__asm__("add %0, %0, #1" : "+r"(y));                                     // y = 6 (in-out)
 	if (y == 6)    r += 4;                                                   // -> 7
 	int z;
-	__asm__("mov %0, #%1" : "=r"(z) : "i"(100));                             // z = 100 (immediate)
+	__asm__("mov %0, %1" : "=r"(z) : "i"(100));                             // z = 100 (immediate)
 	if (z == 100)  r += 8;                                                   // -> 15
 	int m;
 	__asm__("lsl %0, %1, #2\n\tadd %0, %0, #3" : "=r"(m) : "r"(b));          // m = (7<<2)+3 = 31 (multi-line, %0 reused)
@@ -22,7 +22,7 @@ int main(void) {
 	__asm__ volatile("mov %0, #11" : "=r"(cnt) :: "memory");                 // clobber ignored
 	if (cnt == 11) r += 8;                                                   // -> 39
 	int p = 1, q = 2, s;
-	__asm__("add %0, %1, %2\n\tadd %0, %0, #%3" : "=r"(s) : "r"(p), "r"(q), "i"(0));  // s = 1+2+0 = 3
+	__asm__("add %0, %1, %2\n\tadd %0, %0, %3" : "=r"(s) : "r"(p), "r"(q), "i"(0));  // s = 1+2+0 = 3
 	if (s == 3)    r += 2;                                                   // -> 41
 	int one;
 	__asm__("mov %0, #1" : "=r"(one));

@@ -56,12 +56,16 @@ static u32 imm(const char *t) {   /* #<num> immediate (dec / 0x hex / negative) 
 }
 /* ARM modified-immediate: encode v as (rot<<8)|imm8 where v == ror(imm8, 2*rot). Recover imm8 for a
  * candidate rot as rol(v, 2*rot); the smallest rot whose imm8 fits in 8 bits wins (matches GNU as). */
-static u32 modimm(u32 v) {
+static int modimm_try(u32 v, u32 *out) {
 	for (int rot = 0; rot < 16; rot++) {
 		u32 s = (2 * rot) & 31;
 		u32 imm8 = (v << s) | (v >> ((32 - s) & 31));   /* rol(v, 2*rot); &31 avoids UB shift at rot 0 */
-		if (imm8 <= 0xff) return (rot << 8) | imm8;
+		if (imm8 <= 0xff) { *out = (rot << 8) | imm8; return 1; }
 	}
+	return 0;
+}
+static u32 modimm(u32 v) {
+	u32 o; if (modimm_try(v, &o)) return o;
 	die("immediate #%u not encodable as an ARM modified-immediate", v); return 0;
 }
 
@@ -123,7 +127,13 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	if (form == DP_MOV)      { rd = need_reg(1);                    opidx = 2; }        /* mov/mvn Rd, op2 */
 	else if (form == DP_CMP) { rn = need_reg(1); s = 1;            opidx = 2; }        /* cmp/… Rn, op2 (S forced) */
 	else                     { rd = need_reg(1); rn = need_reg(2); opidx = 3; }        /* add/… Rd, Rn, op2 */
-	u32 op2 = operand2(opidx, &I);
+	u32 op2;
+	if (form == DP_MOV && opidx < ntok && toks[opidx][0] == '#') {   /* mov/mvn #imm: if not encodable, use the complement (mov<->mvn, e.g. `mov rd,#-14` -> `mvn rd,#13`) */
+		u32 v = imm(toks[opidx]), enc; I = 1;
+		if (modimm_try(v, &enc)) op2 = enc;
+		else if (modimm_try(~v, &enc)) { op2 = enc; opc ^= 2; }        /* mov(13) <-> mvn(15) differ by bit 1 */
+		else die("immediate #%u not encodable (mov/mvn)", v);
+	} else op2 = operand2(opidx, &I);
 	emit32((cond << 28) | (I << 25) | (opc << 21) | ((u32)s << 20) | (rn << 16) | (rd << 12) | op2);
 }
 static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
