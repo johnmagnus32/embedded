@@ -1098,6 +1098,18 @@ Func *parse(Token *tok) {
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
 		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_attribute(); consume(";"); continue; }
+		if (is("asm") || is("__asm__")) {   /* file-scope basic asm: `asm("...");` — emit its text verbatim (kernel COND_SYSCALL .weak/.set) */
+			tk = tk->next; consume("volatile"); consume("__volatile__"); expect("(");
+			char buf[1024]; size_t bl = 0; buf[0] = 0;
+			while (tk->kind == TK_STR) {   /* concatenate + decode adjacent string literals */
+				unsigned char dec[1024]; int dl = str_decode(tk->sval, dec, sizeof dec);
+				if (bl + (size_t)dl >= sizeof buf) die("parse: file-scope asm too long (>%d)", (int)sizeof buf);
+				memcpy(buf + bl, dec, dl); bl += dl; buf[bl] = 0; tk = tk->next;
+			}
+			expect(")"); expect(";");
+			Gvar *g = add_global(); g->is_topasm = 1; strncpy(g->str, buf, sizeof g->str - 1);
+			continue;
+		}
 		int td, sc; Type *base = declspec(&td, &sc);               /* type keywords/qualifiers + storage class; struct/enum defs register */
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { char nm[64]; Type *ty = declarator(base, nm);

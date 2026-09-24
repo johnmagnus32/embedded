@@ -124,8 +124,9 @@ typedef struct Gvar {
 	int is_str;                  /* 1 = string literal -> .rodata .asciz; 0 = variable            */
 	int is_extern;               /* 1 = `extern` decl -> reference only, emit no storage           */
 	int is_static;               /* 1 = `static` -> file-local symbol, emit no .global             */
+	int is_topasm;               /* 1 = file-scope `asm("...")` -> emit `str` verbatim (e.g. .weak/.set aliases) */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
-	char str[1024];              /* is_str: the decoded string bytes (adjacent literals concatenated) */
+	char str[1024];              /* is_str / is_topasm: the decoded text (adjacent literals concatenated) */
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */

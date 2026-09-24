@@ -544,6 +544,7 @@ static void gen_func(Func *f) {
 /* Emit the file-scope objects: string literals in .rodata, initialized globals in .data, zero-init in .bss;
  * an `extern` decl defines nothing — it's a reference the linker resolves against the real definition. */
 static void gen_data(void) {
+	for (Gvar *g = globals; g; g = g->next) if (g->is_topasm) fprintf(o, "%s\n", g->str);   /* file-scope asm: .weak/.set etc, verbatim */
 	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
 		fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str);
 	}
@@ -563,7 +564,7 @@ static void gen_data(void) {
 		}
 		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}
-	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->init && !g->is_extern) {
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->is_topasm && !g->init && !g->is_extern) {
 		fprintf(o, "\t.bss\n");
 		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
 		fprintf(o, "\t.type %s, %%object\n", g->name);
