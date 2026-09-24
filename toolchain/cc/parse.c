@@ -12,6 +12,7 @@
 
 static Token *tk;                                  /* the parse cursor */
 static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
+static char cur_func_name[64];                     /* name of the function being parsed, for `__func__` */
 
 /* ---- token helpers ------------------------------------------------------------------------------- */
 static int is(const char *s)     { return (tk->kind == TK_PUNCT || tk->kind == TK_KW) && !strcmp(tk->text, s); }
@@ -354,6 +355,15 @@ static Node *new_sub(Node *l, Node *r);
 	}
 	if (tk->kind == TK_IDENT) {
 		char name[64]; ident(name);
+		if (!strcmp(name, "__func__") || !strcmp(name, "__FUNCTION__") || !strcmp(name, "__PRETTY_FUNCTION__")) {
+			/* C99 predefined identifier (+ GNU aliases): a static char[] of the current function's name.
+			 * Synthesize it like a string literal so it decays to its address. */
+			Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
+			snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
+			strncpy(g->str, cur_func_name, sizeof g->str - 1);
+			Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = ty_char;
+			return unary(ND_ADDR, gv);
+		}
 		if (!strcmp(name, "__builtin_va_start")) { expect("("); Node *n = node(ND_VA_START); n->lhs = assign(); expect(","); assign(); expect(")"); return n; }
 		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL, NULL), d); expect(")"); return n; }
 		if (!strcmp(name, "__builtin_va_end"))   { expect("("); assign(); expect(")"); return num(0); }
@@ -705,6 +715,7 @@ static Node *stmt(void) {
 /* ---- functions ----------------------------------------------------------------------------------- */
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
 static Func *function_tail(const char *name, Type *ret) {
+	strncpy(cur_func_name, name, sizeof cur_func_name - 1);   /* for `__func__` inside the body */
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret;
 	nlocals = 0; local_bytes = 0;
 	expect("(");
