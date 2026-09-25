@@ -20,18 +20,9 @@ static int uniq(void) { return ++label_id; }   /* 1-based, so 0 is a valid "none
 /* A per-function id (used to name this function's PIC .LGOT/.LGA labels). */
 static int cur_func_id, func_seq;
 static const char *cur_gen_func = "?";   /* name of the function being emitted, for diagnostics */
-static int cur_nfixed, cur_variadic;   /* current function's fixed-param count + whether it's variadic */
+static int cur_nfixed;                 /* current function's incoming argument words (va_start) */
 static Type *cur_ret;                  /* current function's return type (so `return e` widens to 64-bit) */
 static int ngot;   /* -fPIC: per-function counter for GOT-access labels (.LGOT/.LGA) */
-
-/* Per-function C-label -> asm-label-id map (goto/label; forward references get an id on first sight). */
-static struct { char name[64]; int id; } clabels[128]; static int nclabels;
-static int clabel_id(const char *name) {
-	for (int i = 0; i < nclabels; i++) if (!strcmp(clabels[i].name, name)) return clabels[i].id;
-	int id = uniq(); if (nclabels >= 128) die("cc: too many labels in one function (>128) — raise clabels[]");
-	strncpy(clabels[nclabels].name, name, 63); clabels[nclabels].id = id; nclabels++;
-	return id;
-}
 
 static void gen_expr(Node *n);
 static void gen_stmt(Node *n);
@@ -59,18 +50,26 @@ static int op_uns(Node *n) { return usual_arith(n->lhs->type, n->rhs->type)->is_
 /* A 64-bit value lives in the register PAIR r0(low):r1(high); everything else lives in r0. */
 static int is64(Type *t) { return t && t->size == 8; }
 
-/* AAPCS base-standard argument placement. is64[i] marks 8-byte args. Fills onstk[i] and word[i] — a core
- * register index (0..3) when onstk[i]==0, else a WORD offset into the outgoing stack area. 64-bit args are
- * even-aligned (may skip a register and/or pad the stack) and never split. Returns the stack size in words. */
-int aapcs_layout(const int *is64a, int n, int *onstk, int *word) {
-	int ncrn = 0, nsaa = 0;
+int arg_words(Type *t) {
+	if (!t) return 1;
+	if (t->kind == TY_STRUCT) return (t->size + 3) / 4;
+	return (t->kind != TY_ARRAY && t->size == 8) ? 2 : 1;   /* an array argument decays to a pointer */
+}
+int is_sret(Type *t) { return t && t->kind == TY_STRUCT && t->size > 4; }
+/* AAPCS base standard (rules C.3-C.5), over one "argument word" space: word w < 4 is core register rw, word
+ * w >= 4 is stack word w-4. Once an argument lands on the stack NCRN is 4, so placement is monotonic in this
+ * space: 8-byte-aligned args start at an even word (in a register pair or at an 8-aligned stack slot); a
+ * 64-bit scalar that doesn't fit the remaining registers goes wholly to the stack, while a composite may
+ * SPLIT across r3 and the stack. `first` reserves leading words (1 for the hidden sret pointer in r0). */
+int aapcs_layout(Type **ty, int n, int first, int *pos) {
+	int w = first;
 	for (int i = 0; i < n; i++) {
-		int w = is64a[i] ? 2 : 1;
-		if (is64a[i]) ncrn = (ncrn + 1) & ~1;             /* 64-bit: round the core reg up to even */
-		if (ncrn <= 4 - w) { onstk[i] = 0; word[i] = ncrn; ncrn += w; }
-		else { ncrn = 4; if (is64a[i]) nsaa = (nsaa + 1) & ~1; onstk[i] = 1; word[i] = nsaa; nsaa += w; }
+		int nw = arg_words(ty[i]), comp = ty[i] && ty[i]->kind == TY_STRUCT;
+		if (nw && ty[i]->kind != TY_ARRAY && align_of(ty[i]) >= 8) w = (w + 1) & ~1;
+		if (!comp && w < 4 && w + nw > 4) w = 4;
+		pos[i] = w; w += nw;
 	}
-	return nsaa;
+	return w;
 }
 /* Widen the 32-bit value in r0 into the pair r0:r1 (sign- or zero-extend by the source's sign). */
 static void extend64(Type *from) {
@@ -115,6 +114,17 @@ static void emit_addimm(const char *dst, const char *src, int imm) {
 	fprintf(o, "\tmovw ip, #%u\n", a & 0xffffu); if (a >> 16) fprintf(o, "\tmovt ip, #%u\n", a >> 16);
 	fprintf(o, "\t%s %s, %s, ip\n", neg ? "sub" : "add", dst, src);
 }
+/* Copy `size` bytes [src+soff] -> [dst+doff]; dst/src must not be r2 (the scratch). Big copies call memcpy
+ * (as GCC does), which clobbers r0-r3/r12/lr — callers treat every register as clobbered. */
+static void emit_copy(const char *dst, int doff, const char *src, int soff, int size) {
+	if (size > 64) {
+		fprintf(o, "\tmov r3, %s\n", src); emit_addimm("r0", dst, doff); emit_addimm("r1", "r3", soff);
+		load_imm("r2", size); fprintf(o, "\tbl memcpy\n"); return;
+	}
+	int i;
+	for (i = 0; i + 4 <= size; i += 4) fprintf(o, "\tldr r2, [%s, #%d]\n\tstr r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
+	for (; i < size; i++) fprintf(o, "\tldrb r2, [%s, #%d]\n\tstrb r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
+}
 /* Put the ADDRESS of an lvalue in r0. A variable's address is fp+offset; *p's address is p's value. */
 static void gen_addr(Node *n) {
 	switch (n->kind) {
@@ -149,9 +159,11 @@ static void gen_addr(Node *n) {
 		}
 		die("cc: statement-expression has no lvalue result");
 		return;
+	case ND_CALL: if (n->type->kind != TY_STRUCT) break; gen_expr(n); return;   /* f().m: the call's result temp */
 	case ND_ADDR: gen_addr(n->lhs); return;                                  /* &(addr-expr): a function designator is ND_ADDR(GVAR), so `&func` == `func` (and `&*p` == p) */
-	default: die("cc: not an lvalue (nodekind=%d) in %s", n->kind, cur_gen_func);
+	default: break;
 	}
+	die("cc: not an lvalue (nodekind=%d) in %s", n->kind, cur_gen_func);
 }
 
 /* Variable 64-bit shift of the pair r0:r1 by the count in r2 (0..63), result in r0:r1. Uses the canonical
@@ -200,27 +212,59 @@ static void gen_binary64(Node *n) {
 	}
 }
 
-/* Bitfield read: r0 = &storage-unit on entry -> r0 = the field value. Two shifts isolate the field —
- * left so its top bit reaches bit 31, then right (asr signed / lsr unsigned) down to bit 0. Unit <= 32 bits. */
+/* Constant 64-bit shifts of the pair r0:r1 (0 < k < 64). */
+static void shl64c(int k) {
+	if (k >= 32) { if (k > 32) fprintf(o, "\tlsl r1, r0, #%d\n", k - 32); else fprintf(o, "\tmov r1, r0\n"); fprintf(o, "\tmov r0, #0\n"); }
+	else if (k) fprintf(o, "\tlsl r1, r1, #%d\n\torr r1, r1, r0, lsr #%d\n\tlsl r0, r0, #%d\n", k, 32 - k, k);
+}
+static void shr64c(int k, int arith) {
+	const char *sh = arith ? "asr" : "lsr";
+	if (k >= 32) { if (k > 32) fprintf(o, "\t%s r0, r1, #%d\n", sh, k - 32); else fprintf(o, "\tmov r0, r1\n"); fprintf(o, arith ? "\tasr r1, r1, #31\n" : "\tmov r1, #0\n"); }
+	else if (k) fprintf(o, "\tlsr r0, r0, #%d\n\torr r0, r0, r1, lsl #%d\n\t%s r1, r1, #%d\n", k, 32 - k, sh, k);
+}
+/* A field needs the 64-bit path when its unit is 8 bytes (long long fields) or, in a packed struct, it
+ * spans past the first 32 bits of its unit. */
+static int bf_wide(Node *m) { return m->bf_type->size == 8 || m->bit_offset + m->bit_width > 32; }
+/* Bitfield read: r0 = &storage-unit on entry -> r0(:r1) = the field value. Two shifts isolate the field —
+ * left so its top bit reaches the top, then right (arithmetic if signed) down to bit 0. */
 static void gen_bitfield_load(Node *n) {
-	int sz = n->type->size, lsh = 32 - n->bit_offset - n->bit_width, rsh = 32 - n->bit_width;
+	int sz = n->bf_type->size, bo = n->bit_offset, bw = n->bit_width, sg = !n->bf_type->is_unsigned;
+	if (bf_wide(n)) {
+		fprintf(o, "\tldr r1, [r0, #4]\n\tldr r0, [r0]\n");
+		shl64c(64 - bo - bw); shr64c(64 - bw, sg);   /* sz <= 4: the (<= 32-bit) value is in r0 */
+		return;
+	}
+	int lsh = 32 - bo - bw, rsh = 32 - bw;
 	fprintf(o, sz == 1 ? "\tldrb r0, [r0]\n" : sz == 2 ? "\tldrh r0, [r0]\n" : "\tldr r0, [r0]\n");
 	if (lsh) fprintf(o, "\tlsl r0, r0, #%d\n", lsh);
-	if (rsh) fprintf(o, n->type->is_unsigned ? "\tlsr r0, r0, #%d\n" : "\tasr r0, r0, #%d\n", rsh);
+	if (rsh) fprintf(o, sg ? "\tasr r0, r0, #%d\n" : "\tlsr r0, r0, #%d\n", rsh);
 }
-/* Bitfield write (read-modify-write): store rhs into lhs's field, leaving the storage unit's other bits.
- * &unit -> r1, value -> r0; clear the field bits (bic) and OR the masked, shifted value back in. */
+/* Bitfield write (read-modify-write): store rhs into lhs's field, leaving the storage unit's other bits:
+ * clear the field bits (bic) and OR the masked, shifted value back in. The expression's value is the field
+ * as stored (truncated to its width), so the field is re-read afterwards. */
 static void gen_bitfield_store(Node *n) {
 	Node *lhs = n->lhs;
-	int sz = lhs->type->size, bo = lhs->bit_offset, bw = lhs->bit_width;
-	long mask = (bw >= 32) ? 0xffffffffL : ((1L << bw) - 1);
+	int sz = lhs->bf_type->size, bo = lhs->bit_offset, bw = lhs->bit_width;
+	unsigned long long fm = bw >= 64 ? ~0ULL : (1ULL << bw) - 1, pm = fm << bo;   /* field mask, placed mask */
 	gen_addr(lhs); fprintf(o, "\tpush {r0}\n");
+	if (bf_wide(lhs)) {
+		gen_expr_w(n->rhs, 1); fprintf(o, "\tpop {r2}\n");      /* r0:r1 = value, r2 = &unit */
+		load_imm("r3", fm & 0xffffffff); fprintf(o, "\tand r0, r0, r3\n"); load_imm("r3", fm >> 32); fprintf(o, "\tand r1, r1, r3\n");
+		shl64c(bo);
+		for (int w = 0; w < 2; w++) {
+			fprintf(o, "\tldr r3, [r2, #%d]\n", 4 * w); load_imm("ip", w ? pm >> 32 : pm & 0xffffffff);
+			fprintf(o, "\tbic r3, r3, ip\n\torr r3, r3, r%d\n\tstr r3, [r2, #%d]\n", w, 4 * w);
+		}
+		fprintf(o, "\tmov r0, r2\n"); gen_bitfield_load(lhs);
+		return;
+	}
 	gen_expr(n->rhs); fprintf(o, "\tpop {r1}\n");                 /* r0 = value, r1 = &unit */
 	fprintf(o, sz == 1 ? "\tldrb r2, [r1]\n" : sz == 2 ? "\tldrh r2, [r1]\n" : "\tldr r2, [r1]\n");
-	load_imm("r3", mask); fprintf(o, "\tand r0, r0, r3\n");      /* value &= fieldmask */
+	load_imm("r3", fm); fprintf(o, "\tand r0, r0, r3\n");      /* value &= fieldmask */
 	if (bo) fprintf(o, "\tlsl r0, r0, #%d\n\tlsl r3, r3, #%d\n", bo, bo);   /* shift value + mask into place */
 	fprintf(o, "\tbic r2, r2, r3\n\torr r2, r2, r0\n");          /* clear field, OR the new bits in */
 	fprintf(o, sz == 1 ? "\tstrb r2, [r1]\n" : sz == 2 ? "\tstrh r2, [r1]\n" : "\tstr r2, [r1]\n");
+	fprintf(o, "\tmov r0, r1\n"); gen_bitfield_load(lhs);
 }
 
 /* GCC builtins that reach codegen with a non-constant argument (constant ones were folded by the parser).
@@ -274,11 +318,12 @@ static void gen_expr(Node *n) {
 	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_LABELADDR: {                                    /* &&label -> the label's code address (movw/movt) */
-		int id = clabel_id(n->name);
-		fprintf(o, "\tmovw r0, #:lower16:.L%d\n\tmovt r0, #:upper16:.L%d\n", id, id);   /* label address via movw/movt */
+		fprintf(o, "\tmovw r0, #:lower16:" CLABEL_FMT "\n\tmovt r0, #:upper16:" CLABEL_FMT "\n", cur_gen_func, n->name, cur_gen_func, n->name);
 		return;
 	}
-	case ND_DEREF: gen_expr(n->lhs); load(n->type); return; /* pointer -> r0, then load the pointee by width */
+	case ND_DEREF: gen_expr(n->lhs);                        /* pointer -> r0, then load the pointee by width */
+		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type);   /* an aggregate *p IS its address */
+		return;
 	case ND_ASSIGN:
 		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */
 		if (n->lhs->kind == ND_MEMBER && n->lhs->bit_width) { gen_bitfield_store(n); return; }   /* bitfield RMW */
@@ -286,9 +331,7 @@ static void gen_expr(Node *n) {
 			gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");   /* dest addr */
 			gen_expr(n->rhs);                                /* a struct-typed rhs leaves its ADDRESS in r0 */
 			fprintf(o, "\tpop {r1}\n");                      /* r1 = dest, r0 = src */
-			int sz = n->lhs->type->size, i;
-			for (i = 0; i + 4 <= sz; i += 4) fprintf(o, "\tldr r2, [r0, #%d]\n\tstr r2, [r1, #%d]\n", i, i);
-			for (; i < sz; i++) fprintf(o, "\tldrb r2, [r0, #%d]\n\tstrb r2, [r1, #%d]\n", i, i);
+			emit_copy("r1", 0, "r0", 0, n->lhs->type->size);
 			return;
 		}
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
@@ -309,7 +352,12 @@ static void gen_expr(Node *n) {
 		return;
 	case ND_VA_ARG:                                              /* fetch *ap, advance ap by the arg width */
 		gen_addr(n->lhs);
-		if (is64(n->type))   /* 64-bit: 8-align ap (AAPCS even-word), then r0=low@[ap], r1=high@[ap+4]; ap += 8 */
+		if (n->type->kind == TY_STRUCT) {   /* by-value composite: its words ARE at ap; the result is that address */
+			fprintf(o, "\tldr r1, [r0]\n");
+			if (align_of(n->type) >= 8) fprintf(o, "\tadd r1, r1, #7\n\tbic r1, r1, #7\n");
+			emit_addimm("r2", "r1", 4 * arg_words(n->type)); fprintf(o, "\tstr r2, [r0]\n\tmov r0, r1\n");
+		}
+		else if (is64(n->type))   /* 64-bit: 8-align ap (AAPCS even-word), then r0=low@[ap], r1=high@[ap+4]; ap += 8 */
 			fprintf(o, "\tldr r2, [r0]\n\tadd r2, r2, #7\n\tbic r2, r2, #7\n\tldr r1, [r2, #4]\n\tadd r3, r2, #8\n\tstr r3, [r0]\n\tldr r0, [r2]\n");
 		else
 			fprintf(o, "\tldr r1, [r0]\n\tadd r2, r1, #4\n\tstr r2, [r0]\n\tldr r0, [r1]\n");
@@ -346,35 +394,39 @@ static void gen_expr(Node *n) {
 	}
 	case ND_CALL: {
 		if (n->name[0] && !strncmp(n->name, "__builtin_", 10)) { gen_builtin(n); return; }   /* never a real call */
-		Node *av[64]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 64) die("cc: too many call args (>64)"); av[nargs++] = a; }
-		int is64a[64], onstk[64], word[64];
+		Node *av[64]; Type *at[64]; int pos[64], nargs = 0;
+		for (Node *a = n->args; a; a = a->next) { if (nargs >= 64) die("cc: too many call args (>64)"); av[nargs++] = a; }
 		const char *callee = n->lhs ? 0 : n->name;                 /* only a direct call has a known signature */
-		for (int i = 0; i < nargs; i++) {                          /* a 64-bit param is placed 64-bit even if the arg is narrower */
+		for (int i = 0; i < nargs; i++) {                          /* a declared param type decides the slot (a 64-bit param takes a narrower arg widened) */
 			Type *pt = callee ? func_param_type(callee, i) : 0;
-			is64a[i] = pt ? is64(pt) : is64(av[i]->type);
+			at[i] = pt ? pt : av[i]->type;
 		}
-		int nstk = aapcs_layout(is64a, nargs, onstk, word);        /* AAPCS placement: reg index or stack word */
-		int regwords = 0; for (int i = 0; i < nargs; i++) if (!onstk[i]) regwords += is64a[i] ? 2 : 1;
-		int cw = n->lhs ? 1 : 0;                                    /* indirect: 1 staging word for the callee ptr */
-		/* Reserve one area from sp: [0, nstk) = outgoing stack args; [nstk, +regwords) = register-arg staging;
-		 * [.. ] = callee-ptr staging. Everything is addressed off sp, so nested-call arg evaluation (which
-		 * moves sp and restores it) never disturbs already-placed args. Pad so sp stays 8-aligned at the call. */
-		int stageb = nstk * 4, total = nstk + regwords + cw, resv = total * 4 + ((total * 4 & 7) ? 4 : 0);
-		if (resv) emit_addimm("sp", "sp", -resv);
-		int stageword[16], si = 0;
+		int sret = is_sret(n->type), total = aapcs_layout(at, nargs, sret, pos);
+		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs ? 1 : 0;
+		/* One area from sp, laid out in argument-word order: [0,16) = r0..r3 staging, then the outgoing stack
+		 * words, then the callee-pointer slot. Addressed off sp, so nested calls (which move sp and restore it)
+		 * never disturb placed args. `pop {r0-r3}` loads the registers and leaves sp at the stack args. */
+		int area = (total || cw) ? 4 + nstk + cw : 0; area += area & 1;   /* keep sp 8-aligned at the call */
+		if (area) emit_addimm("sp", "sp", -4 * area);
 		for (int i = 0; i < nargs; i++) {
-			gen_expr_w(av[i], is64a[i]);   /* widen a narrow arg to a 64-bit param (sign/zero) */
-			if (onstk[i]) { fprintf(o, "\tstr r0, [sp, #%d]\n", word[i] * 4); if (is64a[i]) fprintf(o, "\tstr r1, [sp, #%d]\n", word[i] * 4 + 4); }
-			else { stageword[i] = si; fprintf(o, "\tstr r0, [sp, #%d]\n", stageb + si * 4); si++; if (is64a[i]) { fprintf(o, "\tstr r1, [sp, #%d]\n", stageb + si * 4); si++; } }
+			if (at[i]->kind == TY_STRUCT) {                        /* by value: copy its bytes into its words */
+				gen_expr(av[i]); emit_copy("sp", 4 * pos[i], "r0", 0, at[i]->size);
+				continue;
+			}
+			gen_expr_w(av[i], is64(at[i]));
+			fprintf(o, "\tstr r0, [sp, #%d]\n", 4 * pos[i]);
+			if (is64(at[i])) fprintf(o, "\tstr r1, [sp, #%d]\n", 4 * pos[i] + 4);
 		}
-		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tstr r0, [sp, #%d]\n", stageb + regwords * 4); }   /* callee ptr */
-		for (int i = 0; i < nargs; i++) if (!onstk[i]) {           /* load staged register args into r0..r3 */
-			fprintf(o, "\tldr r%d, [sp, #%d]\n", word[i], stageb + stageword[i] * 4);
-			if (is64a[i]) fprintf(o, "\tldr r%d, [sp, #%d]\n", word[i] + 1, stageb + (stageword[i] + 1) * 4);
+		if (sret) { emit_addimm("r0", "r11", n->offset); fprintf(o, "\tstr r0, [sp]\n"); }   /* hidden r0 = &result temp */
+		if (cw) { gen_expr(n->lhs); fprintf(o, "\tstr r0, [sp, #%d]\n\tldr r12, [sp, #%d]\n", 4 * (4 + nstk), 4 * (4 + nstk)); }
+		if (area) fprintf(o, "\tpop {r0, r1, r2, r3}\n");
+		if (cw) fprintf(o, "\tblx r12\n");
+		else    fprintf(o, "\tbl %s\n", n->name);                /* result in r0(:r1) */
+		if (area > 4) emit_addimm("sp", "sp", 4 * (area - 4));
+		if (n->type->kind == TY_STRUCT) {                          /* a struct call yields its temp's ADDRESS */
+			if (!sret && n->type->size) { emit_addimm("r1", "r11", n->offset); fprintf(o, "\tstr r0, [r1]\n"); }   /* <= 4 bytes came back in r0 */
+			emit_addimm("r0", "r11", n->offset);
 		}
-		if (n->lhs) fprintf(o, "\tldr r12, [sp, #%d]\n\tblx r12\n", stageb + regwords * 4);
-		else        fprintf(o, "\tbl %s\n", n->name);              /* result in r0(:r1) */
-		if (resv) emit_addimm("sp", "sp", resv);
 		return;
 	}
 	default: break;
@@ -521,7 +573,16 @@ static void gen_asm(Node *n) {
 
 static void gen_stmt(Node *n) {
 	switch (n->kind) {
-	case ND_RETURN:   if (n->lhs) gen_expr_w(n->lhs, is64(cur_ret)); fprintf(o, "\tb .L%d\n", ret_label); return;   /* widen to the return type; lhs NULL for `return;` */
+	case ND_RETURN:   /* widen to the return type; lhs NULL for `return;` */
+		if (n->lhs && cur_ret && cur_ret->kind == TY_STRUCT) {   /* gen_expr leaves the struct's address */
+			int sz = cur_ret->size; gen_expr(n->lhs);
+			if (is_sret(cur_ret)) { fprintf(o, "\tldr r1, [r11, #8]\n"); emit_copy("r1", 0, "r0", 0, sz); fprintf(o, "\tldr r0, [r11, #8]\n"); }   /* into the caller's buffer; r0 = it */
+			else if (sz == 4) fprintf(o, "\tldr r0, [r0]\n");   /* <= 4 bytes: the bytes themselves in r0 */
+			else if (sz == 3) fprintf(o, "\tldrb r1, [r0, #2]\n\tldrh r0, [r0]\n\torr r0, r0, r1, lsl #16\n");
+			else if (sz) fprintf(o, sz == 2 ? "\tldrh r0, [r0]\n" : "\tldrb r0, [r0]\n");
+		}
+		else if (n->lhs) gen_expr_w(n->lhs, is64(cur_ret));
+		fprintf(o, "\tb .L%d\n", ret_label); return;
 	case ND_EXPRSTMT: gen_expr(n->lhs); return;
 	case ND_BLOCK:    for (Node *s = n->body; s; s = s->next) gen_stmt(s); return;
 	case ND_IF: {
@@ -588,26 +649,43 @@ static void gen_stmt(Node *n) {
 	}
 	case ND_CASE: fprintf(o, ".L%d:\n", n->offset); return;  /* label placed inline in the switch body */
 	case ND_ASM: gen_asm(n); return;   /* %N-substituted template + constraint-driven operand load/store */
-	case ND_GOTO:  fprintf(o, "\tb .L%d\n", clabel_id(n->name)); return;
-	case ND_LABEL: fprintf(o, ".L%d:\n", clabel_id(n->name)); return;
+	case ND_GOTO:
+		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tbx r0\n"); return; }   /* computed goto */
+		fprintf(o, "\tb " CLABEL_FMT "\n", cur_gen_func, n->name); return;
+	case ND_LABEL: fprintf(o, CLABEL_FMT ":\n", cur_gen_func, n->name); return;
 	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;
 	case ND_CONTINUE: if (!cont_lbl) die("cc: continue outside a loop"); fprintf(o, "\tb .L%d\n", cont_lbl); return;
 	default: gen_expr(n); return;   /* a bare declaration compiles to an empty ND_BLOCK; other exprs run */
 	}
 }
 
+/* Give every struct-returning call in the subtree a result temp below the function's locals (frame grows). */
+static void alloc_call_temps(Node *n, int *frame) {
+	if (!n) return;
+	if (n->kind == ND_CALL && n->type && n->type->kind == TY_STRUCT && strncmp(n->name, "__builtin_", 10)) {
+		*frame += n->type->size < 4 ? 4 : (n->type->size + 3) & ~3; n->offset = -*frame;   /* >= 4: an r0 return is stored as a word */
+	}
+	alloc_call_temps(n->lhs, frame); alloc_call_temps(n->rhs, frame); alloc_call_temps(n->cond, frame);
+	alloc_call_temps(n->then, frame); alloc_call_temps(n->els, frame); alloc_call_temps(n->init, frame); alloc_call_temps(n->inc, frame);
+	for (Node *c = n->body; c; c = c->next) alloc_call_temps(c, frame);
+	for (Node *a = n->args; a; a = a->next) alloc_call_temps(a, frame);
+}
+/* Frame: [r11+8..] homed r0..r3 (when the function takes any argument words) contiguous with the caller's
+ * stack args, so every param is at [r11, #8 + 4*word]; [r11] saved r11/lr; below r11 the locals + call temps. */
 static void gen_func(Func *f) {
-	ret_label = uniq(); cur_func_id = func_seq++; nclabels = 0; ngot = 0; cur_gen_func = f->name;
-	cur_nfixed = f->nfixed_words; cur_variadic = f->variadic; cur_ret = f->ret_type;
+	ret_label = uniq(); cur_func_id = func_seq++; ngot = 0; cur_gen_func = f->name;
+	cur_nfixed = f->nfixed_words; cur_ret = f->ret_type;
+	int frame = f->frame, homed = f->nfixed_words || f->variadic;
+	for (Node *s = f->body; s; s = s->next) alloc_call_temps(s, &frame);
+	frame = (frame + 7) & ~7;
 	if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
-	if (f->variadic) fprintf(o, "\tpush {r0, r1, r2, r3}\n");   /* save area: args become contiguous at [r11,#8+4i] */
+	if (homed) fprintf(o, "\tpush {r0, r1, r2, r3}\n");
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
-	if (f->frame) emit_addimm("sp", "sp", -f->frame);   /* ip is free here; frame may exceed the imm range */
-	if (!f->variadic) for (int w = 0; w < f->arg_regs; w++) if (f->arg_off[w]) fprintf(o, "\tstr r%d, [r11, #%d]\n", w, f->arg_off[w]);   /* spill incoming r0..r3 to param slots (word-based) */
+	if (frame) emit_addimm("sp", "sp", -frame);   /* ip is free here; frame may exceed the imm range */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
-	if (f->variadic) fprintf(o, "\tadd sp, sp, #16\n");        /* discard the r0..r3 save area */
+	if (homed) fprintf(o, "\tadd sp, sp, #16\n");            /* discard the homed r0..r3 */
 	fprintf(o, "\tbx lr\n");
 }
 

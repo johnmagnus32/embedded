@@ -25,26 +25,36 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
                                    strncpy(out, tk->text, 63); out[63] = 0; tk = tk->next; }
 
 /* ---- locals (per function) ----------------------------------------------------------------------- */
-static struct { char name[64]; int offset; Type *type; char reg[8]; } locals[1024];
+/* gname: a block-scope `static`/`extern` name bound to a GLOBAL symbol (no frame slot). */
+static struct { char name[64]; int offset; Type *type; char reg[8]; char gname[64]; } locals[1024];
 static int nlocals, local_bytes;   /* local_bytes = total frame bytes used by locals+params so far */
-/* Lookups scan newest-first, so a redeclared name (a different block, no true block scoping here) or a
- * local shadowing a param resolves to the most recent binding — correct for disjoint/nested blocks; we
- * just never reclaim an inner block's frame space. */
-static int local_offset(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].offset; return 0; }
-static Type *local_type(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].type; return ty_int; }
+/* Lookups scan newest-first, so an inner declaration shadows an outer one; a block restores nlocals at its
+ * `}` (block scope), but never reclaims the inner block's frame space. */
 static const char *local_reg(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].reg; return ""; }
 static int local_exists(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return 1; return 0; }
+static Node *node(NodeKind kind);
+static Init *global_init(Type *ty);
+static Node *local_ref(const char *name) {   /* the node for a block-scope name: its frame slot, or its global */
+	for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) {
+		Node *n = node(locals[i].gname[0] ? ND_GVAR : ND_VAR); n->type = locals[i].type;
+		if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); return n; }
+		strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); return n;
+	}
+	die("parse: internal: no local '%s'", name); return 0;
+}
 static int add_local(const char *name, Type *ty) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
 	local_bytes += (ty->size + 3) & ~3;   /* a 4-aligned slot big enough for the whole object (arrays too) */
 	int off = -local_bytes;               /* offset points at the object's first (lowest) byte */
+	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0;
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 	return off;
 }
 /* Bind a name to an explicit offset without allocating frame space — for params 5+ that live in the
  * CALLER's frame (above our saved r11/lr), at [r11, #8 + 4*(i-4)]. */
 static void add_local_at(const char *name, Type *ty, int off) {
-	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
+	if (nlocals >= 1024) die("parse: too many locals in one function");
+	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 }
 
 /* ---- typedef names + enum constants (both resolved at parse time) -------------------------------- */
@@ -62,11 +72,13 @@ static Type *enum_decl(void);
 static int is_typename(void);
 static Type *declarator(Type *base, char *name);
 static Node *init_of(Node *dest, Type *ty);   /* aggregate brace-initializer (defined later; used by compound literals) */
+typedef struct InitPlace InitPlace;
+static InitPlace *init_places(Type *ty);
 
 /* One shared initializer traversal (like a real compiler's InitListChecker): parse the initializer syntax
  * ONCE into a neutral list of scalar leaf placements, then lower to either a .data byte image (globals) or
  * a block of runtime stores (locals). Kills the old global_init/init_of fork that drifted in capability. */
-typedef struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset; struct InitPlace *next; } InitPlace;
+struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset; struct InitPlace *next; };
 static int   parse_init(Type *ty, int base, InitPlace **tail);
 static Init *lower_global(InitPlace *places, int total);
 static Node *lower_local(Node *dest, InitPlace *places, int total);
@@ -505,9 +517,7 @@ static Node *builtin_lower(char *name) {
 			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
 			 * variable holding a function pointer — a param/local, or a global. n->lhs = the callee. */
 			if (local_exists(name)) {                        /* a local/param fn-ptr shadows everything -> indirect */
-				Node *c = node(ND_VAR); strncpy(c->name, name, 63);
-				c->offset = local_offset(name); c->type = local_type(name); strncpy(c->reg, local_reg(name), 7);
-				n->lhs = c;
+				n->lhs = local_ref(name);
 			} else if (func_declared(name)) {
 				strncpy(n->name, name, 63);                 /* a known FUNCTION -> direct `bl` (wins over a same-named
 				                                             * global: EXPORT_SYMBOL emits `extern typeof(fn) fn;`,
@@ -521,7 +531,7 @@ static Node *builtin_lower(char *name) {
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
 			expect(")"); n->args = argh.next; return n;
 		}
-		if (local_exists(name)) { Node *n = node(ND_VAR); strncpy(n->name, name, 63); n->offset = local_offset(name); n->type = local_type(name); strncpy(n->reg, local_reg(name), 7); return n; }
+		if (local_exists(name)) return local_ref(name);
 		Gvar *g = global_find(name);                         /* locals shadow globals */
 		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; return n; }
 		long ev; if (enum_find(name, &ev)) return num(ev);   /* enum constant -> integer literal */
@@ -532,26 +542,20 @@ static Node *builtin_lower(char *name) {
 	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
 }
 
-/* Materialize an rvalue into a fresh temp local, yielding an lvalue for it: `({ __t = e; __t; })`. Used so
- * a `.member` access on a struct-returning CALL has an address to work from (kernel swp_offset(f(x)) etc.). */
-static Node *materialize(Node *e) {
-	static int mseq;
-	char nm[32]; snprintf(nm, sizeof nm, ".Lmat%d", mseq++);
-	int off = add_local(nm, e->type);
-	Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = e->type;
-	Node *st = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, e));
-	Node *v2 = node(ND_VAR); strncpy(v2->name, nm, 63); v2->offset = off; v2->type = e->type;
-	st->next = unary(ND_EXPRSTMT, v2);
-	Node *se = node(ND_STMTEXPR); se->body = st; se->type = e->type; return se;
+/* Mark an ND_MEMBER as a bitfield of declared type `ty`. Like GCC, a field promotes by its WIDTH: to int when
+ * every value fits (width < 32, or signed 32), to unsigned int for unsigned :32; a long long field wider than
+ * 32 bits keeps its type. */
+static void bitfield_node(Node *n, Type *ty, int bw, int bo) {
+	n->bit_width = bw; n->bit_offset = bo; n->bf_type = ty;
+	n->type = bw > 32 ? ty : (ty->is_unsigned && bw == 32) ? ty_uint : ty_int;
 }
 /* base.member — resolve the member's offset+type on the struct; ND_MEMBER holds the base lvalue. */
 static Node *struct_member(Node *base, const char *mname) {
 	add_type(base);
-	if (base->kind == ND_CALL && base->type && base->type->kind == TY_STRUCT) base = materialize(base);   /* f(x).m: spill the returned struct to a temp */
 	if (!base->type || base->type->kind != TY_STRUCT) die("parse: '.%s' on a non-struct", mname);
 	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
 		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type;
-		if (m->is_bitfield) { n->bit_width = m->bit_width; n->bit_offset = m->bit_offset; }
+		if (m->is_bitfield) bitfield_node(n, m->type, m->bit_width, m->bit_offset);
 		return n;
 	}
 	die("parse: struct has no member '%s'", mname); return NULL;
@@ -588,9 +592,10 @@ static Node *unary_expr(void) {
 		if (is("{")) {   /* compound literal (type){init}: an anonymous initialized object, yields its lvalue */
 			static int cl_seq;
 			char nm[32]; snprintf(nm, sizeof nm, ".Lcl%d", cl_seq++);
+			InitPlace *pl = init_places(t);                  /* first: `(T[]){...}` takes its size from the braces */
 			int off = add_local(nm, t);
 			Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = t;
-			Node *initb = init_of(v, t);                     /* block of member/element assignments to v */
+			Node *initb = lower_local(v, pl, t->size);       /* block of member/element assignments to v */
 			Node *y = node(ND_VAR); strncpy(y->name, nm, 63); y->offset = off; y->type = t;
 			initb->next = unary(ND_EXPRSTMT, y);             /* ...then the statement-expression yields v */
 			Node *se = node(ND_STMTEXPR); se->body = initb; se->type = t; return se;
@@ -675,11 +680,12 @@ static Node *expr(void)  { Node *n = assign(); while (consume(",")) n = binary(N
  * initializers just stop (the rest is left as-is — no zero-fill, an M1 simplification). */
 /* Aggregate/brace initializer for a local (and for compound literals): parse into placements via the shared
  * traversal, then lower to a block of stores against `dest`. */
-static Node *init_of(Node *dest, Type *ty) {
+static InitPlace *init_places(Type *ty) {   /* parse only; sizes an unsized array `T x[]` in place */
 	InitPlace head = {0}, *tail = &head;
 	parse_init(ty, 0, &tail);
-	return lower_local(dest, head.next, ty->size);
+	return head.next;
 }
+static Node *init_of(Node *dest, Type *ty) { InitPlace *pl = init_places(ty); return lower_local(dest, pl, ty->size); }
 
 static int has_jump_target(Node *n);
 /* Same, for ONE node's children (not its ->next siblings). */
@@ -803,14 +809,17 @@ static Node *stmt(void) {
 		                              * expansion of a macro like wait_event gets its OWN `__out:`) — rename uniquely */
 		do { if (tk->kind == TK_IDENT) {
 			if (nlscope >= 512) die("parse: too many __label__ declarations in scope (>512)");
-			strncpy(lscope[nlscope].from, tk->text, 63); snprintf(lscope[nlscope].to, 64, "%.40s#%d", tk->text, ++lscope_seq); nlscope++;
+			strncpy(lscope[nlscope].from, tk->text, 63); snprintf(lscope[nlscope].to, 64, "%.40s.%d", tk->text, ++lscope_seq); nlscope++;
 			tk = tk->next; } } while (consume(","));
 		expect(";"); return node(ND_BLOCK);
 	}
 	if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) {   /* block-scope _Static_assert (e.g. in container_of's stmt-expr) — skip */
 		tk = tk->next; skip_attribute(); consume(";"); return node(ND_BLOCK);
 	}
-	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); map_label(n->name); expect(";"); return n; }
+	if (consume("goto"))     { Node *n = node(ND_GOTO);
+		if (consume("*")) n->lhs = expr();                  /* GNU computed goto: `goto *p;` (p from &&label) */
+		else { ident(n->name); map_label(n->name); }
+		expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
 		Node *n = node(ND_LABEL); ident(n->name); map_label(n->name); expect(":"); return n;
 	}
@@ -828,15 +837,15 @@ static Node *stmt(void) {
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
 	if (consume("do")) { Node *n = node(ND_DOWHILE); n->body = stmt(); expect("while"); expect("("); n->cond = expr(); expect(")"); expect(";"); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
-		Node *n = node(ND_FOR); expect("(");
+		Node *n = node(ND_FOR); expect("("); int saved_nl = nlocals;   /* the init declaration's scope is the for statement */
 		if (is_typename()) n->init = stmt();       /* declaration eats its own ; */
 		else if (!consume(";")) { n->init = unary(ND_EXPRSTMT, expr()); expect(";"); }
 		if (!consume(";")) { n->cond = expr(); expect(";"); }
 		if (!is(")")) n->inc = expr();
-		expect(")"); n->body = stmt(); return n;
+		expect(")"); n->body = stmt(); nlocals = saved_nl; return n;
 	}
-	if (consume("{")) { int saved_ls = nlscope;   /* __label__ declarations end with their block */
-		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; nlscope = saved_ls; return n; }
+	if (consume("{")) { int saved_ls = nlscope, saved_nl = nlocals;   /* __label__ declarations and locals end with their block */
+		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; nlscope = saved_ls; nlocals = saved_nl; return n; }
 	if (is("__auto_type")) {   /* GNU __auto_type: the local's type is inferred from its initializer (kernel min/max) */
 		tk = tk->next;
 		Node blk = {0}, *bc = &blk;
@@ -852,7 +861,7 @@ static Node *stmt(void) {
 		Node *n = node(ND_BLOCK); n->body = blk.next; return n;
 	}
 	if (is_typename()) {                                     /* local declaration(s): `T a, b = e, c;` */
-		int td; Type *base = declspec(&td, NULL);
+		int td, sc = 0; Type *base = declspec(&td, &sc);
 		if (td) { char nm[64]; Type *ty = declarator(base, nm);
 			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; }   /* function-type typedef `typedef R name(params)` */
 				Type *ft = calloc(1, sizeof *ft); *ft = *ty; ft->fn_ret = ty; ty = ft; }   /* a FUNCTION type: sized like R so `fn_t *p` still works */
@@ -867,22 +876,21 @@ static Node *stmt(void) {
 				while (consume("__attribute__")) skip_attribute();   /* trailing: `void h(void) __attribute__((error("...")))` */
 				continue;
 			}
-			if (ty->kind == TY_ARRAY && ty->len == 0 && is("=")) {   /* unsized local array `T x[] = {...}`: size the frame slot from the initializer BEFORE add_local */
-				Token *sv = tk; tk = tk->next;
-				if (is("{")) {
-					int bd = 0, pd = 0, cnt = 0, any = 0;
-					for (Token *t = tk; t && t->kind != TK_EOF; t = t->next) {
-						const char *x = t->text;
-						if (!strcmp(x, "{")) { bd++; continue; }
-						if (!strcmp(x, "}")) { if (--bd == 0) break; continue; }
-						if (!strcmp(x, "(") || !strcmp(x, "[")) pd++;
-						else if (!strcmp(x, ")") || !strcmp(x, "]")) pd--;
-						if (bd == 1) { any = 1; if (pd == 0 && !strcmp(x, ",")) cnt++; }
-					}
-					if (any) cnt++;
-					ty->len = cnt; ty->size = cnt * (ty->base ? ty->base->size : 1);
-				}
-				tk = sv;
+			if (sc & (SC_STATIC | SC_EXTERN)) {   /* block-scope static/extern: a GLOBAL object, only the NAME is block-scoped */
+				Gvar *g;
+				if (sc & SC_STATIC) {             /* own file-local object `nm.N` (GCC's naming); initialized once, statically */
+					static int sseq; g = add_global(); snprintf(g->name, sizeof g->name, "%s.%d", nm, sseq++); g->is_static = 1; g->type = ty;
+				} else if (!(g = global_find(nm))) { g = add_global(); strncpy(g->name, nm, 63); g->type = ty; g->is_extern = 1; }
+				add_local_at(nm, ty, 0); strncpy(locals[nlocals - 1].gname, g->name, 63);   /* bound BEFORE the initializer: it may name itself (&x.head) */
+				if ((sc & SC_STATIC) && consume("=")) g->init = global_init(ty);   /* sizes an unsized array in place */
+				continue;
+			}
+			if (ty->kind == TY_ARRAY && ty->len == 0 && consume("=")) {   /* unsized `T x[] = ...`: the initializer sizes it, THEN allocate */
+				InitPlace *pl = init_places(ty);
+				int off = add_local(nm, ty);
+				Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty;
+				bc = bc->next = lower_local(v, pl, ty->size);
+				continue;
 			}
 			int off = add_local(nm, ty);
 			if (consume("__asm__") || consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
@@ -919,33 +927,14 @@ static Func *function_tail(const char *name, Type *ret) {
 	expect(")");
 	f->nparams = np;
 	{ Type *pts[16]; for (int i = 0; i < np && i < 16; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic); }   /* publish the signature for callers */
-	/* Bind params per AAPCS (64-bit args are even-aligned, may skip a register / pad the stack). A variadic
-	 * function spills r0..r3 into a contiguous incoming block, so ALL its params sit at [r11, #8 + 4*word];
-	 * a normal function keeps register params in r0..r3 (spilled to negative frame slots in the prologue)
-	 * and stack params at [r11, #8 + 4*stackword]. */
-	if (f->variadic) {
-		int w = 0;
-		for (int i = 0; i < np; i++) {
-			int nw = (prm[i].ty && prm[i].ty->size == 8) ? 2 : 1;
-			if (nw == 2) w = (w + 1) & ~1;                       /* 64-bit even-aligned */
-			if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * w);
-			w += nw;
-		}
-		f->nfixed_words = w;                                     /* where varargs begin, for va_start */
-	} else {
-		int is64a[16], onstk[16], word[16];
-		for (int i = 0; i < np; i++) is64a[i] = (prm[i].ty && prm[i].ty->size == 8);
-		aapcs_layout(is64a, np, onstk, word);
-		for (int i = 0; i < np; i++) {
-			int nw = is64a[i] ? 2 : 1;
-			if (!onstk[i]) {                                     /* register param: spill r{word} to a frame slot */
-				int off = prm[i].name[0] ? add_local(prm[i].name, prm[i].ty) : 0;
-				for (int k = 0; k < nw && off; k++) f->arg_off[word[i] + k] = off + 4 * k;
-				if (word[i] + nw > f->arg_regs) f->arg_regs = word[i] + nw;
-			} else if (prm[i].name[0]) {                         /* stack param */
-				add_local_at(prm[i].name, prm[i].ty, 8 + word[i] * 4);
-			}
-		}
+	/* Bind params per AAPCS (aapcs_layout, the same placement callers use; an sret function's hidden buffer
+	 * pointer takes word 0). gen_func homes r0..r3 right above the frame record, contiguous with the caller's
+	 * stack args, so param i lives at [r11, #8 + 4*word]; varargs begin after the last fixed word. */
+	{
+		Type *pts[16]; int pos[16];
+		for (int i = 0; i < np; i++) pts[i] = prm[i].ty;
+		f->nfixed_words = aapcs_layout(pts, np, is_sret(ret), pos);
+		for (int i = 0; i < np; i++) if (prm[i].name[0]) add_local_at(prm[i].name, prm[i].ty, 8 + 4 * pos[i]);
 	}
 	while (consume("__attribute__")) skip_attribute();       /* e.g. int f(void) __attribute__((noreturn)) { … } */
 	if (consume(";")) return NULL;                           /* a prototype — no body to compile */
@@ -1097,9 +1086,11 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 	if (is("{")) {
 		expect("{");
 		if (ty->kind == TY_STRUCT) {
-			int nm = 0; for (Member *m = ty->members; m; m = m->next) nm++;
+			#define INIT_MEMBER(m) (!((m)->is_bitfield && !(m)->name[0]))   /* unnamed bitfields (`int :4`) take no initializer */
+			int nm = 0; for (Member *m = ty->members; m; m = m->next) nm += INIT_MEMBER(m);
 			Member **marr = malloc((nm ? nm : 1) * sizeof *marr);
-			{ int i = 0; for (Member *m = ty->members; m; m = m->next) marr[i++] = m; }
+			{ int i = 0; for (Member *m = ty->members; m; m = m->next) if (INIT_MEMBER(m)) marr[i++] = m; }
+			#undef INIT_MEMBER
 			int at = 0;
 			while (!is("}")) {
 				if (is(".")) {   /* designated: reposition the member cursor absolutely */
@@ -1212,6 +1203,7 @@ static int as_addr_const(Node *e, char *sym, long *ad) {
 	case ND_ADDR: { long s = *ad; if (addr_of_lval(e->lhs, sym, ad)) return 1; *ad = s; return as_addr_const(e->lhs, sym, ad); }   /* &lval, or &&func: a bare function name is already ND_ADDR(GVAR), so `&func` == `func` */
 	case ND_CAST: return as_addr_const(e->lhs, sym, ad);
 	case ND_GVAR: case ND_VAR: strncpy(sym, e->name, 63); return 1;   /* bare name -> its address (array/func decay) */
+	case ND_LABELADDR: if (snprintf(sym, 64, CLABEL_FMT, cur_func_name, e->name) >= 64) die("parse: label symbol too long ('%s')", e->name); return 1;   /* static void *t[] = { &&l } */
 	case ND_MEMBER: if (e->type && e->type->kind == TY_ARRAY) return addr_of_lval(e, sym, ad); return 0;   /* an array-typed member used as a value decays to its address (&s.arr[0]) */
 	case ND_ADD:
 		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad += c; return 1; }
@@ -1228,28 +1220,40 @@ static int as_addr_const(Node *e, char *sym, long *ad) {
 	}
 }
 
-/* Lower placements to a .data byte image: fold each leaf to a const/symbol, apply last-writer-wins per
- * offset, and zero-fill the gaps in offset order (union-safe: only initialized leaves are emitted). */
+/* Lower placements to a .data byte image. Leaves apply in source order (a later designator overrides an
+ * earlier one); a constant writes its bytes little-endian, a bitfield merges its bits into its unit, and an
+ * address constant claims a word for an R_ARM_ABS32 symbol (dropped again if a later constant overwrites
+ * it). The image is then emitted as symbol words, constant words/bytes, and zero runs. */
 static Init *lower_global(InitPlace *places, int total) {
-	Init head = {0}, *c = &head;
-	int n = 0; for (InitPlace *p = places; p; p = p->next) n++;
-	if (n == 0) { if (total > 0) { c->next = mkinit(INIT_ZERO); c->next->size = total; } return head.next; }
-	struct pp_ent *a = malloc(n * sizeof *a);
-	{ int i = 0; for (InitPlace *p = places; p; p = p->next) { a[i].off = p->off; a[i].seq = i; a[i].ty = p->ty; a[i].expr = p->expr; i++; } }
-	qsort(a, n, sizeof *a, cmp_pp);
-	int cur = 0;
-	for (int i = 0; i < n; ) {
-		int off = a[i].off, j = i; while (j + 1 < n && a[j + 1].off == off) j++;   /* run of equal offset -> keep the last (highest seq) */
-		struct pp_ent *pp = &a[j];
-		if (off < cur) { i = j + 1; continue; }   /* overlaps a wider earlier leaf (invalid C) -> skip */
-		if (off > cur) { c->next = mkinit(INIT_ZERO); c->next->size = off - cur; c = c->next; }
+	int size = total;
+	for (InitPlace *p = places; p; p = p->next) if (p->off + p->ty->size > size) size = p->off + p->ty->size;   /* flexible array tail */
+	unsigned char *img = calloc(size + 1, 1); char **symat = calloc(size + 1, sizeof *symat); long *symadd = calloc(size + 1, sizeof *symadd);
+	for (InitPlace *p = places; p; p = p->next) {
 		char sym[64] = ""; long addend = 0;
-		if (as_addr_const(pp->expr, sym, &addend)) { Init *it = mkinit(INIT_SYM); strncpy(it->sym, sym, 63); it->val = addend; it->size = 4; c->next = it; c = c->next; cur = off + 4; }
-		else { Init *it = mkinit(INIT_CONST); it->val = eval_const(pp->expr); it->size = pp->ty->size; c->next = it; c = c->next; cur = off + pp->ty->size; }
-		i = j + 1;
+		for (int k = 0; k < p->ty->size; k++) for (int q = p->off + k - 3; q <= p->off + k; q++) if (q >= 0 && symat[q]) symat[q] = NULL;   /* overwritten */
+		if (!p->bit_width && as_addr_const(p->expr, sym, &addend)) {
+			if (p->ty->size != 4) die("parse: address constant in a %d-byte initializer", p->ty->size);
+			symat[p->off] = strdup(sym); symadd[p->off] = addend; continue;
+		}
+		unsigned long long v = (unsigned long long)eval_const(p->expr);
+		if (p->bit_width) {
+			for (int bit = 0; bit < p->bit_width; bit++) {
+				int at = p->off * 8 + p->bit_offset + bit;
+				if ((v >> bit) & 1) img[at / 8] |= 1 << (at % 8); else img[at / 8] &= ~(1 << (at % 8));
+			}
+		} else for (int k = 0; k < p->ty->size; k++) img[p->off + k] = (unsigned char)(k < 8 ? v >> (8 * k) : 0);
 	}
-	if (cur < total) { c->next = mkinit(INIT_ZERO); c->next->size = total - cur; c = c->next; }
-	free(a);
+	Init head = {0}, *c = &head;
+	for (int at = 0; at < size; ) {
+		int nz = 0; while (at + nz < size && !img[at + nz] && !symat[at + nz]) nz++;   /* zero run (no symbol starts in it) */
+		if (nz >= 4 || at + nz == size) { if (nz) { c = c->next = mkinit(INIT_ZERO); c->size = nz; at += nz; } continue; }
+		if (symat[at]) { c = c->next = mkinit(INIT_SYM); strncpy(c->sym, symat[at], 63); c->val = symadd[at]; c->size = 4; at += 4; continue; }
+		int w = at % 4 == 0 && at + 4 <= size && !symat[at + 1] && !symat[at + 2] && !symat[at + 3];
+		c = c->next = mkinit(INIT_CONST); c->size = w ? 4 : 1;
+		c->val = w ? (long)(img[at] | img[at + 1] << 8 | img[at + 2] << 16 | (unsigned long)img[at + 3] << 24) : img[at];
+		at += c->size;
+	}
+	free(img); free(symat); free(symadd);
 	return head.next;
 }
 
@@ -1283,7 +1287,7 @@ static Node *lower_local(Node *dest, InitPlace *places, int total) {
 		free(a);
 		for (InitPlace *p = places; p; p = p->next) {
 			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = p->off; dm->type = p->ty;
-			if (p->bit_width) { dm->bit_width = p->bit_width; dm->bit_offset = p->bit_offset; }
+			if (p->bit_width) bitfield_node(dm, p->ty, p->bit_width, p->bit_offset);
 			c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, p->expr)); c = c->next;
 		}
 	}

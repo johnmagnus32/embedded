@@ -45,7 +45,11 @@ Type *usual_arith(Type *a, Type *b);         /* usual-arithmetic-conversion resu
 Type *func_ret_type(const char *name);       /* a called function's declared return type (NULL if unknown) */
 int   func_declared(const char *name);        /* 1 if `name` has a recorded function signature (=> direct `bl`, not indirect) */
 Type *func_param_type(const char *name, int i);   /* a callee's declared param i type (NULL if unknown/vararg) */
-int  aapcs_layout(const int *is64, int n, int *onstk, int *word);   /* AAPCS arg placement (caller + callee agree) */
+/* AAPCS argument placement, shared by caller + callee. Arguments occupy consecutive "argument words": words
+ * 0..3 are r0..r3, word 4+ is outgoing stack word (w-4). pos[i] = arg i's first word; returns the total. */
+int  aapcs_layout(Type **ty, int n, int first, int *pos);
+int  arg_words(Type *t);                     /* words an argument of type t occupies (struct = ceil(size/4)) */
+int  is_sret(Type *t);                       /* returned via a caller-supplied buffer (struct > 4 bytes) */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
 Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);
@@ -80,8 +84,10 @@ typedef struct Node {
 	char *asm_tmpl;              /* ND_ASM: the (possibly multi-line, %N-bearing) template string */
 	int asm_basic;               /* ND_ASM: basic asm (no `:` sections) — `%` is literal, not an operand ref */
 	int asm_clobber;             /* ND_ASM: register mask from the clobber list (operands avoid them; r4-r10 saved) */
-	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
+	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot); struct ND_CALL: its result temp */
 	int bit_width, bit_offset;   /* ND_MEMBER on a bitfield: field width + bit offset in its unit (width 0 = not a bitfield) */
+	struct Type *bf_type;        /* ND_MEMBER on a bitfield: its DECLARED type (unit width + extraction sign); n->type is
+	                              * the promoted type (C11 6.3.1.1p2: a <= int-sized field whose values fit in int is int) */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
 	struct Node *init, *inc;         /* ND_FOR: initializer statement + per-iteration step expr    */
 	struct Node *case_list, *case_next;  /* ND_SWITCH: its cases; ND_CASE: link in that list        */
@@ -96,12 +102,9 @@ typedef struct Func {
 	char name[64];
 	Type *ret_type;              /* declared return type (so `return e` widens to 64-bit when needed) */
 	int nparams;                 /* number of NAMED params (excludes the variadic `...`)         */
-	/* 64-bit args occupy TWO consecutive argument WORDS; the first 4 words arrive in r0..r3, the rest on
-	 * the stack. arg_regs = how many of r0..r3 hold incoming words; arg_off[w] = the frame byte offset the
-	 * prologue spills register-word w to (0 = skip); nfixed_words = word count of the fixed params (va_start). */
+	/* Incoming argument words (aapcs_layout; includes the hidden sret pointer). A function with any homes
+	 * r0..r3 above its frame record, so every param sits at [r11, #8 + 4*word] and va_start = 8 + 4*nfixed_words. */
 	int nfixed_words;
-	int arg_regs;
-	int arg_off[4];
 	int variadic;                /* 1 if declared with `...` (needs the register-save prologue)  */
 	int is_static;               /* 1 if `static` — file-local symbol, emit no .global            */
 	int reachable;               /* DCE: 0 = unreachable (drop), 1 = reachable/queued, 2 = walked  */
@@ -139,6 +142,7 @@ extern int pic;                  /* -fPIC: global/string access goes through the
 Func *parse(Token *tok);         /* tokens -> a list of functions (+ fills `globals`) */
 
 /* ---- codegen (gen.c) ----------------------------------------------------------------------------- */
+#define CLABEL_FMT ".Ll_%s_%s"   /* asm symbol of C label (function, label): goto, &&label code and static data share it */
 void gen(Func *prog, const char *out);   /* emit ARM assembly text for the whole program */
 
 /* ---- shared (cc.c) ------------------------------------------------------------------------------- */
