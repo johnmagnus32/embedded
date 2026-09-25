@@ -35,7 +35,9 @@ typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT 
 typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; struct Member *next; } Member;
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; } Type;
+/* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
+ * it declares a function returning fn_ret (not a variable); as a parameter it adjusts to a function pointer. */
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; } Type;
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */

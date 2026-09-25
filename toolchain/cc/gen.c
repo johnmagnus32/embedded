@@ -387,19 +387,16 @@ static int asm_regnum(const char *s) {   /* a pinned register var's name ("r7"/"
 	if (s[0] == 'r' && s[1]) { int n = atoi(s + 1); if (n >= 0 && n <= 15) return n; }
 	return -1;
 }
-static const char *asm_regname(int n) {
-	static char b[4];
-	if (n == 13) return "sp";
-	if (n == 14) return "lr";
-	if (n == 15) return "pc";
-	snprintf(b, sizeof b, "r%d", n);
-	return b;
+static const char *asm_regname(int n) {   /* constant strings: safe to use twice in one printf */
+	static const char *const nm[16] = { "r0","r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","sp","lr","pc" };
+	if (n < 0 || n > 15) die("cc: bad register number %d", n);
+	return nm[n];
 }
 static int asm_is_input(const char *c)  { return !strchr(c, '=') || strchr(c, '+'); }   /* "r"/"+r"/"i" read */
 /* Emit the template, substituting %0..%9 with each operand's register (or immediate) and turning \n/\t
  * escapes into real newlines/tabs so our as sees one instruction per line. %% -> %, %= (unique id) dropped,
  * a leading modifier letter (%w0/%c0) is ignored. */
-static void emit_asm_template(const char *t, char subst[][24], const int *isimm, int nops, int basic) {
+static void emit_asm_template(const char *t, char subst[][24], const int *isimm, const int *hireg, int nops, int basic) {
 	fprintf(o, "\t");
 	for (const char *p = t; *p; ) {
 		if (*p == '%' && !basic) {
@@ -411,7 +408,12 @@ static void emit_asm_template(const char *t, char subst[][24], const int *isimm,
 				if (*p && !(*p >= '0' && *p <= '9')) { mod = *p; p++; }   /* modifier letter (%c0/%w0/…) */
 				if (*p >= '0' && *p <= '9') { int i = *p - '0'; p++;
 					if (i < nops) {
-						if (mod == 'a' && !isimm[i] && subst[i][0] != '[') fprintf(o, "[%s]", subst[i]);   /* %a: operand as an ADDRESS (kernel prefetchw: `pldw %a0` -> `pldw [r0]`) */
+						if (mod == 'H' || mod == 'R') {   /* 64-bit operand in a register PAIR: %H = second reg, %R = most-significant (LE: same) */
+							if (hireg[i] < 0) die("cc: asm %%%c%d on an operand that isn't a 64-bit register pair", mod, i);
+							fputs(asm_regname(hireg[i]), o);
+						}
+						else if (mod == 'Q') fputs(subst[i], o);   /* %Q = least-significant reg of the pair (LE: the first) */
+						else if (mod == 'a' && !isimm[i] && subst[i][0] != '[') fprintf(o, "[%s]", subst[i]);   /* %a: operand as an ADDRESS (kernel prefetchw: `pldw %a0` -> `pldw [r0]`) */
 						else { if (isimm[i] && mod != 'c') fputc('#', o); fputs(subst[i], o); } } }   /* ARM immediate operand prints '#N' by default; %c strips it */
 			}
 		} else if (*p == '\\') {
@@ -437,20 +439,47 @@ static void gen_asm(Node *n) {
 		if (strchr(ops[i]->cons, 'i')) { regof[i] = -2; isimm[i] = 1; snprintf(subst[i], 24, "%ld", ops[i]->val); continue; }
 		int rn = asm_regnum(ops[i]->reg); regof[i] = rn; if (rn >= 0) used |= 1 << rn;
 	}
+	#define ASM_MEM(i) (strpbrk(ops[i]->cons, "mQoV") != NULL)   /* memory constraints: m/o/V general, Q = single-register address (ARM) */
+	int hireg[16]; for (int i = 0; i < nops; i++) hireg[i] = -1;
+	for (int i = 0; i < nops; i++) if (regof[i] >= -1 && !ASM_MEM(i) && is64(ops[i]->type)) {   /* 64-bit value: an EVEN/ODD pair (ldrexd/strexd need it) */
+		if (regof[i] >= 0) { hireg[i] = regof[i] + 1; used |= 1 << hireg[i]; continue; }   /* pinned: low reg given, high follows */
+		int lo = -1;
+		for (int c = 0; c <= 8; c += 2) if (!(used & (3 << c))) { lo = c; break; }   /* r0/r1 .. r8/r9 (r10/r11 has fp) */
+		if (lo < 0) die("cc: out of register pairs for 64-bit asm operands");
+		regof[i] = lo; hireg[i] = lo + 1; used |= 3 << lo;
+	}
 	for (int i = 0; i < nops; i++) if (regof[i] == -1) {   /* allocate the unpinned ones (avoid r11/sp/lr/pc) */
 		int rn = -1;
 		for (int c = 0; c <= 12; c++) { if (c == 11) continue; if (!(used & (1 << c))) { rn = c; break; } }
 		if (rn < 0) die("cc: out of registers for asm operands");
 		regof[i] = rn; used |= 1 << rn;
 	}
+	/* AAPCS: r4-r10 are callee-saved. Our stack-machine code never keeps values in them, but GCC-built callers
+	 * (the rest of the kernel) do, so any we hand to the asm block must be restored afterwards. */
+	char csave[48] = ""; for (int r = 4; r <= 10; r++) if (used & (1 << r)) { if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
+	if (csave[0]) fprintf(o, "\tpush {%s}\n", csave);
 	/* an "m" operand references memory: hold its ADDRESS in the reg and substitute "[reg]" */
-	#define ASM_MEM(i) (strpbrk(ops[i]->cons, "mQoV") != NULL)   /* memory constraints: m/o/V general, Q = single-register address (ARM) */
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
-	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) { if (ASM_MEM(i)) gen_addr(ops[i]); else gen_expr(ops[i]); fprintf(o, "\tpush {r0}\n"); }
-	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
-	emit_asm_template(n->asm_tmpl, subst, isimm, nops, n->asm_basic);
-	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
-	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) { gen_addr(ops[i]); fprintf(o, "\tmov r1, r0\n\tpop {r0}\n"); store(ops[i]->type); }
+	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) {
+		if (ASM_MEM(i)) gen_addr(ops[i]); else gen_expr(ops[i]);
+		fprintf(o, hireg[i] >= 0 ? "\tpush {r0, r1}\n" : "\tpush {r0}\n");   /* a pair's value is r0:r1 */
+	}
+	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) {
+		if (hireg[i] >= 0) fprintf(o, "\tpop {%s, %s}\n", asm_regname(regof[i]), asm_regname(hireg[i]));
+		else fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
+	}
+	emit_asm_template(n->asm_tmpl, subst, isimm, hireg, nops, n->asm_basic);
+	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
+		if (hireg[i] >= 0) fprintf(o, "\tpush {%s, %s}\n", asm_regname(regof[i]), asm_regname(hireg[i]));
+		else fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
+	}
+	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
+		gen_addr(ops[i]);
+		if (hireg[i] >= 0) fprintf(o, "\tmov r2, r0\n\tpop {r0, r1}\n");   /* 64-bit store: addr r2, value r0:r1 */
+		else fprintf(o, "\tmov r1, r0\n\tpop {r0}\n");
+		store(ops[i]->type);
+	}
+	if (csave[0]) fprintf(o, "\tpop {%s}\n", csave);
 	#undef ASM_MEM
 }
 

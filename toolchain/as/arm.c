@@ -418,6 +418,17 @@ static void enc_strex(u32 cond, u32 base) {   /* strex{b,h} Rd, Rt, [Rn] */
 	u32 rd = need_reg(1), rt = need_reg(2), rn = (u32)bracket_reg(3);
 	emit32((cond << 28) | base | (rn << 16) | (rd << 12) | rt);
 }
+/* 64-bit exclusives (kernel atomic64): Rt must be even, Rt2 = Rt+1 (implied by the encoding, checked). */
+static void enc_ldrexd(u32 cond) {   /* ldrexd Rt, Rt2, [Rn] */
+	u32 rt = need_reg(1), rt2 = need_reg(2), rn = (u32)bracket_reg(3);
+	if ((rt & 1) || rt2 != rt + 1 || rt == 14) die("ldrexd: need an even/odd pair (Rt, Rt+1), got r%u, r%u", rt, rt2);
+	emit32((cond << 28) | 0x01b00f9fu | (rn << 16) | (rt << 12));
+}
+static void enc_strexd(u32 cond) {   /* strexd Rd, Rt, Rt2, [Rn] */
+	u32 rd = need_reg(1), rt = need_reg(2), rt2 = need_reg(3), rn = (u32)bracket_reg(4);
+	if ((rt & 1) || rt2 != rt + 1 || rt == 14) die("strexd: need an even/odd pair (Rt, Rt+1), got r%u, r%u", rt, rt2);
+	emit32((cond << 28) | 0x01a00f90u | (rn << 16) | (rd << 12) | rt);
+}
 
 /* ------------------------------------------------------------------ md hooks ---------------------- */
 /* Parse an optional UAL suffix after a base mnemonic. Returns 0 on a bad suffix. */
@@ -447,8 +458,15 @@ void md_assemble(char **t, int n) {
 	}
 
 	/* exclusive load/store (atomics): ldrex/strex {b,h}. Checked before the general ldr/str decode. */
-	if (!strncmp(m, "ldrex", 5)) { char c = m[5]; enc_ldrex(14, c=='b'?0x01d00f9fu : c=='h'?0x01f00f9fu : 0x01900f9fu); return; }
-	if (!strncmp(m, "strex", 5)) { char c = m[5]; enc_strex(14, c=='b'?0x01c00f90u : c=='h'?0x01e00f90u : 0x01800f90u); return; }
+	if (!strncmp(m, "ldrex", 5) || !strncmp(m, "strex", 5)) {   /* {,b,h,d}{cond} — was: any suffix silently -> word */
+		int ld = m[0] == 'l'; const char *q = m + 5; char w = 0;
+		if (*q == 'b' || *q == 'h' || *q == 'd') { w = *q; q++; }
+		u32 cond = 14; if (*q && !lookup_cc(q, &cond)) die("%s: bad suffix '%s'", m, q);
+		if (w == 'd') { if (ld) enc_ldrexd(cond); else enc_strexd(cond); return; }
+		if (ld) enc_ldrex(cond, w=='b'?0x01d00f9fu : w=='h'?0x01f00f9fu : 0x01900f9fu);
+		else    enc_strex(cond, w=='b'?0x01c00f90u : w=='h'?0x01e00f90u : 0x01800f90u);
+		return;
+	}
 	/* single data transfer: ldr/str {b|d|h}{cond}. Whole-suffix cond FIRST so "ldrhi"=ldr+hi. */
 	if (!strncmp(m, "adr", 3)) { const char *suf = m + 3; u32 cond = 14; if (!*suf || lookup_cc(suf, &cond)) { enc_adr(cond); return; } }
 	if (!strncmp(m, "ldr", 3) || !strncmp(m, "str", 3)) {

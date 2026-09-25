@@ -341,7 +341,19 @@ static Node *new_sub(Node *l, Node *r);
 		}
 		Node *n = expr(); expect(")"); return n;
 	}
-	if (tk->kind == TK_NUM) { Node *n = num(tk->val); tk = tk->next; return n; }
+	if (tk->kind == TK_NUM) {   /* C11 6.4.4.1: the type follows the SUFFIX + radix + magnitude (ARM32: long == int) */
+		Node *n = num(tk->val); const char *t = tk->text;
+		int u = strchr(t, 'u') || strchr(t, 'U'), ll = strstr(t, "ll") || strstr(t, "LL");
+		int dec = !(t[0] == '0' && t[1]);            /* 0x.., 0.. octal -> may also go unsigned */
+		unsigned long long v = (unsigned long long)tk->val;
+		if (u) n->type = (!ll && v <= 0xffffffffULL) ? ty_uint : ty_ullong;
+		else if (ll) n->type = (dec || v <= 0x7fffffffffffffffULL) ? ty_llong : ty_ullong;
+		else if (v <= 0x7fffffffULL) n->type = ty_int;
+		else if (!dec && v <= 0xffffffffULL) n->type = ty_uint;
+		else if (dec || v <= 0x7fffffffffffffffULL) n->type = ty_llong;
+		else n->type = ty_ullong;
+		tk = tk->next; return n;
+	}
 	if (tk->kind == TK_STR) {                                /* string literal -> anonymous .rodata array */
 		Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
 		snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
@@ -586,6 +598,44 @@ static Node *init_of(Node *dest, Type *ty) {
 	return lower_local(dest, head.next, ty->size);
 }
 
+static int has_jump_target(Node *n);
+/* Same, for ONE node's children (not its ->next siblings). */
+static int node_has_jump_target(Node *n) {
+	if (!n) return 0;
+	if (n->kind == ND_LABEL || n->kind == ND_CASE) return 1;
+	Node *kids[] = { n->lhs, n->rhs, n->cond, n->then, n->els, n->init, n->inc, n->body };
+	for (unsigned i = 0; i < sizeof kids / sizeof *kids; i++) if (has_jump_target(kids[i])) return 1;
+	if (n->kind == ND_CALL) for (Node *a = n->args; a; a = a->next) if (has_jump_target(a)) return 1;
+	return 0;
+}
+/* `switch (CONST) { case A: ...; break; case B: ...; }` — keep only the selected case, as GCC's DCE does. The kernel
+ * relies on this: `switch (sizeof(x)) { case 1: ... case 8: <asm using %R on a 64-bit value> }` must not emit the
+ * dead cases (their asm is only valid for that size). The SWITCH node stays, so `break` still means "leave it".
+ * Kept: the target case through the first top-level `break` (fallthrough included). Bails (no fold) if a dropped
+ * statement holds a label/case something could still jump to. */
+static void fold_const_switch(Node *sw) {
+	int ok = 1; long v = eval_try(sw->cond, &ok);
+	if (!ok || !sw->then || sw->then->kind != ND_BLOCK) return;
+	Node *target = NULL, *deflt = NULL;
+	for (Node *s = sw->then->body; s; s = s->next) if (s->kind == ND_CASE) {
+		if (s->is_default) { if (!deflt) deflt = s; }
+		else if (s->is_range ? (v >= s->val && v <= s->val2) : v == s->val) { if (!target) target = s; }
+	}
+	if (!target) target = deflt;
+	/* phase 0 = before target (dropped), 1 = kept run, 2 = after the run's `break` (dropped) */
+	Node *keep_end = NULL; int phase = 0;
+	for (Node *s = sw->then->body; s; s = s->next) {
+		if (phase == 0 && s == target) phase = 1;
+		if (phase == 1) { keep_end = s; if (s->kind == ND_BREAK) phase = 2; continue; }
+		if (s->kind != ND_CASE && node_has_jump_target(s)) return;   /* a goto could still enter it: don't fold */
+	}
+	if (!target) { sw->then->body = NULL; sw->case_list = NULL; return; }   /* no case matches, no default */
+	keep_end->next = NULL;
+	sw->then->body = target;
+	Node ch = {0}, *cc = &ch;   /* case_list = every case marker in the kept run (fallthrough ones need labels too) */
+	for (Node *s = target; s; s = s->next) if (s->kind == ND_CASE) { cc->case_next = s; cc = s; }
+	cc->case_next = NULL; sw->case_list = ch.case_next;
+}
 /* Does a statement subtree contain a label or case (a place control can enter from outside)? */
 static int has_jump_target(Node *n) {
 	for (; n; n = n->next) {
@@ -601,6 +651,7 @@ static Node *stmt(void) {
 	if (consume("switch")) {                                 /* switch (e) body ; cases attach to it */
 		Node *n = node(ND_SWITCH); expect("("); n->cond = expr(); expect(")");
 		Node *save = cur_switch; cur_switch = n; n->then = stmt(); cur_switch = save;
+		fold_const_switch(n);
 		return n;
 	}
 	if (consume("case")) {                                   /* case CONST: */
@@ -711,7 +762,8 @@ static Node *stmt(void) {
 	if (is_typename()) {                                     /* local declaration(s): `T a, b = e, c;` */
 		int td; Type *base = declspec(&td, NULL);
 		if (td) { char nm[64]; Type *ty = declarator(base, nm);
-			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }   /* function-type typedef `typedef R name(params)` — skip params, name aliases the return type (used via pointer) */
+			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; }   /* function-type typedef `typedef R name(params)` */
+				Type *ft = calloc(1, sizeof *ft); *ft = *ty; ft->fn_ret = ty; ty = ft; }   /* a FUNCTION type: sized like R so `fn_t *p` still works */
 			add_typedef(nm, ty); expect(";"); return node(ND_BLOCK); }
 		if (consume(";")) return node(ND_BLOCK);             /* type-only (e.g. a struct definition) */
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
@@ -766,6 +818,7 @@ static Func *function_tail(const char *name, Type *ret) {
 			if (consume("...")) { f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
 			if (is("(")) { skip_attribute(); ty = pointer_to(ty); }   /* function-typed param `R name(args)` -> function pointer */
+			else if (ty->fn_ret) ty = pointer_to(ty);                  /* param typed with a function typedef -> function pointer */
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
 			if (np >= 16) die("parse: too many function parameters (>16) — raise prm[]");
 			strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++;
@@ -821,35 +874,68 @@ static long clz_bits(unsigned long long v, int bits) { int c = 0; for (int i = b
 static long ctz_bits(unsigned long long v, int bits) { if (!v) return bits; int c = 0; while (c < bits && !((v >> c) & 1)) c++; return c; }
 /* Non-dying constant folder: sets *ok=0 if `n` is not an integer constant expression (so __builtin_constant_p
  * can probe without aborting). eval_const() is the strict wrapper that die()s on failure. */
-static long eval_try(Node *n, int *ok) {
+/* Reduce a folded value to what an object of type `t` holds (C: arithmetic happens IN the type — (u8)0x1ff == 0xff,
+ * 0xFFFFFFFFu + 1 == 0, (int)0x80000000 < 0). Pointers are 32-bit unsigned on ARM32. */
+static long fold_to(long v, Type *t) {
+	if (!t) return v;
+	int sz = (t->kind == TY_PTR || t->kind == TY_ARRAY) ? 4 : t->size, un = t->is_unsigned || t->kind == TY_PTR || t->kind == TY_ARRAY;
+	switch (sz) {
+	case 1: return un ? (long)(unsigned char)v  : (long)(signed char)v;
+	case 2: return un ? (long)(unsigned short)v : (long)(short)v;
+	case 4: return un ? (long)(unsigned int)v   : (long)(int)v;
+	default: return v;
+	}
+}
+static int ty_uns(Type *t) { return t && (t->is_unsigned || t->kind == TY_PTR || t->kind == TY_ARRAY); }
+static long eval_rel(Node *n, long a, long b) {   /* compare in the operands' common type (usual arithmetic conv.) */
+	Type *ct = (n->lhs->type && n->rhs->type) ? usual_arith(n->lhs->type, n->rhs->type) : NULL;
+	a = fold_to(a, ct); b = fold_to(b, ct);
+	unsigned long long ua = (unsigned long long)a, ub = (unsigned long long)b; int u = ty_uns(ct);
+	switch (n->kind) {
+	case ND_LT: return u ? ua <  ub : a <  b;
+	case ND_LE: return u ? ua <= ub : a <= b;
+	case ND_GT: return u ? ua >  ub : a >  b;
+	default:    return u ? ua >= ub : a >= b;   /* ND_GE */
+	}
+}
+static long eval_node(Node *n, int *ok);
+static long eval_try(Node *n, int *ok) { add_type(n); return eval_node(n, ok); }   /* types first: folding is type-directed */
+static long eval_node(Node *n, int *ok) {
+	long r;
 	switch (n->kind) {
 	case ND_NUM:    return n->val;
-	case ND_NEG:    return -eval_try(n->lhs, ok);
-	case ND_BITNOT: return ~eval_try(n->lhs, ok);
-	case ND_NOT:    return !eval_try(n->lhs, ok);
-	case ND_CAST:   return eval_try(n->lhs, ok);
-	case ND_ADD:    return eval_try(n->lhs, ok) +  eval_try(n->rhs, ok);
-	case ND_SUB:    return eval_try(n->lhs, ok) -  eval_try(n->rhs, ok);
-	case ND_MUL:    return eval_try(n->lhs, ok) *  eval_try(n->rhs, ok);
-	case ND_DIV:    { long d = eval_try(n->rhs, ok); return d ? eval_try(n->lhs, ok) / d : (eval_try(n->lhs, ok), 0); }
-	case ND_MOD:    { long d = eval_try(n->rhs, ok); return d ? eval_try(n->lhs, ok) % d : (eval_try(n->lhs, ok), 0); }
-	case ND_BITAND: return eval_try(n->lhs, ok) &  eval_try(n->rhs, ok);
-	case ND_BITOR:  return eval_try(n->lhs, ok) |  eval_try(n->rhs, ok);
-	case ND_BITXOR: return eval_try(n->lhs, ok) ^  eval_try(n->rhs, ok);
-	case ND_SHL:    return eval_try(n->lhs, ok) << eval_try(n->rhs, ok);
-	case ND_SHR:    return eval_try(n->lhs, ok) >> eval_try(n->rhs, ok);
-	case ND_EQ:     return eval_try(n->lhs, ok) == eval_try(n->rhs, ok);
-	case ND_NE:     return eval_try(n->lhs, ok) != eval_try(n->rhs, ok);
-	case ND_LT:     return eval_try(n->lhs, ok) <  eval_try(n->rhs, ok);
-	case ND_LE:     return eval_try(n->lhs, ok) <= eval_try(n->rhs, ok);
-	case ND_GT:     return eval_try(n->lhs, ok) >  eval_try(n->rhs, ok);
-	case ND_GE:     return eval_try(n->lhs, ok) >= eval_try(n->rhs, ok);
-	case ND_AND:    return eval_try(n->lhs, ok) && eval_try(n->rhs, ok);
-	case ND_OR:     return eval_try(n->lhs, ok) || eval_try(n->rhs, ok);
-	case ND_COND:   return eval_try(n->cond, ok) ? eval_try(n->then, ok) : eval_try(n->els, ok);
+	case ND_NEG:    r = -eval_node(n->lhs, ok); break;
+	case ND_BITNOT: r = ~eval_node(n->lhs, ok); break;
+	case ND_NOT:    return !eval_node(n->lhs, ok);
+	case ND_CAST:   r = eval_node(n->lhs, ok); break;   /* fold_to(n->type) below does the conversion */
+	case ND_ADD:    r = eval_node(n->lhs, ok) +  eval_node(n->rhs, ok); break;
+	case ND_SUB:    r = eval_node(n->lhs, ok) -  eval_node(n->rhs, ok); break;
+	case ND_MUL:    r = (long)((unsigned long long)eval_node(n->lhs, ok) * (unsigned long long)eval_node(n->rhs, ok)); break;
+	case ND_DIV: case ND_MOD: {
+		long a = eval_node(n->lhs, ok), d = eval_node(n->rhs, ok);
+		if (!d) { *ok = 0; return 0; }   /* x/0 is not a constant expression */
+		if (ty_uns(n->type)) { unsigned long long ua = (unsigned long long)fold_to(a, n->type), ud = (unsigned long long)fold_to(d, n->type);
+			r = (long)(n->kind == ND_DIV ? ua / ud : ua % ud); }
+		else r = n->kind == ND_DIV ? a / d : a % d;
+		break; }
+	case ND_BITAND: r = eval_node(n->lhs, ok) &  eval_node(n->rhs, ok); break;
+	case ND_BITOR:  r = eval_node(n->lhs, ok) |  eval_node(n->rhs, ok); break;
+	case ND_BITXOR: r = eval_node(n->lhs, ok) ^  eval_node(n->rhs, ok); break;
+	case ND_SHL:    r = (long)((unsigned long long)eval_node(n->lhs, ok) << eval_node(n->rhs, ok)); break;
+	case ND_SHR: {  /* logical for an unsigned left operand, arithmetic for signed */
+		long a = fold_to(eval_node(n->lhs, ok), n->lhs->type), b = eval_node(n->rhs, ok);
+		r = ty_uns(n->lhs->type) ? (long)((unsigned long long)a >> b) : a >> b; break; }
+	case ND_EQ: case ND_NE: {
+		Type *ct = (n->lhs->type && n->rhs->type) ? usual_arith(n->lhs->type, n->rhs->type) : NULL;
+		long a = fold_to(eval_node(n->lhs, ok), ct), b = fold_to(eval_node(n->rhs, ok), ct);
+		return n->kind == ND_EQ ? a == b : a != b; }
+	case ND_LT: case ND_LE: case ND_GT: case ND_GE: { long a = eval_node(n->lhs, ok), b = eval_node(n->rhs, ok); return eval_rel(n, a, b); }
+	case ND_AND:    return eval_node(n->lhs, ok) && eval_node(n->rhs, ok);
+	case ND_OR:     return eval_node(n->lhs, ok) || eval_node(n->rhs, ok);
+	case ND_COND:   r = eval_node(n->cond, ok) ? eval_node(n->then, ok) : eval_node(n->els, ok); break;
 	case ND_CALL:   /* fold the __attribute__((const)) bit-count builtins over a constant argument */
 		if (n->name[0] && n->args) {
-			long a = eval_try(n->args, ok);
+			long a = eval_node(n->args, ok);
 			if (!strcmp(n->name, "__builtin_clz"))    return clz_bits((unsigned int)a, 32);
 			if (!strcmp(n->name, "__builtin_clzll") || !strcmp(n->name, "__builtin_clzl")) return clz_bits((unsigned long long)a, 64);
 			if (!strcmp(n->name, "__builtin_ctz"))    return ctz_bits((unsigned int)a, 32);
@@ -863,6 +949,7 @@ static long eval_try(Node *n, int *ok) {
 		*ok = 0; return 0;
 	default: *ok = 0; return 0;
 	}
+	return fold_to(r, n->type);   /* the value an object of the result type holds */
 }
 static long eval_const(Node *n) {
 	int ok = 1; long v = eval_try(n, &ok);
@@ -1166,9 +1253,15 @@ Func *parse(Token *tok) {
 		int td, sc; Type *base = declspec(&td, &sc);               /* type keywords/qualifiers + storage class; struct/enum defs register */
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { char nm[64]; Type *ty = declarator(base, nm);
-			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }   /* function-type typedef `typedef R name(params)` — skip params, name aliases the return type (used via pointer) */
+			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; }   /* function-type typedef `typedef R name(params)` */
+				Type *ft = calloc(1, sizeof *ft); *ft = *ty; ft->fn_ret = ty; ty = ft; }   /* a FUNCTION type: sized like R so `fn_t *p` still works */
 			add_typedef(nm, ty); expect(";"); continue; }
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
+		if (ty->fn_ret) {   /* `fn_t f, g;` via a function typedef: function PROTOTYPES, no storage (kernel fs_param_type) */
+			for (;;) { record_func_sig(name, ty->fn_ret, 0, 0, 1); if (!consume(",")) break; ty = declarator(base, name);
+				if (!ty->fn_ret) die("parse: mixed function/object declarators with a function typedef ('%s')", name); }
+			expect(";"); continue;
+		}
 		if (is("(")) { Func *fn = function_tail(name, ty); if (fn) { fn->is_static = (sc & SC_STATIC) != 0; cur = cur->next = fn; } continue; }   /* records its own signature; NULL = prototype */
 		if (consume("asm") || consume("__asm__")) {          /* `register T x asm("rN")` (global reg var) or an asm rename */
 			expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind == TK_STR) tk = tk->next; expect(")");
