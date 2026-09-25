@@ -545,12 +545,12 @@ class _SheetWirer:
     """Wires ONE sheet: per pin, a power symbol (gnd/pwr), a net label (global if the net spans sheets),
     a no-connect, or a PWR_FLAG. Connectivity is by NAME — no routed wires. `insts` = the sheet's parts."""
 
-    def __init__(self, insts, nets, by_libid, project_name, pwr_path, global_nets):
+    def __init__(self, insts, nets, by_libid, project_name, pwr_path, global_nets, pwr_counter):
         self.nets, self.pn, self.global_nets = nets, project_name, global_nets
         self.pwr_path = pwr_path
         self.elems = []
         self.cnt = {"labels": 0, "wires": 0, "power": 0, "nc": 0}
-        self._pwr_n = 0
+        self._pwr = pwr_counter          # shared [n] across sheets so #PWR/#FLG refs are board-unique
         self.power_used = set()
         self.pinxy = {}                # (refdes, pin) -> (px,py,rot,lx,ly,ang)
         for refdes, lib_id, px, py, rot in insts:
@@ -593,8 +593,8 @@ class _SheetWirer:
             self.elems.append(_wire(tx, ty, ax, ay, _det_uuid(self.pn, "w", ref, pin))); self.cnt["wires"] += 1
         gnd = self.nets.is_ground(net)
         rot = (_GND_ROT if gnd else _RAIL_ROT).get((ox, oy), 0)
-        self._pwr_n += 1
-        self.elems.append(_power_inst(net, ax, ay, rot, "#PWR%04d" % self._pwr_n, self.pwr_path,
+        self._pwr[0] += 1
+        self.elems.append(_power_inst(net, ax, ay, rot, "#PWR%04d" % self._pwr[0], self.pwr_path,
                                       self.pn, _det_uuid(self.pn, "pwr", ref, pin),
                                       ground=gnd, outdir=(ox, oy)))
         self.power_used.add(net); self.cnt["power"] += 1
@@ -608,8 +608,8 @@ class _SheetWirer:
 
     def flag(self, net, x, y):
         """A PWR_FLAG wired to a GLOBAL label of the net name (name-based, geometry-free driver)."""
-        self._pwr_n += 1
-        self.elems.append(_flag_inst(x, y, "#FLG%04d" % self._pwr_n, self.pwr_path, self.pn,
+        self._pwr[0] += 1
+        self.elems.append(_flag_inst(x, y, "#FLG%04d" % self._pwr[0], self.pwr_path, self.pn,
                                      _det_uuid(self.pn, "flg", net)))
         self.elems.append(_wire(x, y, x + 5.08, y, _det_uuid(self.pn, "flgw", net)))
         self.elems.append(_glabel(net, x + 5.08, y, 0, "left", _det_uuid(self.pn, "flgl", net)))
@@ -685,6 +685,7 @@ def build(resolved, nets, by_libid, project_name, cli):
     flag_host = order[0] if order else None       # all PWR_FLAGs on the first subcircuit's sheet
 
     children, sheets, used_total, n_parts = {}, [], {}, 0
+    pwr_counter = [0]                    # shared across sheets -> board-unique #PWR/#FLG references
     for grp in order:
         sheet_uuid = _det_uuid(project_name, "sheet", grp)
         file_uuid = _det_uuid(project_name, "file", grp)
@@ -697,7 +698,7 @@ def build(resolved, nets, by_libid, project_name, cli):
                      for s, ref, lcsc, ox, oy in placed]
 
         insts = [(ref, s.lib_id, ox, oy, 0) for s, ref, lcsc, ox, oy in placed]
-        w = _SheetWirer(insts, nets, by_libid, project_name, inst_path, global_nets)
+        w = _SheetWirer(insts, nets, by_libid, project_name, inst_path, global_nets, pwr_counter)
         for net, pins in nets.pins_by_net.items():   # wirer no-ops for pins not on this sheet
             emit = w.power if nets.is_power(net) else w.label
             for ref, pin in pins:

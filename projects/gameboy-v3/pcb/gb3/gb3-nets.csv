@@ -806,3 +806,7 @@ R41,1,I2C2_SCL,,[AUDIT #118] i2c2 SCL pull-up -> +3V3 (IMU bus had NO pull-ups -
 R41,2,+3V3,pwr,
 R42,1,I2C2_SDA,,[AUDIT #118] i2c2 SDA pull-up -> +3V3
 R42,2,+3V3,pwr,
+J2,1,LRA_P,,LRA + terminal (DRV2605L OUT+)
+J2,2,LRA_N,,LRA - terminal (DRV2605L OUT-)
+J3,1,SPK_P,,speaker + terminal (MAX98357A OUTP)
+J3,2,SPK_N,,speaker - terminal (MAX98357A OUTN)
