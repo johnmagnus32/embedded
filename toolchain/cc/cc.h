@@ -79,6 +79,7 @@ typedef struct Node {
 	char cons[8];                /* ND_ASM operand: its constraint ("r"/"=r"/"+r"/"i"/…)         */
 	char *asm_tmpl;              /* ND_ASM: the (possibly multi-line, %N-bearing) template string */
 	int asm_basic;               /* ND_ASM: basic asm (no `:` sections) — `%` is literal, not an operand ref */
+	int asm_clobber;             /* ND_ASM: register mask from the clobber list (operands avoid them; r4-r10 saved) */
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot)          */
 	int bit_width, bit_offset;   /* ND_MEMBER on a bitfield: field width + bit offset in its unit (width 0 = not a bitfield) */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */

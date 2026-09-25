@@ -470,7 +470,7 @@ static void emit_asm_template(const char *t, char subst[][24], const int *isimm,
 static void gen_asm(Node *n) {
 	Node *ops[16]; int nops = 0;
 	for (Node *a = n->args; a; a = a->next) { if (nops >= 16) die("cc: too many asm operands"); ops[nops++] = a; }
-	int nouts = n->val, regof[16], used = 0, isimm[16] = {0}; char subst[16][24];
+	int nouts = n->val, regof[16], used = n->asm_clobber & ~(1 << 14), isimm[16] = {0}; char subst[16][24];   /* clobbered regs are off-limits for operands */
 	for (int i = 0; i < nops; i++) {                       /* immediates + pinned registers */
 		if (strchr(ops[i]->cons, 'i')) { regof[i] = -2; isimm[i] = 1; snprintf(subst[i], 24, "%ld", ops[i]->val); continue; }
 		int rn = asm_regnum(ops[i]->reg); regof[i] = rn; if (rn >= 0) used |= 1 << rn;
@@ -492,7 +492,7 @@ static void gen_asm(Node *n) {
 	}
 	/* AAPCS: r4-r10 are callee-saved. Our stack-machine code never keeps values in them, but GCC-built callers
 	 * (the rest of the kernel) do, so any we hand to the asm block must be restored afterwards. */
-	char csave[48] = ""; for (int r = 4; r <= 10; r++) if (used & (1 << r)) { if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
+	char csave[48] = ""; for (int r = 4; r <= 10; r++) if ((used | n->asm_clobber) & (1 << r)) {   /* allocated OR clobbered callee-saved */ if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
 	if (csave[0]) fprintf(o, "\tpush {%s}\n", csave);
 	/* an "m" operand references memory: hold its ADDRESS in the reg and substitute "[reg]" */
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));

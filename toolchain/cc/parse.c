@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "cc.h"
 
 static Token *tk;                                  /* the parse cursor */
@@ -771,7 +772,16 @@ static Node *stmt(void) {
 			if (strchr(op->cons, 'i')) op->val = eval_const(op);   /* immediate: fold now, substitute the constant */
 			oc = oc->next = op; nn++; if (!consume(",")) break;
 		}
-		if (consume(":")) while (tk->kind == TK_STR) { tk = tk->next; if (!consume(",")) break; }   /* clobbers — ignored (we never keep values in caller-saved regs across asm) */
+		if (consume(":")) while (tk->kind == TK_STR) {   /* clobbers: operand registers must avoid them; callee-saved ones get preserved */
+			const char *c = tk->sval; int r = -1;
+			if ((c[0] == 'r' || c[0] == 'R') && isdigit((unsigned char)c[1])) { r = atoi(c + 1); if (r > 15) r = -1; }
+			else if (!strcmp(c, "ip")) r = 12; else if (!strcmp(c, "lr")) r = 14; else if (!strcmp(c, "fp")) r = 11;
+			else if (!strcmp(c, "sl")) r = 10; else if (!strcmp(c, "sb")) r = 9; else if (!strcmp(c, "sp")) r = 13; else if (!strcmp(c, "pc")) r = 15;
+			else if (strcmp(c, "cc") && strcmp(c, "memory")) die("parse: unknown asm clobber \"%s\" (line %d)", c, tk->line);
+			if (r == 11 || r == 13 || r == 15) die("parse: asm clobbers %s, which this compiler can't preserve (line %d)", c, tk->line);
+			if (r >= 0) n->asm_clobber |= 1 << r;
+			tk = tk->next; if (!consume(",")) break;
+		}
 		expect(")"); expect(";");
 		{   /* rewrite %[name] -> %N (operand position) so gen's %N substitution handles named operands */
 			char rw[1024]; size_t k = 0; const char *s = n->asm_tmpl;

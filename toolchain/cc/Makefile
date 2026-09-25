@@ -6,7 +6,7 @@ CFLAGS ?= -O0 -g -Wall -Wextra -std=c11
 
 OURAS := ../as/build/as
 OURLD := ../ld/build/ld
-GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
+GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
 OBJS := $(BUILD)/cc.o $(BUILD)/lex.o $(BUILD)/parse.o $(BUILD)/gen.o $(BUILD)/type.o
@@ -56,7 +56,18 @@ test: $(BUILD)/cc
 	else echo "FAIL libc-string: compile/assemble/link of real string.c failed"; fail=$$((fail+1)); fi; \
 	rm -rf $$t; echo "----- $$pass passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
+# GCC 13.3 gcc.c-torture/execute (1627 self-checking programs) through our cc/as/ld on qemu, scored only on
+# tests the GNU oracle passes (torture/run.py). The suite is extracted once from the os build's gcc tarball.
+GCC_TAR ?= ../../projects/gameboy-v3/image/build/downloads/gcc-13.3.0.tar.xz
+CTORTURE_WORK ?= /tmp/ctorture
+torture: $(BUILD)/cc
+	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null
+	@test -d $(CTORTURE_WORK)/gcc-13.3.0/gcc/testsuite/gcc.c-torture/execute || { \
+	  test -f $(GCC_TAR) || { echo "torture: $(GCC_TAR) missing (fetch it via the os build)"; exit 1; }; \
+	  mkdir -p $(CTORTURE_WORK) && tar -xJf $(GCC_TAR) -C $(CTORTURE_WORK) gcc-13.3.0/gcc/testsuite/gcc.c-torture/execute; }
+	@CTORTURE_WORK=$(CTORTURE_WORK) GNU=$(abspath $(GNU)) python3 torture/run.py -j $$(nproc)
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: clean test
+.PHONY: clean test torture
