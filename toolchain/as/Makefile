@@ -9,7 +9,8 @@ CFLAGS += -I$(COMMON)
 
 # GNU binutils prefix used as the GOLD reference for `make test` (default: our stage-1 from-source
 # toolchain). Override on the CLI, e.g. `make test GNU=arm-linux-gnueabihf-`. Tests SKIP if it's absent.
-GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
+# GNU binutils 2.42 — the reference assembler/dumpers (the qemu build's cross toolchain)
+GNU ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 
 # Test inputs as `source.s:codesection` pairs — our .o's <codesection> bytes must match GNU as's exactly.
 TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_data.s:.text tests/m2_wide.s:.text tests/m2_secsym.s:.rodata tests/m1_branch.s:.text tests/m2_branch.s:.text ../../libc/src/crt/crt0.S:.text._start \
@@ -61,4 +62,15 @@ test: $(BUILD)/as
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: clean test
+# The binutils 2.42 gas/arm testsuite (1010 dump + diagnostic tests), extracted from the cached source tarball
+# and run through gastest/run.py (a port of binutils' run_dump_test/regexp_diff). GNU as runs through the same
+# harness first; only tests IT passes are scored, per feature tier (core ARM, Thumb, FP/SIMD, M-profile, ...).
+BINUTILS_TAR ?= ../../projects/gameboy-v3/image/build/downloads/binutils-2.42.tar.xz
+GASTEST_WORK ?= /tmp/gastest
+gas-suite: $(BUILD)/as
+	@mkdir -p $(GASTEST_WORK); [ -d $(GASTEST_WORK)/binutils-2.42/gas/testsuite/gas/arm ] || \
+	  tar -xJf $(BINUTILS_TAR) -C $(GASTEST_WORK) binutils-2.42/gas/testsuite/gas/arm
+	@export GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) GASTEST_WORK=$(GASTEST_WORK); \
+	  python3 gastest/run.py --as gnu >/dev/null && python3 gastest/run.py --as ours >/dev/null && python3 gastest/score.py
+
+.PHONY: clean test gas-suite

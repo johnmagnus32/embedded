@@ -57,7 +57,7 @@ int sym_find(const char *name) { for (int i = 0; i < nsym; i++) if (syms[i].name
 int sym_intern(const char *name) {
 	int i = sym_find(name); if (i >= 0) return i;
 	if (nsym >= MAXSYM) die("too many symbols");
-	syms[nsym] = (Sym){ strdup(name), 0, 0, 0, 0, STT_NOTYPE, 0 };   /* global=0 (local until .global'd) */
+	syms[nsym] = (Sym){ strdup(name), 0, 0, 0, 0, STT_NOTYPE, 0, 0 };   /* global=0 (local until .global'd) */
 	return nsym++;
 }
 void add_reloc(int sec, u32 off, int symidx, u32 type) { if (nrel >= MAXREL) die("too many relocations"); rels[nrel++] = (Reloc){ sec, off, symidx, type }; }
@@ -88,7 +88,7 @@ static void strip_comments(char *s) {
 	int in_block = 0, inq = 0;
 	for (char *p = s; *p; p++) {
 		if (in_block) { if (p[0] == '*' && p[1] == '/') { *p++ = ' '; *p = ' '; in_block = 0; } else if (*p != '\n') *p = ' '; continue; }
-		if (inq) {   /* inside "...": '@', '//' and '/*' are string bytes (kernel format strings: "%pS @ %i") */
+		if (inq) {   /* inside "...": '@', '//' and block-comment openers are string bytes (kernel format strings: "%pS @ %i") */
 			if (*p == '\\' && p[1] && p[1] != '\n') p++;   /* skip an escaped char (incl. \") */
 			else if (*p == '"' || *p == '\n') inq = 0;
 			continue;
@@ -102,6 +102,8 @@ static void strip_comments(char *s) {
 /* Split a line into tokens on whitespace + commas ('#','{','}','[',']' stay attached to their operand). */
 #define MAXTOK 32   /* mnemonic + operands; register lists (push/pop) can be long */
 static char *toks[MAXTOK]; static int ntok; static char linebuf[8192];   /* kernel .ascii/.asciz lines can be long */
+/* Inside a `#` immediate, does the whitespace at p end it? Yes if only whitespace (then a comma or end) follows. */
+static int imm_ends_here(const char *p) { while (*p == ' ' || *p == '\t') p++; return *p == ',' || *p == 0 || *p == '\n'; }
 static void tokenize(const char *line) {
 	ntok = 0;
 	size_t ll = strcspn(line, "\n"); if (ll >= sizeof linebuf) die("line too long (%zu > %zu bytes)", ll, sizeof linebuf - 1);   /* was silently truncated */
@@ -112,12 +114,17 @@ static void tokenize(const char *line) {
 		if (!*p || *p == '\n') break;
 		if (ntok >= MAXTOK) die("too many tokens on a line");
 		toks[ntok++] = p;
-		int inq = 0;   /* inside "..." spaces/commas are part of the token (e.g. .ascii "a b") */
-		while (*p && (inq || (*p != ' ' && *p != '\t' && *p != ',' && *p != '\n'))) {
+		int inq = 0, isimm = (*p == '#'), depth = 0;   /* inside "..." spaces/commas are part of the token (.ascii "a b") */
+		while (*p && (inq || (*p != '\t' && *p != ',' && *p != '\n' && *p != ' ') || (isimm && depth > 0 && *p != '\n')
+		              || (isimm && (*p == ' ' || *p == '\t') && !imm_ends_here(p)))) {
+			/* a `#` immediate is an EXPRESSION: it keeps its spaces up to the next top-level comma
+			 * (`#(. - bar - 8) & 0xff`) — was split at the first space and silently mis-parsed */
 			if (*p == '\\' && p[1]) { p += 2; continue; }   /* skip an escaped char (incl. \") */
 			if (*p == '"') inq = !inq;
+			if (!inq && *p == '(') depth++; else if (!inq && *p == ')' && depth) depth--;
 			p++;
 		}
+		if (isimm) { char *e = p; while (e > toks[ntok - 1] && (e[-1] == ' ' || e[-1] == '\t')) *--e = 0; }   /* trim */
 		if (*p) *p++ = 0;
 	}
 }
@@ -195,7 +202,9 @@ static RVal e_prim(void) {
 	if (isalpha((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') {
 		char nm[128]; int k = 0;
 		while ((isalnum((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') && k < 127) nm[k++] = *ep++;
-		nm[k] = 0; RVal r = { 0, sym_intern(nm), 0 }; return r;
+		nm[k] = 0; int si = sym_intern(nm);
+		if (syms[si].defined && syms[si].sec == SEC_ABS) return rconst((long)(int32_t)syms[si].value);   /* `.equ N, 16` */
+		RVal r = { 0, si, 0 }; return r;
 	}
 	die("data expr: bad operand near '%s' in '%s'", ep, cur_stmt); return rconst(0);
 }
@@ -213,6 +222,8 @@ static RVal e_add(void) {
 		if (*ep == '+') { ep++; RVal b = e_mul(); if (a.sym >= 0 && b.sym >= 0) die("data expr: sym + sym"); a.c += b.c; if (b.sym >= 0) a.sym = b.sym; a.dot += b.dot; }
 		else if (*ep == '-') { ep++; RVal b = e_mul(); a.c -= b.c; a.dot -= b.dot;
 			if (b.sym >= 0) {   /* sym - sym: fine when both resolve into the same section */
+				if (a.sym < 0 && a.dot == 1 && syms[b.sym].defined && syms[b.sym].sec == cursec) {   /* (. + k) - sym, same section */
+					a.c += (long)secs[cursec].len - (long)syms[b.sym].value; a.dot = 0; continue; }
 				if (a.sym < 0) die("data expr: const - sym");
 				Sym *x = &syms[a.sym], *y = &syms[b.sym];
 				if (!x->defined || !y->defined || x->sec != y->sec) die("data expr: difference of symbols in different sections");
@@ -231,6 +242,18 @@ static RVal e_and(void) { RVal a = e_shift(); for (;;) { ews(); if (*ep == '&' &
 static RVal e_xor(void) { RVal a = e_and(); for (;;) { ews(); if (*ep == '^') { ep++; RVal b = e_and(); need_const(a, "^"); need_const(b, "^"); a.c ^= b.c; } else return a; } }
 static RVal e_or(void)  { RVal a = e_xor(); for (;;) { ews(); if (*ep == '|' && ep[1] != '|') { ep++; RVal b = e_xor(); need_const(a, "|"); need_const(b, "|"); a.c |= b.c; } else return a; } }
 
+/* A constant expression (instruction immediates, .equ): `.` is the current location, a same-section
+ * `sym - .` folds, absolute symbols are constants. Anything relocatable or trailing junk is an error (was:
+ * strtol, which silently turned `#(. - bar - 8)` into 0). */
+long eval_const_expr(const char *s) {
+	const char *save = ep; ep = s; RVal r = e_or(); ews();
+	if (*ep) die("expression: junk '%s' in '%s'", ep, s);
+	ep = save;
+	if (r.sym >= 0 && r.dot == -1 && syms[r.sym].defined && syms[r.sym].sec == cursec) return r.c + (long)syms[r.sym].value - (long)secs[cursec].len;
+	if (r.sym < 0 && r.dot == 1) return r.c + (long)secs[cursec].len;
+	if (r.sym >= 0 || r.dot) die("expression '%s' is not a constant", s);
+	return r.c;
+}
 /* Emit one 32-bit data word for a relocatable value placed at the current location. */
 static void emit_word_rval(RVal r) {
 	u32 off = secs[cursec].len;
@@ -257,7 +280,8 @@ static void do_directive(void) {
 	if (!strcmp(d, ".section")) {
 		select_section(); prevsec = was;   /* default flags/type by well-known name; an explicit "flags" string overrides */
 	} else if (!strcmp(d, ".pushsection")) {   /* save (current, previous), then switch */
-		if (secsp >= 32) die("too many nested .pushsection (>32)"); secstack[secsp][0] = cursec; secstack[secsp][1] = prevsec; secsp++;
+		if (secsp >= 32) die("too many nested .pushsection (>32)");
+		secstack[secsp][0] = cursec; secstack[secsp][1] = prevsec; secsp++;
 		select_section(); prevsec = was;
 	} else if (!strcmp(d, ".popsection")) {
 		if (secsp <= 0) die(".popsection without .pushsection");
@@ -325,6 +349,9 @@ static void do_directive(void) {
 		if (ntok >= 3 && !strcmp(toks[2], ".")) {
 			long addend = 0; if (ntok >= 5 && !strcmp(toks[3], "+")) addend = strtol(toks[4], NULL, 0);
 			syms[i].sec = cursec; syms[i].value = secs[cursec].len + (u32)addend; syms[i].defined = 1;
+		} else if (ntok >= 3 && !(isalpha((unsigned char)toks[2][0]) || toks[2][0] == '_' || toks[2][0] == '.')) {   /* `.equ N, 16` / `.set N, 4*4`: absolute */
+			const char *q = strchr(cur_stmt, ','); if (!q) die(".set: expected 'name, value'");
+			syms[i].sec = SEC_ABS; syms[i].value = (u32)eval_const_expr(q + 1); syms[i].defined = 1;
 		} else if (ntok >= 3) {   /* alias: copy the target's location/type (target must be defined by now) */
 			int j = sym_find(toks[2]);
 			if (j < 0 || !syms[j].defined) die(".set: alias target '%s' undefined", toks[2]);
@@ -368,7 +395,7 @@ int section_symbol(int sec) {
 	for (int i = 0; i < nsym; i++)
 		if (syms[i].type == STT_SECTION && syms[i].defined && syms[i].sec == sec) return i;
 	if (nsym >= MAXSYM) die("too many symbols");
-	syms[nsym] = (Sym){ secs[sec].name, sec, 0, 0, 0, STT_SECTION, 1 };   /* local, value 0, defined here */
+	syms[nsym] = (Sym){ secs[sec].name, sec, 0, 0, 0, STT_SECTION, 1, 0 };   /* local, value 0, defined here */
 	return nsym++;
 }
 
@@ -513,7 +540,8 @@ static void feed_line(char *line) {
 			}
 			return;
 		} }
-		if (coll_n >= 2048) die("macro/.rept body too long (>2048 lines)"); coll_body[coll_n++] = xdup(line); return;
+		if (coll_n >= 2048) die("macro/.rept body too long (>2048 lines)");
+		coll_body[coll_n++] = xdup(line); return;
 	}
 	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[64]; const char *a=lead(r,nm); strncpy(coll_name,nm,63); strncpy(coll_params_src,a,255); coll_mode=1; coll_depth=1; coll_n=0; return; }
 	if (!strcmp(w, ".rept"))  { coll_reptn = emitting()?eval_if(rest):0; coll_mode=2; coll_depth=1; coll_n=0; return; }
@@ -526,7 +554,8 @@ static void feed_line(char *line) {
 		char *pa = a; while (*pa==' '||*pa=='\t') pa++; { char *e = pa + strlen(pa); while (e>pa && (e[-1]==' '||e[-1]=='\t'||e[-1]=='\n'||e[-1]=='\r')) *--e = 0; }
 		char *pb = b; while (*pb==' '||*pb=='\t') pb++; { char *e = pb + strlen(pb); while (e>pb && (e[-1]==' '||e[-1]=='\t'||e[-1]=='\n'||e[-1]=='\r')) *--e = 0; }
 		int same = !strcmp(pa, pb), on = emitting() && (!strcmp(w, ".ifc") ? same : !same);
-		if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return;
+		if (nifs >= 64) die("too many nested .if (>64)");
+		ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return;
 	}
 	if (!strcmp(w, ".else"))   { if (nifs) { int parent=1; for(int i=0;i<nifs-1;i++) if(!ifs[i].active)parent=0; ifs[nifs-1].active = parent && !ifs[nifs-1].taken; if(ifs[nifs-1].active) ifs[nifs-1].taken=1; } return; }
 	if (!strcmp(w, ".endif"))  { if (nifs) nifs--; return; }
@@ -551,6 +580,9 @@ int main(int argc, char **argv) {
 	fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
 	char *buf = malloc(sz + 1); if (fread(buf, 1, sz, f) != (size_t)sz) die("read failed"); buf[sz] = 0; fclose(f);
 
+	/* GAS starts every object with .text/.data/.bss (in that order) and assembles into .text by default. */
+	sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR); sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE);
+	sec_get(".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE); cursec = sec_find(".text"); prevsec = cursec;
 	strip_comments(buf);
 	char *line = buf, *nl;
 	do { nl = strchr(line, '\n'); if (nl) *nl = 0; feed_line(line); line = nl ? nl + 1 : NULL; } while (line);

@@ -54,7 +54,7 @@ static int reg(const char *t) {   /* r0..r15 + sp/lr/pc/fp/ip/sl aliases; -1 if 
 }
 static u32 imm(const char *t) {   /* #<num> immediate (dec / 0x hex / negative) */
 	if (!t || t[0] != '#') die("expected #immediate, got '%s'", t ? t : "(nil)");
-	return (u32)strtol(t + 1, NULL, 0);
+	return (u32)eval_const_expr(t + 1);   /* strict: `#(. - bar - 8)`, `#N` (.equ), `#-4`; junk is an error */
 }
 /* ARM modified-immediate: encode v as (rot<<8)|imm8 where v == ror(imm8, 2*rot). Recover imm8 for a
  * candidate rot as rol(v, 2*rot); the smallest rot whose imm8 fits in 8 bits wins (matches GNU as). */
@@ -116,9 +116,17 @@ static u32 shifted_reg(u32 rm, int si) {
 	return ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm;
 }
 
+/* `#imm8, rot` — an explicit-rotation immediate (value = imm8 ror rot; rot even, 0..30). GAS accepts it and
+ * encodes it verbatim (was: the rotation operand silently dropped). */
+static int explicit_rot(int opidx) { return opidx + 1 < ntok && toks[opidx + 1][0] != '#' && isdigit((unsigned char)toks[opidx + 1][0]); }
+static u32 explicit_rot_enc(int opidx) {
+	u32 v = imm(toks[opidx]); long rot = strtol(toks[opidx + 1], NULL, 0);
+	if (v > 0xff || rot < 0 || rot > 30 || (rot & 1)) die("%s: bad explicit-rotation immediate '%s, %s'", toks[0], toks[opidx], toks[opidx + 1]);
+	return ((u32)rot / 2) << 8 | v;
+}
 /* operand2 at token index opidx: "#imm" -> I=1 + modimm; register [,shift] -> I=0 + shifted-reg. */
 static u32 operand2(int opidx, u32 *I) {
-	if (toks[opidx][0] == '#') { *I = 1; return modimm(imm(toks[opidx])); }
+	if (toks[opidx][0] == '#') { *I = 1; return explicit_rot(opidx) ? explicit_rot_enc(opidx) : modimm(imm(toks[opidx])); }
 	int rm = reg(toks[opidx]); if (rm < 0) die("%s: bad operand2 '%s'", toks[0], toks[opidx]);
 	*I = 0;
 	return (ntok > opidx + 1) ? shifted_reg((u32)rm, opidx + 1) : (u32)rm;
@@ -130,7 +138,8 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	else if (form == DP_CMP) { rn = need_reg(1); s = 1;            opidx = 2; }        /* cmp/… Rn, op2 (S forced) */
 	else                     { rd = need_reg(1); rn = need_reg(2); opidx = 3; }        /* add/… Rd, Rn, op2 */
 	u32 op2;
-	if (form == DP_MOV && opidx < ntok && toks[opidx][0] == '#') {   /* mov/mvn #imm: if not encodable, use the complement (mov<->mvn, e.g. `mov rd,#-14` -> `mvn rd,#13`) */
+	if (form == DP_MOV && opidx < ntok && toks[opidx][0] == '#' && explicit_rot(opidx)) { I = 1; op2 = explicit_rot_enc(opidx); }
+	else if (form == DP_MOV && opidx < ntok && toks[opidx][0] == '#') {   /* mov/mvn #imm: if not encodable, use the complement (mov<->mvn, e.g. `mov rd,#-14` -> `mvn rd,#13`) */
 		u32 v = imm(toks[opidx]), enc; I = 1;
 		if (modimm_try(v, &enc)) op2 = enc;
 		else if (modimm_try(~v, &enc)) { op2 = enc; opc ^= 2; }        /* mov(13) <-> mvn(15) differ by bit 1 */
@@ -365,11 +374,26 @@ static void enc_mrs(u32 cond) {   /* mrs Rd, (c|s)psr */
 	emit32((cond << 28) | 0x010f0000u | R | (rd << 12));
 }
 static void enc_msr(u32 cond) {   /* msr (c|s)psr_<fields>, Rm | #imm  (fields: c=1 x=2 s=4 f=8) */
-	const char *p = toks[1];
-	u32 R = (p[0] == 's' || p[0] == 'S') ? (1u << 22) : 0, mask = 0;
-	const char *u = strchr(p, '_');
-	if (u) { for (const char *c = u + 1; *c; c++) { if (*c=='c') mask|=1; else if (*c=='x') mask|=2; else if (*c=='s') mask|=4; else if (*c=='f') mask|=8; } }
-	else mask = 0xf;   /* bare psr = all fields */
+	/* GAS: bare cpsr/spsr = _fc (was: all four fields); legacy _all=fc _flg=f _ctl=c; APSR_nzcvq=f _g=s
+	 * _nzcvqg=fs; field letters c/x/s/f in any order/case. Anything else is an error (was silently ignored). */
+	char nm[32]; size_t L = strlen(toks[1]); if (L >= sizeof nm) die("msr: bad operand '%s'", toks[1]);
+	for (size_t k = 0; k <= L; k++) nm[k] = (char)tolower((unsigned char)toks[1][k]);
+	char *u = strchr(nm, '_'); if (u) *u++ = 0;
+	u32 R, mask = 0;
+	if (!strcmp(nm, "cpsr") || !strcmp(nm, "apsr")) R = 0; else if (!strcmp(nm, "spsr")) R = 1u << 22;
+	else die("msr: unsupported register '%s' (banked registers not implemented)", toks[1]);
+	if (!u) mask = 9;
+	else if (!strcmp(u, "all")) mask = 9;
+	else if (!strcmp(u, "flg")) mask = 8;
+	else if (!strcmp(u, "ctl")) mask = 1;
+	else if (!strcmp(nm, "apsr") && !strcmp(u, "nzcvq")) mask = 8;
+	else if (!strcmp(nm, "apsr") && !strcmp(u, "g")) mask = 4;
+	else if (!strcmp(nm, "apsr") && !strcmp(u, "nzcvqg")) mask = 12;
+	else for (const char *c = u; *c; c++) {
+		u32 bit = *c == 'c' ? 1 : *c == 'x' ? 2 : *c == 's' ? 4 : *c == 'f' ? 8 : 0;
+		if (!bit || (mask & bit)) die("msr: bad field specifier '%s'", toks[1]);
+		mask |= bit;
+	}
 	if (toks[2][0] == '#') emit32((cond << 28) | 0x0320f000u | R | (mask << 16) | modimm(imm(toks[2])));
 	else                   emit32((cond << 28) | 0x0120f000u | R | (mask << 16) | need_reg(2));
 }

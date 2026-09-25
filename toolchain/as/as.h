@@ -52,6 +52,8 @@ void add_fixup_kind(int sec, u32 off, int local_num, int kind);
 void local_define(int n, u32 value);                    /* numeric local label N: at value */
 int  local_defined(int n);
 u32  local_value(int n);
+#define SEC_ABS (-2)                                    /* Sym.sec of an absolute symbol (`.equ N, 16`) */
+long eval_const_expr(const char *s);                    /* a constant expression (`.`, same-section `a - b`, abs syms); dies otherwise */
 int  section_symbol(int sec);                           /* find-or-create sec's STT_SECTION symbol (reloc target) */
 int  local_sec(int n);                                  /* section the latest definition of N lives in */
 int  parse_local_ref(const char *s, int *n, char *dir); /* "123b"/"7f" (then a non-ident char): bytes consumed, else 0 */

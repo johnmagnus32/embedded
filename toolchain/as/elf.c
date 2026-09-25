@@ -46,7 +46,7 @@ static void build_symtab(Obj *o) {
 			o->esym[e].st_value = syms[i].value;
 			o->esym[e].st_size  = syms[i].size;
 			o->esym[e].st_info  = ELF32_ST_INFO(syms[i].weak ? STB_WEAK : (is_local ? STB_LOCAL : STB_GLOBAL), syms[i].type);
-			o->esym[e].st_shndx = syms[i].defined ? secs[syms[i].sec].shndx : SHN_UNDEF;
+			o->esym[e].st_shndx = !syms[i].defined ? SHN_UNDEF : syms[i].sec == SEC_ABS ? SHN_ABS : secs[syms[i].sec].shndx;
 		}
 	}
 }
