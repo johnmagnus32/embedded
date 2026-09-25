@@ -8,6 +8,7 @@
  * Current instruction set (grows one at a time toward the ~85 mnemonics gcc emits): mov (reg),
  * bic (#imm), bl, b. One target: ARMv7-A, ARM mode, little-endian.
  */
+#define _POSIX_C_SOURCE 200809L   /* strdup */
 #include <string.h>
 #include <strings.h>
 #include <ctype.h>
@@ -32,11 +33,11 @@ const u32 md_r_rel32    = R_ARM_REL32;    /* ...and this for `.word <symbol> - .
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
  * code, so we emit `ldr Rd, [pc,#0]` and fix the 12-bit offset in md_finish once all labels are known. */
-static struct { int sec; u32 off; char sym[64]; long addend; int kind; } ldrlit[16384]; static int nldrlit;
+static struct { int sec; u32 off; char *sym; long addend; int kind; } ldrlit[16384]; static int nldrlit;
 static void join_toks(int from, char *out, size_t n); static void pool_ref(u32 insn, u32 val, int sym); static void pool_flush(int sec);   /* kind: 0 = ldr Rd,literal ; 1 = adr Rd,label */
 /* Named-symbol branches (b/bl <sym>): deferred to md_finish so we can RESOLVE ones defined in the same
  * section (like GNU as does for local labels) and only RELOCATE truly external/cross-section ones. */
-static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[65536]; static int nbrfix;
+static struct { int sec; u32 off; char *sym; int is_bl; } brfix[65536]; static int nbrfix;
 
 /* The current instruction's tokens (set by md_assemble; the enc_* helpers read them, like tc-arm.c). */
 static char **toks; static int ntok;
@@ -246,7 +247,7 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	 * else relocate. The placeholder keeps the cond/101/L opcode byte; imm24 is filled in later. */
 	if (nbrfix >= 65536) die("too many branch fixups");
 	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl;
-	strncpy(brfix[nbrfix].sym, name, sizeof brfix[0].sym - 1); brfix[nbrfix].sym[sizeof brfix[0].sym - 1] = 0;
+	brfix[nbrfix].sym = strdup(name);
 	sym_intern(name);   /* create it NOW (GAS symbol-table order = first reference), resolve in md_finish */
 	nbrfix++;
 }
@@ -346,7 +347,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 		if (sy < 0 || dt) die("%s: bad pc-relative operand '%s'", toks[0], ex);
 		emit32((cond << 28) | pcrel | (1u << 23) | (rd << 12));   /* [pc, #0] placeholder */
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
-		strncpy(ldrlit[nldrlit].sym, syms[sy].name, sizeof ldrlit[0].sym - 1); ldrlit[nldrlit].sym[sizeof ldrlit[0].sym - 1] = 0;
+		ldrlit[nldrlit].sym = strdup(syms[sy].name);
 		ldrlit[nldrlit].addend = c; ldrlit[nldrlit].kind = 0;
 		nldrlit++;
 		return;
@@ -377,7 +378,7 @@ static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-
 	if (sy < 0 || dt) die("adr: bad operand '%s'", ex);
 	if (nldrlit >= 16384) die("too many pc-relative fixups");   /* symbol (incl. 1f/1b): resolve in md_finish */
 	ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
-	strncpy(ldrlit[nldrlit].sym, syms[sy].name, sizeof ldrlit[0].sym - 1); ldrlit[nldrlit].sym[sizeof ldrlit[0].sym - 1] = 0;
+	ldrlit[nldrlit].sym = strdup(syms[sy].name);
 	ldrlit[nldrlit].addend = c;
 	ldrlit[nldrlit].kind = 1; nldrlit++;
 }
@@ -888,7 +889,7 @@ static void enc_ldc(u32 cond, int L, int N) {
 		if (sy < 0 || dt) die("%s: bad address '%s'", toks[0], ex);
 		if (nldrlit >= 16384) die("too many pc-relative fixups");
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = here(); ldrlit[nldrlit].addend = c; ldrlit[nldrlit].kind = 2;
-		strncpy(ldrlit[nldrlit].sym, syms[sy].name, sizeof ldrlit[0].sym - 1); ldrlit[nldrlit].sym[sizeof ldrlit[0].sym - 1] = 0; nldrlit++;
+		ldrlit[nldrlit].sym = strdup(syms[sy].name); nldrlit++;
 		emit32(w); return;
 	}
 	Addr a = parse_addr(3);

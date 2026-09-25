@@ -668,7 +668,8 @@ static struct { int active, taken; } ifs[64]; static int nifs;   /* .if stack */
 static int emitting(void) { for (int i = 0; i < nifs; i++) if (!ifs[i].active) return 0; return 1; }
 static char *xdup(const char *s) { char *p = malloc(strlen(s) + 1); strcpy(p, s); return p; }
 /* Leading whitespace-delimited word of a line -> w; returns the pointer just past it. */
-static const char *lead(const char *s, char *w) { while (*s==' '||*s=='\t') s++; int i=0; while (*s && *s!=' '&&*s!='\t'&&*s!=','&&i<63) w[i++]=*s++; w[i]=0; return s; }
+#define LEADMAX 1024   /* lead() buffers: long C-label symbols (.Ll_<func>_<label>) exceed 64 */
+static const char *lead(const char *s, char *w) { while (*s==' '||*s=='\t') s++; int i=0; while (*s && *s!=' '&&*s!='\t'&&*s!=',') { if (i >= LEADMAX - 1) die("word too long (>%d chars): %.40s...", LEADMAX - 1, s - i); w[i++]=*s++; } w[i]=0; return s; }
 
 /* .if / .rept take a constant expression — the SAME evaluator as everything else (a private one used to treat
  * every identifier as 0, so `.if SYMBOL` silently picked the wrong branch; /0 silently gave 0). */
@@ -771,7 +772,7 @@ static void feed_line(char *line) {
 		}
 	}
 	{ const char *q = line; while (*q==' '||*q=='\t') q++; if (*q == '#') return; }   /* cpp line marker / `#` comment */
-	char w[64]; const char *rest = lead(line, w);
+	char w[LEADMAX]; const char *rest = lead(line, w);
 	if (coll_mode) {                                 /* gathering a macro/rept body until the matching end */
 		if (!strcmp(w,".macro")||!strcmp(w,".rept")||!strcmp(w,".irp")||!strcmp(w,".irpc")) coll_depth++;
 		if (!strcmp(w,".endm")||!strcmp(w,".endr")) { if (--coll_depth == 0) {
@@ -829,15 +830,17 @@ static void feed_line(char *line) {
 		if (coll_n >= 2048) die("macro/.rept body too long (>2048 lines)");
 		coll_body[coll_n++] = xdup(line); return;
 	}
-	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[64]; const char *a=lead(r,nm);
+	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[LEADMAX]; const char *a=lead(r,nm);
 		if (strlen(a) >= sizeof coll_params_src) die(".macro: parameter list too long");
-		strncpy(coll_name,nm,63); strcpy(coll_params_src,a); coll_mode=1; coll_depth=1; coll_n=0; return; }
+		if (strlen(nm) >= sizeof coll_name) die(".macro: name too long: %s", nm);
+		strcpy(coll_name,nm); strcpy(coll_params_src,a); coll_mode=1; coll_depth=1; coll_n=0; return; }
 	if (!strcmp(w, ".rept"))  { coll_reptn = emitting()?eval_if(rest):0; if (coll_reptn < 0) die(".rept: negative count"); coll_mode=2; coll_depth=1; coll_n=0; return; }
 	if (!strcmp(w, ".irp") || !strcmp(w, ".irpc")) {   /* .irp var, v1, v2 ... / .irpc var, chars */
 		const char *r = rest; while (*r == ' ' || *r == '\t') r++;
-		char nm[64]; const char *a = lead(r, nm); if (!nm[0]) die("%s: missing variable", w);
+		char nm[LEADMAX]; const char *a = lead(r, nm); if (!nm[0]) die("%s: missing variable", w);
 		while (*a == ' ' || *a == '\t' || *a == ',') a++;
-		strncpy(coll_name, nm, 63); coll_name[63] = 0;
+		if (strlen(nm) >= sizeof coll_name) die("%s: name too long: %s", w, nm);
+		strcpy(coll_name, nm);
 		if (strlen(a) >= sizeof coll_params_src) die("%s: value list too long", w);
 		strcpy(coll_params_src, a);
 		if (!emitting()) { coll_params_src[0] = 0; }
@@ -845,8 +848,8 @@ static void feed_line(char *line) {
 	}
 	if (!strcmp(w, ".exitm")) { if (emitting()) exitm = 1; return; }
 	if (!strcmp(w, ".if"))     { int on = emitting() && eval_if(rest)!=0; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
-	if (!strcmp(w, ".ifdef"))  { char nm[64]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
-	if (!strcmp(w, ".ifndef")) { char nm[64]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifdef"))  { char nm[LEADMAX]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
+	if (!strcmp(w, ".ifndef")) { char nm[LEADMAX]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
 	if (!strcmp(w, ".ifc") || !strcmp(w, ".ifnc")) {   /* GAS string compare: .ifc a,b (same) / .ifnc a,b (differ) */
 		const char *comma = strchr(rest, ','); char a[128] = "", b[128] = "";
 		if (comma) { int la = (int)(comma - rest); if (la > 127) la = 127; memcpy(a, rest, la); a[la] = 0; strncpy(b, comma + 1, 127); }
