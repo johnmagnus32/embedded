@@ -69,10 +69,25 @@ void map_pool_data(void) { mapstate[cursec] = MAP_DATA; add_mapsym(MAP_DATA, (u3
 /* GAS writes code-alignment padding (and its $d/$a pair) after parsing, so those symbols come LAST in the table. */
 static struct { int sec; u32 d_at, a_at; } padmap[4096]; static int npadmap;
 static void flush_padmaps(void) {
-	for (int i = 0; i < npadmap; i++) { int save = cursec; cursec = padmap[i].sec; add_mapsym(MAP_DATA, padmap[i].d_at); add_mapsym(MAP_ARM, padmap[i].a_at); cursec = save; }
+	for (int i = 0; i < npadmap; i++) {
+		int sec = padmap[i].sec, save = cursec, have_a = 0; cursec = sec;
+		for (int k = 0; k < nsym; k++) if (syms[k].name && syms[k].name[0] == '$' && syms[k].sec == sec) {
+			if (syms[k].value == padmap[i].d_at) syms[k].name = NULL;          /* insert_data_mapping_symbol: replace */
+			else if (syms[k].value == padmap[i].a_at) have_a = 1;              /* next frag already starts with one */
+		}
+		if (nsym >= MAXSYM) die("too many symbols");
+		syms[nsym++] = (Sym){ "$d", sec, padmap[i].d_at, 0, 0, STT_NOTYPE, 1, 0 };
+		if (!have_a) { if (nsym >= MAXSYM) die("too many symbols"); syms[nsym++] = (Sym){ "$a", sec, padmap[i].a_at, 0, 0, STT_NOTYPE, 1, 0 }; }
+		cursec = save;
+	}
 }
 static void map_data(void) { map_to(MAP_DATA, 1); }
 static void map_frag_data(void) { map_to(MAP_DATA, 0); }
+static void map_data_only_code_sections(void) {   /* GAS: a code section holding only data still gets $d at 0 */
+	for (int i = 0; i < nsec; i++)
+		if (mapstate[i] == MAP_UNDEF && (secs[i].flags & SHF_EXECINSTR) && secs[i].len > 0 && secs[i].type != SHT_NOBITS) {
+			int save = cursec; cursec = i; add_mapsym(MAP_DATA, 0); mapstate[i] = MAP_DATA; cursec = save; }
+}
 static void drop_end_mapsyms(void) {
 	for (int i = 0; i < nsym; i++)
 		if (syms[i].name && syms[i].name[0] == '$' && (syms[i].name[1] == 'a' || syms[i].name[1] == 'd') && !syms[i].name[2]
@@ -222,12 +237,12 @@ static const char *cur_stmt;   /* raw text of the current statement (labels peel
  * Enough for everything kernel asm puts in data: constants with ( ) and C operators (BUG's
  * `((0xe7f001f2) & 0xFFFFFFFF)`), `sym+k`, numeric local labels `1b` (in ANY section — they become the
  * label's section symbol + its offset), and PC-relative `9998b - .` (alternatives tables). */
-typedef struct { long c; int sym, dot, msym; } RVal;   /* c + sym - msym - dot*P (msym: a subtracted symbol, resolved later) */
+typedef struct { long c; int sym, dot, msym; u32 rtype; } RVal;   /* c + sym - msym - dot*P; rtype: explicit reloc from `sym(OP)` */
 static const char *ep;
 static void ews(void) { while (*ep == ' ' || *ep == '\t') ep++; }
 static RVal e_or(void);
-static RVal rconst(long c) { RVal r = { c, -1, 0, -1 }; return r; }
-static void need_const(RVal a, const char *op) { if (a.sym >= 0 || a.dot || a.msym >= 0) die("data expr: operator '%s' needs constant operands", op); }
+static RVal rconst(long c) { RVal r = { c, -1, 0, -1, 0 }; return r; }
+static void need_const(RVal a, const char *op) { if (a.sym >= 0 || a.dot || a.msym >= 0 || a.rtype) die("data expr: operator '%s' needs constant operands", op); }
 static RVal e_prim(void) {
 	ews();
 	if (*ep == '(') { ep++; RVal r = e_or(); ews(); if (*ep != ')') die("data expr: expected ')' in '%s'", cur_stmt); ep++; return r; }
@@ -235,16 +250,30 @@ static RVal e_prim(void) {
 	if (*ep == '~') { ep++; RVal r = e_prim(); need_const(r, "~"); r.c = ~r.c; return r; }
 	if (*ep == '+') { ep++; return e_prim(); }
 	{ int n; char dir; int k = parse_local_ref(ep, &n, &dir); if (k) { ep += k;
-		RVal r = { 0, fb_symbol(n, dir), 0, -1 }; return r; } }
-	if (*ep == '\'' && ep[1]) { long c = (unsigned char)ep[1]; ep += 2; if (*ep == '\'') ep++; return rconst(c); }   /* GAS char constant 'c */
+		RVal r = { 0, fb_symbol(n, dir), 0, -1, 0 }; return r; } }
+	if (*ep == '\'' && ep[1]) {   /* GAS char constant 'c (escapes: '\\ '\n '\t '\a ...; closing quote optional) */
+		long c; ep++;
+		if (*ep == '\\' && ep[1]) { ep++; switch (*ep) { case 'n': c = 10; break; case 't': c = 9; break; case 'r': c = 13; break;
+			case 'a': c = 7; break; case 'b': c = 8; break; case 'f': c = 12; break; case 'v': c = 11; break; case '0': c = 0; break;
+			default: c = (unsigned char)*ep; } ep++; }
+		else c = (unsigned char)*ep++;
+		if (*ep == '\'') ep++;
+		return rconst(c); }
 	if (isdigit((unsigned char)*ep)) { char *e; unsigned long long v = strtoull(ep, &e, 0); ep = e; while (*ep == 'u' || *ep == 'U' || *ep == 'l' || *ep == 'L') ep++; return rconst((long)v); }
-	if (*ep == '.' && !(isalnum((unsigned char)ep[1]) || ep[1] == '_' || ep[1] == '.' || ep[1] == '$')) { ep++; RVal r = { 0, -1, 1, -1 }; return r; }
+	if (*ep == '.' && !(isalnum((unsigned char)ep[1]) || ep[1] == '_' || ep[1] == '.' || ep[1] == '$')) { ep++; RVal r = { 0, -1, 1, -1, 0 }; return r; }
 	if (isalpha((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') {
 		char nm[128]; int k = 0;
 		while ((isalnum((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') && k < 127) nm[k++] = *ep++;
 		nm[k] = 0; int si = sym_intern(nm);
 		if (syms[si].defined && syms[si].sec == SEC_ABS) return rconst((long)(int32_t)syms[si].value);   /* `.equ N, 16` */
-		RVal r = { 0, si, 0, -1 }; return r;
+		RVal r = { 0, si, 0, -1, 0 };
+		if (*ep == '(') {   /* `sym(OP)`: an explicit relocation (GOT, GOTOFF, GOT_PREL, TARGET1/2, SBREL, TLS...) */
+			const char *q = ep + 1; char op[24]; int k2 = 0;
+			while ((isalnum((unsigned char)*q) || *q == '_') && k2 < 23) op[k2++] = *q++;
+			op[k2] = 0;
+			if (*q == ')' && k2) { if (!md_reloc_operator(op, &r.rtype)) die("unknown relocation operator '(%s)' in '%s'", op, cur_stmt); ep = q + 1; }
+		}
+		return r;
 	}
 	die("data expr: bad operand near '%s' in '%s'", ep, cur_stmt); return rconst(0);
 }
@@ -261,7 +290,7 @@ static RVal e_add(void) {
 	for (;;) { ews();
 		if (*ep == '+') { ep++; RVal b = e_mul(); if (a.sym >= 0 && b.sym >= 0) die("data expr: sym + sym");
 			if (a.msym >= 0 && b.msym >= 0) die("data expr: too many symbol differences");
-			a.c += b.c; if (b.sym >= 0) a.sym = b.sym; if (b.msym >= 0) a.msym = b.msym; a.dot += b.dot; }
+			a.c += b.c; if (b.sym >= 0) { a.sym = b.sym; a.rtype = b.rtype; } if (b.msym >= 0) a.msym = b.msym; a.dot += b.dot; }
 		else if (*ep == '-') { ep++; RVal b = e_mul(); a.c -= b.c; a.dot -= b.dot;
 			if (b.sym < 0 && a.sym >= 0 && a.dot == -1 && syms[a.sym].defined && syms[a.sym].sec == cursec) {   /* sym - . (same section): constant */
 				a.c += (long)syms[a.sym].value - (long)secs[cursec].len; a.sym = -1; a.dot = 0; continue; }
@@ -346,7 +375,8 @@ static void emit_word_rval(RVal r) {
 	}
 	if (r.sym < 0) { if (r.dot) die("data expr: '- .' with no symbol"); emit32((u32)r.c); return; }
 	emit32((u32)r.c);   /* REL-style: the addend lives in place */
-	add_reloc(cursec, off, r.sym, r.dot ? md_r_rel32 : md_r_abs32);
+	if (r.rtype) { if (r.dot) die("data expr: '- .' with an explicit relocation operator"); add_reloc(cursec, off, r.sym, r.rtype); return; }
+	add_reloc(cursec, off, r.sym, r.dot ? md_r_rel32 : md_data_reloc_for(syms[r.sym].name, md_r_abs32));
 }
 /* `.byte/.hword/.quad` operand lists: constant expressions (was strtol per space-split token: `.byte X - Y`
  * silently became X, junk ignored). Range-checked against the width (signed or unsigned). */
@@ -428,8 +458,8 @@ static void do_directive(void) {
 			if (z) {   /* sub-word zero fill: its $d + the NOPs' $a are written after parsing (GAS arm_handle_align) */
 				if (npadmap >= 4096) die("too many code alignments");
 				padmap[npadmap].sec = cursec; padmap[npadmap].d_at = (u32)secs[cursec].len; padmap[npadmap].a_at = (u32)secs[cursec].len + z; npadmap++;
+				map_insn();   /* rs_align_code: ARM state at parse time (may add $d@0 + $a here) */
 				for (u32 k = 0; k < z; k++) { u8 zb = 0; emit(&zb, 1); }
-				mapstate[cursec] = MAP_ARM;
 			} else map_insn();
 			for (u32 k = z; k < pad; k += 4) emit32(0xe320f000u);   /* ARMv6K+ nop (GAS with -march=armv7-a) */
 		} else { map_frag_data(); for (u32 k = 0; k < pad; k++) { u8 zb = 0; emit(&zb, 1); } }
@@ -437,21 +467,7 @@ static void do_directive(void) {
 		/* .word <number> emits the value; .word <symbol>[+addend] emits the addend in place + an
 		 * absolute (R_ARM_ABS32) relocation the linker fills with the symbol's address. */
 		if (!strcmp(d, ".inst")) map_insn(); else map_data();
-		if (!strstr(cur_stmt, "(GOT)")) { data_words(); }   /* expressions, lists, local labels, `X - .` */
-		else {
-			/* `.word <sym>[+addend]` -> R_ARM_ABS32; `.word <sym>(GOT)` -> R_ARM_GOT_PREL (PIC: the
-			 * linker fills it with the PC-relative offset to <sym>'s GOT slot). */
-			char raw[160]; strncpy(raw, toks[1], sizeof raw - 1); raw[sizeof raw - 1] = 0;
-			u32 rtype = md_r_abs32;
-			char *got = strstr(raw, "(GOT)");
-			if (got && got[5] == 0) { *got = 0; rtype = md_r_got_prel; }
-			char name[128]; long addend = 0;
-			char *plus = strpbrk(raw, "+-");
-			if (plus) { addend = eval_const_expr(plus); size_t k = plus - raw; if (k >= sizeof name) k = sizeof name - 1; memcpy(name, raw, k); name[k] = 0; }
-			else { strncpy(name, raw, sizeof name - 1); name[sizeof name - 1] = 0; }
-			u32 off = secs[cursec].len; emit32((u32)addend);
-			add_reloc(cursec, off, sym_intern(name), rtype);
-		}
+		data_words();   /* expressions, lists, local labels, `X - .`, `sym(OP)` relocation operators */
 	} else if (!strcmp(d, ".byte")) {
 		map_data(); data_consts(1);
 	} else if (!strcmp(d, ".hword") || !strcmp(d, ".2byte") || !strcmp(d, ".short")) {
@@ -508,6 +524,8 @@ static void parse_line(char *line) {
 		break;
 	}
 	cur_stmt = line;
+	if (ntok >= 3 && !strcmp(toks[1], ".req")) { md_req(toks[0], toks[2]); return; }   /* `alias .req r4` */
+	if (!strcmp(toks[0], ".unreq")) { if (ntok != 2) die(".unreq: expected a name"); md_unreq(toks[1]); return; }
 	if (toks[0][0] == '.') do_directive();
 	else { map_insn(); md_assemble(toks, ntok); }
 }
@@ -735,7 +753,9 @@ int main(int argc, char **argv) {
 	resolve_deferred();     /* data words / .size that referenced not-yet-defined labels */
 	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
 	reduce_local_relocs();  /* fold local-symbol relocs to section-symbol + in-place value (GNU parity) */
+	map_data_only_code_sections();
 	flush_padmaps();
+	md_emit_attributes();   /* GAS writes the build-attribute section last */
 	drop_end_mapsyms();   /* a mapping symbol at a section's end marks nothing */
 	obj_write(out);
 	return 0;

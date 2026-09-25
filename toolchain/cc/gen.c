@@ -133,7 +133,7 @@ static void gen_addr(Node *n) {
 			    "\tldr r0, .LGOT%d_%d\n"        /* r0 = GOT(sym) - P  (P = address of the .word below) */
 			    "\tadd r0, pc, r0\n"            /* r0 = &GOT[sym]     (pc here == P)                    */
 			    "\tb .LGA%d_%d\n"               /* skip the inline literal                              */
-			    ".LGOT%d_%d:\n\t.word %s(GOT)\n"
+			    ".LGOT%d_%d:\n\t.word %s(GOT_PREL)\n"   /* GAS: (GOT_PREL) = R_ARM_GOT_PREL; (GOT) would be R_ARM_GOT32 */
 			    ".LGA%d_%d:\n"
 			    "\tldr r0, [r0]\n",             /* r0 = GOT[sym] = &sym                                 */
 			    cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);

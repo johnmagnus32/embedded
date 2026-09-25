@@ -23,12 +23,11 @@ const u32 md_e_flags   = 0x05000000;  /* EF_ARM_EABI_VER5 */
 #define R_ARM_REL32  3    /* .word <sym> - . — 32-bit PC-relative (S + A - P) */
 #define R_ARM_CALL   28   /* bl/blx to a symbol — imm24, addend held in-place */
 #define R_ARM_JUMP24 29   /* b to a symbol */
-#define R_ARM_GOT_PREL 96 /* .word <symbol>(GOT) — PC-relative offset to the symbol's GOT slot (PIC) */
+#define R_ARM_GOT_PREL 96 /* .word <symbol>(GOT_PREL) — PC-relative offset to the symbol's GOT slot (PIC) */
 #define R_ARM_MOVW_ABS_NC 43 /* movw Rd, #:lower16:sym — imm16 = (S+A) & 0xffff */
 #define R_ARM_MOVT_ABS    44 /* movt Rd, #:upper16:sym — imm16 = ((S+A) >> 16) & 0xffff */
 const u32 md_r_abs32    = R_ARM_ABS32;    /* the front-end uses this for `.word <symbol>`       */
 const u32 md_r_rel32    = R_ARM_REL32;    /* ...and this for `.word <symbol> - .`                */
-const u32 md_r_got_prel = R_ARM_GOT_PREL; /* the front-end uses this for `.word <symbol>(GOT)`  */
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
  * code, so we emit `ldr Rd, [pc,#0]` and fix the 12-bit offset in md_finish once all labels are known. */
@@ -42,17 +41,43 @@ static struct { int sec; u32 off; char sym[64]; int is_bl; } brfix[65536]; stati
 static char **toks; static int ntok;
 
 /* ------------------------------------------------------------------ operand parsing --------------- */
-static int reg(const char *t) {   /* r0..r15 + sp/lr/pc/fp/ip/sl aliases; -1 if not a register */
+/* Register names, case-insensitive (GAS): r0-r15, APCS a1-a4 v1-v8 sb sl fp ip sp lr pc, and `.req` aliases.
+ * The whole token must be the name (was atoi: `r15x` was accepted as r15). -1 if not a register. */
+static struct { char name[32]; int r; } reqs[256]; static int nreqs;
+static int reg(const char *t) {
 	if (!t) return -1;
-	if (!strcmp(t, "sp")) return 13;
-	if (!strcmp(t, "lr")) return 14;
-	if (!strcmp(t, "pc")) return 15;
-	if (!strcmp(t, "fp")) return 11;
-	if (!strcmp(t, "ip")) return 12;
-	if (!strcmp(t, "sl")) return 10;
-	if ((t[0] == 'r' || t[0] == 'R') && isdigit((unsigned char)t[1])) { int n = atoi(t + 1); if (n >= 0 && n <= 15) return n; }
+	char n[32]; size_t L = strlen(t); if (L == 0 || L >= sizeof n) return -1;
+	for (size_t i = 0; i <= L; i++) n[i] = (char)tolower((unsigned char)t[i]);
+	static const struct { const char *n; int r; } nm[] = { {"sp",13},{"lr",14},{"pc",15},{"fp",11},{"ip",12},{"sl",10},{"sb",9},
+		{"a1",0},{"a2",1},{"a3",2},{"a4",3},{"v1",4},{"v2",5},{"v3",6},{"v4",7},{"v5",8},{"v6",9},{"v7",10},{"v8",11} };
+	for (unsigned i = 0; i < sizeof nm / sizeof *nm; i++) if (!strcmp(n, nm[i].n)) return nm[i].r;
+	if (n[0] == 'r' && isdigit((unsigned char)n[1])) { char *e; long v = strtol(n + 1, &e, 10); if (!*e && v >= 0 && v <= 15 && (n[1] != '0' || !n[2])) return (int)v; }
+	for (int i = nreqs - 1; i >= 0; i--) if (!strcmp(reqs[i].name, n)) return reqs[i].r;
 	return -1;
 }
+void md_req(const char *alias, const char *regname) {
+	int r = reg(regname); if (r < 0) die(".req: '%s' is not a register", regname);
+	if (nreqs >= 256) die("too many .req aliases");
+	size_t L = strlen(alias); if (L >= sizeof reqs[0].name) die(".req: alias too long");
+	for (size_t i = 0; i <= L; i++) reqs[nreqs].name[i] = (char)tolower((unsigned char)alias[i]);
+	reqs[nreqs].r = r; nreqs++;
+}
+void md_unreq(const char *alias) {
+	char n[32]; size_t L = strlen(alias); if (L >= sizeof n) die(".unreq: bad name");
+	for (size_t i = 0; i <= L; i++) n[i] = (char)tolower((unsigned char)alias[i]);
+	for (int i = nreqs - 1; i >= 0; i--) if (!strcmp(reqs[i].name, n)) { reqs[i] = reqs[--nreqs]; return; }
+	die(".unreq: '%s' is not an alias", alias);
+}
+/* `sym(OP)` relocation operators in data words — GAS names -> ELF ARM relocation types. */
+int md_reloc_operator(const char *op, u32 *type) {
+	/* exactly GNU as 2.42's ARM data-relocation operators (checked one by one): note (PLT) on data is plain
+	 * R_ARM_ABS32, and the IE/LE TLS spellings are GOTTPOFF/TPOFF (was: TLSIE/TLSLE, which GAS rejects; PLT -> PLT32) */
+	static const struct { const char *n; u32 t; } ops[] = { {"GOT",26},{"GOTOFF",24},{"GOT_PREL",96},{"TARGET1",38},{"TARGET2",41},
+		{"SBREL",9},{"PLT",2},{"TLSGD",104},{"TLSLDM",105},{"TLSLDO",106},{"GOTTPOFF",107},{"TPOFF",108},{"TLSDESC",90},{"TLSCALL",91} };
+	for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++) if (!strcmp(op, ops[i].n)) { *type = ops[i].t; return 1; }
+	return 0;
+}
+u32 md_data_reloc_for(const char *sym, u32 dflt) { return !strcmp(sym, "_GLOBAL_OFFSET_TABLE_") ? 25 /* R_ARM_GOTPC */ : dflt; }
 static u32 imm(const char *t) {   /* #<num> immediate (dec / 0x hex / negative) */
 	if (!t || t[0] != '#') die("expected #immediate, got '%s'", t ? t : "(nil)");
 	return (u32)eval_const_expr(t + 1);   /* strict: `#(. - bar - 8)`, `#N` (.equ), `#-4`; junk is an error */
@@ -403,7 +428,9 @@ static void enc_blx(u32 cond) { emit32((cond << 28) | 0x012fff30u | need_reg(1))
 static void enc_barrier(u32 base) {   /* dmb/dsb/isb {option} — memory/instruction barriers (unconditional) */
 	u32 opt = 15;   /* default 'sy' (full system) */
 	if (ntok >= 2) {
-		const char *o = toks[1];
+		char ob[16]; size_t ol = strlen(toks[1]); if (ol >= sizeof ob) die("%s: bad option", toks[0]);
+		for (size_t i = 0; i <= ol; i++) ob[i] = (char)tolower((unsigned char)toks[1][i]);
+		const char *o = ob;
 		if      (!strcmp(o, "sy"))    opt = 15; else if (!strcmp(o, "st"))    opt = 14;
 		else if (!strcmp(o, "ish") || !strcmp(o, "sh")) opt = 11; else if (!strcmp(o, "ishst") || !strcmp(o, "shst")) opt = 10;
 		else if (!strcmp(o, "ishld")) opt = 9; else if (!strcmp(o, "ld")) opt = 13; else if (!strcmp(o, "nshld")) opt = 5; else if (!strcmp(o, "oshld")) opt = 1;
@@ -528,6 +555,113 @@ static void enc_strexd(u32 cond) {   /* strexd Rd, Rt, Rt2, [Rn] */
 /* Parse an optional UAL suffix after a base mnemonic. Returns 0 on a bad suffix. */
 static int suffix_sc(const char *suf, u32 *cond, int *s) { *cond = 14; *s = 0; if (*suf == 's') { *s = 1; suf++; } if (*suf && !lookup_cc(suf, cond)) return 0; return 1; }
 static int suffix_c(const char *suf, u32 *cond) { *cond = 14; if (*suf && !lookup_cc(suf, cond)) return 0; return 1; }
+
+/* ---- build attributes: the .ARM.attributes "aeabi" section (ARM IHI 0045) — GAS semantics -----------------
+ * Defaults = our target, ARMv7-A (== GNU as -march=armv7-a). `.cpu`/`.arch`/`.arch_extension`/`.fpu` set the
+ * derived tags from the tables below (values checked against GNU as 2.42 for every entry); `.eabi_attribute`
+ * overrides any tag. Written: Tag_conformance, then Tag_nodefaults, then the rest by ascending tag; zero-valued
+ * integer tags are omitted (Tag_nodefaults is written whenever it's set). Unknown CPUs/archs/FPUs are errors. */
+typedef struct { const char *key, *name; u8 arch, prof, arm, thumb, mp, div, virt; } ArchAttr;
+static const ArchAttr cpu_tab[] = {
+	{"arm7tdmi","ARM7TDMI",2,0,1,1,0,0,0}, {"arm9tdmi","ARM9TDMI",2,0,1,1,0,0,0}, {"arm926ej-s","ARM926EJ-S",5,0,1,1,0,0,0},
+	{"arm1136j-s","ARM1136J-S",6,0,1,1,0,0,0}, {"arm1136jf-s","ARM1136JF-S",6,0,1,1,0,0,0},
+	{"arm1176jz-s","ARM1176JZ-S",7,0,1,1,0,0,1}, {"arm1176jzf-s","ARM1176JZF-S",7,0,1,1,0,0,1}, {"mpcore","MPCore",9,0,1,1,0,0,0},
+	{"cortex-a5","Cortex-A5",10,'A',1,2,1,0,1}, {"cortex-a7","Cortex-A7",10,'A',1,2,1,2,3}, {"cortex-a8","Cortex-A8",10,'A',1,2,0,0,1},
+	{"cortex-a9","Cortex-A9",10,'A',1,2,1,0,1}, {"cortex-a12","Cortex-A12",10,'A',1,2,1,2,3}, {"cortex-a15","Cortex-A15",10,'A',1,2,1,2,3},
+	{"cortex-a17","Cortex-A17",10,'A',1,2,1,2,3}, {"cortex-r4","Cortex-R4",10,'R',1,2,0,0,0}, {"cortex-r5","Cortex-R5",10,'R',1,2,0,2,0},
+	{"cortex-m3","Cortex-M3",10,'M',0,2,0,0,0}, {"cortex-m4","Cortex-M4",13,'M',0,2,0,0,0}, {NULL,NULL,0,0,0,0,0,0,0} };
+static const ArchAttr arch_tab[] = {
+	{"armv4","4",1,0,1,0,0,0,0}, {"armv4t","4T",2,0,1,1,0,0,0}, {"armv5t","5T",3,0,1,1,0,0,0}, {"armv5te","5TE",4,0,1,1,0,0,0},
+	{"armv5tej","5TEJ",5,0,1,1,0,0,0}, {"armv6","6",6,0,1,1,0,0,0}, {"armv6k","6K",9,0,1,1,0,0,0}, {"armv6kz","6KZ",7,0,1,1,0,0,1},
+	{"armv6t2","6T2",8,0,1,2,0,0,0}, {"armv7","7",10,0,0,2,0,0,0}, {"armv7-a","7-A",10,'A',1,2,0,0,0},
+	{"armv7ve","7VE",10,'A',1,2,1,2,3}, {"armv7-r","7-R",10,'R',1,2,0,0,0}, {"armv7-m","7-M",10,'M',0,2,0,0,0},
+	{"armv6-m","6-M",11,'M',0,1,0,0,0}, {NULL,NULL,0,0,0,0,0,0,0} };
+static ArchAttr attr_cur = {"armv7-a","7-A",10,'A',1,2,0,0,0};   /* our target */
+static int attr_fp, attr_simd;
+static struct { int set; long ival; char *sval; } eattr[1024];
+static const struct { const char *n; int tag; } tag_names[] = {
+	{"Tag_CPU_raw_name",4},{"Tag_CPU_name",5},{"Tag_CPU_arch",6},{"Tag_CPU_arch_profile",7},{"Tag_ARM_ISA_use",8},{"Tag_THUMB_ISA_use",9},
+	{"Tag_FP_arch",10},{"Tag_VFP_arch",10},{"Tag_WMMX_arch",11},{"Tag_Advanced_SIMD_arch",12},{"Tag_PCS_config",13},{"Tag_ABI_PCS_R9_use",14},
+	{"Tag_ABI_PCS_RW_data",15},{"Tag_ABI_PCS_RO_data",16},{"Tag_ABI_PCS_GOT_use",17},{"Tag_ABI_PCS_wchar_t",18},{"Tag_ABI_FP_rounding",19},
+	{"Tag_ABI_FP_denormal",20},{"Tag_ABI_FP_exceptions",21},{"Tag_ABI_FP_user_exceptions",22},{"Tag_ABI_FP_number_model",23},
+	{"Tag_ABI_align_needed",24},{"Tag_ABI_align8_needed",24},{"Tag_ABI_align_preserved",25},{"Tag_ABI_align8_preserved",25},
+	{"Tag_ABI_enum_size",26},{"Tag_ABI_HardFP_use",27},{"Tag_ABI_VFP_args",28},{"Tag_ABI_WMMX_args",29},{"Tag_ABI_optimization_goals",30},
+	{"Tag_ABI_FP_optimization_goals",31},{"Tag_compatibility",32},{"Tag_CPU_unaligned_access",34},{"Tag_FP_HP_extension",36},
+	{"Tag_VFP_HP_extension",36},{"Tag_ABI_FP_16bit_format",38},{"Tag_MPextension_use",42},{"Tag_DIV_use",44},{"Tag_DSP_extension",46},
+	{"Tag_MVE_arch",48},{"Tag_PAC_extension",50},{"Tag_BTI_extension",52},{"Tag_nodefaults",64},{"Tag_also_compatible_with",65},
+	{"Tag_T2EE_use",66},{"Tag_conformance",67},{"Tag_Virtualization_use",68},{"Tag_FramePointer_use",72},{"Tag_BTI_use",74},{"Tag_PACRET_use",76},{NULL,0} };
+static int tag_is_string(int t) { return t == 4 || t == 5 || t == 67 || (t > 32 && (t & 1)); }
+static char *decode_str(const char *tok) {   /* a "..." token -> bytes (C escapes incl. \ooo and \xhh) */
+	if (!tok || tok[0] != '"') die(".eabi_attribute: expected a string, got '%s'", tok ? tok : "");
+	char *out = malloc(strlen(tok) + 1); size_t k = 0; const char *p = tok + 1;
+	while (*p && *p != '"') {
+		if (*p != '\\') { out[k++] = *p++; continue; }
+		p++;
+		if (*p >= '0' && *p <= '7') { int v = 0, n = 0; while (n < 3 && *p >= '0' && *p <= '7') { v = v * 8 + (*p++ - '0'); n++; } out[k++] = (char)v; continue; }
+		if (*p == 'x') { p++; int v = 0; while (isxdigit((unsigned char)*p)) { v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0' : (tolower((unsigned char)*p) - 'a' + 10)); p++; } out[k++] = (char)v; continue; }
+		char c = *p++; out[k++] = c == 'n' ? '\n' : c == 't' ? '\t' : c == 'r' ? '\r' : c == 'b' ? '\b' : c == 'f' ? '\f' : c;
+	}
+	if (*p != '"') die(".eabi_attribute: unterminated string");
+	out[k] = 0; return out;
+}
+static void attr_directive(char **t, int n) {
+	const char *d = t[0];
+	if (!strcmp(d, ".cpu") || !strcmp(d, ".arch")) {
+		if (n < 2) die("%s: missing name", d);
+		char key[64]; size_t L = strlen(t[1]); if (L >= sizeof key) die("%s: name too long", d);
+		for (size_t i = 0; i <= L; i++) key[i] = (char)tolower((unsigned char)t[1][i]);
+		const ArchAttr *tab = !strcmp(d, ".cpu") ? cpu_tab : arch_tab;
+		for (int i = 0; tab[i].key; i++) if (!strcmp(tab[i].key, key)) { attr_cur = tab[i]; return; }
+		die("%s: unknown %s '%s'", d, !strcmp(d, ".cpu") ? "CPU" : "architecture", t[1]);
+	}
+	if (!strcmp(d, ".arch_extension")) {
+		if (n < 2) die(".arch_extension: missing name");
+		if (!strcmp(t[1], "idiv")) attr_cur.div = 2;
+		else if (!strcmp(t[1], "mp")) attr_cur.mp = 1;
+		else if (!strcmp(t[1], "sec")) attr_cur.virt |= 1;
+		else if (!strcmp(t[1], "virt")) { attr_cur.virt |= 2; attr_cur.div = 2; }
+		else die(".arch_extension: unsupported extension '%s'", t[1]);
+		return;
+	}
+	if (!strcmp(d, ".fpu")) {
+		static const struct { const char *n; int fp, simd; } fpus[] = { {"softvfp",0,0}, {"vfp",2,0}, {"vfpv2",2,0}, {"vfpv3",3,0},
+			{"vfpv3-d16",4,0}, {"vfpv4",5,0}, {"vfpv4-d16",6,0}, {"neon",3,1}, {"neon-vfpv4",5,2}, {NULL,0,0} };
+		if (n < 2) die(".fpu: missing name");
+		for (int i = 0; fpus[i].n; i++) if (!strcmp(fpus[i].n, t[1])) { attr_fp = fpus[i].fp; attr_simd = fpus[i].simd; return; }
+		die(".fpu: unknown FPU '%s'", t[1]);
+	}
+	/* .eabi_attribute <tag number|name>, <value>  |  Tag_compatibility: <flag>, "<vendor>" */
+	if (n < 3) die(".eabi_attribute: expected tag, value");
+	int tag = -1;
+	for (int i = 0; tag_names[i].n; i++) if (!strcmp(tag_names[i].n, t[1])) { tag = tag_names[i].tag; break; }
+	if (tag < 0) tag = (int)snum(t[1], 0, 1023, "attribute tag");
+	eattr[tag].set = 1;
+	if (tag == 32) { if (n < 4) die(".eabi_attribute Tag_compatibility: expected flag, \"vendor\""); eattr[tag].ival = eval_const_expr(t[2]); eattr[tag].sval = decode_str(t[3]); }
+	else if (tag_is_string(tag)) eattr[tag].sval = decode_str(t[2]);
+	else eattr[tag].ival = eval_const_expr(t[2]);
+}
+static void uleb(unsigned long v) { do { u8 b = v & 0x7f; v >>= 7; if (v) b |= 0x80; emit(&b, 1); } while (v); }
+void md_emit_attributes(void) {
+	long iv[1024] = {0}; const char *sv[1024] = {0};
+	sv[5] = attr_cur.name; iv[6] = attr_cur.arch; iv[7] = attr_cur.prof; iv[8] = attr_cur.arm; iv[9] = attr_cur.thumb;
+	iv[10] = attr_fp; iv[12] = attr_simd; iv[42] = attr_cur.mp; iv[44] = attr_cur.div; iv[68] = attr_cur.virt;
+	for (int t = 0; t < 1024; t++) if (eattr[t].set) { iv[t] = eattr[t].ival; sv[t] = eattr[t].sval; }
+	int save = cursec; sec_get(".ARM.attributes", 0x70000003u, 0);   /* SHT_ARM_ATTRIBUTES */
+	emit("A", 1);
+	u32 sec_len_at = (u32)secs[cursec].len; emit32(0); emit("aeabi", 6);
+	u32 file_at = (u32)secs[cursec].len; u8 one = 1; emit(&one, 1); emit32(0);
+	int order[1024], no = 0; order[no++] = 67; order[no++] = 64;
+	for (int t = 1; t < 1024; t++) if (t != 67 && t != 64) order[no++] = t;
+	for (int i = 0; i < no; i++) { int t = order[i];
+		if (t == 64) { if (eattr[64].set) { uleb(64); uleb((unsigned long)iv[64]); } continue; }
+		if (t == 32) { if (eattr[32].set) { uleb(32); uleb((unsigned long)iv[32]); emit(sv[32], strlen(sv[32]) + 1); } continue; }
+		if (tag_is_string(t)) { if (sv[t] && sv[t][0]) { uleb((unsigned long)t); emit(sv[t], strlen(sv[t]) + 1); } }
+		else if (iv[t]) { uleb((unsigned long)t); uleb((unsigned long)iv[t]); }
+	}
+	u32 end = (u32)secs[cursec].len;
+	patch32(cursec, sec_len_at, end - sec_len_at); patch32(cursec, file_at + 1, end - file_at);
+	cursec = save;
+}
 
 /* ---- literal pools (`ldr Rd, =expr`) — GAS semantics: one pool per section, identical entries shared, dumped
  * word-aligned at `.ltorg`/`.pool` or at the end of assembly (into the section), bracketed by $d / $a; a symbol
@@ -850,6 +984,7 @@ int md_directive(char **t, int n) {
 		die("%s: Thumb is not supported (ARM state only)", d);
 	if (!strcmp(d, ".code")) { if (n < 2 || strcmp(t[1], "32")) die(".code: expected 32"); return 1; }
 	if (!strcmp(d, ".ltorg") || !strcmp(d, ".pool")) { pool_flush(cursec); return 1; }
+	if (!strcmp(d, ".cpu") || !strcmp(d, ".arch") || !strcmp(d, ".arch_extension") || !strcmp(d, ".fpu") || !strcmp(d, ".eabi_attribute")) { attr_directive(t, n); return 1; }
 	for (int i = 0; ok[i]; i++) if (!strcmp(d, ok[i])) return 1;
 	return 0;
 }
@@ -884,7 +1019,11 @@ void md_finish(void) {
 			patch32(brfix[i].sec, brfix[i].off, (base & 0xff000000u) | ((rel >> 2) & 0x00ffffffu));
 		} else {
 			patch32(brfix[i].sec, brfix[i].off, (base & 0xff000000u) | 0xfffffe);   /* addend -8, ARM REL */
-			add_reloc(brfix[i].sec, brfix[i].off, sym_intern(brfix[i].sym), brfix[i].is_bl ? R_ARM_CALL : R_ARM_JUMP24);
+			/* R_ARM_CALL only for an UNCONDITIONAL bl: the linker may turn a CALL into blx (interworking), which can't
+			 * be conditional — so `blne ext` is R_ARM_JUMP24, as GAS emits (was CALL: a conditional call could become
+			 * an unconditional blx at link time) */
+			int uncond = (base >> 28) == 0xe;
+			add_reloc(brfix[i].sec, brfix[i].off, sym_intern(brfix[i].sym), brfix[i].is_bl && uncond ? R_ARM_CALL : R_ARM_JUMP24);
 		}
 	}
 }

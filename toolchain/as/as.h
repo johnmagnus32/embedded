@@ -58,12 +58,15 @@ void md_assemble(char **toks, int ntok);   /* encode ONE instruction (toks[0]=mn
 int  md_directive(char **toks, int ntok);   /* arch pseudo-ops (.cpu/.fpu/…); 1 = handled, 0 = not ours */
 void md_flush_pools(void);                   /* end of parsing: dump pending literal pools into their sections */
 int  md_is_branch_reloc(u32 type);            /* b/bl reloc (imm24 addend in place)? */
-void md_finish(void);                       /* end of pass: resolve arch-internal fixups (ldr literals) */
+void md_finish(void);
+void md_emit_attributes(void);                /* after all symbols: write .ARM.attributes (arch backend) */                       /* end of pass: resolve arch-internal fixups (ldr literals) */
 extern const u16 md_e_machine;              /* ELF e_machine (EM_ARM) */
 extern const u32 md_e_flags;                /* ELF e_flags (EABI version) */
 extern const u32 md_r_abs32;                /* the arch's 32-bit absolute reloc (for `.word <symbol>`) */
 extern const u32 md_r_rel32;                /* the arch's 32-bit PC-relative reloc (for `.word <symbol> - .`) */
-extern const u32 md_r_got_prel;             /* the arch's PC-relative GOT-entry reloc (for `.word <symbol>(GOT)`) */
+int  md_reloc_operator(const char *op, u32 *type);    /* `sym(OP)` in a data word: arch reloc type, 0 if unknown */
+u32  md_data_reloc_for(const char *sym, u32 dflt); /* e.g. `.word _GLOBAL_OFFSET_TABLE_` -> GOTPC */
+void md_req(const char *alias, const char *regname); void md_unreq(const char *alias);
 
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */
 void obj_write(const char *path);
