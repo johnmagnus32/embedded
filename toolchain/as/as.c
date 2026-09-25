@@ -119,7 +119,9 @@ static void def_label(const char *name) {
 	if (cursec < 0) die("label '%s' outside any section", name);
 	{ const char *q = name; while (isdigit((unsigned char)*q)) q++;
 	  if (q != name && !*q) { long v = strtol(name, NULL, 10); if (v > 0x7fffffff) die("local label %s too large", name); local_define((int)v, secs[cursec].len); return; } }
-	int i = sym_intern(name); syms[i].sec = cursec; syms[i].value = secs[cursec].len; syms[i].defined = 1;
+	int i = sym_intern(name);
+	if (syms[i].defined) die("symbol '%s' is already defined", name);   /* GAS: a label may be defined once (.set may redefine) */
+	syms[i].sec = cursec; syms[i].value = secs[cursec].len; syms[i].defined = 1;
 }
 
 /* Emit the bytes of a C-string token like "\"Unknown error\000\"" (quotes included), decoding escapes

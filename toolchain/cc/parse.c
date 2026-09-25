@@ -13,6 +13,8 @@
 static Token *tk;                                  /* the parse cursor */
 static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
 static char cur_func_name[64];                     /* name of the function being parsed, for `__func__` */
+static struct { char from[64], to[64]; } lscope[512]; static int nlscope, lscope_seq;   /* __label__ renames, innermost last */
+static void map_label(char *name) { for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return; } }
 
 /* ---- token helpers ------------------------------------------------------------------------------- */
 static int is(const char *s)     { return (tk->kind == TK_PUNCT || tk->kind == TK_KW) && !strcmp(tk->text, s); }
@@ -510,7 +512,7 @@ static Node *unary_expr(void) {
 	}
 	if (consume("++")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_add(x, num(1))); }   /* ++x */
 	if (consume("--")) { Node *x = unary_expr(); return binary(ND_ASSIGN, x, new_sub(x, num(1))); }   /* --x */
-	if (consume("&&")) { Node *n = node(ND_LABELADDR); ident(n->name); return n; }   /* &&label : GNU address-of-label */
+	if (consume("&&")) { Node *n = node(ND_LABELADDR); ident(n->name); map_label(n->name); return n; }   /* &&label : GNU address-of-label */
 	if (consume("&")) return unary(ND_ADDR, unary_expr());   /* address-of */
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
 	if (consume("-")) return unary(ND_NEG, unary_expr());
@@ -654,16 +656,20 @@ static Node *stmt(void) {
 		n->args = oh.next; n->val = nouts;                   /* operands: outputs first, then inputs; val = #outputs */
 		return n;
 	}
-	if (consume("__label__")) {   /* GNU local-label declaration: `__label__ a, b;` — labels work regardless, so skip */
-		do { if (tk->kind == TK_IDENT) tk = tk->next; } while (consume(","));
+	if (consume("__label__")) {   /* GNU local label: `__label__ a, b;` scopes a/b to the enclosing block (each
+		                              * expansion of a macro like wait_event gets its OWN `__out:`) — rename uniquely */
+		do { if (tk->kind == TK_IDENT) {
+			if (nlscope >= 512) die("parse: too many __label__ declarations in scope (>512)");
+			strncpy(lscope[nlscope].from, tk->text, 63); snprintf(lscope[nlscope].to, 64, "%.40s#%d", tk->text, ++lscope_seq); nlscope++;
+			tk = tk->next; } } while (consume(","));
 		expect(";"); return node(ND_BLOCK);
 	}
 	if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) {   /* block-scope _Static_assert (e.g. in container_of's stmt-expr) — skip */
 		tk = tk->next; skip_attribute(); consume(";"); return node(ND_BLOCK);
 	}
-	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); expect(";"); return n; }
+	if (consume("goto"))     { Node *n = node(ND_GOTO); ident(n->name); map_label(n->name); expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
-		Node *n = node(ND_LABEL); ident(n->name); expect(":"); return n;
+		Node *n = node(ND_LABEL); ident(n->name); map_label(n->name); expect(":"); return n;
 	}
 	if (consume("return")) { Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";"); return n; }   /* `return;` allowed */
 	if (consume("if")) {
@@ -686,7 +692,8 @@ static Node *stmt(void) {
 		if (!is(")")) n->inc = expr();
 		expect(")"); n->body = stmt(); return n;
 	}
-	if (consume("{")) { Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; return n; }
+	if (consume("{")) { int saved_ls = nlscope;   /* __label__ declarations end with their block */
+		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; nlscope = saved_ls; return n; }
 	if (is("__auto_type")) {   /* GNU __auto_type: the local's type is inferred from its initializer (kernel min/max) */
 		tk = tk->next;
 		Node blk = {0}, *bc = &blk;
@@ -1169,9 +1176,20 @@ Func *parse(Token *tok) {
 			/* else: an asm symbol rename on a normal global — ignore the name, fall through as an ordinary global */
 		}
 		for (;;) {                                           /* global variable(s), comma-separated */
-			Gvar *g = add_global(); strncpy(g->name, name, 63); g->type = ty;
-			g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0;
-			if (consume("=")) g->init = global_init(ty);
+			/* File-scope redeclarations are ONE object (C11 6.9.2): `static T x;` (tentative) then `static T x = {...};`
+			 * (kernel trace events), or `extern T x;` then `T x;`. Merge instead of emitting two definitions. */
+			Gvar *g = global_find(name);
+			if (!g) { g = add_global(); strncpy(g->name, name, 63); g->type = ty;
+				g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0; }
+			else {
+				if (!(sc & SC_EXTERN)) g->is_extern = 0;          /* any non-extern declaration makes it a definition */
+				if (sc & SC_STATIC) g->is_static = 1;
+				if (ty->size > 0 && g->type->size == 0) g->type = ty;   /* a later declaration completes the type */
+			}
+			if (consume("=")) {
+				if (g->init) die("parse: redefinition of '%s' (line %d)", name, tk->line);
+				g->init = global_init(ty); g->type = ty;           /* the defining declaration's (possibly now-sized) type */
+			}
 			if (!consume(",")) break;
 			ty = declarator(base, name);
 		}
