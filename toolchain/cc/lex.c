@@ -76,7 +76,7 @@ Token *lex(const char *src) {
 		}
 		if (isdigit((unsigned char)*p)) {                                                /* integer literal */
 			Token *t = new_tok(TK_NUM, line);
-			char *end; t->val = strtol(p, &end, 0);                                      /* 0x.. / 0.. / dec */
+			char *end; t->val = (long)strtoull(p, &end, 0);                            /* 0x.. / 0.. / dec; strtoull: literals > LONG_MAX (e.g. 64-bit hash primes) must wrap, not saturate */
 			while (*end == 'u' || *end == 'U' || *end == 'l' || *end == 'L') end++;      /* skip int suffixes (UL, LL, …) */
 			size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, p, n); t->text[n] = 0; p = end;

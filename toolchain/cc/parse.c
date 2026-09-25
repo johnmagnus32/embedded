@@ -584,6 +584,16 @@ static Node *init_of(Node *dest, Type *ty) {
 	return lower_local(dest, head.next, ty->size);
 }
 
+/* Does a statement subtree contain a label or case (a place control can enter from outside)? */
+static int has_jump_target(Node *n) {
+	for (; n; n = n->next) {
+		if (n->kind == ND_LABEL || n->kind == ND_CASE) return 1;
+		if (has_jump_target(n->lhs) || has_jump_target(n->rhs) || has_jump_target(n->cond) || has_jump_target(n->then) ||
+		    has_jump_target(n->els) || has_jump_target(n->init) || has_jump_target(n->inc) || has_jump_target(n->body)) return 1;
+		if (n->kind == ND_CALL) for (Node *a = n->args; a; a = a->next) if (has_jump_target(a)) return 1;
+	}
+	return 0;
+}
 static Node *stmt(void) {
 	if (consume(";")) return node(ND_BLOCK);                  /* empty statement (e.g. `while (...) ;`) */
 	if (consume("switch")) {                                 /* switch (e) body ; cases attach to it */
@@ -655,7 +665,16 @@ static Node *stmt(void) {
 		Node *n = node(ND_LABEL); ident(n->name); expect(":"); return n;
 	}
 	if (consume("return")) { Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";"); return n; }   /* `return;` allowed */
-	if (consume("if")) { Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt(); return n; }
+	if (consume("if")) {
+		Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt();
+		/* Constant condition: keep only the taken branch (what GCC's DCE does). The kernel's BUILD_BUG_ON is
+		 * `if (!(const)) __compiletime_assert_N();` — the call must vanish, else it's an undefined symbol at
+		 * link. Only fold when the dead branch has no label/case a goto or switch could still jump into. */
+		int ok = 1; long c = eval_try(n->cond, &ok);
+		if (ok) { Node *dead = c ? n->els : n->then, *live = c ? n->then : n->els;
+			if (!has_jump_target(dead)) return live ? live : node(ND_BLOCK); }
+		return n;
+	}
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
 	if (consume("do")) { Node *n = node(ND_DOWHILE); n->body = stmt(); expect("while"); expect("("); n->cond = expr(); expect(")"); expect(";"); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
