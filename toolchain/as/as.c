@@ -37,11 +37,48 @@ void die(const char *fmt, ...) {
 }
 
 int sec_find(const char *name) { for (int i = 0; i < nsec; i++) if (!strcmp(secs[i].name, name)) return i; return -1; }
+/* ARM mapping symbols ($a = ARM code starts here, $d = data), placed with GAS's rules (tc-arm.c mapping_state /
+ * arm_init_frag / check_mapping_symbols): per-section state UNDEF/ARM/DATA. An instruction enters ARM (and if the
+ * section was UNDEF with bytes already in it, a $d at 0 first). A data directive enters DATA, but from UNDEF
+ * that's DEFERRED (no symbol). An alignment/fill "frag" (.align/.space/...) marks DATA at its start even from
+ * UNDEF; code-section alignment pads with NOPs ($a) after any sub-word zero bytes ($d). Two mapping symbols at
+ * one address: the later wins; one at the very end of a section is dropped. objdump and ld rely on these. */
+enum { MAP_UNDEF, MAP_ARM, MAP_DATA };
+static int mapstate[MAXSEC];
+static void add_mapsym(int state, u32 value) {
+	for (int i = nsym - 1; i >= 0; i--)   /* same address as this section's latest mapping symbol: replace it */
+		if (syms[i].name && syms[i].name[0] == '$' && syms[i].sec == cursec) { if (syms[i].value == value) syms[i].name = NULL; break; }
+	if (nsym >= MAXSYM) die("too many symbols");
+	syms[nsym++] = (Sym){ state == MAP_ARM ? "$a" : "$d", cursec, value, 0, 0, STT_NOTYPE, 1, 0 };
+}
+static void map_to(int state, int deferred_ok) {   /* deferred_ok: a plain data directive (UNDEF->DATA waits) */
+	if (cursec < 0) return;   /* NOBITS too: GAS marks .bss alignment/fill frags with $d */
+	int *m = &mapstate[cursec]; u32 o = (u32)secs[cursec].len;
+	if (*m == state) return;
+	if (*m == MAP_UNDEF && state == MAP_DATA && deferred_ok) return;
+	if (*m == MAP_UNDEF && state == MAP_ARM && o > 0) add_mapsym(MAP_DATA, 0);
+	*m = state; add_mapsym(state, o);
+}
+void map_insn(void) { map_to(MAP_ARM, 0); }
+/* GAS writes code-alignment padding (and its $d/$a pair) after parsing, so those symbols come LAST in the table. */
+static struct { int sec; u32 d_at, a_at; } padmap[4096]; static int npadmap;
+static void flush_padmaps(void) {
+	for (int i = 0; i < npadmap; i++) { int save = cursec; cursec = padmap[i].sec; add_mapsym(MAP_DATA, padmap[i].d_at); add_mapsym(MAP_ARM, padmap[i].a_at); cursec = save; }
+}
+static void map_data(void) { map_to(MAP_DATA, 1); }
+static void map_frag_data(void) { map_to(MAP_DATA, 0); }
+static void drop_end_mapsyms(void) {
+	for (int i = 0; i < nsym; i++)
+		if (syms[i].name && syms[i].name[0] == '$' && (syms[i].name[1] == 'a' || syms[i].name[1] == 'd') && !syms[i].name[2]
+		    && syms[i].sec >= 0 && syms[i].value == (u32)secs[syms[i].sec].len) syms[i].name = NULL;
+}
+int section_symbol(int sec);
 int sec_get(const char *name, u32 type, u32 flags) {
 	int i = sec_find(name); if (i >= 0) { cursec = i; return i; }
 	if (nsec >= MAXSEC) die("too many sections");
 	secs[nsec] = (Section){ strdup(name), type, flags, NULL, 0, 0, 0 };
-	return cursec = nsec++;
+	cursec = nsec++; section_symbol(cursec);   /* GAS makes the section symbol when the section is created */
+	return cursec;
 }
 void emit(const void *p, size_t n) {
 	Section *s = &secs[cursec];
@@ -197,6 +234,7 @@ static RVal e_prim(void) {
 		if (dir == 'f') die("data expr: forward local label %df in a data directive is unsupported", n);
 		if (!local_defined(n)) die("data expr: undefined local label %db", n);
 		RVal r = { (long)local_value(n), section_symbol(local_sec(n)), 0 }; return r; } }
+	if (*ep == '\'' && ep[1]) { long c = (unsigned char)ep[1]; ep += 2; if (*ep == '\'') ep++; return rconst(c); }   /* GAS char constant 'c */
 	if (isdigit((unsigned char)*ep)) { char *e; unsigned long long v = strtoull(ep, &e, 0); ep = e; while (*ep == 'u' || *ep == 'U' || *ep == 'l' || *ep == 'L') ep++; return rconst((long)v); }
 	if (*ep == '.' && !(isalnum((unsigned char)ep[1]) || ep[1] == '_' || ep[1] == '.' || ep[1] == '$')) { ep++; RVal r = { 0, -1, 1 }; return r; }
 	if (isalpha((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') {
@@ -221,6 +259,8 @@ static RVal e_add(void) {
 	for (;;) { ews();
 		if (*ep == '+') { ep++; RVal b = e_mul(); if (a.sym >= 0 && b.sym >= 0) die("data expr: sym + sym"); a.c += b.c; if (b.sym >= 0) a.sym = b.sym; a.dot += b.dot; }
 		else if (*ep == '-') { ep++; RVal b = e_mul(); a.c -= b.c; a.dot -= b.dot;
+			if (b.sym < 0 && a.sym >= 0 && a.dot == -1 && syms[a.sym].defined && syms[a.sym].sec == cursec) {   /* sym - . (same section): constant */
+				a.c += (long)syms[a.sym].value - (long)secs[cursec].len; a.sym = -1; a.dot = 0; continue; }
 			if (b.sym >= 0) {   /* sym - sym: fine when both resolve into the same section */
 				if (a.sym < 0 && a.dot == 1 && syms[b.sym].defined && syms[b.sym].sec == cursec) {   /* (. + k) - sym, same section */
 					a.c += (long)secs[cursec].len - (long)syms[b.sym].value; a.dot = 0; continue; }
@@ -265,6 +305,33 @@ static void emit_word_rval(RVal r) {
 	emit32((u32)r.c);   /* REL-style: the addend lives in place */
 	add_reloc(cursec, off, r.sym, r.dot ? md_r_rel32 : md_r_abs32);
 }
+/* `.byte/.hword/.quad` operand lists: constant expressions (was strtol per space-split token: `.byte X - Y`
+ * silently became X, junk ignored). Range-checked against the width (signed or unsigned). */
+static void data_consts(int size) {
+	const char *s = cur_stmt; while (*s == ' ' || *s == '\t') s++;
+	while (*s && *s != ' ' && *s != '\t') s++;
+	ep = s; ews(); if (!*ep) die("%s: missing operand", toks[0]);
+	for (;;) {
+		RVal r = e_or();
+		if (r.sym >= 0 || r.dot) die("%s: operand must be a constant", toks[0]);
+		if (size < 8) { long lim = 1L << (8 * size); if (r.c >= lim || r.c < -(lim / 2)) die("%s: value %ld doesn't fit in %d byte(s)", toks[0], r.c, size); }
+		for (int k = 0; k < size; k++) { u8 b = (u8)((unsigned long)r.c >> (8 * k)); emit(&b, 1); }
+		ews(); if (*ep == ',') { ep++; continue; } if (*ep) die("%s: junk '%s'", toks[0], ep); break;
+	}
+}
+/* Split "a, b, c" at top-level commas (respecting parens) into up to three trimmed strings. */
+static void split_args(const char *s, char *a1, char *a2, char *a3) {
+	char *out[3] = { a1, a2, a3 }; int n = 0, depth = 0; size_t k = 0;
+	while (*s == ' ' || *s == '\t') s++;
+	for (; *s && n < 3; s++) {
+		if (*s == '(') depth++; else if (*s == ')') depth--;
+		if (*s == ',' && depth == 0) { out[n][k] = 0; n++; k = 0; while (s[1] == ' ' || s[1] == '\t') s++; continue; }
+		if (k < 255) out[n][k++] = *s; else die("directive operand too long");
+	}
+	if (*s) die("too many operands");
+	if (n < 3) { out[n][k] = 0; }
+	for (int i = 0; i < 3; i++) { size_t l = strlen(out[i]); while (l && (out[i][l - 1] == ' ' || out[i][l - 1] == '\t')) out[i][--l] = 0; }
+}
 /* `.word/.long` operand list from the raw statement text (after the directive name). */
 static void data_words(void) {
 	const char *s = cur_stmt; while (*s == ' ' || *s == '\t') s++;
@@ -307,15 +374,26 @@ static void do_directive(void) {
 		}
 	} else if (!strcmp(d, ".align") || !strcmp(d, ".p2align") || !strcmp(d, ".balign")) {
 		if (cursec < 0) return;
-		u32 a = ntok >= 2 ? (u32)strtol(toks[1], NULL, 0) : 2;
-		u32 bytes = (!strcmp(d, ".balign")) ? a : (1u << a);
-		while (bytes && (secs[cursec].len % bytes)) { u8 z = 0; emit(&z, 1); }
+		long a = ntok >= 2 ? eval_const_expr(toks[1]) : 2;
+		if (strcmp(d, ".balign") ? (a < 0 || a > 16) : (a < 0 || a > 65536 || (a & (a - 1)))) die("%s: bad alignment '%s'", d, toks[1]);
+		u32 bytes = (!strcmp(d, ".balign")) ? (u32)a : (1u << a);
+		u32 pad = bytes ? (bytes - (u32)(secs[cursec].len % bytes)) % bytes : 0;
+		if (secs[cursec].type == SHT_NOBITS) { map_frag_data(); secs[cursec].len += pad; return; }
+		if (secs[cursec].flags & SHF_EXECINSTR) {   /* code: zero bytes to a word boundary ($d), then NOPs ($a) */
+			u32 z = pad & 3;
+			if (z) {   /* sub-word zero fill: its $d + the NOPs' $a are written after parsing (GAS arm_handle_align) */
+				if (npadmap >= 4096) die("too many code alignments");
+				padmap[npadmap].sec = cursec; padmap[npadmap].d_at = (u32)secs[cursec].len; padmap[npadmap].a_at = (u32)secs[cursec].len + z; npadmap++;
+				for (u32 k = 0; k < z; k++) { u8 zb = 0; emit(&zb, 1); }
+				mapstate[cursec] = MAP_ARM;
+			} else map_insn();
+			for (u32 k = z; k < pad; k += 4) emit32(0xe320f000u);   /* ARMv6K+ nop (GAS with -march=armv7-a) */
+		} else { map_frag_data(); for (u32 k = 0; k < pad; k++) { u8 zb = 0; emit(&zb, 1); } }
 	} else if (!strcmp(d, ".word") || !strcmp(d, ".4byte") || !strcmp(d, ".long") || !strcmp(d, ".inst")) {
 		/* .word <number> emits the value; .word <symbol>[+addend] emits the addend in place + an
 		 * absolute (R_ARM_ABS32) relocation the linker fills with the symbol's address. */
-		char *end; long v = strtol(toks[1], &end, 0);
-		if (*end == 0 && ntok == 2) { emit32((u32)v); }
-		else if (!strstr(cur_stmt, "(GOT)")) { data_words(); }   /* expressions, lists, local labels, `X - .` */
+		if (!strcmp(d, ".inst")) map_insn(); else map_data();
+		if (!strstr(cur_stmt, "(GOT)")) { data_words(); }   /* expressions, lists, local labels, `X - .` */
 		else {
 			/* `.word <sym>[+addend]` -> R_ARM_ABS32; `.word <sym>(GOT)` -> R_ARM_GOT_PREL (PIC: the
 			 * linker fills it with the PC-relative offset to <sym>'s GOT slot). */
@@ -325,22 +403,31 @@ static void do_directive(void) {
 			if (got && got[5] == 0) { *got = 0; rtype = md_r_got_prel; }
 			char name[128]; long addend = 0;
 			char *plus = strpbrk(raw, "+-");
-			if (plus) { addend = strtol(plus, NULL, 0); size_t k = plus - raw; if (k >= sizeof name) k = sizeof name - 1; memcpy(name, raw, k); name[k] = 0; }
+			if (plus) { addend = eval_const_expr(plus); size_t k = plus - raw; if (k >= sizeof name) k = sizeof name - 1; memcpy(name, raw, k); name[k] = 0; }
 			else { strncpy(name, raw, sizeof name - 1); name[sizeof name - 1] = 0; }
 			u32 off = secs[cursec].len; emit32((u32)addend);
 			add_reloc(cursec, off, sym_intern(name), rtype);
 		}
 	} else if (!strcmp(d, ".byte")) {
-		for (int i = 1; i < ntok; i++) { u8 b = (u8)strtol(toks[i], NULL, 0); emit(&b, 1); }   /* one byte per value */
+		map_data(); data_consts(1);
 	} else if (!strcmp(d, ".hword") || !strcmp(d, ".2byte") || !strcmp(d, ".short")) {
-		for (int i = 1; i < ntok; i++) { long v = strtol(toks[i], NULL, 0); u8 h[2] = { (u8)(v & 0xff), (u8)((v >> 8) & 0xff) }; emit(h, 2); }   /* little-endian 16-bit */
+		map_data(); data_consts(2);
+	} else if (!strcmp(d, ".quad") || !strcmp(d, ".8byte")) {
+		map_data(); data_consts(8);
 	} else if (!strcmp(d, ".bss")) {
 		sec_get(".bss", SHT_NOBITS, SHF_ALLOC | SHF_WRITE); prevsec = was;
-	} else if (!strcmp(d, ".space") || !strcmp(d, ".skip") || !strcmp(d, ".zero")) {
-		long nb = strtol(toks[1], NULL, 0);
-		if (secs[cursec].type == SHT_NOBITS) secs[cursec].len += (size_t)nb;   /* .bss: reserve size, no bytes */
-		else { u8 z = 0; for (long i = 0; i < nb; i++) emit(&z, 1); }
+	} else if (!strcmp(d, ".space") || !strcmp(d, ".skip") || !strcmp(d, ".zero") || !strcmp(d, ".fill")) {
+		/* .space n[, fill]  |  .fill repeat[, size[, value]]  — a fill frag: $d at its start (even from UNDEF) */
+		const char *q = cur_stmt; while (*q == ' ' || *q == '\t') q++; while (*q && *q != ' ' && *q != '\t') q++;
+		char a1[256] = "", a2[256] = "", a3[256] = ""; split_args(q, a1, a2, a3);
+		long n = eval_const_expr(a1), size = 1, val = 0;
+		if (!strcmp(d, ".fill")) { if (a2[0]) size = eval_const_expr(a2); if (a3[0]) val = eval_const_expr(a3); if (size < 0 || size > 8) die(".fill: bad size %ld", size); }
+		else if (a2[0]) val = eval_const_expr(a2);
+		if (n < 0) die("%s: negative size %ld", d, n);
+		if (secs[cursec].type == SHT_NOBITS) { if (val) die("%s: non-zero fill in a NOBITS section", d); map_frag_data(); secs[cursec].len += (size_t)(n * size); }
+		else { map_frag_data(); for (long i = 0; i < n; i++) for (long k = 0; k < size; k++) { u8 b = (u8)(k < 4 ? (val >> (8 * k)) : 0); emit(&b, 1); } }
 	} else if (!strcmp(d, ".ascii") || !strcmp(d, ".asciz") || !strcmp(d, ".string")) {
+		map_data();
 		for (int i = 1; i < ntok; i++) emit_string(toks[i], strcmp(d, ".ascii") != 0);   /* each operand (`.ascii "" "\0"`); .ascii: no NUL, .asciz/.string: NUL per string */
 	} else if (!strcmp(d, ".set") || !strcmp(d, ".equ")) {
 		/* two forms: `.set name, . [+ N]` (anchor at the current spot) and `.set name, othersym`
@@ -378,7 +465,7 @@ static void parse_line(char *line) {
 	}
 	cur_stmt = line;
 	if (toks[0][0] == '.') do_directive();
-	else md_assemble(toks, ntok);
+	else { map_insn(); md_assemble(toks, ntok); }
 }
 
 static void resolve_fixups(void) {
@@ -592,6 +679,8 @@ int main(int argc, char **argv) {
 	resolve_fixups();
 	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
 	reduce_local_relocs();  /* fold local-symbol relocs to section-symbol + in-place value (GNU parity) */
+	flush_padmaps();
+	drop_end_mapsyms();   /* a mapping symbol at a section's end marks nothing */
 	obj_write(out);
 	return 0;
 }

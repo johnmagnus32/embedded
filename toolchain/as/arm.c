@@ -189,6 +189,7 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	if (nbrfix >= 65536) die("too many branch fixups");
 	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl;
 	strncpy(brfix[nbrfix].sym, name, sizeof brfix[0].sym - 1); brfix[nbrfix].sym[sizeof brfix[0].sym - 1] = 0;
+	sym_intern(name);   /* create it NOW (GAS symbol-table order = first reference), resolve in md_finish */
 	nbrfix++;
 }
 
@@ -258,7 +259,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 		size_t k = plus ? (size_t)(plus - toks[2]) : strlen(toks[2]);
 		if (k >= sizeof ldrlit[0].sym) k = sizeof ldrlit[0].sym - 1;
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
-		memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0;
+		memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0; sym_intern(ldrlit[nldrlit].sym);
 		ldrlit[nldrlit].addend = plus ? eval_const_expr(plus) : 0;   /* strict (was strtol: junk ignored) */
 		ldrlit[nldrlit].kind = 0;
 		nldrlit++;
@@ -294,7 +295,7 @@ static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-
 	size_t k = plus ? (size_t)(plus - toks[2]) : strlen(toks[2]);
 	if (k >= sizeof ldrlit[0].sym) k = sizeof ldrlit[0].sym - 1;
 	ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
-	memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0;
+	memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0; sym_intern(ldrlit[nldrlit].sym);
 	ldrlit[nldrlit].addend = plus ? eval_const_expr(plus) : 0;   /* strict (was strtol: junk ignored) */
 	ldrlit[nldrlit].kind = 1; nldrlit++;
 }

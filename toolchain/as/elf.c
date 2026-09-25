@@ -36,11 +36,16 @@ static void build_symtab(Obj *o) {
 	str_add(&o->str, "");                                     /* strtab[0] = "" */
 	o->esym = calloc(nsym + 1, sizeof *o->esym); o->ne = 1;   /* [0] = the null symbol */
 	o->symmap = calloc(nsym, sizeof(int));
+	/* `.L*` names are assembler-local labels: GAS never puts them in the symbol table unless a relocation
+	 * still refers to one (a reloc it couldn't reduce to section-symbol + offset, e.g. movw/movt vs .LSTR). */
+	char *used = calloc(nsym ? nsym : 1, 1);
+	for (int r = 0; r < nrel; r++) used[rels[r].symidx] = 1;
 	for (int pass = 0; pass < 2; pass++) {                    /* pass 0 = locals, pass 1 = globals */
 		if (pass == 1) o->first_global = o->ne;
 		for (int i = 0; i < nsym; i++) {
 			int is_local = syms[i].defined && !syms[i].global && !syms[i].weak;   /* weak binds like global (comes after locals) */
 			if (!syms[i].name || is_local != (pass == 0)) continue;
+			if (is_local && !used[i] && syms[i].type != STT_SECTION && !strncmp(syms[i].name, ".L", 2)) continue;
 			int e = o->ne++; o->symmap[i] = e;
 			o->esym[e].st_name  = (syms[i].type == STT_SECTION) ? 0 : str_add(&o->str, syms[i].name);   /* section syms are nameless (GNU) */
 			o->esym[e].st_value = syms[i].value;
@@ -49,6 +54,7 @@ static void build_symtab(Obj *o) {
 			o->esym[e].st_shndx = !syms[i].defined ? SHN_UNDEF : syms[i].sec == SEC_ABS ? SHN_ABS : secs[syms[i].sec].shndx;
 		}
 	}
+	free(used);
 }
 
 /* Phase 2 — decide the section-header layout: [0]=null, user secs (1..nsec), a .rel.<sec> per section

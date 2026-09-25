@@ -73,4 +73,8 @@ gas-suite: $(BUILD)/as
 	@export GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) GASTEST_WORK=$(GASTEST_WORK); \
 	  python3 gastest/run.py --as gnu >/dev/null && python3 gastest/run.py --as ours >/dev/null && python3 gastest/score.py
 
-.PHONY: clean test gas-suite
+# Real kernel sources through OUR cc, assembled by our as AND GNU as: every object must match exactly.
+kernel-parity: $(BUILD)/as
+	@GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) gastest/kernel_parity.sh
+
+.PHONY: clean test gas-suite kernel-parity
