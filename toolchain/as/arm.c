@@ -106,12 +106,27 @@ static int shift_type(const char *s) {   /* lsl=0 lsr=1 asr=2 ror=3; -1 if not a
 	if (!strcmp(s, "ror")) return 3;
 	return -1;
 }
+/* A strict numeric operand: optional '#', a constant expression, range-checked (was strtol: junk ignored,
+ * out-of-range values silently masked — e.g. `[r1, #5000]` encoded offset 904). */
+static long snum(const char *t, long lo, long hi, const char *what) {
+	if (!t) die("%s: missing %s", toks[0], what);
+	const char *q = t; if (*q == '#') q++;
+	long v = eval_const_expr(q);
+	if (v < lo || v > hi) die("%s: %s %ld out of range [%ld, %ld]", toks[0], what, v, lo, hi);
+	return v;
+}
+/* Immediate shift field (bits 11:5) for type st: lsl #0-31, lsr/asr #1-32 (32 encodes as 0), ror #1-31. */
+static u32 shift_imm_field(int st, const char *amt) {
+	long n = snum(amt, st == 0 ? 0 : 1, (st == 1 || st == 2) ? 32 : 31, "shift amount");
+	return (((u32)n & 31) << 7) | ((u32)st << 5);
+}
 /* Build the 12-bit shifted-register operand2 for Rm with a shift at tokens [si]=type [si+1]=amount:
  * "Rm, lsl #n" -> (n<<7)|(type<<5)|Rm ; "Rm, lsl Rs" -> (Rs<<8)|(type<<5)|(1<<4)|Rm. */
 static u32 shifted_reg(u32 rm, int si) {
+	if (!strcmp(toks[si], "rrx")) { if (si + 1 < ntok) die("%s: rrx takes no amount", toks[0]); return (3u << 5) | rm; }   /* rrx = ror #0 */
 	int st = shift_type(toks[si]); if (st < 0) die("%s: bad shift '%s'", toks[0], toks[si]);
 	const char *amt = (si + 1 < ntok) ? toks[si + 1] : NULL; if (!amt) die("%s: shift needs an amount", toks[0]);
-	if (amt[0] == '#') return (((u32)strtol(amt + 1, NULL, 0) & 31) << 7) | ((u32)st << 5) | rm;
+	if (amt[0] == '#') return shift_imm_field(st, amt) | rm;
 	int rs = reg(amt); if (rs < 0) die("%s: bad shift amount '%s'", toks[0], amt);
 	return ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm;
 }
@@ -120,7 +135,7 @@ static u32 shifted_reg(u32 rm, int si) {
  * encodes it verbatim (was: the rotation operand silently dropped). */
 static int explicit_rot(int opidx) { return opidx + 1 < ntok && toks[opidx + 1][0] != '#' && isdigit((unsigned char)toks[opidx + 1][0]); }
 static u32 explicit_rot_enc(int opidx) {
-	u32 v = imm(toks[opidx]); long rot = strtol(toks[opidx + 1], NULL, 0);
+	u32 v = imm(toks[opidx]); long rot = snum(toks[opidx + 1], 0, 30, "rotation");
 	if (v > 0xff || rot < 0 || rot > 30 || (rot & 1)) die("%s: bad explicit-rotation immediate '%s, %s'", toks[0], toks[opidx], toks[opidx + 1]);
 	return ((u32)rot / 2) << 8 | v;
 }
@@ -181,6 +196,52 @@ static void enc_bx(u32 cond) {   /* bx{cond} Rm — branch-and-exchange (interwo
 	emit32((cond << 28) | 0x012fff10u | need_reg(1));
 }
 
+/* A load/store address: [Rn], [Rn, #±e], [Rn, ±Rm{, shift}] {!}, or post-indexed [Rn], #±e | ±Rm{, shift}.
+ * Offsets are constant expressions (`[pc, #(bar - . - 8)]` was silently 0), `#-0` keeps U=0 (GAS does), and
+ * the whole text is parsed — nothing trailing is ignored. One parser for ldr/str and the extra load/stores. */
+typedef struct { int rn, P, U, W, isreg, rm; long imm; u32 shift; } Addr;
+static Addr parse_addr(int first) {
+	char buf[512]; size_t bl = 0;
+	for (int i = first; i < ntok; i++) {
+		int n = snprintf(buf + bl, sizeof buf - bl, "%s%s", i > first ? " " : "", toks[i]);
+		if (n < 0 || (size_t)n >= sizeof buf - bl) die("%s: address operand too long", toks[0]);
+		bl += (size_t)n;
+	}
+	if (buf[0] != '[') die("%s: expected [Rn ...] address, got '%s'", toks[0], buf);
+	Addr a = { 0, 1, 1, 0, 0, 0, 0, 0 };
+	char *rb = strchr(buf, ']'); if (!rb) die("%s: missing ']' in address", toks[0]);
+	*rb = 0; char *after = rb + 1; while (*after == ' ') after++;
+	if (*after == '!') { a.W = 1; after++; while (*after == ' ') after++; }
+	char *in = buf + 1; while (*in == ' ') in++;
+	char *sp = in; while (*sp && *sp != ' ') sp++;
+	char save = *sp; *sp = 0; a.rn = reg(in); *sp = save;
+	if (a.rn < 0) die("%s: bad base register in '%s'", toks[0], buf + 1);
+	char *spec = sp; while (*spec == ' ') spec++;
+	if (*after) { if (*spec) die("%s: offset both inside and after ']'", toks[0]); if (a.W) die("%s: '!' with post-index", toks[0]); a.P = 0; spec = after; }
+	if (!*spec) return a;
+	if (*spec == '#') {
+		const char *q = spec + 1; while (*q == ' ') q++;
+		long v = eval_const_expr(q);
+		if (v < 0 || (v == 0 && *q == '-')) { a.U = 0; v = -v; }
+		a.imm = v; return a;
+	}
+	if (*spec == '-') { a.U = 0; spec++; } else if (*spec == '+') spec++;
+	char *e = spec; while (*e && *e != ' ') e++;
+	save = *e; *e = 0; a.rm = reg(spec); *e = save;
+	if (a.rm < 0) die("%s: bad offset '%s'", toks[0], spec);
+	a.isreg = 1;
+	char *sh = e; while (*sh == ' ') sh++;
+	if (*sh) {
+		if (!strcmp(sh, "rrx")) { a.shift = 3u << 5; return a; }
+		char *amt = sh; while (*amt && *amt != ' ') amt++;
+		if (!*amt) die("%s: shift '%s' needs an amount", toks[0], sh);
+		*amt++ = 0; while (*amt == ' ') amt++;
+		int st = shift_type(sh); if (st < 0) die("%s: bad index shift '%s'", toks[0], sh);
+		if (amt[0] != '#') die("%s: index shift needs #amount", toks[0]);
+		a.shift = shift_imm_field(st, amt);
+	}
+	return a;
+}
 /* ---- single data transfer: ldr/str{b}{cond} Rd, <addr> --------------------------------------------
  * Encoding: cond 01 I P U B W L Rn Rd offset(12). NOTE I is INVERTED vs data-processing: I=0 => the
  * offset is a 12-bit IMMEDIATE (U = sign), I=1 => a register (optionally lsl #n). Addressing:
@@ -198,42 +259,18 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 		if (k >= sizeof ldrlit[0].sym) k = sizeof ldrlit[0].sym - 1;
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
 		memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0;
-		ldrlit[nldrlit].addend = plus ? strtol(plus, NULL, 0) : 0;
+		ldrlit[nldrlit].addend = plus ? eval_const_expr(plus) : 0;   /* strict (was strtol: junk ignored) */
 		ldrlit[nldrlit].kind = 0;
 		nldrlit++;
 		return;
 	}
-	/* the tokenizer split the [ ] address on commas/spaces — rejoin it (spaces preserved) to re-scan */
-	char buf[128]; size_t bl = 0;
-	for (int i = 2; i < ntok && bl < sizeof buf - 1; i++) bl += (size_t)snprintf(buf + bl, sizeof buf - bl, "%s%s", i > 2 ? " " : "", toks[i]);
-	if (buf[0] != '[') die("%s: expected [Rn ...] address, got '%s'", toks[0], buf);
-	u32 W = 0; if (bl && buf[bl - 1] == '!') { W = 1; buf[--bl] = 0; }        /* trailing '!' = writeback */
-	char *rb = strchr(buf, ']'); if (!rb) die("%s: missing ']' in address", toks[0]);
-	*rb = 0; char *after = rb + 1; while (*after == ' ') after++;             /* text after ']' = post-index */
-
-	int rn = reg(strtok(buf + 1, " ")); if (rn < 0) die("%s: bad base register", toks[0]);
-	u32 P, U = 1, I = 0, off = 0;
-	char *ofs = *after ? after : strtok(NULL, " ");                          /* post uses `after`, else inside */
-	P = *after ? 0 : 1;
-	if (ofs) {
-		if (ofs[0] == '#') {                                                  /* immediate offset */
-			long v = strtol(ofs + 1, NULL, 0); if (v < 0) { U = 0; v = -v; }
-			off = (u32)v & 0xfff;
-		} else {                                                              /* register offset [, lsl #n] */
-			int rm = reg(ofs); if (rm < 0) die("%s: bad offset register '%s'", toks[0], ofs);
-			I = 1; off = (u32)rm;
-			char *sh = P ? strtok(NULL, " ") : NULL;
-			if (sh) {
-				int st = shift_type(sh); if (st < 0) die("%s: bad index shift '%s'", toks[0], sh);
-				char *amt = strtok(NULL, " "); if (!amt || amt[0] != '#') die("%s: %s needs #amount", toks[0], sh);
-				off |= ((u32)strtol(amt + 1, NULL, 0) & 31) << 7;             /* shift amount, bits 11:7 */
-				off |= (u32)st << 5;                                          /* shift type, bits 6:5 (lsl/lsr/asr/ror) */
-			}
-		}
-	}
-	emit32((cond << 28) | (1u << 26) | (I << 25) | (P << 24) | (U << 23) | ((u32)is_byte << 22)
-	     | (W << 21) | ((u32)is_load << 20) | ((u32)rn << 16) | (rd << 12) | off);
+	Addr a = parse_addr(2);
+	if (!a.isreg && a.imm > 0xfff) die("%s: offset %ld out of range (12-bit)", toks[0], a.imm);
+	u32 off = a.isreg ? ((u32)a.rm | a.shift) : (u32)a.imm;
+	emit32((cond << 28) | (1u << 26) | ((u32)a.isreg << 25) | ((u32)a.P << 24) | ((u32)a.U << 23) | ((u32)is_byte << 22)
+	     | ((u32)a.W << 21) | ((u32)is_load << 20) | ((u32)a.rn << 16) | (rd << 12) | off);
 }
+
 
 /* Patch an `add Rd,pc,#0` placeholder (at sec:off) into add/sub Rd,pc,#modimm(delta). */
 static void patch_adr(int sec, u32 off, int32_t delta) {
@@ -258,7 +295,7 @@ static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-
 	if (k >= sizeof ldrlit[0].sym) k = sizeof ldrlit[0].sym - 1;
 	ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
 	memcpy(ldrlit[nldrlit].sym, toks[2], k); ldrlit[nldrlit].sym[k] = 0;
-	ldrlit[nldrlit].addend = plus ? strtol(plus, NULL, 0) : 0;
+	ldrlit[nldrlit].addend = plus ? eval_const_expr(plus) : 0;   /* strict (was strtol: junk ignored) */
 	ldrlit[nldrlit].kind = 1; nldrlit++;
 }
 static void enc_extend(u32 cond, u32 base) {   /* {u,s}xt{b,h}{cond} Rd, Rm — zero/sign-extend byte/half (rotate 0) */
@@ -305,7 +342,7 @@ static void enc_shift(int st, u32 cond, int s) {
 	u32 rd = need_reg(1), rm = need_reg(2);
 	const char *amt = (3 < ntok) ? toks[3] : NULL; if (!amt) die("%s: missing shift amount", toks[0]);
 	u32 op2;
-	if (amt[0] == '#') op2 = (((u32)strtol(amt + 1, NULL, 0) & 31) << 7) | ((u32)st << 5) | rm;
+	if (amt[0] == '#') op2 = shift_imm_field(st, amt) | rm;
 	else { int rs = reg(amt); if (rs < 0) die("%s: bad shift amount", toks[0]); op2 = ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm; }
 	emit32((cond << 28) | (13u << 21) | ((u32)s << 20) | (rd << 12) | op2);   /* MOV */
 }
@@ -353,7 +390,7 @@ static void enc_clz(u32 cond) {   /* clz Rd, Rm */
 
 /* supervisor call + branch-and-link-exchange (register). */
 static void enc_svc(u32 cond) {
-	const char *t = toks[1]; emit32((cond << 28) | 0x0f000000u | ((u32)strtol(t[0] == '#' ? t + 1 : t, NULL, 0) & 0xffffff));
+	emit32((cond << 28) | 0x0f000000u | (u32)snum(toks[1], 0, 0xffffff, "svc number"));
 }
 static void enc_blx(u32 cond) { emit32((cond << 28) | 0x012fff30u | need_reg(1)); }   /* blx Rm */
 static void enc_barrier(u32 base) {   /* dmb/dsb/isb {option} — memory/instruction barriers (unconditional) */
@@ -364,7 +401,7 @@ static void enc_barrier(u32 base) {   /* dmb/dsb/isb {option} — memory/instruc
 		else if (!strcmp(o, "ish"))   opt = 11; else if (!strcmp(o, "ishst")) opt = 10; else if (!strcmp(o, "ishld")) opt = 9;
 		else if (!strcmp(o, "nsh"))   opt = 7;  else if (!strcmp(o, "nshst")) opt = 6;
 		else if (!strcmp(o, "osh"))   opt = 3;  else if (!strcmp(o, "oshst")) opt = 2;
-		else opt = (u32)strtol(o[0] == '#' ? o + 1 : o, NULL, 0) & 15;
+		else opt = (u32)snum(o, 0, 15, "barrier option");
 	}
 	emit32(base | opt);
 }
@@ -402,10 +439,16 @@ static void enc_cps(u32 base) {   /* cpsid/cpsie {a,i,f} — change interrupt-ma
 	if (ntok >= 2) for (const char *s = toks[1]; *s; s++) { if (*s=='a') f|=0x100; else if (*s=='i') f|=0x80; else if (*s=='f') f|=0x40; }
 	emit32(base | f);
 }
-static long numop(const char *t) { return strtol(t[0] == '#' ? t + 1 : t, NULL, 0); }
+static long numop(const char *t) { return snum(t, 0, 7, "coprocessor opcode"); }
+static u32 cpreg(const char *t, char pfx, const char *what) {   /* p<0-15> / c<0-15>, strictly */
+	char *e; if (!t || (t[0] != pfx && t[0] != pfx - 32)) die("%s: expected %s (%c<n>), got '%s'", toks[0], what, pfx, t ? t : "");
+	long v = strtol(t + 1, &e, 10); if (e == t + 1 || *e || v < 0 || v > 15) die("%s: bad %s '%s'", toks[0], what, t);
+	return (u32)v;
+}
 static void enc_mcr(u32 cond, u32 L) {   /* mcr/mrc p<cp>, <opc1>, Rt, c<CRn>, c<CRm>{, <opc2>} */
-	u32 cp = (u32)strtol(toks[1] + 1, NULL, 10), opc1 = (u32)numop(toks[2]), rt = need_reg(3);
-	u32 crn = (u32)strtol(toks[4] + 1, NULL, 10), crm = (u32)strtol(toks[5] + 1, NULL, 10);
+	if (ntok < 6) die("%s: expected p<cp>, <opc1>, Rt, c<n>, c<m>[, <opc2>]", toks[0]);
+	u32 cp = cpreg(toks[1], 'p', "coprocessor"), opc1 = (u32)numop(toks[2]), rt = need_reg(3);
+	u32 crn = cpreg(toks[4], 'c', "CRn"), crm = cpreg(toks[5], 'c', "CRm");
 	u32 opc2 = (ntok >= 7) ? (u32)numop(toks[6]) : 0;
 	emit32((cond << 28) | 0x0e000010u | L | (opc1 << 21) | (crn << 16) | (rt << 12) | (cp << 8) | (opc2 << 5) | crm);
 }
@@ -413,17 +456,17 @@ static void enc_mcr(u32 cond, u32 L) {   /* mcr/mrc p<cp>, <opc1>, Rt, c<CRn>, c
 /* extra load/store: ldrd/strd/ldrh/strh Rd, [Rn] | [Rn, #±imm].  cond 000 P U 1 W L Rn Rd immhi 1SH1 immlo */
 static void enc_xldst(u32 cond, int Lbit, u32 nib) {
 	u32 rd = need_reg(1);
-	if (ntok < 3 || toks[2][0] != '[') die("%s: expected [Rn ...]", toks[0]);
-	char buf[64]; size_t bl = 0;
-	for (int i = 2; i < ntok && bl < sizeof buf - 1; i++) bl += (size_t)snprintf(buf + bl, sizeof buf - bl, "%s%s", i > 2 ? " " : "", toks[i]);
-	char *rb = strchr(buf, ']'); if (!rb) die("%s: missing ']'", toks[0]);
-	*rb = 0;
-	int rn = reg(strtok(buf + 1, " ")); if (rn < 0) die("%s: bad base register", toks[0]);
-	u32 U = 1, off = 0; char *o = strtok(NULL, " ");
-	if (o) { if (o[0] != '#') die("%s: only immediate offset supported here", toks[0]); long v = strtol(o + 1, NULL, 0); if (v < 0) { U = 0; v = -v; } off = (u32)v; }
-	emit32((cond << 28) | (1u << 24) | (U << 23) | (1u << 22) | ((u32)Lbit << 20) | ((u32)rn << 16) | (rd << 12)
-	     | (((off >> 4) & 0xf) << 8) | (nib << 4) | (off & 0xf));
+	int ai = 2;
+	/* ldrd/strd: `Rt, Rt2, [..]` (Rt2 must be Rt+1) or the legacy `Rt, [..]` */
+	if (ai < ntok && toks[ai][0] != '[') { int r2 = reg(toks[ai]); if (r2 != (int)rd + 1) die("%s: second register must be r%u", toks[0], rd + 1); ai++; }
+	Addr a = parse_addr(ai);
+	if (a.isreg && a.shift) die("%s: no shifted index for halfword/doubleword/signed transfers", toks[0]);
+	if (!a.isreg && a.imm > 0xff) die("%s: offset %ld out of range (8-bit)", toks[0], a.imm);
+	u32 lo = a.isreg ? (u32)a.rm : (u32)a.imm & 0xf, hi = a.isreg ? 0 : ((u32)a.imm >> 4) & 0xf;
+	emit32((cond << 28) | ((u32)a.P << 24) | ((u32)a.U << 23) | ((u32)!a.isreg << 22) | ((u32)a.W << 21) | ((u32)Lbit << 20)
+	     | ((u32)a.rn << 16) | (rd << 12) | (hi << 8) | (nib << 4) | lo);
 }
+
 
 /* Extract the base register from a `[Rn]` operand spanning toks[start..] (exclusive loads/stores: no offset). */
 static int bracket_reg(int start) {
