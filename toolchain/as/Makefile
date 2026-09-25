@@ -14,7 +14,8 @@ GNU ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-li
 
 # Test inputs as `source.s:codesection` pairs — our .o's <codesection> bytes must match GNU as's exactly.
 TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_data.s:.text tests/m2_wide.s:.text tests/m2_secsym.s:.rodata tests/m1_branch.s:.text tests/m2_branch.s:.text ../../libc/src/crt/crt0.S:.text._start \
-         ../../libc/src/crt/crti.S:.init ../../libc/src/crt/crtn.S:.init
+         ../../libc/src/crt/crti.S:.init ../../libc/src/crt/crtn.S:.init \
+         tests/m5_armv7_insns.s:.text tests/m5_legacy_syntax.s:.text tests/m5_litpool.s:.text tests/m5_fb_labels.s:.text tests/m5_fb_labels.s:.data
 
 # Three layers, GNU-binutils-style: front-end (as.c) + machine-dependent backend (arm.c) + object
 # backend (elf.c). Swapping arm.c for another arch backend is the ONLY change a new target needs.
@@ -71,7 +72,7 @@ gas-suite: $(BUILD)/as
 	@mkdir -p $(GASTEST_WORK); [ -d $(GASTEST_WORK)/binutils-2.42/gas/testsuite/gas/arm ] || \
 	  tar -xJf $(BINUTILS_TAR) -C $(GASTEST_WORK) binutils-2.42/gas/testsuite/gas/arm
 	@export GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) GASTEST_WORK=$(GASTEST_WORK); \
-	  python3 gastest/run.py --as gnu >/dev/null && python3 gastest/run.py --as ours >/dev/null && python3 gastest/score.py
+	  python3 gastest/run.py --as gnu >/dev/null && python3 gastest/run.py --as gnu7 >/dev/null && python3 gastest/run.py --as ours >/dev/null && python3 gastest/score.py
 
 # Real kernel sources through OUR cc, assembled by our as AND GNU as: every object must match exactly.
 kernel-parity: $(BUILD)/as

@@ -23,17 +23,13 @@ typedef struct { char *name; int sec; u32 value, size; int global, type, defined
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
-typedef struct { int sec; u32 off; int local_num; int kind; u32 target; int tsec, done; } Fixup;   /* forward local-label ref; kind 0 = branch, 1 = adr.
-                                                            * Bound (target/tsec/done) at the NEXT definition of the label (GAS `Nf`). */
 
 #define MAXSEC 32
 #define MAXSYM 65536  /* a big preprocessed kernel .c emits tens of thousands of .L labels + symbols */
-#define MAXFIX 65536
 #define MAXREL 65536
 extern Section secs[]; extern int nsec, cursec;   /* cursec = active section index into secs[] */
 extern Sym syms[]; extern int nsym;
 extern Reloc rels[]; extern int nrel;
-extern Fixup fixes[]; extern int nfix;
 
 /* ---- FRONT-END services (as.c), called by both backends ------------------------------------------ */
 void die(const char *fmt, ...);
@@ -47,21 +43,21 @@ u32  here(void);                                        /* current offset within
 int  sym_find(const char *name);
 int  sym_intern(const char *name);                      /* find-or-create an (undefined) symbol */
 void add_reloc(int sec, u32 off, int symidx, u32 type);
-void add_fixup(int sec, u32 off, int local_num);
-void add_fixup_kind(int sec, u32 off, int local_num, int kind);
-void local_define(int n, u32 value);                    /* numeric local label N: at value */
-int  local_defined(int n);
-u32  local_value(int n);
+/* Numeric local labels (GAS "fb" labels): each definition of N: is a hidden local symbol `.Lfb<N>$<k>` (k = the
+ * definition's ordinal); `Nb` = the latest one, `Nf` = the next. fb_symbol returns the symbol index. */
+int  fb_symbol(int n, char dir);
 #define SEC_ABS (-2)                                    /* Sym.sec of an absolute symbol (`.equ N, 16`) */
-long eval_const_expr(const char *s);                    /* a constant expression (`.`, same-section `a - b`, abs syms); dies otherwise */
+long eval_const_expr(const char *s);
+void eval_reloc_expr(const char *s, long *c, int *sym, int *dot);   /* c + sym - dot*P, junk is an error */
+void map_insn(void); void map_pool_data(void);                    /* a constant expression (`.`, same-section `a - b`, abs syms); dies otherwise */
 int  section_symbol(int sec);                           /* find-or-create sec's STT_SECTION symbol (reloc target) */
-int  local_sec(int n);                                  /* section the latest definition of N lives in */
 int  parse_local_ref(const char *s, int *n, char *dir); /* "123b"/"7f" (then a non-ident char): bytes consumed, else 0 */
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
 void md_assemble(char **toks, int ntok);   /* encode ONE instruction (toks[0]=mnemonic) into cursec */
-void md_apply_fix(const Fixup *f);          /* patch a resolved forward-local branch (arch encoding) */
 int  md_directive(char **toks, int ntok);   /* arch pseudo-ops (.cpu/.fpu/…); 1 = handled, 0 = not ours */
+void md_flush_pools(void);                   /* end of parsing: dump pending literal pools into their sections */
+int  md_is_branch_reloc(u32 type);            /* b/bl reloc (imm24 addend in place)? */
 void md_finish(void);                       /* end of pass: resolve arch-internal fixups (ldr literals) */
 extern const u16 md_e_machine;              /* ELF e_machine (EM_ARM) */
 extern const u32 md_e_flags;                /* ELF e_flags (EABI version) */

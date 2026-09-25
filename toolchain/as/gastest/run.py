@@ -71,6 +71,12 @@ def tier(opts, src_text):
     if re.search(r"-march=armv8|-march=armv9|-mcpu=cortex-a(3[2-9]|5\d|7[2-9])|\.arch\s+armv8", flags + "\n" + s): return "armv8+"
     return "core-arm"
 
+def v7flags(flags):
+    """Our as is fixed ARMv7-A (ARM state). Force GNU as to the same target: drop its arch/cpu selection and use
+    -march=armv7-a. A test GNU as FAILS this way depends on a different architecture than ours."""
+    keep = [f for f in flags if not f.startswith(("-march", "-mcpu", "-mfpu", "-mthumb", "-mfloat-abi", "-mimplicit-it"))]
+    return keep + ["-march=armv7-a"]
+
 def run(cmd):
     p = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
     return p.returncode, p.stdout, p.stderr
@@ -103,6 +109,7 @@ def one(dpath, which):
     with tempfile.TemporaryDirectory() as td:
         obj = os.path.join(td, "t.o")
         if which == "gnu": rc, _, err = run([X + "as"] + flags + ["-o", obj, src])
+        elif which == "gnu7": rc, _, err = run([X + "as"] + v7flags(flags) + ["-o", obj, src])
         else: rc, _, err = run([OURS, "-o", obj, src])
         if rc != 0: return "fail-asm", (err.strip().splitlines() or ["(no message)"])[-1][:200], t
         rc, out, err = run([X + dump[0]] + dump[1].split() + [obj])

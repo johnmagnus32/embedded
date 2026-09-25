@@ -24,12 +24,17 @@ Section secs[MAXSEC]; int nsec; int cursec = -1;
 static int secstack[32][2], secsp, prevsec = -1;
 Sym syms[MAXSYM]; int nsym;
 Reloc rels[MAXREL]; int nrel;
-Fixup fixes[MAXFIX]; int nfix;
-/* Numeric local labels (GAS: ANY decimal number, e.g. the kernel's `9998:`), each remembering its latest
- * definition's value + section. Forward refs are bound when the next definition appears (see local_define). */
+/* Numeric local labels (GAS: ANY decimal number, e.g. the kernel's `9998:`) — GAS's design: definition k of N:
+ * is a hidden local symbol `.Lfb<N>$<k>`; `Nb` names instance k (the latest), `Nf` instance k+1 (created now,
+ * defined when the next N: appears). Everything else — branches, adr, ldr, data words, expressions — then uses
+ * ordinary symbols, so forward refs, cross-section refs and `1f - 1b` all just work. */
 #define MAXLOCAL 4096
-static struct { int num; u32 value; int sec; } locals_tab[MAXLOCAL]; static int nlocals_tab;
-static int local_find(int n) { for (int i = 0; i < nlocals_tab; i++) if (locals_tab[i].num == n) return i; return -1; }
+static struct { int num, count; } fbtab[MAXLOCAL]; static int nfbtab;
+static int fb_slot(int n) {
+	for (int i = 0; i < nfbtab; i++) if (fbtab[i].num == n) return i;
+	if (nfbtab >= MAXLOCAL) die("too many distinct numeric local labels (>%d)", MAXLOCAL);
+	fbtab[nfbtab].num = n; fbtab[nfbtab].count = 0; return nfbtab++;
+}
 
 void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
@@ -60,6 +65,7 @@ static void map_to(int state, int deferred_ok) {   /* deferred_ok: a plain data 
 	*m = state; add_mapsym(state, o);
 }
 void map_insn(void) { map_to(MAP_ARM, 0); }
+void map_pool_data(void) { mapstate[cursec] = MAP_DATA; add_mapsym(MAP_DATA, (u32)secs[cursec].len); }   /* s_ltorg: $d unconditionally */
 /* GAS writes code-alignment padding (and its $d/$a pair) after parsing, so those symbols come LAST in the table. */
 static struct { int sec; u32 d_at, a_at; } padmap[4096]; static int npadmap;
 static void flush_padmaps(void) {
@@ -98,18 +104,16 @@ int sym_intern(const char *name) {
 	return nsym++;
 }
 void add_reloc(int sec, u32 off, int symidx, u32 type) { if (nrel >= MAXREL) die("too many relocations"); rels[nrel++] = (Reloc){ sec, off, symidx, type }; }
-void add_fixup(int sec, u32 off, int local_num) { if (nfix >= MAXFIX) die("too many fixups"); fixes[nfix++] = (Fixup){ sec, off, local_num, 0, 0, 0, 0 }; }
-void add_fixup_kind(int sec, u32 off, int local_num, int kind) { if (nfix >= MAXFIX) die("too many fixups"); fixes[nfix++] = (Fixup){ sec, off, local_num, kind, 0, 0, 0 }; }
-void local_define(int n, u32 value) {
-	int i = local_find(n);
-	if (i < 0) { if (nlocals_tab >= MAXLOCAL) die("too many distinct numeric local labels (>%d)", MAXLOCAL); i = nlocals_tab++; locals_tab[i].num = n; }
-	locals_tab[i].value = value; locals_tab[i].sec = cursec;
-	for (int f = 0; f < nfix; f++)   /* bind every still-pending `Nf` to THIS (the next) definition */
-		if (!fixes[f].done && fixes[f].local_num == n) { fixes[f].target = value; fixes[f].tsec = cursec; fixes[f].done = 1; }
+static int fb_intern(int n, int k) { char nm[40]; snprintf(nm, sizeof nm, ".Lfb%d$%d", n, k); return sym_intern(nm); }
+int fb_symbol(int n, char dir) {
+	int i = fb_slot(n);
+	if (dir == 'b') { if (!fbtab[i].count) die("backward reference to undefined local label %db", n); return fb_intern(n, fbtab[i].count); }
+	return fb_intern(n, fbtab[i].count + 1);
 }
-int  local_defined(int n) { return local_find(n) >= 0; }
-u32  local_value(int n) { int i = local_find(n); return i < 0 ? 0 : locals_tab[i].value; }
-int  local_sec(int n) { int i = local_find(n); return i < 0 ? -1 : locals_tab[i].sec; }
+static void fb_define(int n, u32 value) {   /* N: — define the next instance */
+	int i = fb_slot(n), si = fb_intern(n, ++fbtab[i].count);
+	syms[si].sec = cursec; syms[si].value = value; syms[si].defined = 1;
+}
 int  parse_local_ref(const char *s, int *n, char *dir) {
 	int k = 0; long v = 0;
 	while (isdigit((unsigned char)s[k])) { v = v * 10 + (s[k] - '0'); k++; if (v > 0x7fffffff) return 0; }
@@ -170,7 +174,7 @@ static void tokenize(const char *line) {
 static void def_label(const char *name) {
 	if (cursec < 0) die("label '%s' outside any section", name);
 	{ const char *q = name; while (isdigit((unsigned char)*q)) q++;
-	  if (q != name && !*q) { long v = strtol(name, NULL, 10); if (v > 0x7fffffff) die("local label %s too large", name); local_define((int)v, secs[cursec].len); return; } }
+	  if (q != name && !*q) { long v = strtol(name, NULL, 10); if (v > 0x7fffffff) die("local label %s too large", name); fb_define((int)v, (u32)secs[cursec].len); return; } }
 	int i = sym_intern(name);
 	if (syms[i].defined) die("symbol '%s' is already defined", name);   /* GAS: a label may be defined once (.set may redefine) */
 	syms[i].sec = cursec; syms[i].value = secs[cursec].len; syms[i].defined = 1;
@@ -218,12 +222,12 @@ static const char *cur_stmt;   /* raw text of the current statement (labels peel
  * Enough for everything kernel asm puts in data: constants with ( ) and C operators (BUG's
  * `((0xe7f001f2) & 0xFFFFFFFF)`), `sym+k`, numeric local labels `1b` (in ANY section — they become the
  * label's section symbol + its offset), and PC-relative `9998b - .` (alternatives tables). */
-typedef struct { long c; int sym, dot; } RVal;
+typedef struct { long c; int sym, dot, msym; } RVal;   /* c + sym - msym - dot*P (msym: a subtracted symbol, resolved later) */
 static const char *ep;
 static void ews(void) { while (*ep == ' ' || *ep == '\t') ep++; }
 static RVal e_or(void);
-static RVal rconst(long c) { RVal r = { c, -1, 0 }; return r; }
-static void need_const(RVal a, const char *op) { if (a.sym >= 0 || a.dot) die("data expr: operator '%s' needs constant operands", op); }
+static RVal rconst(long c) { RVal r = { c, -1, 0, -1 }; return r; }
+static void need_const(RVal a, const char *op) { if (a.sym >= 0 || a.dot || a.msym >= 0) die("data expr: operator '%s' needs constant operands", op); }
 static RVal e_prim(void) {
 	ews();
 	if (*ep == '(') { ep++; RVal r = e_or(); ews(); if (*ep != ')') die("data expr: expected ')' in '%s'", cur_stmt); ep++; return r; }
@@ -231,18 +235,16 @@ static RVal e_prim(void) {
 	if (*ep == '~') { ep++; RVal r = e_prim(); need_const(r, "~"); r.c = ~r.c; return r; }
 	if (*ep == '+') { ep++; return e_prim(); }
 	{ int n; char dir; int k = parse_local_ref(ep, &n, &dir); if (k) { ep += k;
-		if (dir == 'f') die("data expr: forward local label %df in a data directive is unsupported", n);
-		if (!local_defined(n)) die("data expr: undefined local label %db", n);
-		RVal r = { (long)local_value(n), section_symbol(local_sec(n)), 0 }; return r; } }
+		RVal r = { 0, fb_symbol(n, dir), 0, -1 }; return r; } }
 	if (*ep == '\'' && ep[1]) { long c = (unsigned char)ep[1]; ep += 2; if (*ep == '\'') ep++; return rconst(c); }   /* GAS char constant 'c */
 	if (isdigit((unsigned char)*ep)) { char *e; unsigned long long v = strtoull(ep, &e, 0); ep = e; while (*ep == 'u' || *ep == 'U' || *ep == 'l' || *ep == 'L') ep++; return rconst((long)v); }
-	if (*ep == '.' && !(isalnum((unsigned char)ep[1]) || ep[1] == '_' || ep[1] == '.' || ep[1] == '$')) { ep++; RVal r = { 0, -1, 1 }; return r; }
+	if (*ep == '.' && !(isalnum((unsigned char)ep[1]) || ep[1] == '_' || ep[1] == '.' || ep[1] == '$')) { ep++; RVal r = { 0, -1, 1, -1 }; return r; }
 	if (isalpha((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') {
 		char nm[128]; int k = 0;
 		while ((isalnum((unsigned char)*ep) || *ep == '_' || *ep == '.' || *ep == '$') && k < 127) nm[k++] = *ep++;
 		nm[k] = 0; int si = sym_intern(nm);
 		if (syms[si].defined && syms[si].sec == SEC_ABS) return rconst((long)(int32_t)syms[si].value);   /* `.equ N, 16` */
-		RVal r = { 0, si, 0 }; return r;
+		RVal r = { 0, si, 0, -1 }; return r;
 	}
 	die("data expr: bad operand near '%s' in '%s'", ep, cur_stmt); return rconst(0);
 }
@@ -257,7 +259,9 @@ static RVal e_mul(void) {
 static RVal e_add(void) {
 	RVal a = e_mul();
 	for (;;) { ews();
-		if (*ep == '+') { ep++; RVal b = e_mul(); if (a.sym >= 0 && b.sym >= 0) die("data expr: sym + sym"); a.c += b.c; if (b.sym >= 0) a.sym = b.sym; a.dot += b.dot; }
+		if (*ep == '+') { ep++; RVal b = e_mul(); if (a.sym >= 0 && b.sym >= 0) die("data expr: sym + sym");
+			if (a.msym >= 0 && b.msym >= 0) die("data expr: too many symbol differences");
+			a.c += b.c; if (b.sym >= 0) a.sym = b.sym; if (b.msym >= 0) a.msym = b.msym; a.dot += b.dot; }
 		else if (*ep == '-') { ep++; RVal b = e_mul(); a.c -= b.c; a.dot -= b.dot;
 			if (b.sym < 0 && a.sym >= 0 && a.dot == -1 && syms[a.sym].defined && syms[a.sym].sec == cursec) {   /* sym - . (same section): constant */
 				a.c += (long)syms[a.sym].value - (long)secs[cursec].len; a.sym = -1; a.dot = 0; continue; }
@@ -265,9 +269,11 @@ static RVal e_add(void) {
 				if (a.sym < 0 && a.dot == 1 && syms[b.sym].defined && syms[b.sym].sec == cursec) {   /* (. + k) - sym, same section */
 					a.c += (long)secs[cursec].len - (long)syms[b.sym].value; a.dot = 0; continue; }
 				if (a.sym < 0) die("data expr: const - sym");
+				if (b.msym >= 0) die("data expr: subtracting a symbol difference");
 				Sym *x = &syms[a.sym], *y = &syms[b.sym];
-				if (!x->defined || !y->defined || x->sec != y->sec) die("data expr: difference of symbols in different sections");
-				a.c += (long)x->value - (long)y->value; a.sym = -1;
+				if (x->defined && y->defined && x->sec == y->sec) { a.c += (long)x->value - (long)y->value; a.sym = -1; }
+				else if (a.msym < 0) a.msym = b.sym;   /* not resolvable yet (forward, e.g. `1f - 1b`) or cross-section: defer */
+				else die("data expr: too many symbol differences");
 			} }
 		else return a; }
 }
@@ -282,6 +288,30 @@ static RVal e_and(void) { RVal a = e_shift(); for (;;) { ews(); if (*ep == '&' &
 static RVal e_xor(void) { RVal a = e_and(); for (;;) { ews(); if (*ep == '^') { ep++; RVal b = e_and(); need_const(a, "^"); need_const(b, "^"); a.c ^= b.c; } else return a; } }
 static RVal e_or(void)  { RVal a = e_xor(); for (;;) { ews(); if (*ep == '|' && ep[1] != '|') { ep++; RVal b = e_xor(); need_const(a, "|"); need_const(b, "|"); a.c |= b.c; } else return a; } }
 
+/* Fold a pending `sym - msym` if both are now defined in one section. */
+static RVal fold_msym(RVal r) {
+	if (r.msym >= 0 && r.sym >= 0 && syms[r.sym].defined && syms[r.msym].defined && syms[r.sym].sec == syms[r.msym].sec) {
+		r.c += (long)syms[r.sym].value - (long)syms[r.msym].value; r.sym = -1; r.msym = -1; }
+	return r;
+}
+/* Data words whose value depends on symbols not yet defined (`.word 1f - 1b`): resolved after parsing. */
+static struct { int sec; u32 off; RVal r; } dword[16384]; static int ndword;
+static struct { int sym; RVal r; } dsize[4096]; static int ndsize;
+static void resolve_deferred(void) {
+	for (int i = 0; i < ndword; i++) {
+		RVal r = fold_msym(dword[i].r); int sec = dword[i].sec; u32 off = dword[i].off;
+		if (r.sym < 0 && r.msym < 0) { patch32(sec, off, (u32)r.c); continue; }
+		if (r.msym >= 0 && syms[r.msym].defined && syms[r.msym].sec == sec && r.sym >= 0 && !r.dot) {
+			/* S - M with M in this word's section: = S - P + (P - M) -> R_ARM_REL32, addend c + (P - M) */
+			patch32(sec, off, (u32)(r.c + (long)off - (long)syms[r.msym].value)); add_reloc(sec, off, r.sym, md_r_rel32); continue; }
+		die("data expression: symbol difference across sections can't be represented");
+	}
+	for (int i = 0; i < ndsize; i++) {
+		RVal r = fold_msym(dsize[i].r);
+		if (r.sym >= 0 || r.msym >= 0 || r.dot) die(".size of '%s': not a constant", syms[dsize[i].sym].name);
+		syms[dsize[i].sym].size = (u32)r.c;
+	}
+}
 /* A constant expression (instruction immediates, .equ): `.` is the current location, a same-section
  * `sym - .` folds, absolute symbols are constants. Anything relocatable or trailing junk is an error (was:
  * strtol, which silently turned `#(. - bar - 8)` into 0). */
@@ -289,14 +319,27 @@ long eval_const_expr(const char *s) {
 	const char *save = ep; ep = s; RVal r = e_or(); ews();
 	if (*ep) die("expression: junk '%s' in '%s'", ep, s);
 	ep = save;
+	r = fold_msym(r);
+	if (r.msym >= 0) die("expression '%s' is not a constant (symbols not yet defined, or in different sections)", s);
 	if (r.sym >= 0 && r.dot == -1 && syms[r.sym].defined && syms[r.sym].sec == cursec) return r.c + (long)syms[r.sym].value - (long)secs[cursec].len;
 	if (r.sym < 0 && r.dot == 1) return r.c + (long)secs[cursec].len;
 	if (r.sym >= 0 || r.dot) die("expression '%s' is not a constant", s);
 	return r.c;
 }
+void eval_reloc_expr(const char *s, long *c, int *sym, int *dot) {
+	const char *save = ep; ep = s; RVal r = e_or(); ews();
+	if (*ep) die("expression: junk '%s' in '%s'", ep, s);
+	ep = save; r = fold_msym(r);
+	if (r.msym >= 0) die("expression '%s': symbol difference not resolvable here", s);
+	*c = r.c; *sym = r.sym; *dot = r.dot;
+}
 /* Emit one 32-bit data word for a relocatable value placed at the current location. */
 static void emit_word_rval(RVal r) {
 	u32 off = secs[cursec].len;
+	r = fold_msym(r);
+	if (r.msym >= 0) {   /* defer until all labels are known */
+		if (ndword >= 16384) die("too many deferred data expressions");
+		dword[ndword].sec = cursec; dword[ndword].off = off; dword[ndword].r = r; ndword++; emit32(0); return; }
 	if (r.dot != 0 && r.dot != -1) die("data expr: '.' may only appear as '- .'");
 	if (r.sym >= 0 && syms[r.sym].defined && syms[r.sym].sec == cursec && r.dot == -1) {   /* X - . in the same section: a constant */
 		emit32((u32)(r.c + (long)syms[r.sym].value - (long)off)); return;
@@ -364,14 +407,15 @@ static void do_directive(void) {
 		if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;
 		else if (toks[2] && strstr(toks[2], "object")) syms[i].type = STT_OBJECT;
 	} else if (!strcmp(d, ".size")) {
-		/* .size <sym>, . - <label>  — the one expression form our startup asm needs. */
+		/* .size <sym>, <expr> — any expression (was: only `. - label`; anything else was silently ignored) */
 		int i = sym_intern(toks[1]);
-		if (ntok >= 5 && !strcmp(toks[2], ".") && !strcmp(toks[3], "-")) {
-			const char *l = toks[4]; u32 base;
-			int ln; char ld; if (parse_local_ref(l, &ln, &ld) == (int)strlen(l) && ld == 'b') { if (!local_defined(ln)) die(".size: undefined %db", ln); base = local_value(ln); }
-			else { int j = sym_find(l); if (j < 0 || !syms[j].defined) die(".size: undefined '%s'", l); base = syms[j].value; }
-			syms[i].size = secs[cursec].len - base;
-		}
+		const char *q = strchr(cur_stmt, ','); if (!q) die(".size: expected 'sym, expr'");
+		const char *save = ep; ep = q + 1; RVal r = e_or(); ews(); if (*ep) die(".size: junk '%s'", ep); ep = save;
+		if (r.dot == 1 && r.msym >= 0 && r.sym < 0 && syms[r.msym].defined && syms[r.msym].sec == cursec) {   /* . - sym */
+			r.c += (long)secs[cursec].len - (long)syms[r.msym].value; r.dot = 0; r.msym = -1; }
+		r = fold_msym(r);
+		if (r.sym < 0 && r.msym < 0 && !r.dot) syms[i].size = (u32)r.c;
+		else { if (ndsize >= 4096) die("too many deferred .size"); dsize[ndsize].sym = i; dsize[ndsize].r = r; ndsize++; }
 	} else if (!strcmp(d, ".align") || !strcmp(d, ".p2align") || !strcmp(d, ".balign")) {
 		if (cursec < 0) return;
 		long a = ntok >= 2 ? eval_const_expr(toks[1]) : 2;
@@ -468,12 +512,10 @@ static void parse_line(char *line) {
 	else { map_insn(); md_assemble(toks, ntok); }
 }
 
-static void resolve_fixups(void) {
-	for (int i = 0; i < nfix; i++) {
-		if (!fixes[i].done) die("unresolved forward local %df", fixes[i].local_num);
-		if (fixes[i].tsec != fixes[i].sec) die("forward local %df crosses sections (unsupported)", fixes[i].local_num);
-		md_apply_fix(&fixes[i]);
-	}
+static void check_fb_resolved(void) {   /* every referenced `Nf` must have been defined by the end */
+	for (int i = 0; i < nsym; i++)
+		if (syms[i].name && !strncmp(syms[i].name, ".Lfb", 4) && !syms[i].defined) {
+			int n = atoi(syms[i].name + 4); die("unresolved forward local label %df", n); }
 }
 
 /* Find-or-create the STT_SECTION symbol for section `sec` — a local, value-0 marker for the section
@@ -492,13 +534,25 @@ int section_symbol(int sec) {
  * local-symbol relocation our backend emits — R_ARM_ABS32 from `.word <local>` (branches to locals are
  * already resolved in md_finish; ldr-literals too). This makes such .text/.rodata bytes match GNU as. */
 static void reduce_local_relocs(void) {
+	int w = 0;
 	for (int i = 0; i < nrel; i++) {
-		if (rels[i].type != md_r_abs32 && rels[i].type != md_r_rel32) continue;
-		Sym *s = &syms[rels[i].symidx];
-		if (!s->defined || s->global || s->type == STT_SECTION) continue;   /* only local, non-section defs */
-		patch32(rels[i].sec, rels[i].off, read32(rels[i].sec, rels[i].off) + s->value);
-		rels[i].symidx = section_symbol(s->sec);
+		Reloc *r = &rels[i]; Sym *s = &syms[r->symidx];
+		int local_def = s->defined && !s->global && !s->weak && s->type != STT_SECTION && s->sec >= 0;
+		if (local_def && r->type == md_r_rel32 && s->sec == r->sec) {   /* `sym - .` within one section: a constant, no reloc */
+			patch32(r->sec, r->off, read32(r->sec, r->off) + s->value - r->off); continue;
+		}
+		if (local_def && s->type == STT_FUNC) { rels[w++] = *r; continue; }   /* GAS arm_fix_adjustable: relocs vs FUNCTION symbols are kept (interworking) */
+		if (local_def && (r->type == md_r_abs32 || r->type == md_r_rel32)) {
+			patch32(r->sec, r->off, read32(r->sec, r->off) + s->value);
+			r->symidx = section_symbol(s->sec);
+		} else if (local_def && md_is_branch_reloc(r->type)) {   /* b/bl to a local in ANOTHER section: section sym + imm24 addend */
+			u32 insn = read32(r->sec, r->off); int32_t A = (int32_t)(insn << 8) >> 6;   /* current addend (bytes) */
+			patch32(r->sec, r->off, (insn & 0xff000000u) | ((((int32_t)s->value + A) >> 2) & 0xffffff));
+			r->symidx = section_symbol(s->sec);
+		}
+		rels[w++] = *r;
 	}
+	nrel = w;
 }
 
 /* ------------------------------------------------------------------ GAS macros -------------------- */
@@ -676,7 +730,9 @@ int main(int argc, char **argv) {
 	if (coll_mode) die("unterminated .macro/.rept");
 	if (nifs) die("unterminated .if");
 
-	resolve_fixups();
+	md_flush_pools();       /* GAS dumps pending literal pools at the end of parsing (before fixups/write) */
+	check_fb_resolved();
+	resolve_deferred();     /* data words / .size that referenced not-yet-defined labels */
 	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
 	reduce_local_relocs();  /* fold local-symbol relocs to section-symbol + in-place value (GNU parity) */
 	flush_padmaps();
