@@ -411,7 +411,17 @@ static void data_words(void) {
 	while (*s && *s != ' ' && *s != '\t') s++;   /* skip the directive name */
 	ep = s; ews();
 	if (!*ep) die("%s: missing operand", toks[0]);
-	for (;;) { RVal r = e_or(); emit_word_rval(r); ews(); if (*ep == ',') { ep++; continue; } if (*ep) die("data expr: junk '%s' in '%s'", ep, cur_stmt); break; }
+	for (;;) { RVal r = e_or(); ews();
+		if (*ep == '(') {   /* `expr(OP)`: GAS lets the operator follow the whole expression (`.word foo + 0x1234(TARGET2)`) */
+			const char *q = ep + 1; char op[24]; int k = 0;
+			while ((isalnum((unsigned char)*q) || *q == '_') && k < 23) op[k++] = *q++;
+			op[k] = 0;
+			if (*q != ')' || !k || r.sym < 0) die("data expr: bad relocation operator in '%s'", cur_stmt);
+			if (r.rtype) die("data expr: two relocation operators in '%s'", cur_stmt);
+			u32 rt; if (!md_reloc_operator(op, &rt)) die("unknown relocation operator '(%s)' in '%s'", op, cur_stmt);
+			r.rtype = rt; ep = q + 1; ews();
+		}
+		emit_word_rval(r); if (*ep == ',') { ep++; continue; } if (*ep) die("data expr: junk '%s' in '%s'", ep, cur_stmt); break; }
 }
 
 static void do_directive(void) {

@@ -71,7 +71,7 @@ static void plan_headers(Obj *o) {
 static void build_shdrs(Obj *o) {
 	str_add(&o->shstr, "");
 	for (int i = 0; i < nsec; i++) { Elf32_Shdr *h = &o->sh[secs[i].shndx];
-		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = 4; }
+		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = secs[i].type == 0x70000003u ? 1 : 4; }   /* SHT_ARM_ATTRIBUTES: byte-aligned (GAS) */
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) { char nm[128]; snprintf(nm, sizeof nm, ".rel%s", secs[i].name);
 		Elf32_Shdr *h = &o->sh[o->relof[i]];
 		h->sh_type = SHT_REL; h->sh_name = str_add(&o->shstr, nm);
@@ -110,8 +110,14 @@ static void write_out(Obj *o, FILE *f) {
 	fwrite(&eh, sizeof eh, 1, f);
 	for (int i = 0; i < nsec; i++) { if (secs[i].type == SHT_NOBITS) continue;   /* .bss: no bytes on disk */
 		fwrite(secs[i].data, 1, secs[i].len, f); u32 p = (4 - (secs[i].len & 3)) & 3; if (p) fwrite(pad, 1, p, f); }
-	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) for (int r = 0; r < nrel; r++) if (rels[r].sec == i) {
-		Elf32_Rel er = { rels[r].off, ELF32_R_INFO(o->symmap[rels[r].symidx], rels[r].type) }; fwrite(&er, sizeof er, 1, f); }
+	/* each .rel section in ADDRESS order (as GAS writes them; ours creates branch relocs at end of pass) — stable */
+	int *ord = malloc((nrel ? nrel : 1) * sizeof *ord);
+	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) {
+		int n = 0; for (int r = 0; r < nrel; r++) if (rels[r].sec == i) ord[n++] = r;
+		for (int a = 1; a < n; a++) { int v = ord[a], b = a - 1; while (b >= 0 && rels[ord[b]].off > rels[v].off) { ord[b + 1] = ord[b]; b--; } ord[b + 1] = v; }
+		for (int k = 0; k < n; k++) { int r = ord[k]; Elf32_Rel er = { rels[r].off, ELF32_R_INFO(o->symmap[rels[r].symidx], rels[r].type) }; fwrite(&er, sizeof er, 1, f); }
+	}
+	free(ord);
 	fwrite(o->esym, sizeof(Elf32_Sym), o->ne, f);
 	fwrite(o->str.b, 1, o->str.len, f);
 	fwrite(o->shstr.b, 1, o->shstr.len, f);

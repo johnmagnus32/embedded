@@ -64,6 +64,8 @@ def tier(opts, src_text):
     flags = " ".join(opts.get("as", []))
     s = src_text.lower()
     if opts.get("error") or opts.get("error_output") or opts.get("warning") or opts.get("warning_output"): return "diagnostics"
+    # flags that CHANGE the output and that our as (no options; fixed target) doesn't take
+    if re.search(r"--fix-v4bx|-mfix-v4bx|-mccs\b", flags): return "needs-flag"
     if "-eb" in flags.lower() or "-mbig-endian" in flags: return "big-endian"
     if re.search(r"-march=armv(6s?-m|7e?-m|8(\.1)?-m)|-mcpu=cortex-m|armv8\.1-m|\bmve\b", flags + s): return "M-profile"
     if re.search(r"-mthumb\b|^\s*\.(thumb|code\s+16)\b|\.thumb_func", flags + "\n" + s, re.M): return "thumb"

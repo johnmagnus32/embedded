@@ -9,6 +9,7 @@
  * bic (#imm), bl, b. One target: ARMv7-A, ARM mode, little-endian.
  */
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -49,7 +50,7 @@ static int reg(const char *t) {
 	char n[32]; size_t L = strlen(t); if (L == 0 || L >= sizeof n) return -1;
 	for (size_t i = 0; i <= L; i++) n[i] = (char)tolower((unsigned char)t[i]);
 	static const struct { const char *n; int r; } nm[] = { {"sp",13},{"lr",14},{"pc",15},{"fp",11},{"ip",12},{"sl",10},{"sb",9},
-		{"a1",0},{"a2",1},{"a3",2},{"a4",3},{"v1",4},{"v2",5},{"v3",6},{"v4",7},{"v5",8},{"v6",9},{"v7",10},{"v8",11} };
+		{"wr",7},{"a1",0},{"a2",1},{"a3",2},{"a4",3},{"v1",4},{"v2",5},{"v3",6},{"v4",7},{"v5",8},{"v6",9},{"v7",10},{"v8",11} };
 	for (unsigned i = 0; i < sizeof nm / sizeof *nm; i++) if (!strcmp(n, nm[i].n)) return nm[i].r;
 	if (n[0] == 'r' && isdigit((unsigned char)n[1])) { char *e; long v = strtol(n + 1, &e, 10); if (!*e && v >= 0 && v <= 15 && (n[1] != '0' || !n[2])) return (int)v; }
 	for (int i = nreqs - 1; i >= 0; i--) if (!strcmp(reqs[i].name, n)) return reqs[i].r;
@@ -98,11 +99,15 @@ static u32 modimm(u32 v) {
 }
 
 /* ------------------------------------------------------------------ instruction encoders ---------- */
+/* A register operand where r15 is UNPREDICTABLE (multiplies, DSP, media, saturate, clz, exclusives, ...): GAS
+ * rejects it, so do we (was: silently encoded). */
+static u32 need_reg_nopc(int i);
 static u32 need_reg(int i) {   /* operand i must be a register */
 	int r = (i < ntok) ? reg(toks[i]) : -1;
 	if (r < 0) die("%s: expected a register at operand %d", toks[0], i);
 	return (u32)r;
 }
+static u32 need_reg_nopc(int i) { u32 r = need_reg(i); if (r == 15) die("%s: r15 not allowed here", toks[0]); return r; }
 
 /* ---- data-processing family (and/eor/sub/rsb/add/adc/sbc/rsc/tst/teq/cmp/cmn/orr/mov/bic/mvn) ------
  * ONE encoder for all 16: ARM DP format cond(4) 00 I(1) opcode(4) S(1) Rn(4) Rd(4) operand2(12). They
@@ -126,10 +131,10 @@ static int lookup_cc(const char *s, u32 *code) {
 }
 
 static int shift_type(const char *s) {   /* lsl=0 lsr=1 asr=2 ror=3; -1 if not a shift */
-	if (!strcmp(s, "lsl") || !strcmp(s, "asl")) return 0;   /* asl = legacy synonym for lsl */
-	if (!strcmp(s, "lsr")) return 1;
-	if (!strcmp(s, "asr")) return 2;
-	if (!strcmp(s, "ror")) return 3;
+	if (!strcasecmp(s, "lsl") || !strcasecmp(s, "asl")) return 0;   /* asl = legacy synonym for lsl */
+	if (!strcasecmp(s, "lsr")) return 1;
+	if (!strcasecmp(s, "asr")) return 2;
+	if (!strcasecmp(s, "ror")) return 3;
 	return -1;
 }
 /* A strict numeric operand: optional '#', a constant expression, range-checked (was strtol: junk ignored,
@@ -149,7 +154,7 @@ static u32 shift_imm_field(int st, const char *amt) {
 /* Build the 12-bit shifted-register operand2 for Rm with a shift at tokens [si]=type [si+1]=amount:
  * "Rm, lsl #n" -> (n<<7)|(type<<5)|Rm ; "Rm, lsl Rs" -> (Rs<<8)|(type<<5)|(1<<4)|Rm. */
 static u32 shifted_reg(u32 rm, int si) {
-	if (!strcmp(toks[si], "rrx")) { if (si + 1 < ntok) die("%s: rrx takes no amount", toks[0]); return (3u << 5) | rm; }   /* rrx = ror #0 */
+	if (!strcasecmp(toks[si], "rrx")) { if (si + 1 < ntok) die("%s: rrx takes no amount", toks[0]); return (3u << 5) | rm; }   /* rrx = ror #0 */
 	int st = shift_type(toks[si]); if (st < 0) die("%s: bad shift '%s'", toks[0], toks[si]);
 	const char *amt = (si + 1 < ntok) ? toks[si + 1] : NULL; if (!amt) die("%s: shift needs an amount", toks[0]);
 	if (amt[0] == '#') return shift_imm_field(st, amt) | rm;
@@ -177,7 +182,7 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	u32 rd = 0, rn = 0, I; int opidx;
 	if (form == DP_MOV)      { rd = need_reg(1);                    opidx = 2; }        /* mov/mvn Rd, op2 */
 	else if (form == DP_CMP) { rn = need_reg(1); s = 1;            opidx = 2; }        /* cmp/… Rn, op2 (S forced) */
-	else if (ntok == 3 || (ntok >= 4 && reg(toks[2]) >= 0 && (shift_type(toks[3]) >= 0 || !strcmp(toks[3], "rrx"))))
+	else if (ntok == 3 || (ntok >= 4 && reg(toks[2]) >= 0 && (shift_type(toks[3]) >= 0 || !strcasecmp(toks[3], "rrx"))))
 	                         { rd = need_reg(1); rn = rd; opidx = 2; }                   /* add Rd, op2  ==  add Rd, Rd, op2 (GAS) */
 	else                     { rd = need_reg(1); rn = need_reg(2); opidx = 3; }        /* add/… Rd, Rn, op2 */
 	u32 op2;
@@ -194,7 +199,12 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	if (ntok < 2) die("%s: missing target", toks[0]);
 	u32 base = (cond << 28) | 0x0a000000u | ((u32)is_bl << 24);   /* cond 101 L imm24 */
 	u32 off = here(); emit32(base);        /* placeholder; patched below or by md_apply_fix */
-	const char *name = toks[1];
+	char tgt[256]; join_toks(1, tgt, sizeof tgt);
+	size_t tl = strlen(tgt);
+	if (tl > 5 && !strcmp(tgt + tl - 5, "(PLT)")) tgt[tl -= 5] = 0;   /* `bl foo(PLT)`: GAS emits the same CALL/JUMP24 */
+	for (size_t k = 0; k < tl; k++) if (!(isalnum((unsigned char)tgt[k]) || tgt[k] == '_' || tgt[k] == '.' || tgt[k] == '$'))
+		die("%s: unsupported branch target '%s' (was: taken verbatim as a symbol name)", toks[0], tgt);
+	const char *name = tgt;
 	int n; char ldir;
 	char fbn[64];
 	if (parse_local_ref(name, &n, &ldir) == (int)strlen(name)) {   /* 1b / 1f: the fb label's hidden symbol */
@@ -249,7 +259,7 @@ static Addr parse_addr(int first) {
 	a.isreg = 1;
 	char *sh = e; while (*sh == ' ') sh++;
 	if (*sh) {
-		if (!strcmp(sh, "rrx")) { a.shift = 3u << 5; return a; }
+		if (!strcasecmp(sh, "rrx")) { a.shift = 3u << 5; return a; }
 		char *amt = sh; while (*amt && *amt != ' ') amt++;
 		if (!*amt) die("%s: shift '%s' needs an amount", toks[0], sh);
 		*amt++ = 0; while (*amt == ' ') amt++;
@@ -258,6 +268,13 @@ static Addr parse_addr(int first) {
 		a.shift = shift_imm_field(st, amt);
 	}
 	return a;
+}
+/* PC in an address (GAS ldr-bad): writeback / post-index with a pc base, pc as the index register, and a load INTO
+ * pc from a pc-relative address whose offset isn't word-aligned are all errors (were silently encoded). */
+static void check_pc_addr(Addr a, u32 rd) {
+	if (a.rn == 15 && (a.W || !a.P)) die("%s: writeback/post-index with a pc base is not allowed", toks[0]);
+	if (a.isreg && a.rm == 15) die("%s: pc not allowed as the index register", toks[0]);
+	if (rd == 15 && a.rn == 15 && !a.isreg && (a.imm & 3)) die("%s: ldr to register 15 must be 4-byte aligned", toks[0]);
 }
 /* ---- single data transfer: ldr/str{b}{cond} Rd, <addr> --------------------------------------------
  * Encoding: cond 01 I P U B W L Rn Rd offset(12). NOTE I is INVERTED vs data-processing: I=0 => the
@@ -286,6 +303,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 		u32 off = here();
 		if (sy < 0 && dt == 1) {   /* `.`-relative: target = here + c, same section, resolve now */
 			int32_t delta = (int32_t)c - 8; u32 mag = (u32)(delta < 0 ? -delta : delta);
+			if (rd == 15 && (mag & 3)) die("%s: ldr to register 15 must be 4-byte aligned", toks[0]);
 			if (mag > 0xfff) die("%s: offset %d out of range", toks[0], delta);
 			emit32((cond << 28) | 0x051f0000u | ((delta >= 0 ? 1u : 0u) << 23) | (rd << 12) | mag); return;
 		}
@@ -299,6 +317,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 	}
 	Addr a = parse_addr(2);
 	if (!a.isreg && a.imm > 0xfff) die("%s: offset %ld out of range (12-bit)", toks[0], a.imm);
+	check_pc_addr(a, rd);
 	u32 off = a.isreg ? ((u32)a.rm | a.shift) : (u32)a.imm;
 	emit32((cond << 28) | (1u << 26) | ((u32)a.isreg << 25) | ((u32)a.P << 24) | ((u32)a.U << 23) | ((u32)is_byte << 22)
 	     | ((u32)a.W << 21) | ((u32)is_load << 20) | ((u32)a.rn << 16) | (rd << 12) | off);
@@ -325,9 +344,18 @@ static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-
 	ldrlit[nldrlit].addend = c;
 	ldrlit[nldrlit].kind = 1; nldrlit++;
 }
-static void enc_extend(u32 cond, u32 base) {   /* {u,s}xt{b,h}{cond} Rd, Rm — zero/sign-extend byte/half (rotate 0) */
-	u32 rd = need_reg(1), rm = need_reg(2);
-	emit32((cond << 28) | base | (rd << 12) | rm);
+/* `, ror #0|8|16|24` on an extend: bits 11:10 (was: silently dropped -> sxtb r0, r1, ror #8 encoded ror #0) */
+static u32 ror_field(int i) {
+	if (i >= ntok) return 0;
+	if (strcasecmp(toks[i], "ror") || i + 1 >= ntok) die("%s: expected `ror #0|8|16|24`, got '%s'", toks[0], toks[i]);
+	long r = snum(toks[i + 1], 0, 24, "rotation"); if (r & 7) die("%s: rotation must be 0, 8, 16 or 24", toks[0]);
+	if (i + 2 < ntok) die("%s: too many operands", toks[0]);
+	return (u32)(r / 8) << 10;
+}
+static void enc_extend(u32 cond, u32 base) {   /* {u,s}xt{b,h,b16}{cond} Rd, Rm{, ror #n}; rev/rbit Rd, Rm */
+	u32 rd = need_reg_nopc(1), rm = need_reg_nopc(2);
+	u32 rot = ((base & 0x0ff000f0u) == 0x06a00070u || (base & 0x0f8000f0u) == 0x06800070u) ? ror_field(3) : (ntok > 3 ? (die("%s: too many operands", toks[0]), 0) : 0);
+	emit32((cond << 28) | base | (rd << 12) | rot | rm);
 }
 
 /* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
@@ -372,6 +400,7 @@ static void enc_ldstm(int is_load, u32 cond, u32 P, u32 U) {
 static void enc_shift(int st, u32 cond, int s) {
 	u32 rd = need_reg(1), rm = need_reg(2);
 	const char *amt = (3 < ntok) ? toks[3] : NULL; if (!amt) die("%s: missing shift amount", toks[0]);
+	if (ntok != 4) die("%s: expected Rd, Rm, #n|Rs (was: extra operands silently ignored)", toks[0]);
 	u32 op2;
 	if (amt[0] == '#') op2 = shift_imm_field(st, amt) | rm;
 	else { int rs = reg(amt); if (rs < 0) die("%s: bad shift amount", toks[0]); op2 = ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm; }
@@ -396,28 +425,28 @@ static void enc_movw(int is_movt, u32 cond) {
 
 /* multiply / divide / count-leading-zeros. */
 static void enc_mul(u32 cond, int s) {   /* mul Rd, Rn, Rm  (Rd=19:16, Rm=11:8, Rn=3:0) */
-	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3);
+	u32 rd = need_reg_nopc(1), rn = need_reg_nopc(2), rm = need_reg_nopc(3);
 	emit32((cond << 28) | ((u32)s << 20) | (rd << 16) | (rm << 8) | 0x90 | rn);
 }
 static void enc_mla(u32 cond, int s) {   /* mla Rd, Rn, Rm, Ra */
-	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3), ra = need_reg(4);
+	u32 rd = need_reg_nopc(1), rn = need_reg_nopc(2), rm = need_reg_nopc(3), ra = need_reg_nopc(4);
 	emit32((cond << 28) | 0x00200000u | ((u32)s << 20) | (rd << 16) | (ra << 12) | (rm << 8) | 0x90 | rn);
 }
 static void enc_umull_s(u32 cond, u32 base, int s) {
 	base |= (u32)s << 20;   /* {u,s}mull/{u,s}mlal RdLo, RdHi, Rn, Rm (64-bit multiply) */
-	u32 rdlo = need_reg(1), rdhi = need_reg(2), rn = need_reg(3), rm = need_reg(4);
+	u32 rdlo = need_reg_nopc(1), rdhi = need_reg_nopc(2), rn = need_reg_nopc(3), rm = need_reg_nopc(4);
 	emit32((cond << 28) | base | (rdhi << 16) | (rdlo << 12) | (rm << 8) | rn);
 }
 static void enc_mls(u32 cond) {   /* mls Rd, Rn, Rm, Ra  (Rd = Ra - Rn*Rm) */
-	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3), ra = need_reg(4);
+	u32 rd = need_reg_nopc(1), rn = need_reg_nopc(2), rm = need_reg_nopc(3), ra = need_reg_nopc(4);
 	emit32((cond << 28) | 0x00600000u | (rd << 16) | (ra << 12) | (rm << 8) | 0x90 | rn);
 }
 static void enc_div(int is_sdiv, u32 cond) {   /* udiv/sdiv Rd, Rn, Rm  (Rn=3:0 dividend, Rm=11:8) */
-	u32 rd = need_reg(1), rn = need_reg(2), rm = need_reg(3);
+	u32 rd = need_reg_nopc(1), rn = need_reg_nopc(2), rm = need_reg_nopc(3);
 	emit32((cond << 28) | (is_sdiv ? 0x0710f010u : 0x0730f010u) | (rd << 16) | (rm << 8) | rn);
 }
 static void enc_clz(u32 cond) {   /* clz Rd, Rm */
-	emit32((cond << 28) | 0x016f0f10u | (need_reg(1) << 12) | need_reg(2));
+	emit32((cond << 28) | 0x016f0f10u | (need_reg_nopc(1) << 12) | need_reg_nopc(2));
 }
 
 /* supervisor call + branch-and-link-exchange (register). */
@@ -431,19 +460,24 @@ static void enc_barrier(u32 base) {   /* dmb/dsb/isb {option} — memory/instruc
 		char ob[16]; size_t ol = strlen(toks[1]); if (ol >= sizeof ob) die("%s: bad option", toks[0]);
 		for (size_t i = 0; i <= ol; i++) ob[i] = (char)tolower((unsigned char)toks[1][i]);
 		const char *o = ob;
-		if      (!strcmp(o, "sy"))    opt = 15; else if (!strcmp(o, "st"))    opt = 14;
-		else if (!strcmp(o, "ish") || !strcmp(o, "sh")) opt = 11; else if (!strcmp(o, "ishst") || !strcmp(o, "shst")) opt = 10;
-		else if (!strcmp(o, "ishld")) opt = 9; else if (!strcmp(o, "ld")) opt = 13; else if (!strcmp(o, "nshld")) opt = 5; else if (!strcmp(o, "oshld")) opt = 1;
-		else if (!strcmp(o, "un"))    opt = 7;  else if (!strcmp(o, "unst")) opt = 6;   /* legacy aliases */
-		else if (!strcmp(o, "nsh"))   opt = 7;  else if (!strcmp(o, "nshst")) opt = 6;
-		else if (!strcmp(o, "osh"))   opt = 3;  else if (!strcmp(o, "oshst")) opt = 2;
+		if      (!strcasecmp(o, "sy"))    opt = 15; else if (!strcasecmp(o, "st"))    opt = 14;
+		else if (!strcasecmp(o, "ish") || !strcasecmp(o, "sh")) opt = 11; else if (!strcasecmp(o, "ishst") || !strcasecmp(o, "shst")) opt = 10;
+		else if (!strcasecmp(o, "ishld")) opt = 9; else if (!strcasecmp(o, "ld")) opt = 13; else if (!strcasecmp(o, "nshld")) opt = 5; else if (!strcasecmp(o, "oshld")) opt = 1;
+		else if (!strcasecmp(o, "un"))    opt = 7;  else if (!strcasecmp(o, "unst")) opt = 6;   /* legacy aliases */
+		else if (!strcasecmp(o, "nsh"))   opt = 7;  else if (!strcasecmp(o, "nshst")) opt = 6;
+		else if (!strcasecmp(o, "osh"))   opt = 3;  else if (!strcasecmp(o, "oshst")) opt = 2;
 		else opt = (u32)snum(o, 0, 15, "barrier option");
 	}
 	emit32(base | opt);
 }
 static void enc_mrs(u32 cond) {   /* mrs Rd, (c|s)psr */
 	u32 rd = need_reg(1);
-	u32 R = (toks[2][0] == 's' || toks[2][0] == 'S') ? (1u << 22) : 0;
+	/* source must be exactly cpsr/apsr/spsr (was: only the first letter checked -> `mrs r0, iapsr` accepted) */
+	if (ntok != 3) die("mrs: expected Rd, cpsr|apsr|spsr");
+	u32 R;
+	if (!strcasecmp(toks[2], "cpsr") || !strcasecmp(toks[2], "apsr")) R = 0;
+	else if (!strcasecmp(toks[2], "spsr")) R = 1u << 22;
+	else die("mrs: unsupported source '%s' (banked registers not implemented)", toks[2]);
 	emit32((cond << 28) | 0x010f0000u | R | (rd << 12));
 }
 static void enc_msr(u32 cond) {   /* msr (c|s)psr_<fields>, Rm | #imm  (fields: c=1 x=2 s=4 f=8) */
@@ -530,24 +564,28 @@ static int bracket_reg(int start) {
 	return rn;
 }
 static void enc_ldrex(u32 cond, u32 base) {   /* ldrex{b,h} Rt, [Rn] */
-	u32 rt = need_reg(1), rn = (u32)bracket_reg(2);
+	u32 rt = need_reg_nopc(1), rn = (u32)bracket_reg(2);
+	if (rn == 15) die("%s: instruction does not accept this addressing mode (pc base)", toks[0]);
 	emit32((cond << 28) | base | (rn << 16) | (rt << 12));
 }
 static void enc_strex(u32 cond, u32 base) {   /* strex{b,h} Rd, Rt, [Rn] */
-	u32 rd = need_reg(1), rt = need_reg(2), rn = (u32)bracket_reg(3);
+	u32 rd = need_reg_nopc(1), rt = need_reg_nopc(2), rn = (u32)bracket_reg(3);
+	if (rn == 15) die("%s: instruction does not accept this addressing mode (pc base)", toks[0]);
 	emit32((cond << 28) | base | (rn << 16) | (rd << 12) | rt);
 }
 /* 64-bit exclusives (kernel atomic64): Rt must be even, Rt2 = Rt+1 (implied by the encoding, checked). */
 static void enc_ldrexd(u32 cond) {   /* ldrexd Rt, Rt2, [Rn] */
 	int one = ntok == 3;   /* legacy `ldrexd Rt, [Rn]` (Rt2 implied) */
-	u32 rt = need_reg(1), rt2 = one ? rt + 1 : need_reg(2), rn = (u32)bracket_reg(one ? 2 : 3);
+	u32 rt = need_reg_nopc(1), rt2 = one ? rt + 1 : need_reg_nopc(2), rn = (u32)bracket_reg(one ? 2 : 3);
 	if ((rt & 1) || rt2 != rt + 1 || rt == 14) die("ldrexd: need an even/odd pair (Rt, Rt+1), got r%u, r%u", rt, rt2);
+	if (rn == 15) die("%s: instruction does not accept this addressing mode (pc base)", toks[0]);
 	emit32((cond << 28) | 0x01b00f9fu | (rn << 16) | (rt << 12));
 }
 static void enc_strexd(u32 cond) {   /* strexd Rd, Rt, Rt2, [Rn] */
 	int one = ntok == 4;   /* legacy `strexd Rd, Rt, [Rn]` */
-	u32 rd = need_reg(1), rt = need_reg(2), rt2 = one ? rt + 1 : need_reg(3), rn = (u32)bracket_reg(one ? 3 : 4);
+	u32 rd = need_reg_nopc(1), rt = need_reg_nopc(2), rt2 = one ? rt + 1 : need_reg_nopc(3), rn = (u32)bracket_reg(one ? 3 : 4);
 	if ((rt & 1) || rt2 != rt + 1 || rt == 14) die("strexd: need an even/odd pair (Rt, Rt+1), got r%u, r%u", rt, rt2);
+	if (rn == 15) die("%s: instruction does not accept this addressing mode (pc base)", toks[0]);
 	emit32((cond << 28) | 0x01a00f90u | (rn << 16) | (rd << 12) | rt);
 }
 
@@ -721,7 +759,8 @@ static void enc_bitfield(u32 cond, int op) {   /* op 0=bfc Rd,#lsb,#w  1=bfi Rd,
 	else emit32((cond << 28) | (op == 2 ? 0x07a00050u : 0x07e00050u) | ((u32)(w - 1) << 16) | (rd << 12) | ((u32)lsb << 7) | rn);
 }
 static void enc_swp(u32 cond, int b) {   /* swp{b} Rt, Rt2, [Rn] */
-	u32 rt = need_reg(1), rt2 = need_reg(2), rn = (u32)bracket_reg(3);
+	u32 rt = need_reg_nopc(1), rt2 = need_reg_nopc(2), rn = (u32)bracket_reg(3);
+	if (rn == 15) die("%s: r15 not allowed here", toks[0]);
 	emit32((cond << 28) | 0x01000090u | ((u32)b << 22) | (rn << 16) | (rt << 12) | rt2);
 }
 static void enc_mcrr(u32 cond, u32 L) {   /* mcrr/mrrc{2} p<cp>, <opc1 0-15>, Rt, Rt2, c<CRm> */
@@ -737,7 +776,7 @@ static void enc_cdp(u32 cond) {   /* cdp{2} p<cp>, <opc1 0-15>, c<CRd>, c<CRn>, 
 	emit32((cond << 28) | 0x0e000000u | (opc1 << 20) | (crn << 16) | (crd << 12) | (cp << 8) | (opc2 << 5) | crm);
 }
 static void enc_dsp_mul(u32 cond, u32 base, int nregs, int xy) {   /* halfword multiplies; xy: bit5 = x (top of Rn), bit6 = y (top of Rm) */
-	u32 r[4]; for (int i = 0; i < nregs; i++) r[i] = need_reg(i + 1);
+	u32 r[4]; for (int i = 0; i < nregs; i++) r[i] = need_reg_nopc(i + 1);
 	if (ntok != nregs + 1) die("%s: expected %d registers", toks[0], nregs);
 	u32 w;
 	if (base == 0x01400080u) w = base | (r[1] << 16) | (r[0] << 12) | (r[3] << 8) | r[2];                      /* smlal<xy> RdLo, RdHi, Rn, Rm */
@@ -747,7 +786,7 @@ static void enc_dsp_mul(u32 cond, u32 base, int nregs, int xy) {   /* halfword m
 }
 static void enc_qarith(u32 cond, u32 base) {   /* qadd/qsub/qdadd/qdsub Rd, Rm, Rn */
 	if (ntok != 4) die("%s: expected Rd, Rm, Rn", toks[0]);
-	u32 rd = need_reg(1), rm = need_reg(2), rn = need_reg(3);
+	u32 rd = need_reg_nopc(1), rm = need_reg_nopc(2), rn = need_reg_nopc(3);
 	emit32((cond << 28) | base | (rn << 16) | (rd << 12) | rm);
 }
 static void enc_ldst_t(u32 cond, int is_load, int is_byte) {   /* ldrt/strt/ldrbt/strbt Rt, [Rn]{, #±imm | ±Rm{, shift}} — post-indexed, W=1 */
@@ -812,8 +851,110 @@ static int dsp_xy(const char *q, int *xy) {
 }
 static int dsp_y(const char *q, int *xy) { if (q[0] != 'b' && q[0] != 't') return 0; *xy = q[0] == 't' ? 0x40 : 0; return 1; }
 
+/* ---- ARMv6 media instructions ------------------------------------------------------------------------- */
+static void enc_3reg_media(u32 cond, u32 base) {   /* Rd, Rn, Rm -> Rn<<16 | Rd<<12 | Rm (parallel add/sub, sel) */
+	if (ntok != 4) die("%s: expected Rd, Rn, Rm", toks[0]);
+	emit32((cond << 28) | base | (need_reg_nopc(2) << 16) | (need_reg_nopc(1) << 12) | need_reg_nopc(3));
+}
+static void enc_pkh(u32 cond, int tb) {   /* pkhbt Rd, Rn, Rm{, lsl #0-31} | pkhtb Rd, Rn, Rm{, asr #1-32} */
+	u32 rd = need_reg_nopc(1), rn = need_reg_nopc(2), rm = need_reg_nopc(3), sh = 0;
+	if (ntok > 4) {
+		if (strcasecmp(toks[4], tb ? "asr" : "lsl") || ntok != 6) die("%s: expected `, %s #n`", toks[0], tb ? "asr" : "lsl");
+		long n = snum(toks[5], tb ? 1 : 0, tb ? 32 : 31, "shift"); sh = (u32)(n & 31);
+	} else if (tb) { u32 t = rn; rn = rm; rm = t; tb = 0; }   /* pkhtb Rd, Rn, Rm == pkhbt Rd, Rm, Rn (GAS) */
+	emit32((cond << 28) | 0x06800010u | ((u32)tb << 6) | (rn << 16) | (rd << 12) | (sh << 7) | rm);
+}
+static void enc_sat(u32 cond, int u, int is16) {   /* {s,u}sat Rd, #sat, Rn{, lsl|asr #n}; {s,u}sat16 Rd, #sat, Rn */
+	u32 rd = need_reg_nopc(1); long sat = snum(ntok > 2 ? toks[2] : NULL, u ? 0 : 1, is16 ? (u ? 15 : 16) : (u ? 31 : 32), "saturate position");
+	u32 rn = need_reg_nopc(3), sf = u ? (u32)sat : (u32)(sat - 1);
+	if (is16) { if (ntok != 4) die("%s: expected Rd, #sat, Rn", toks[0]); emit32((cond << 28) | (u ? 0x06e00f30u : 0x06a00f30u) | (sf << 16) | (rd << 12) | rn); return; }
+	u32 sh = 0, amt = 0;
+	if (ntok > 4) {
+		if (ntok != 6) die("%s: expected `, lsl|asr #n`", toks[0]);
+		if (!strcasecmp(toks[4], "lsl")) amt = (u32)snum(toks[5], 0, 31, "shift");
+		else if (!strcasecmp(toks[4], "asr")) { sh = 1; amt = (u32)snum(toks[5], 1, 32, "shift") & 31; }
+		else die("%s: bad shift '%s'", toks[0], toks[4]);
+	}
+	emit32((cond << 28) | (u ? 0x06e00010u : 0x06a00010u) | (sf << 16) | (rd << 12) | (amt << 7) | (sh << 6) | rn);
+}
+static void enc_xt_add(u32 cond, u32 base) {   /* {s,u}xta{b,h,b16} Rd, Rn, Rm{, ror #n} */
+	u32 rd = need_reg_nopc(1), rn = need_reg_nopc(2), rm = need_reg_nopc(3);
+	emit32((cond << 28) | base | (rn << 16) | (rd << 12) | ror_field(4) | rm);
+}
+static void enc_mul4(u32 cond, u32 base, int regs, int hilo) {   /* Rd, Rn, Rm[, Ra]  or  RdLo, RdHi, Rn, Rm (hilo) */
+	if (ntok != regs + 1) die("%s: expected %d registers", toks[0], regs);
+	u32 a = need_reg_nopc(1), b = need_reg_nopc(2), c = need_reg_nopc(3), d = regs == 4 ? need_reg_nopc(4) : 15;
+	if (hilo) emit32((cond << 28) | base | (b << 16) | (a << 12) | (d << 8) | c);          /* RdHi<<16 RdLo<<12 Rm<<8 Rn */
+	else      emit32((cond << 28) | base | (a << 16) | (d << 12) | (c << 8) | b);          /* Rd<<16 Ra<<12 Rm<<8 Rn */
+}
+static void enc_rfe_srs(int srs, u32 P, u32 U) {   /* rfe{mode} Rn{!}  |  srs{mode} sp{!}, #mode  (unconditional) */
+	char r[16]; strncpy(r, toks[1] ? toks[1] : "", sizeof r - 1); r[sizeof r - 1] = 0;
+	u32 W = 0; size_t l = strlen(r); if (l && r[l - 1] == '!') { W = 1; r[l - 1] = 0; }
+	if (srs) {   /* srs sp{!}, #mode  |  legacy srs #mode{!} (sp implied) */
+		int ai = 2;
+		if (r[0] == '#') ai = 1; else if (reg(r) != 13) die("%s: base register must be sp", toks[0]);
+		char mb[32]; strncpy(mb, ai < ntok ? toks[ai] : "", sizeof mb - 1); mb[sizeof mb - 1] = 0;
+		size_t ml = strlen(mb); if (ai == 1 && ml && mb[ml - 1] == '!') mb[--ml] = 0;
+		u32 mode = (u32)snum(mb, 0, 31, "mode");
+		emit32(0xf84d0500u | (P << 24) | (U << 23) | (W << 21) | mode); return; }
+	int rn = reg(r); if (rn < 0) die("%s: bad base register '%s'", toks[0], toks[1] ? toks[1] : "");
+	if (rn == 15) die("%s: r15 not allowed here", toks[0]);
+	emit32(0xf8100a00u | (P << 24) | (U << 23) | (W << 21) | ((u32)rn << 16));
+}
+/* Parallel add/subtract: <prefix><op>{cond}. prefix: s q sh u uq uh; op: add16 asx sax sub16 add8 sub8 (+ legacy
+ * addsubx=asx, subaddx=sax). Returns 1 if matched. */
+static int try_parallel(const char *m) {
+	static const struct { const char *p; u32 op1; } pf[] = { {"sh",3}, {"uq",6}, {"uh",7}, {"s",1}, {"q",2}, {"u",5} };
+	static const struct { const char *o; u32 op2; } ops[] = { {"add16",0}, {"addsubx",1}, {"asx",1}, {"subaddx",2}, {"sax",2}, {"sub16",3}, {"add8",4}, {"sub8",7} };
+	for (unsigned i = 0; i < sizeof pf / sizeof *pf; i++) { size_t pl = strlen(pf[i].p); if (strncmp(m, pf[i].p, pl)) continue;
+		for (unsigned j = 0; j < sizeof ops / sizeof *ops; j++) { size_t ol = strlen(ops[j].o); u32 cond;
+			if (!strncmp(m + pl, ops[j].o, ol) && suffix_c(m + pl + ol, &cond)) {
+				enc_3reg_media(cond, 0x06000f10u | (pf[i].op1 << 20) | (ops[j].op2 << 5)); return 1; } } }
+	return 0;
+}
+static int media_insn(const char *m) {
+	u32 cond; size_t L = strlen(m);
+	if (try_parallel(m)) return 1;
+	if (!strncmp(m, "pkhbt", 5) && suffix_c(m + 5, &cond)) { enc_pkh(cond, 0); return 1; }
+	if (!strncmp(m, "pkhtb", 5) && suffix_c(m + 5, &cond)) { enc_pkh(cond, 1); return 1; }
+	if (!strncmp(m, "sel", 3) && suffix_c(m + 3, &cond)) { enc_3reg_media(cond, 0x06800fb0u); return 1; }
+	if (!strncmp(m, "ssat16", 6) && suffix_c(m + 6, &cond)) { enc_sat(cond, 0, 1); return 1; }
+	if (!strncmp(m, "usat16", 6) && suffix_c(m + 6, &cond)) { enc_sat(cond, 1, 1); return 1; }
+	if (!strncmp(m, "ssat", 4) && suffix_c(m + 4, &cond)) { enc_sat(cond, 0, 0); return 1; }
+	if (!strncmp(m, "usat", 4) && suffix_c(m + 4, &cond)) { enc_sat(cond, 1, 0); return 1; }
+	static const struct { const char *n; u32 b; } xa[] = { {"sxtab16",0x06800070u}, {"uxtab16",0x06c00070u}, {"sxtab",0x06a00070u},
+		{"sxtah",0x06b00070u}, {"uxtab",0x06e00070u}, {"uxtah",0x06f00070u} };
+	for (unsigned i = 0; i < sizeof xa / sizeof *xa; i++) { size_t l = strlen(xa[i].n);
+		if (!strncmp(m, xa[i].n, l) && suffix_c(m + l, &cond)) { enc_xt_add(cond, xa[i].b); return 1; } }
+	if (!strncmp(m, "sxtb16", 6) && suffix_c(m + 6, &cond)) { enc_extend(cond, 0x068f0070u); return 1; }
+	if (!strncmp(m, "uxtb16", 6) && suffix_c(m + 6, &cond)) { enc_extend(cond, 0x06cf0070u); return 1; }
+	static const struct { const char *n; u32 b; int regs, hilo; } mu[] = {
+		{"smladx",0x07000030u,4,0}, {"smlad",0x07000010u,4,0}, {"smlsdx",0x07000070u,4,0}, {"smlsd",0x07000050u,4,0},
+		{"smuadx",0x0700f030u,3,0}, {"smuad",0x0700f010u,3,0}, {"smusdx",0x0700f070u,3,0}, {"smusd",0x0700f050u,3,0},
+		{"smlaldx",0x07400030u,4,1}, {"smlald",0x07400010u,4,1}, {"smlsldx",0x07400070u,4,1}, {"smlsld",0x07400050u,4,1},
+		{"smmlar",0x07500030u,4,0}, {"smmla",0x07500010u,4,0}, {"smmlsr",0x075000f0u,4,0}, {"smmls",0x075000d0u,4,0},
+		{"smmulr",0x0750f030u,3,0}, {"smmul",0x0750f010u,3,0}, {"usada8",0x07800010u,4,0}, {"usad8",0x0780f010u,3,0},
+		{"umaal",0x00400090u,4,1} };
+	for (unsigned i = 0; i < sizeof mu / sizeof *mu; i++) { size_t l = strlen(mu[i].n);
+		if (!strncmp(m, mu[i].n, l) && suffix_c(m + l, &cond)) { enc_mul4(cond, mu[i].b, mu[i].regs, mu[i].hilo); return 1; } }
+	static const struct { const char *n; u32 P, U; } am[] = { {"ia",0,1}, {"ib",1,1}, {"da",0,0}, {"db",1,0}, {"",0,1},
+		{"fd",0,1}, {"ed",1,1}, {"fa",0,0}, {"ea",1,0} };
+	if (!strncmp(m, "rfe", 3) || !strncmp(m, "srs", 3))
+		for (unsigned i = 0; i < sizeof am / sizeof *am; i++) if (!strcmp(m + 3, am[i].n)) {
+			int srs = m[0] == 's'; u32 P = am[i].P, U = am[i].U;
+			if (i >= 5) { /* stack aliases: rfe = load (fd=ia..), srs = store (fd=db..) */
+				static const u32 lP[] = {0,1,0,1}, lU[] = {1,1,0,0}, sP[] = {1,0,1,0}, sU[] = {0,0,1,1};
+				P = srs ? sP[i - 5] : lP[i - 5]; U = srs ? sU[i - 5] : lU[i - 5]; }
+			enc_rfe_srs(srs, P, U); return 1; }
+	if (!strcmp(m, "setend")) { if (ntok != 2) die("setend: expected be|le");
+		if (!strcasecmp(toks[1], "be")) emit32(0xf1010200u); else if (!strcasecmp(toks[1], "le")) emit32(0xf1010000u); else die("setend: expected be|le"); return 1; }
+	(void)L;
+	return 0;
+}
+
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
+	for (char *c = toks[0]; *c; c++) *c = (char)tolower((unsigned char)*c);   /* GAS: mnemonics are case-insensitive */
 	static char ualbuf[32]; const char *m = ual_name(toks[0], ualbuf, sizeof ualbuf); toks[0] = (char *)m;
 	size_t L = strlen(m); u32 cond; int s;
 	char b3[4] = { L > 0 ? m[0] : 0, L > 1 ? m[1] : 0, L > 2 ? m[2] : 0, 0 };   /* first 3 chars, for shifts */
@@ -835,6 +976,7 @@ void md_assemble(char **t, int n) {
 		if (L == 5 && m[1] == 'l' && m[2] == 'x' && lookup_cc(m + 3, &cond))      { enc_blx(cond); return; }
 	}
 
+	if (media_insn(m)) return;
 	if (!strncmp(m, "clrex", 5) && !m[5]) { emit32(0xf57ff01fu); return; }
 	if (!strcmp(m, "bkpt")) { u32 v = ntok > 1 ? (u32)snum(toks[1], 0, 0xffff, "bkpt number") : 0; emit32(0xe1200070u | ((v >> 4) << 8) | (v & 15)); return; }
 	{   /* tstp/teqp/cmpp/cmnp{cond}: legacy (26-bit) flag-setting compares = Rd field r15 */
@@ -875,6 +1017,21 @@ void md_assemble(char **t, int n) {
 		if (!strncmp(m, "smulw", 5) && (k = dsp_y(m + 5, &xy)) && suffix_c(m + 6, &cond)) { enc_dsp_mul(cond, 0x012000a0u, 3, xy); return; }
 		if (!strncmp(m, "smla", 4) && (k = dsp_xy(m + 4, &xy)) && suffix_c(m + 6, &cond)) { enc_dsp_mul(cond, 0x01000080u, 4, xy); return; }
 		if (!strncmp(m, "smul", 4) && (k = dsp_xy(m + 4, &xy)) && suffix_c(m + 6, &cond)) { enc_dsp_mul(cond, 0x01600080u, 3, xy); return; }
+	}
+	if ((!strncmp(m, "ldrht", 5) || !strncmp(m, "strht", 5) || !strncmp(m, "ldrsbt", 6) || !strncmp(m, "ldrsht", 6))) {   /* v6T2 unprivileged halfword/signed */
+		int sgn = m[3] == 's'; u32 nib = !sgn ? 0xb : m[4] == 'b' ? 0xd : 0xf; int L = m[0] == 'l';
+		if (!suffix_c(m + (sgn ? 6 : 5), &cond)) die("%s: bad suffix", m);
+		u32 rd = need_reg(1); Addr a = parse_addr(2);
+		if (a.P == 1 && (a.imm || a.isreg)) die("%s: only post-indexed addressing", m);
+		if (a.isreg && a.shift) die("%s: no shifted index", m);
+		if (!a.isreg && a.imm > 0xff) die("%s: offset %ld out of range (8-bit)", m, a.imm);
+		u32 lo = a.isreg ? (u32)a.rm : (u32)a.imm & 0xf, hi = a.isreg ? 0 : ((u32)a.imm >> 4) & 0xf;
+		emit32((cond << 28) | ((u32)a.U << 23) | ((u32)!a.isreg << 22) | (1u << 21) | ((u32)L << 20) | ((u32)a.rn << 16) | (rd << 12) | (hi << 8) | (nib << 4) | lo);
+		return;
+	}
+	if (m[0] == 'i' && m[1] == 't') {   /* IT blocks in ARM state: accepted, no code (GAS: they only check the conditions) */
+		int ok = 1; for (const char *c = m + 2; *c; c++) if (*c != 't' && *c != 'e') ok = 0;
+		if (ok && strlen(m) <= 5) { u32 cc; if (ntok != 2 || !lookup_cc(toks[1], &cc)) die("%s: expected a condition", m); return; }
 	}
 	if ((!strncmp(m, "ldr", 3) || !strncmp(m, "str", 3)) && (m[3] == 't' || (m[3] == 'b' && m[4] == 't'))) {   /* ldrt/ldrbt/strt/strbt */
 		int bb = m[3] == 'b'; if (!suffix_c(m + (bb ? 5 : 4), &cond)) die("%s: bad suffix", m);
