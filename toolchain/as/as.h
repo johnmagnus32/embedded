@@ -23,7 +23,8 @@ typedef struct { char *name; int sec; u32 value, size; int global, type, defined
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
-typedef struct { int sec; u32 off; int local_num; int kind; } Fixup;   /* forward local-label ref to patch; kind: 0 = branch, 1 = adr */
+typedef struct { int sec; u32 off; int local_num; int kind; u32 target; int tsec, done; } Fixup;   /* forward local-label ref; kind 0 = branch, 1 = adr.
+                                                            * Bound (target/tsec/done) at the NEXT definition of the label (GAS `Nf`). */
 
 #define MAXSEC 32
 #define MAXSYM 65536  /* a big preprocessed kernel .c emits tens of thousands of .L labels + symbols */
@@ -51,6 +52,9 @@ void add_fixup_kind(int sec, u32 off, int local_num, int kind);
 void local_define(int n, u32 value);                    /* numeric local label N: at value */
 int  local_defined(int n);
 u32  local_value(int n);
+int  section_symbol(int sec);                           /* find-or-create sec's STT_SECTION symbol (reloc target) */
+int  local_sec(int n);                                  /* section the latest definition of N lives in */
+int  parse_local_ref(const char *s, int *n, char *dir); /* "123b"/"7f" (then a non-ident char): bytes consumed, else 0 */
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
 void md_assemble(char **toks, int ntok);   /* encode ONE instruction (toks[0]=mnemonic) into cursec */
@@ -60,6 +64,7 @@ void md_finish(void);                       /* end of pass: resolve arch-interna
 extern const u16 md_e_machine;              /* ELF e_machine (EM_ARM) */
 extern const u32 md_e_flags;                /* ELF e_flags (EABI version) */
 extern const u32 md_r_abs32;                /* the arch's 32-bit absolute reloc (for `.word <symbol>`) */
+extern const u32 md_r_rel32;                /* the arch's 32-bit PC-relative reloc (for `.word <symbol> - .`) */
 extern const u32 md_r_got_prel;             /* the arch's PC-relative GOT-entry reloc (for `.word <symbol>(GOT)`) */
 
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */

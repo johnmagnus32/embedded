@@ -399,10 +399,10 @@ static int asm_is_input(const char *c)  { return !strchr(c, '=') || strchr(c, '+
 /* Emit the template, substituting %0..%9 with each operand's register (or immediate) and turning \n/\t
  * escapes into real newlines/tabs so our as sees one instruction per line. %% -> %, %= (unique id) dropped,
  * a leading modifier letter (%w0/%c0) is ignored. */
-static void emit_asm_template(const char *t, char subst[][24], const int *isimm, int nops) {
+static void emit_asm_template(const char *t, char subst[][24], const int *isimm, int nops, int basic) {
 	fprintf(o, "\t");
 	for (const char *p = t; *p; ) {
-		if (*p == '%') {
+		if (*p == '%' && !basic) {
 			p++;
 			if (*p == '%') { fputc('%', o); p++; }
 			else if (*p == '=') { p++; }
@@ -410,7 +410,9 @@ static void emit_asm_template(const char *t, char subst[][24], const int *isimm,
 				char mod = 0;
 				if (*p && !(*p >= '0' && *p <= '9')) { mod = *p; p++; }   /* modifier letter (%c0/%w0/…) */
 				if (*p >= '0' && *p <= '9') { int i = *p - '0'; p++;
-					if (i < nops) { if (isimm[i] && mod != 'c') fputc('#', o); fputs(subst[i], o); } }   /* ARM immediate operand prints '#N' by default; %c strips it */
+					if (i < nops) {
+						if (mod == 'a' && !isimm[i] && subst[i][0] != '[') fprintf(o, "[%s]", subst[i]);   /* %a: operand as an ADDRESS (kernel prefetchw: `pldw %a0` -> `pldw [r0]`) */
+						else { if (isimm[i] && mod != 'c') fputc('#', o); fputs(subst[i], o); } } }   /* ARM immediate operand prints '#N' by default; %c strips it */
 			}
 		} else if (*p == '\\') {
 			p++;
@@ -446,7 +448,7 @@ static void gen_asm(Node *n) {
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) { if (ASM_MEM(i)) gen_addr(ops[i]); else gen_expr(ops[i]); fprintf(o, "\tpush {r0}\n"); }
 	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
-	emit_asm_template(n->asm_tmpl, subst, isimm, nops);
+	emit_asm_template(n->asm_tmpl, subst, isimm, nops, n->asm_basic);
 	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
 	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) { gen_addr(ops[i]); fprintf(o, "\tmov r1, r0\n\tpop {r0}\n"); store(ops[i]->type); }
 	#undef ASM_MEM

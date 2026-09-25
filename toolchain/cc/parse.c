@@ -620,6 +620,7 @@ static Node *stmt(void) {
 		while (tk->kind == TK_STR) { size_t l = strlen(tk->sval); if (bl + l >= sizeof buf) die("parse: asm template too long (>%d)", (int)sizeof buf); memcpy(buf + bl, tk->sval, l); bl += l; buf[bl] = 0; tk = tk->next; }
 		n->asm_tmpl = malloc(bl + 1); memcpy(n->asm_tmpl, buf, bl + 1);
 		Node oh = {0}, *oc = &oh; int nouts = 0;
+		n->asm_basic = !is(":");   /* GCC: only EXTENDED asm (has `:`) interprets %; basic asm is verbatim */
 		char opn[16][32]; int nn = 0;                        /* per-operand [name] (by position: outputs then inputs) */
 		for (int i = 0; i < 16; i++) opn[i][0] = 0;
 		if (consume(":")) while (tk->kind == TK_STR || is("[")) {   /* outputs: [name] "constraint"(lvalue) */

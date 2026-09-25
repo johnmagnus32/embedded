@@ -6,6 +6,7 @@
  *
  * Relocation math (ARM uses REL — the addend A lives in the instruction we're patching):
  *   R_ARM_ABS32           word = S + A            (A = the existing 32-bit word)
+ *   R_ARM_REL32           word = S + A - P        (`.word sym - .`)
  *   R_ARM_CALL/JUMP24     imm24 = (S + A - P) >> 2 (A = sign-extended imm24 * 4; P = the bl/b address)
  */
 #include "ld.h"
@@ -16,6 +17,7 @@ const u32 md_r_jump_slot = 22;     /* R_ARM_JUMP_SLOT: loader writes the resolve
 const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported variable into the exe's .dynbss slot */
 
 #define R_ARM_ABS32    2
+#define R_ARM_REL32    3
 #define R_ARM_MOVW_ABS_NC 43
 #define R_ARM_MOVT_ABS    44
 #define R_ARM_CALL     28
@@ -39,6 +41,9 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	switch (type) {
 	case R_ARM_ABS32:
 		wr32(loc, S + w);   /* A is the existing word */
+		break;
+	case R_ARM_REL32:       /* `.word sym - .` (kernel .alt.smp.init / ex_table-style PC-relative entries) */
+		wr32(loc, S + w - P);
 		break;
 	case R_ARM_CALL:
 	case R_ARM_JUMP24: {

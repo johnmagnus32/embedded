@@ -20,12 +20,14 @@ const u32 md_e_flags   = 0x05000000;  /* EF_ARM_EABI_VER5 */
 
 /* ARM relocation type codes (arch-private; the front-end stores them opaquely, the obj backend writes them). */
 #define R_ARM_ABS32  2    /* .word <symbol> — 32-bit absolute */
+#define R_ARM_REL32  3    /* .word <sym> - . — 32-bit PC-relative (S + A - P) */
 #define R_ARM_CALL   28   /* bl/blx to a symbol — imm24, addend held in-place */
 #define R_ARM_JUMP24 29   /* b to a symbol */
 #define R_ARM_GOT_PREL 96 /* .word <symbol>(GOT) — PC-relative offset to the symbol's GOT slot (PIC) */
 #define R_ARM_MOVW_ABS_NC 43 /* movw Rd, #:lower16:sym — imm16 = (S+A) & 0xffff */
 #define R_ARM_MOVT_ABS    44 /* movt Rd, #:upper16:sym — imm16 = ((S+A) >> 16) & 0xffff */
 const u32 md_r_abs32    = R_ARM_ABS32;    /* the front-end uses this for `.word <symbol>`       */
+const u32 md_r_rel32    = R_ARM_REL32;    /* ...and this for `.word <symbol> - .`                */
 const u32 md_r_got_prel = R_ARM_GOT_PREL; /* the front-end uses this for `.word <symbol>(GOT)`  */
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
@@ -141,10 +143,16 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	u32 base = (cond << 28) | 0x0a000000u | ((u32)is_bl << 24);   /* cond 101 L imm24 */
 	u32 off = here(); emit32(base);        /* placeholder; patched below or by md_apply_fix */
 	const char *name = toks[1];
-	if (isdigit((unsigned char)name[0]) && (name[1] == 'b' || name[1] == 'f') && name[2] == 0) {
-		int n = name[0] - '0';
-		if (name[1] == 'b') {              /* backward local label: resolve now */
+	int n; char ldir;
+	if (parse_local_ref(name, &n, &ldir) == (int)strlen(name)) {
+		if (ldir == 'b') {                 /* backward local label: resolve now */
 			if (!local_defined(n)) die("backward ref to undefined local label %db", n);
+			if (local_sec(n) != cursec) {  /* e.g. kernel .text.fixup `b 2b` back into .text: relocate vs the
+			                                * target section's symbol, addend = label offset - 8 in imm24 (REL). */
+				patch32(cursec, off, base | ((((int32_t)local_value(n) - 8) >> 2) & 0xffffff));
+				add_reloc(cursec, off, section_symbol(local_sec(n)), is_bl ? R_ARM_CALL : R_ARM_JUMP24);
+				return;
+			}
 			int32_t rel = (int32_t)local_value(n) - (int32_t)(off + 8);
 			patch32(cursec, off, base | ((rel >> 2) & 0xffffff));
 		} else {                            /* forward local label: front-end resolves via md_apply_fix */
@@ -229,9 +237,9 @@ static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-
 	u32 off = here();
 	emit32((cond << 28) | 0x028f0000u | (rd << 12));   /* add Rd, pc, #0 placeholder */
 	const char *name = toks[2];
-	if (isdigit((unsigned char)name[0]) && (name[1] == 'b' || name[1] == 'f') && name[2] == 0) {   /* numeric local label */
-		int n = name[0] - '0';
-		if (name[1] == 'b') { if (!local_defined(n)) die("adr: backward local %db undefined", n); patch_adr(cursec, off, (int32_t)local_value(n) - (int32_t)(off + 8)); }
+	int n; char ldir;
+	if (parse_local_ref(name, &n, &ldir) == (int)strlen(name)) {   /* numeric local label */
+		if (ldir == 'b') { if (!local_defined(n)) die("adr: backward local %db undefined", n); patch_adr(cursec, off, (int32_t)local_value(n) - (int32_t)(off + 8)); }
 		else add_fixup_kind(cursec, off, n, 1);   /* forward: resolved at end */
 		return;
 	}
@@ -514,9 +522,9 @@ void md_assemble(char **t, int n) {
 }
 
 void md_apply_fix(const Fixup *f) {   /* resolve a forward local ref: branch (OR pc-rel offset) or adr (add/sub pc) */
-	if (f->kind == 1) { patch_adr(f->sec, f->off, (int32_t)local_value(f->local_num) - (int32_t)(f->off + 8)); return; }
+	if (f->kind == 1) { patch_adr(f->sec, f->off, (int32_t)f->target - (int32_t)(f->off + 8)); return; }
 	u32 base = read32(f->sec, f->off);
-	int32_t rel = (int32_t)local_value(f->local_num) - (int32_t)(f->off + 8);
+	int32_t rel = (int32_t)f->target - (int32_t)(f->off + 8);   /* bound at the NEXT definition, not the last */
 	patch32(f->sec, f->off, base | ((rel >> 2) & 0xffffff));
 }
 
