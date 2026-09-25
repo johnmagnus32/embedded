@@ -323,6 +323,87 @@ static Node *new_sub(Node *l, Node *r);
 		if (a->kind == TY_PTR || a->kind == TY_ARRAY || a->kind == TY_STRUCT) return 1;   /* approx: any ptr/aggregate */
 		return a->size == b->size && a->is_unsigned == b->is_unsigned;
 	}
+/* ---- builtins lowered in the parser ----------------------------------------------------------------
+ * Bind each already-parsed operand to a fresh local (evaluated ONCE), then parse a small C statement-expression
+ * over those locals in place of the call — the lowering is ordinary C our pipeline already compiles. */
+static int bi_seq;
+static Node *bind_tmp(char *nm, const char *tag, Node *e) {
+	snprintf(nm, 64, "__bi%d_%s", bi_seq, tag); add_type(e);
+	Type *t = e->type; if (t->kind == TY_ARRAY) t = pointer_to(t->base);
+	int off = add_local(nm, t);
+	Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = t;
+	return unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, e));
+}
+static Node *parse_snippet(const char *src) {   /* '@x' -> a per-lowering unique local (never shadows user names like __x) */
+	char buf[2048]; size_t k = 0;
+	for (const char *q = src; *q; q++) {
+		if (*q == '@') { k += (size_t)snprintf(buf + k, sizeof buf - k, "__bi%d_", bi_seq); continue; }
+		if (k + 1 >= sizeof buf) die("cc: internal: builtin snippet too long");
+		buf[k++] = *q;
+	}
+	buf[k] = 0;
+	Token *save = tk; tk = lex(buf); Node *e = expr();
+	if (tk->kind != TK_EOF) die("cc: internal: builtin lowering snippet has trailing tokens");
+	tk = save; return e;
+}
+static Node *stmtexpr_of(Node *binds, Node *val) {   /* ({ binds...; val; }) */
+	Node *se = node(ND_STMTEXPR), **pp = &se->body;
+	for (Node *b = binds; b; ) { Node *nx = b->next; b->next = NULL; *pp = b; pp = &b->next; b = nx; }
+	*pp = unary(ND_EXPRSTMT, val); add_type(val); se->type = val->type; return se;
+}
+static const char *const libc_alias[] = { "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strnlen", "strcpy", "strncpy",
+	"strcmp", "strncmp", "strchr", "strrchr", "strcat", "strstr", "abort", "puts", "printf", "sprintf", "snprintf", NULL };
+/* Returns the lowered node, or NULL to fall through to the normal call path (after renaming a libc alias). */
+static Node *builtin_lower(char *name) {
+	const char *b = name + 10;
+	for (int i = 0; libc_alias[i]; i++) if (!strcmp(b, libc_alias[i])) { memmove(name, name + 10, strlen(b) + 1); return NULL; }   /* __builtin_memcpy -> memcpy */
+	if (!strcmp(b, "object_size") || !strcmp(b, "dynamic_object_size")) {   /* we don't track object sizes: "unknown" */
+		expect("("); assign(); expect(","); long t = eval_const(assign()); expect(")");
+		Node *n = num((t & 2) ? 0 : 0xffffffffL); n->type = ty_uint; return n;   /* types 0/1 -> (size_t)-1, 2/3 -> 0 (GCC semantics) */
+	}
+	if (!strcmp(b, "va_copy")) { expect("("); Node *d = assign(); expect(","); Node *sv = assign(); expect(")"); return binary(ND_ASSIGN, d, sv); }
+	if (!strcmp(b, "isdigit")) {
+		expect("("); Node *c = assign(); expect(")"); bi_seq++; char nc[64]; Node *bc = bind_tmp(nc, "c", c);
+		char src[256]; snprintf(src, sizeof src, "((unsigned)%s - 48u < 10u)", nc); return stmtexpr_of(bc, parse_snippet(src));
+	}
+	int op = !strcmp(b, "add_overflow") ? '+' : !strcmp(b, "sub_overflow") ? '-' : !strcmp(b, "mul_overflow") ? '*' : 0;
+	if (op) {   /* __builtin_OP_overflow(a, b, &res): *res = a OP b (wrapped to res's type); value = did it overflow */
+		expect("("); Node *a = assign(); expect(","); Node *bb = assign(); expect(","); Node *r = assign(); expect(")");
+		add_type(r); if (!r->type || !is_ptr(r->type) || !r->type->base) die("cc: %s: third argument must be a pointer", name);
+		Type *T = r->type->base; bi_seq++;
+		char na[64], nb[64], np[64]; Node *ba = bind_tmp(na, "a", a), *bbn = bind_tmp(nb, "b", bb), *bp = bind_tmp(np, "p", r);
+		ba->next = bbn; bbn->next = bp;
+		char src[1024];
+		if (T->size <= 4)   /* exact in 64 bits for any <=32-bit operands; overflow iff the stored (narrowed) value differs */
+			snprintf(src, sizeof src, "({ long long @t = (long long)%s %c (long long)%s; *%s = @t; (long long)*%s != @t; })", na, op, nb, np, np);
+		else if (T->is_unsigned) {
+			if (op == '+') snprintf(src, sizeof src, "({ unsigned long long @x = %s, @y = %s, @s = @x + @y; *%s = @s; @s < @x; })", na, nb, np);
+			else if (op == '-') snprintf(src, sizeof src, "({ unsigned long long @x = %s, @y = %s; *%s = @x - @y; @x < @y; })", na, nb, np);
+			else snprintf(src, sizeof src,   /* 64x64 via 32-bit halves (no 64-bit divide: the kernel provides none) */
+				"({ unsigned long long @x = %s, @y = %s; unsigned @xh = @x >> 32, @xl = @x, @yh = @y >> 32, @yl = @y;"
+				" unsigned long long @c = (unsigned long long)@xh * @yl + (unsigned long long)@xl * @yh;"
+				" unsigned long long @l = (unsigned long long)@xl * @yl, @m = @l + (@c << 32);"
+				" *%s = @m; (@xh != 0 && @yh != 0) || (@c >> 32) != 0 || @m < @l; })", na, nb, np);
+		} else {
+			if (op == '+') snprintf(src, sizeof src, "({ long long @x = %s, @y = %s; long long @s = (long long)((unsigned long long)@x + (unsigned long long)@y);"
+				" *%s = @s; ((@x ^ @s) & (@y ^ @s)) < 0; })", na, nb, np);
+			else if (op == '-') snprintf(src, sizeof src, "({ long long @x = %s, @y = %s; long long @s = (long long)((unsigned long long)@x - (unsigned long long)@y);"
+				" *%s = @s; ((@x ^ @y) & (@x ^ @s)) < 0; })", na, nb, np);
+			else snprintf(src, sizeof src,   /* signed 64x64: multiply magnitudes (halves, as above); range-check by sign */
+				"({ long long @x = %s, @y = %s; int @n = (@x < 0) != (@y < 0);"
+				" unsigned long long @ax = @x < 0 ? -(unsigned long long)@x : (unsigned long long)@x, @ay = @y < 0 ? -(unsigned long long)@y : (unsigned long long)@y;"
+				" unsigned @xh = @ax >> 32, @xl = @ax, @yh = @ay >> 32, @yl = @ay;"
+				" unsigned long long @c = (unsigned long long)@xh * @yl + (unsigned long long)@xl * @yh;"
+				" unsigned long long @l = (unsigned long long)@xl * @yl, @m = @l + (@c << 32);"
+				" int @o = (@xh != 0 && @yh != 0) || (@c >> 32) != 0 || @m < @l;"
+				" *%s = (long long)(@n ? -@m : @m);"
+				" @o || (@n ? @m > 0x8000000000000000ull : @m > 0x7fffffffffffffffull); })", na, nb, np);
+		}
+		return stmtexpr_of(ba, parse_snippet(src));
+	}
+	return NULL;   /* bit/frame builtins: gen_builtin expands them (it fails loud on anything else) */
+}
+
 	static Node *primary(void) {
 	while (consume("__extension__")) ;   /* GNU no-op prefix, e.g. __extension__ ({...}) */
 	if (consume("_Generic")) {
@@ -417,6 +498,7 @@ static Node *new_sub(Node *l, Node *r);
 			}
 			expect(")"); return rt ? binary(ND_ADD, num(off), rt) : num(off);
 		}
+		if (!strncmp(name, "__builtin_", 10) && is("(")) { Node *bn = builtin_lower(name); if (bn) return bn; }   /* object_size/overflow/isdigit/va_copy/libc aliases */
 		if (consume("(")) {                                  /* call: name(args) */
 			Node *n = node(ND_CALL);
 			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
@@ -1235,6 +1317,19 @@ Type *func_param_type(const char *name, int i) {
 Func *parse(Token *tok) {
 	tk = tok;
 	add_typedef("__builtin_va_list", pointer_to(ty_char));   /* va_list is a char* walking the arg block */
+	{   /* signatures of the builtins gen_builtin expands inline: result type + parameter type (so e.g. an int
+	     * argument to __builtin_clzll is widened to 64 bits, and bswap64's result isn't truncated) */
+		Type *vp = pointer_to(ty_char), *ull = ty_ullong, *ui = ty_uint;
+		struct { const char *n; Type *r, *p; } bt[] = {
+			{"__builtin_clz",ty_int,ui}, {"__builtin_clzl",ty_int,ui}, {"__builtin_clzll",ty_int,ull},
+			{"__builtin_ctz",ty_int,ui}, {"__builtin_ctzl",ty_int,ui}, {"__builtin_ctzll",ty_int,ull},
+			{"__builtin_ffs",ty_int,ty_int}, {"__builtin_ffsl",ty_int,ty_int}, {"__builtin_ffsll",ty_int,ty_llong},
+			{"__builtin_bswap16",ty_ushort,ty_ushort}, {"__builtin_bswap32",ui,ui}, {"__builtin_bswap64",ull,ull},
+			{"__builtin_return_address",vp,ui}, {"__builtin_frame_address",vp,ui}, {"__builtin_extract_return_addr",vp,vp},
+			{"__builtin_thread_pointer",vp,NULL},
+		};
+		for (unsigned i = 0; i < sizeof bt / sizeof *bt; i++) { Type *pt[1] = { bt[i].p }; record_func_sig(bt[i].n, bt[i].r, pt, bt[i].p ? 1 : 0, 0); }
+	}
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
 		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_attribute(); consume(";"); continue; }

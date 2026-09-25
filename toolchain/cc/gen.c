@@ -223,6 +223,41 @@ static void gen_bitfield_store(Node *n) {
 	fprintf(o, sz == 1 ? "\tstrb r2, [r1]\n" : sz == 2 ? "\tstrh r2, [r1]\n" : "\tstr r2, [r1]\n");
 }
 
+/* GCC builtins that reach codegen with a non-constant argument (constant ones were folded by the parser).
+ * They are never real functions — emitting `bl __builtin_clz` leaves an undefined symbol — so expand inline,
+ * with the same instructions GCC uses on ARMv7. Anything unhandled is a hard error. */
+static long builtin_const_arg(Node *n) {
+	if (!n->args || n->args->kind != ND_NUM) die("cc: %s needs a constant argument", n->name);
+	return n->args->val;
+}
+static void gen_builtin(Node *n) {
+	const char *b = n->name + 10;   /* after "__builtin_" */
+	if (!strcmp(b, "return_address")) {   /* level 0 = our saved lr ([fp,#4] after `push {r11, lr}`); deeper: 0, like GCC on ARM */
+		fprintf(o, builtin_const_arg(n) == 0 ? "\tldr r0, [r11, #4]\n" : "\tmov r0, #0\n"); return; }
+	if (!strcmp(b, "frame_address")) { fprintf(o, builtin_const_arg(n) == 0 ? "\tmov r0, r11\n" : "\tmov r0, #0\n"); return; }
+	if (!strcmp(b, "thread_pointer")) { fprintf(o, "\tmrc p15, 0, r0, c13, c0, 3\n"); return; }   /* TPIDRURO, as GCC reads it */
+	if (!n->args || n->args->next) die("cc: unsupported builtin '%s'", n->name);
+	gen_expr(n->args);   /* the one operand: r0, or r0:r1 if 64-bit */
+	{ Type *pt = func_param_type(n->name, 0), *at = n->args->type;   /* widen a 32-bit arg to a 64-bit param (clzll(int)) */
+	  if (is64(pt) && !is64(at)) fprintf(o, (at && at->is_unsigned) ? "\tmov r1, #0\n" : "\tasr r1, r0, #31\n"); }
+	if (!strcmp(b, "extract_return_addr")) return;
+	if (!strcmp(b, "clz") || !strcmp(b, "clzl")) { fprintf(o, "\tclz r0, r0\n"); return; }
+	if (!strcmp(b, "clzll"))   /* hi ? clz(hi) : 32 + clz(lo) */
+		{ fprintf(o, "\tclz r2, r1\n\tclz r0, r0\n\tcmp r1, #0\n\taddeq r0, r0, #32\n\tmovne r0, r2\n"); return; }
+	if (!strcmp(b, "ctz") || !strcmp(b, "ctzl")) { fprintf(o, "\trbit r0, r0\n\tclz r0, r0\n"); return; }
+	if (!strcmp(b, "ctzll"))   /* lo ? ctz(lo) : 32 + ctz(hi) */
+		{ fprintf(o, "\trbit r2, r0\n\tclz r2, r2\n\trbit r3, r1\n\tclz r3, r3\n\tcmp r0, #0\n\tmovne r0, r2\n\taddeq r0, r3, #32\n"); return; }
+	if (!strcmp(b, "ffs") || !strcmp(b, "ffsl"))   /* x ? ctz(x) + 1 : 0 */
+		{ fprintf(o, "\trbit r1, r0\n\tclz r1, r1\n\tcmp r0, #0\n\taddne r0, r1, #1\n"); return; }
+	if (!strcmp(b, "ffsll"))   /* lo ? ctz(lo)+1 : hi ? ctz(hi)+33 : 0 */
+		{ fprintf(o, "\trbit r2, r0\n\tclz r2, r2\n\trbit r3, r1\n\tclz r3, r3\n\tcmp r0, #0\n\taddne r0, r2, #1\n\tbne 1f\n"
+		             "\tcmp r1, #0\n\tmoveq r0, #0\n\taddne r0, r3, #33\n1:\n"); return; }
+	if (!strcmp(b, "bswap16")) { fprintf(o, "\trev16 r0, r0\n\tuxth r0, r0\n"); return; }
+	if (!strcmp(b, "bswap32")) { fprintf(o, "\trev r0, r0\n"); return; }
+	if (!strcmp(b, "bswap64")) { fprintf(o, "\trev r2, r0\n\trev r0, r1\n\tmov r1, r2\n"); return; }
+	die("cc: unsupported builtin '%s' (would be an undefined symbol)", n->name);
+}
+
 static void gen_expr(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:                                                 /* 64-bit literal fills the pair r0:r1 */
@@ -310,6 +345,7 @@ static void gen_expr(Node *n) {
 		return;
 	}
 	case ND_CALL: {
+		if (n->name[0] && !strncmp(n->name, "__builtin_", 10)) { gen_builtin(n); return; }   /* never a real call */
 		Node *av[64]; int nargs = 0; for (Node *a = n->args; a; a = a->next) { if (nargs >= 64) die("cc: too many call args (>64)"); av[nargs++] = a; }
 		int is64a[64], onstk[64], word[64];
 		const char *callee = n->lhs ? 0 : n->name;                 /* only a direct call has a known signature */
