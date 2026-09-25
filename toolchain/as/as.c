@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include "as.h"
@@ -151,7 +152,7 @@ static void strip_comments(char *s) {
 		}
 		if (*p == '"') { inq = 1; continue; }
 		if (p[0] == '/' && p[1] == '*') { *p++ = ' '; *p = ' '; in_block = 1; continue; }
-		if (p[0] == '@' || (p[0] == '/' && p[1] == '/')) { while (*p && *p != '\n') *p++ = ' '; if (!*p) break; }
+		if ((p[0] == '@' && !(p > s && p[-1] == '\\')) || (p[0] == '/' && p[1] == '/')) {   /* `\@` = macro counter, not a comment */ while (*p && *p != '\n') *p++ = ' '; if (!*p) break; }
 	}
 }
 
@@ -170,7 +171,7 @@ static void tokenize(const char *line) {
 		if (!*p || *p == '\n') break;
 		if (ntok >= MAXTOK) die("too many tokens on a line");
 		toks[ntok++] = p;
-		int inq = 0, isimm = (*p == '#'), depth = 0;   /* inside "..." spaces/commas are part of the token (.ascii "a b") */
+		int inq = 0, isimm = (*p == '#' || *p == ':'), depth = 0;   /* `#expr` and `:pc_g0:(expr)` group-reloc operands */   /* inside "..." spaces/commas are part of the token (.ascii "a b") */
 		while (*p && (inq || (*p != '\t' && *p != ',' && *p != '\n' && *p != ' ') || (isimm && depth > 0 && *p != '\n')
 		              || (isimm && (*p == ' ' || *p == '\t') && !imm_ends_here(p)))) {
 			/* a `#` immediate is an EXPRESSION: it keeps its spaces up to the next top-level comma
@@ -253,9 +254,9 @@ static RVal e_prim(void) {
 		RVal r = { 0, fb_symbol(n, dir), 0, -1, 0 }; return r; } }
 	if (*ep == '\'' && ep[1]) {   /* GAS char constant 'c (escapes: '\\ '\n '\t '\a ...; closing quote optional) */
 		long c; ep++;
+		/* GAS (checked): only \b \f \n \r \t are control chars; any other '\x is x itself ('\a = 'a', '\0 = '0') */
 		if (*ep == '\\' && ep[1]) { ep++; switch (*ep) { case 'n': c = 10; break; case 't': c = 9; break; case 'r': c = 13; break;
-			case 'a': c = 7; break; case 'b': c = 8; break; case 'f': c = 12; break; case 'v': c = 11; break; case '0': c = 0; break;
-			default: c = (unsigned char)*ep; } ep++; }
+			case 'b': c = 8; break; case 'f': c = 12; break; default: c = (unsigned char)*ep; } ep++; }
 		else c = (unsigned char)*ep++;
 		if (*ep == '\'') ep++;
 		return rconst(c); }
@@ -332,7 +333,8 @@ static void resolve_deferred(void) {
 		if (r.sym < 0 && r.msym < 0) { patch32(sec, off, (u32)r.c); continue; }
 		if (r.msym >= 0 && syms[r.msym].defined && syms[r.msym].sec == sec && r.sym >= 0 && !r.dot) {
 			/* S - M with M in this word's section: = S - P + (P - M) -> R_ARM_REL32, addend c + (P - M) */
-			patch32(sec, off, (u32)(r.c + (long)off - (long)syms[r.msym].value)); add_reloc(sec, off, r.sym, md_r_rel32); continue; }
+			u32 got = md_data_reloc_for(syms[r.sym].name, 0);   /* _GLOBAL_OFFSET_TABLE_ - L: R_ARM_BASE_PREL (GAS), same addend */
+			patch32(sec, off, (u32)(r.c + (long)off - (long)syms[r.msym].value)); add_reloc(sec, off, r.sym, got ? got : md_r_rel32); continue; }
 		die("data expression: symbol difference across sections can't be represented");
 	}
 	for (int i = 0; i < ndsize; i++) {
@@ -376,7 +378,11 @@ static void emit_word_rval(RVal r) {
 	if (r.sym < 0) { if (r.dot) die("data expr: '- .' with no symbol"); emit32((u32)r.c); return; }
 	emit32((u32)r.c);   /* REL-style: the addend lives in place */
 	if (r.rtype) { if (r.dot) die("data expr: '- .' with an explicit relocation operator"); add_reloc(cursec, off, r.sym, r.rtype); return; }
-	add_reloc(cursec, off, r.sym, r.dot ? md_r_rel32 : md_data_reloc_for(syms[r.sym].name, md_r_abs32));
+	/* _GLOBAL_OFFSET_TABLE_ in data is always R_ARM_BASE_PREL (B(S) + A - P) in GAS — the `- .` is implied by the
+	 * relocation, so `.word GOT - (. + 8)` has addend -8 (was: REL32 whenever `.` appeared) */
+	u32 dflt = md_data_reloc_for(syms[r.sym].name, 0);
+	if (dflt) { add_reloc(cursec, off, r.sym, dflt); return; }
+	add_reloc(cursec, off, r.sym, r.dot ? md_r_rel32 : md_r_abs32);
 }
 /* `.byte/.hword/.quad` operand lists: constant expressions (was strtol per space-split token: `.byte X - Y`
  * silently became X, junk ignored). Range-checked against the width (signed or unsigned). */
@@ -424,6 +430,66 @@ static void data_words(void) {
 		emit_word_rval(r); if (*ep == ',') { ep++; continue; } if (*ep) die("data expr: junk '%s' in '%s'", ep, cur_stmt); break; }
 }
 
+/* ---- floating-point data: .float/.single (binary32), .double (binary64), .float16 (IEEE or ARM alternative
+ * half), .bfloat16. Decimal -> double via strtod (correctly rounded), then ONE round-to-nearest-even into the
+ * target; checked against GNU as. */
+static int fp16_alt;   /* .float16_format alternative: no Inf/NaN, exponent 31 is a normal exponent */
+static double fp_parse(const char *t) {
+	const char *q = t; int neg = 0;
+	if ((q[0] == '0') && (q[1] == 'f' || q[1] == 'F' || q[1] == 'd' || q[1] == 'D' || q[1] == 'e' || q[1] == 'E' || q[1] == 'r' || q[1] == 'R') && q[2] && !isdigit((unsigned char)q[1])) q += 2;   /* 0f1.5 */
+	if (*q == '+' || *q == '-') { neg = *q == '-'; q++; }
+	double v;
+	if (!strcasecmp(q, "inf") || !strcasecmp(q, "infinity")) v = __builtin_inf();
+	else if (!strcasecmp(q, "nan")) v = __builtin_nan("");
+	else { char *e; v = strtod(q, &e); if (e == q || *e) die("bad floating-point value '%s'", t); }
+	return neg ? -v : v;
+}
+/* Round double -> (sign, exp bits eb, mantissa bits mb) IEEE-style, RNE; alt = no inf/nan (ARM alt half). */
+static unsigned long long fp_pack(double v, int eb, int mb, int alt) {
+	unsigned long long bits; memcpy(&bits, &v, 8);
+	unsigned long long sign = bits >> 63; int e = (int)((bits >> 52) & 0x7ff); unsigned long long m = bits & ((1ULL << 52) - 1);
+	int bias = (1 << (eb - 1)) - 1, emax = (1 << eb) - 1;
+	unsigned long long sgn = sign << (eb + mb);
+	if (e == 0x7ff) {   /* inf / nan */
+		if (alt) die(".float16: Inf/NaN not representable in the alternative format");
+		if (m) return sgn | ((unsigned long long)emax << mb) | ((1ULL << mb) - 1);   /* NaN: GAS sets every mantissa bit */
+		return sgn | ((unsigned long long)emax << mb);
+	}
+	if (e == 0 && m == 0) return sgn;
+	/* value = 1.m * 2^(e-1023) (normal double; double subnormals are far below any target's range -> 0/tiny) */
+	int E = e ? e - 1023 : -1022; unsigned long long M = e ? (m | (1ULL << 52)) : m;   /* M: 53-bit significand */
+	int te = E + bias;   /* target biased exponent if normal */
+	int shift = 52 - mb;   /* drop this many bits for a normal result */
+	if (te <= 0) shift += 1 - te, te = 0;   /* subnormal: denormalize */
+	if (shift > 63) return sgn;   /* underflows to zero */
+	unsigned long long q = M >> shift, rem = M & ((1ULL << shift) - 1), half = 1ULL << (shift - 1);
+	if (rem > half || (rem == half && (q & 1))) q++;   /* round to nearest, ties to even */
+	/* q holds (hidden bit + mantissa) for normals, mantissa for subnormals; renormalize on carry */
+	unsigned long long mant; int ex;
+	if (te == 0) { if (q >> mb) { ex = 1; mant = q & ((1ULL << mb) - 1); } else { ex = 0; mant = q; } }
+	else { if (q >> (mb + 1)) { q >>= 1; te++; } ex = te; mant = q & ((1ULL << mb) - 1); }
+	if (ex >= (alt ? emax + 1 : emax)) {   /* overflow */
+		if (alt) die(".float16: value %g out of range for the alternative format", v);
+		return sgn | ((unsigned long long)emax << mb);   /* +-Inf */
+	}
+	return sgn | ((unsigned long long)ex << mb) | mant;
+}
+static void fp_directive(const char *d) {
+	int sz = !strcmp(d, ".double") ? 8 : (!strcmp(d, ".float16") || !strcmp(d, ".bfloat16")) ? 2 : 4;
+	if (ntok < 2) die("%s: missing operand", d);
+	map_data();
+	for (int i = 1; i < ntok; i++) {
+		double v = fp_parse(toks[i]); unsigned long long w;
+		if (v != v) { int neg = toks[i][0] == '-'; w = sz == 8 ? 0x7fffffffffffffffULL : sz == 4 ? 0x7fffffffULL : 0x7fffULL;   /* NaN: all mantissa bits (GAS) */
+			if (neg) w |= 1ULL << (8 * sz - 1);
+			if (sz == 2 && fp16_alt && strcmp(d, ".bfloat16")) die(".float16: NaN not representable in the alternative format"); }
+		else if (sz == 8) memcpy(&w, &v, 8);
+		else if (sz == 4) { float f = (float)v; u32 b; memcpy(&b, &f, 4); w = b; }   /* (float) of a double: RNE */
+		else if (!strcmp(d, ".bfloat16")) w = fp_pack(v, 8, 7, 0);
+		else w = fp_pack(v, 5, 10, fp16_alt);
+		for (int k = 0; k < sz; k++) { u8 b = (u8)(w >> (8 * k)); emit(&b, 1); }
+	}
+}
 static void do_directive(void) {
 	const char *d = toks[0];
 	int was = cursec;
@@ -478,6 +544,14 @@ static void do_directive(void) {
 		 * absolute (R_ARM_ABS32) relocation the linker fills with the symbol's address. */
 		if (!strcmp(d, ".inst")) map_insn(); else map_data();
 		data_words();   /* expressions, lists, local labels, `X - .`, `sym(OP)` relocation operators */
+	} else if (!strcmp(d, ".float") || !strcmp(d, ".single") || !strcmp(d, ".double") || !strcmp(d, ".float16") || !strcmp(d, ".bfloat16")) {
+		fp_directive(d);
+	} else if (!strcmp(d, ".float16_format")) {
+		if (ntok != 2) die(".float16_format: expected ieee|alternative");
+		static int fp16_set = -1; int want;
+		if (!strcmp(toks[1], "ieee")) want = 0; else if (!strcmp(toks[1], "alternative")) want = 1; else die(".float16_format: expected ieee|alternative, got '%s'", toks[1]);
+		if (fp16_set >= 0 && fp16_set != want) die(".float16_format: the format can be set only once (GAS ignores a change)");   /* we fail loud instead */
+		fp16_set = want; fp16_alt = want;
 	} else if (!strcmp(d, ".byte")) {
 		map_data(); data_consts(1);
 	} else if (!strcmp(d, ".hword") || !strcmp(d, ".2byte") || !strcmp(d, ".short")) {
@@ -586,7 +660,7 @@ static void reduce_local_relocs(void) {
 /* ------------------------------------------------------------------ GAS macros -------------------- */
 /* A line-level preprocessing pass over the input: expand `.macro`/`.rept` and honour `.if`/`.else`, then
  * hand real lines to parse_line. Recursive (macros expand into feed_line), so nested macros/rept/if work. */
-typedef struct { char name[64]; char params[16][32]; int nparams; char *body[2048]; int nbody; } Macro;
+typedef struct { char name[64]; char params[32][32]; char *defs[32]; int req[32], vararg[32]; int nparams; char *body[2048]; int nbody; } Macro;
 static Macro macros[256]; static int nmacros;
 static Macro *macro_find(const char *n) { for (int i = 0; i < nmacros; i++) if (!strcmp(macros[i].name, n)) return &macros[i]; return NULL; }
 static int macuid;                                   /* \@ — a unique id per macro expansion */
@@ -596,79 +670,95 @@ static char *xdup(const char *s) { char *p = malloc(strlen(s) + 1); strcpy(p, s)
 /* Leading whitespace-delimited word of a line -> w; returns the pointer just past it. */
 static const char *lead(const char *s, char *w) { while (*s==' '||*s=='\t') s++; int i=0; while (*s && *s!=' '&&*s!='\t'&&*s!=','&&i<63) w[i++]=*s++; w[i]=0; return s; }
 
-/* Tiny constant-expression evaluator for .if / .rept (numbers + the usual C operators, precedence-climbing).
- * Identifiers that aren't numbers evaluate to 0 (macro args are substituted to numbers before we get here). */
-static const char *ep;
-static long ep_expr(int minp);
-static long ep_primary(void) {
-	while (*ep==' '||*ep=='\t') ep++;
-	if (*ep=='(') { ep++; long v=ep_expr(0); while(*ep==' ')ep++; if(*ep==')')ep++; return v; }
-	if (*ep=='!') { ep++; return !ep_primary(); }
-	if (*ep=='-') { ep++; return -ep_primary(); }
-	if (*ep=='~') { ep++; return ~ep_primary(); }
-	if (*ep=='\'') { ep++; long c=(unsigned char)*ep; if(*ep=='\\'){ep++; c=*ep=='n'?'\n':*ep=='t'?'\t':*ep=='0'?0:(unsigned char)*ep;} ep++; if(*ep=='\'')ep++; return c; }
-	if ((*ep>='0'&&*ep<='9')) { char *e; long v=strtol(ep,&e,0); ep=e; return v; }
-	while (*ep && (*ep=='_'||(*ep>='a'&&*ep<='z')||(*ep>='A'&&*ep<='Z')||(*ep>='0'&&*ep<='9'))) ep++;   /* unknown ident -> 0 */
-	return 0;
-}
-static int ep_op(int *prec, int *len) {   /* classify the operator at ep; returns an id, sets precedence+length */
-	const char *o=ep; while(*o==' '||*o=='\t')o++; int adv=(int)(o-ep);
-	struct { const char *s; int p; } t;
-	if(!strncmp(o,"&&",2)){*prec=2;*len=adv+2;return 1;} if(!strncmp(o,"||",2)){*prec=1;*len=adv+2;return 2;}
-	if(!strncmp(o,"==",2)){*prec=4;*len=adv+2;return 3;} if(!strncmp(o,"!=",2)){*prec=4;*len=adv+2;return 4;}
-	if(!strncmp(o,"<=",2)){*prec=5;*len=adv+2;return 5;} if(!strncmp(o,">=",2)){*prec=5;*len=adv+2;return 6;}
-	if(!strncmp(o,"<<",2)){*prec=6;*len=adv+2;return 9;} if(!strncmp(o,">>",2)){*prec=6;*len=adv+2;return 10;}
-	if(*o=='<'){*prec=5;*len=adv+1;return 7;} if(*o=='>'){*prec=5;*len=adv+1;return 8;}
-	if(*o=='+'){*prec=7;*len=adv+1;return 11;} if(*o=='-'){*prec=7;*len=adv+1;return 12;}
-	if(*o=='*'){*prec=8;*len=adv+1;return 13;} if(*o=='/'){*prec=8;*len=adv+1;return 14;} if(*o=='%'){*prec=8;*len=adv+1;return 15;}
-	if(*o=='&'){*prec=3;*len=adv+1;return 16;} if(*o=='|'){*prec=3;*len=adv+1;return 17;} if(*o=='^'){*prec=3;*len=adv+1;return 18;}
-	(void)t; return 0;
-}
-static long ep_expr(int minp) {
-	long l = ep_primary();
-	for (;;) { int prec, len, op = ep_op(&prec, &len); if (!op || prec < minp) break; ep += len;
-		long r = ep_expr(prec + 1);
-		switch (op) { case 1:l=l&&r;break; case 2:l=l||r;break; case 3:l=l==r;break; case 4:l=l!=r;break;
-			case 5:l=l<=r;break; case 6:l=l>=r;break; case 7:l=l<r;break; case 8:l=l>r;break; case 9:l=l<<r;break;
-			case 10:l=l>>r;break; case 11:l+=r;break; case 12:l-=r;break; case 13:l*=r;break; case 14:l=r?l/r:0;break;
-			case 15:l=r?l%r:0;break; case 16:l&=r;break; case 17:l|=r;break; case 18:l^=r;break; } }
-	return l;
-}
-static long eval_if(const char *s) { ep = s; return ep_expr(0); }
+/* .if / .rept take a constant expression — the SAME evaluator as everything else (a private one used to treat
+ * every identifier as 0, so `.if SYMBOL` silently picked the wrong branch; /0 silently gave 0). */
+static long eval_if(const char *s) { return eval_const_expr(s); }
 
-/* Substitute \param -> arg, \@ -> uid, \() -> "" in a macro body line, into out. */
-static void subst(const char *in, Macro *m, char args[][256], int na, int uid, char *out) {
-	char *o = out;
+/* A growable output string (macro substitution must not overflow a fixed buffer). */
+typedef struct { char *b; size_t n, cap; } Buf;
+static void bput(Buf *o, const char *s, size_t n) {
+	if (o->n + n + 1 > o->cap) { o->cap = (o->n + n + 1) * 2 + 64; o->b = realloc(o->b, o->cap); }
+	memcpy(o->b + o->n, s, n); o->n += n; o->b[o->n] = 0;
+}
+/* Substitute \param -> arg, \@ -> uid, \() -> "" in one body line. names/vals: the parameter bindings. */
+static char *subst(const char *in, char names[][32], char **vals, int nv, int uid) {
+	Buf o = {0}; bput(&o, "", 0);
 	for (const char *p = in; *p; ) {
-		if (*p == '\\') {
-			p++;
-			if (*p == '@') { p++; o += sprintf(o, "%d", uid); continue; }
-			if (*p == '(' && p[1] == ')') { p += 2; continue; }
-			char nm[32]; int i = 0; while (*p && (*p=='_'||(*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z')||(*p>='0'&&*p<='9')) && i<31) nm[i++]=*p++; nm[i]=0;
-			int found = 0;
-			for (int k = 0; k < m->nparams; k++) if (!strcmp(nm, m->params[k])) { if (k < na) { strcpy(o, args[k]); o += strlen(o); } found = 1; break; }
-			if (!found) { *o++ = '\\'; strcpy(o, nm); o += strlen(nm); }
-		} else *o++ = *p++;
+		if (*p != '\\') { bput(&o, p, 1); p++; continue; }
+		p++;
+		if (*p == '@') { char u[16]; int k = snprintf(u, sizeof u, "%d", uid); bput(&o, u, (size_t)k); p++; continue; }
+		if (*p == '(' && p[1] == ')') { p += 2; continue; }
+		const char *s0 = p; while (*p == '_' || isalnum((unsigned char)*p)) p++;
+		size_t L = (size_t)(p - s0); int found = 0;
+		for (int k = 0; k < nv; k++) if (strlen(names[k]) == L && !strncmp(names[k], s0, L)) { bput(&o, vals[k], strlen(vals[k])); found = 1; break; }
+		if (!found) { bput(&o, "\\", 1); bput(&o, s0, L); }
 	}
-	*o = 0;
+	return o.b;
 }
 
 static void feed_line(char *line);
+static int exitm;   /* .exitm seen: stop expanding the innermost macro */
+/* Invocation: comma-separated args (parens/brackets/braces/quotes nest); `name=value` binds by keyword; a
+ * :vararg parameter takes the rest of the line verbatim; missing args take the default, or error if :req. */
 static void expand_macro(Macro *m, const char *argline) {
-	char args[16][256]; int na = 0;                  /* split argline on commas, trimming spaces */
-	const char *p = argline; while (*p==' '||*p=='\t') p++;
-	while (*p && na < 16) { char *d = args[na]; int depth = 0;
-		while (*p && !(*p==',' && depth==0)) { if(*p=='(')depth++; else if(*p==')')depth--; *d++=*p++; }
-		*d = 0; char *e = args[na] + strlen(args[na]); while (e>args[na] && (e[-1]==' '||e[-1]=='\t')) *--e=0;
-		na++; if (*p==',') { p++; while(*p==' '||*p=='\t')p++; } }
-	if (*p) die("macro invoked with too many args (>16)");
+	char *vals[32] = {0}; int pos = 0;
+	/* GAS scrubs whitespace first (app.c): a blank next to an operator or comma is dropped; one between two word
+	 * characters survives and SEPARATES arguments (`m 1 2 3`, `m 4, 5 6`, but `m 11, 12 + 1` = 11, 13). Quotes kept. */
+	char *scr = malloc(strlen(argline) + 1); size_t sn = 0;
+	{ const char *q = argline; char inq = 0;
+	  while (*q == ' ' || *q == '\t') q++;
+	  for (; *q; q++) {
+		if (inq) { scr[sn++] = *q; if (*q == '\\' && q[1]) scr[sn++] = *++q; else if (*q == inq) inq = 0; continue; }
+		if (*q == '"') { inq = '"'; scr[sn++] = *q; continue; }
+		if (*q == ' ' || *q == '\t') {
+			const char *n = q; while (*n == ' ' || *n == '\t') n++;
+			char pv = sn ? scr[sn - 1] : 0, nx = *n;
+			const char *ops = "+-*/%&|^<>=!~,()";
+			if (pv && nx && !strchr(ops, pv) && !strchr(ops, nx)) scr[sn++] = ' ';
+			q = n - 1; continue;
+		}
+		scr[sn++] = *q;
+	  }
+	  while (sn && scr[sn - 1] == ' ') sn--;
+	  scr[sn] = 0; }
+	const char *p = scr;
+	while (*p) {
+		if (pos < m->nparams && m->vararg[pos]) {   /* the rest, trimmed */
+			const char *e = p + strlen(p); while (e > p && (e[-1] == ' ' || e[-1] == '\t')) e--;
+			vals[pos] = strndup(p, (size_t)(e - p)); pos++; p = ""; break;
+		}
+		const char *s0 = p; int depth = 0; char q = 0;
+		while (*p && (q || depth || (*p != ',' && *p != ' '))) {   /* a scrubbed blank separates too */
+			if (q) { if (*p == '\\' && p[1]) p++; else if (*p == q) q = 0; }
+			else if (*p == '"') q = *p;
+			else if (*p == '(' || *p == '[' || *p == '{') depth++;
+			else if ((*p == ')' || *p == ']' || *p == '}') && depth) depth--;
+			p++;
+		}
+		const char *e = p; while (e > s0 && (e[-1] == ' ' || e[-1] == '\t')) e--;
+		char *a = strndup(s0, (size_t)(e - s0));
+		char *eq = strchr(a, '='); int kw = -1;
+		if (eq) { size_t kl = (size_t)(eq - a); for (int k = 0; k < m->nparams; k++) if (strlen(m->params[k]) == kl && !strncmp(m->params[k], a, kl)) { kw = k; break; } }
+		{ size_t al = strlen(a); if (al >= 2 && a[0] == '"' && a[al - 1] == '"') { memmove(a, a + 1, al - 2); a[al - 2] = 0; eq = kw < 0 ? NULL : eq; } }   /* "arg" -> arg (GAS) */
+		if (kw >= 0) { vals[kw] = strdup(eq + 1); free(a); }
+		else { if (pos >= m->nparams) die("macro '%s': too many arguments", m->name); vals[pos++] = a; }
+		if (*p == ',' || *p == ' ') { p++; while (*p == ' ' || *p == '\t') p++; }
+	}
+	free(scr);
+	for (int k = 0; k < m->nparams; k++) if (vals[k] && !vals[k][0] && (m->defs[k] || m->req[k])) { free(vals[k]); vals[k] = NULL; }   /* blank = omitted (GAS) */
+	for (int k = 0; k < m->nparams; k++) if (!vals[k]) {
+		if (m->req[k]) die("macro '%s': missing required argument '%s'", m->name, m->params[k]);
+		vals[k] = strdup(m->defs[k] ? m->defs[k] : "");
+	}
 	int uid = macuid++;
-	for (int i = 0; i < m->nbody; i++) { char out[1024]; subst(m->body[i], m, args, na, uid, out); feed_line(out); }
+	for (int i = 0; i < m->nbody && !exitm; i++) { char *out = subst(m->body[i], m->params, vals, m->nparams, uid); feed_line(out); free(out); }
+	exitm = 0;
+	for (int k = 0; k < m->nparams; k++) free(vals[k]);
 }
 
 /* Collection state for the body of a .macro / .rept being read. */
-static int coll_mode, coll_depth, coll_n; static char *coll_body[2048];
-static char coll_name[64], coll_params_src[256]; static long coll_reptn;
+static int coll_mode, coll_depth, coll_n; static char *coll_body[2048];   /* mode 1 .macro, 2 .rept, 3 .irp, 4 .irpc */
+static char coll_name[64], coll_params_src[1024]; static long coll_reptn;
 
 static void feed_line(char *line) {
 	if (!coll_mode) {   /* GAS ';' statement separator: split one line into statements (quote-aware; '@' = comment) */
@@ -676,7 +766,7 @@ static void feed_line(char *line) {
 		for (char *p = line; *p; p++) {
 			if (inq) { if (*p == qc) inq = 0; else if (*p == '\\' && p[1]) p++; }
 			else if (*p == '"' || *p == '\'') { inq = 1; qc = *p; }
-			else if (*p == '@') break;
+			else if (*p == '@' && !(p > line && p[-1] == '\\')) break;   /* `\@` is the macro counter */
 			else if (*p == ';') { *p = 0; feed_line(line); feed_line(p + 1); return; }
 		}
 	}
@@ -688,17 +778,44 @@ static void feed_line(char *line) {
 			if (coll_mode == 1) {                    /* finish a .macro definition */
 				if (nmacros >= 256) die("too many .macro definitions (>256)");
 				Macro *m = &macros[nmacros++]; memset(m, 0, sizeof *m); strncpy(m->name, coll_name, 63);
-				const char *s = coll_params_src;     /* params: comma/space separated */
+				const char *s = coll_params_src;     /* params: name[=default][:req|:vararg], comma/space separated */
 				while (*s) {
 					while (*s==' '||*s=='\t'||*s==',') s++;
 					if (!*s) break;
-					char *d = m->params[m->nparams]; int i = 0;
-					while (*s && *s!=' '&&*s!='\t'&&*s!=',' && i<31) d[i++] = *s++;
-					d[i] = 0;
-					if (d[0]) m->nparams++;
+					if (m->nparams >= 32) die("macro '%s': too many parameters (>32)", m->name);
+					int k = m->nparams; char *d = m->params[k]; int i = 0;
+					while (*s == '_' || isalnum((unsigned char)*s)) { if (i >= 31) die("macro parameter name too long"); d[i++] = *s++; }
+					d[i] = 0; if (!i) die("macro '%s': bad parameter list '%s'", m->name, coll_params_src);
+					if (*s == ':') { s++; if (!strncmp(s, "req", 3)) { m->req[k] = 1; s += 3; } else if (!strncmp(s, "vararg", 6)) { m->vararg[k] = 1; s += 6; } else die("macro '%s': unknown qualifier ':%s'", m->name, s); }
+					if (*s == '=') { s++; const char *v = s; while (*s && *s != ',' && *s != ' ' && *s != '\t') s++; m->defs[k] = strndup(v, (size_t)(s - v)); }
+					if (*s == ':') { s++; if (!strncmp(s, "req", 3)) { m->req[k] = 1; s += 3; } else if (!strncmp(s, "vararg", 6)) { m->vararg[k] = 1; s += 6; } else die("macro '%s': unknown qualifier ':%s'", m->name, s); }
+					if (*s && *s != ',' && *s != ' ' && *s != '\t') die("macro '%s': bad parameter list '%s'", m->name, coll_params_src);
+					m->nparams++;
 				}
+				for (int k = 0; k + 1 < m->nparams; k++) if (m->vararg[k]) die("macro '%s': :vararg must be the last parameter", m->name);
 				m->nbody = coll_n; for (int i=0;i<coll_n;i++) m->body[i]=coll_body[i];
 				coll_mode = 0; coll_n = 0;
+			} else if (coll_mode >= 3) {             /* finish .irp var, v1, v2... / .irpc var, chars */
+				char *bd[2048]; int bn = coll_n, irpc = coll_mode == 4; char var[1][32]; strncpy(var[0], coll_name, 31); var[0][31] = 0;
+				char src[1024]; strncpy(src, coll_params_src, sizeof src - 1); src[sizeof src - 1] = 0;
+				for (int i=0;i<bn;i++) bd[i]=coll_body[i];
+				coll_mode = 0; coll_n = 0;
+				const char *q = src; while (*q == ' ' || *q == '\t') q++;
+				if (irpc) {
+					for (; *q && *q != ' ' && *q != '\t'; q++) { char c[2] = { *q, 0 }; char *v[1] = { c };
+						for (int i=0;i<bn;i++) { char *o = subst(bd[i], var, v, 1, macuid); feed_line(o); free(o); } }
+				} else if (!*q) {   /* no values: one pass with the variable empty (GAS) */
+					char e[1] = ""; char *v[1] = { e }; for (int i=0;i<bn;i++) { char *o = subst(bd[i], var, v, 1, macuid); feed_line(o); free(o); }
+				} else {
+					while (*q) {
+						const char *s0 = q; while (*q && *q != ',') q++;
+						const char *e = q; while (e > s0 && (e[-1] == ' ' || e[-1] == '\t')) e--;
+						char *val = strndup(s0, (size_t)(e - s0)); char *v[1] = { val };
+						for (int i=0;i<bn;i++) { char *o = subst(bd[i], var, v, 1, macuid); feed_line(o); free(o); }
+						free(val); if (*q == ',') { q++; while (*q == ' ' || *q == '\t') q++; }
+					}
+				}
+				for (int i=0;i<bn;i++) free(bd[i]);
 			} else {                                 /* finish a .rept: SNAPSHOT + reset BEFORE expanding, so
 			                                          * the body lines get processed rather than re-collected */
 				char *bd[2048]; int bn = coll_n; long rn = coll_reptn;
@@ -712,8 +829,21 @@ static void feed_line(char *line) {
 		if (coll_n >= 2048) die("macro/.rept body too long (>2048 lines)");
 		coll_body[coll_n++] = xdup(line); return;
 	}
-	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[64]; const char *a=lead(r,nm); strncpy(coll_name,nm,63); strncpy(coll_params_src,a,255); coll_mode=1; coll_depth=1; coll_n=0; return; }
-	if (!strcmp(w, ".rept"))  { coll_reptn = emitting()?eval_if(rest):0; coll_mode=2; coll_depth=1; coll_n=0; return; }
+	if (!strcmp(w, ".macro")) { const char *r=rest; while(*r==' '||*r=='\t'||*r==',')r++; char nm[64]; const char *a=lead(r,nm);
+		if (strlen(a) >= sizeof coll_params_src) die(".macro: parameter list too long");
+		strncpy(coll_name,nm,63); strcpy(coll_params_src,a); coll_mode=1; coll_depth=1; coll_n=0; return; }
+	if (!strcmp(w, ".rept"))  { coll_reptn = emitting()?eval_if(rest):0; if (coll_reptn < 0) die(".rept: negative count"); coll_mode=2; coll_depth=1; coll_n=0; return; }
+	if (!strcmp(w, ".irp") || !strcmp(w, ".irpc")) {   /* .irp var, v1, v2 ... / .irpc var, chars */
+		const char *r = rest; while (*r == ' ' || *r == '\t') r++;
+		char nm[64]; const char *a = lead(r, nm); if (!nm[0]) die("%s: missing variable", w);
+		while (*a == ' ' || *a == '\t' || *a == ',') a++;
+		strncpy(coll_name, nm, 63); coll_name[63] = 0;
+		if (strlen(a) >= sizeof coll_params_src) die("%s: value list too long", w);
+		strcpy(coll_params_src, a);
+		if (!emitting()) { coll_params_src[0] = 0; }
+		coll_mode = !strcmp(w, ".irp") ? 3 : 4; coll_depth = 1; coll_n = 0; return;
+	}
+	if (!strcmp(w, ".exitm")) { if (emitting()) exitm = 1; return; }
 	if (!strcmp(w, ".if"))     { int on = emitting() && eval_if(rest)!=0; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
 	if (!strcmp(w, ".ifdef"))  { char nm[64]; lead(rest,nm); int on = emitting() && sym_find(nm)>=0 && syms[sym_find(nm)].defined; if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
 	if (!strcmp(w, ".ifndef")) { char nm[64]; lead(rest,nm); int on = emitting() && !(sym_find(nm)>=0 && syms[sym_find(nm)].defined); if (nifs >= 64) die("too many nested .if (>64)"); ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return; }
@@ -726,10 +856,16 @@ static void feed_line(char *line) {
 		if (nifs >= 64) die("too many nested .if (>64)");
 		ifs[nifs].active=on; ifs[nifs].taken=on; nifs++; return;
 	}
+	if (!strcmp(w, ".ifb") || !strcmp(w, ".ifnb")) {   /* blank-argument test (after macro substitution) */
+		const char *r = rest; while (*r == ' ' || *r == '\t') r++;
+		int blank = !*r, on = emitting() && (!strcmp(w, ".ifb") ? blank : !blank);
+		if (nifs >= 64) die("too many nested .if (>64)");
+		ifs[nifs].active = on; ifs[nifs].taken = on; nifs++; return;
+	}
 	if (!strcmp(w, ".else"))   { if (nifs) { int parent=1; for(int i=0;i<nifs-1;i++) if(!ifs[i].active)parent=0; ifs[nifs-1].active = parent && !ifs[nifs-1].taken; if(ifs[nifs-1].active) ifs[nifs-1].taken=1; } return; }
 	if (!strcmp(w, ".endif"))  { if (nifs) nifs--; return; }
 	if (!strcmp(w, ".err"))    { if (emitting()) die(".err directive reached (assembly assertion failed)"); return; }
-	if (!emitting()) return;                         /* inside a false .if branch */
+	if (!emitting() || exitm) return;                /* inside a false .if branch (or after .exitm) */
 	Macro *m = macro_find(w);
 	if (m) { expand_macro(m, rest); return; }
 	parse_line(line);

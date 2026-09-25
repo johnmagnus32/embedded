@@ -17,7 +17,7 @@ GNU ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-li
 TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_data.s:.text tests/m2_wide.s:.text tests/m2_secsym.s:.rodata tests/m1_branch.s:.text tests/m2_branch.s:.text ../../libc/src/crt/crt0.S:.text._start \
          ../../libc/src/crt/crti.S:.init ../../libc/src/crt/crtn.S:.init \
          tests/m5_armv7_insns.s:.text tests/m5_legacy_syntax.s:.text tests/m5_litpool.s:.text tests/m5_fb_labels.s:.text tests/m5_fb_labels.s:.data \
-         tests/m6_attributes.s:.ARM.attributes tests/m6_attributes.s:.text tests/m6_reloc_ops.s:.data
+         tests/m6_attributes.s:.ARM.attributes tests/m6_attributes.s:.text tests/m6_reloc_ops.s:.data tests/m6_macros.s:.data tests/m6_floats.s:.data
 
 # Three layers, GNU-binutils-style: front-end (as.c) + machine-dependent backend (arm.c) + object
 # backend (elf.c). Swapping arm.c for another arch backend is the ONLY change a new target needs.

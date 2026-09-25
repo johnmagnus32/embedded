@@ -121,7 +121,7 @@ static const struct { const char *name; u32 opc; int form; } dp_tab[] = {
 	{"orr",12,DP_3OP},{"mov",13,DP_MOV},{"bic",14,DP_3OP},{"mvn",15,DP_MOV},
 };
 static const struct { const char *name; u32 code; } cc_tab[] = {
-	{"eq",0},{"ne",1},{"cs",2},{"hs",2},{"cc",3},{"lo",3},{"mi",4},{"pl",5},
+	{"eq",0},{"ne",1},{"cs",2},{"hs",2},{"cc",3},{"lo",3},{"ul",3},{"mi",4},{"pl",5},
 	{"vs",6},{"vc",7},{"hi",8},{"ls",9},{"ge",10},{"lt",11},{"gt",12},{"le",13},{"al",14},
 };
 static int lookup_cc(const char *s, u32 *code) {
@@ -178,6 +178,31 @@ static u32 operand2(int opidx, u32 *I) {
 	return (ntok > opidx + 1) ? shifted_reg((u32)rm, opidx + 1) : (u32)rm;
 }
 
+/* ---- ARM group relocations: `#:pc_g1:(sym + k)` / `:sb_g0_nc:(...)` on ALU (add/sub), LDR (ldr/str{b}), LDRS
+ * (ldrd/ldrh/ldrsb...) and LDC (ldc/stc) immediates. The addend k lives in the instruction's own immediate field
+ * (REL), negated via sub/U; the relocation names the symbol (GAS doesn't reduce group relocs to a section symbol). */
+enum { GK_ALU, GK_LDR, GK_LDRS, GK_LDC };
+static const char *const grp_names[] = { "pc_g0_nc", "pc_g0", "pc_g1_nc", "pc_g1", "pc_g2", "sb_g0_nc", "sb_g0", "sb_g1_nc", "sb_g1", "sb_g2", NULL };
+static u32 grp_reloc(int g, int kind) {   /* g = index into grp_names; 0 = invalid for that kind */
+	static const u32 alu[10] = { 57, 58, 59, 60, 61, 70, 71, 72, 73, 74 };
+	static const u32 ldr[10] = { 0, 4, 0, 62, 63, 0, 75, 0, 76, 77 };
+	static const u32 ldrs[10] = { 0, 64, 0, 65, 66, 0, 78, 0, 79, 80 };
+	static const u32 ldc[10] = { 0, 67, 0, 68, 69, 0, 81, 0, 82, 83 };
+	const u32 *t = kind == GK_ALU ? alu : kind == GK_LDR ? ldr : kind == GK_LDRS ? ldrs : ldc;
+	if (!t[g]) die("%s: :%s: is not a valid group relocation for this instruction", toks[0], grp_names[g]);
+	return t[g];
+}
+/* `[#]:name:(expr)` -> group index; the expression's addend/symbol go to c and sym. Returns -1 if t isn't a group form. */
+static int parse_group(const char *t, long *c, int *sym) {
+	const char *q = t; if (*q == '#') q++;
+	if (*q != ':') return -1;
+	q++; const char *e = strchr(q, ':'); if (!e) die("%s: bad group relocation '%s'", toks[0], t);
+	int g = -1; for (int i = 0; grp_names[i]; i++) if ((size_t)(e - q) == strlen(grp_names[i]) && !strncmp(q, grp_names[i], (size_t)(e - q))) { g = i; break; }
+	if (g < 0) die("%s: unknown group relocation ':%.*s:'", toks[0], (int)(e - q), q);
+	int dt; eval_reloc_expr(e + 1, c, sym, &dt);
+	if (*sym < 0 || dt) die("%s: group relocation needs a symbol (+ constant)", toks[0]);
+	return g;
+}
 static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	u32 rd = 0, rn = 0, I; int opidx;
 	if (form == DP_MOV)      { rd = need_reg(1);                    opidx = 2; }        /* mov/mvn Rd, op2 */
@@ -191,7 +216,14 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 		u32 v = imm(toks[opidx]), enc; I = 1;
 		if (modimm_try(v, &enc)) op2 = enc;
 		else if (modimm_try(~v, &enc)) { op2 = enc; opc ^= 2; }        /* mov(13) <-> mvn(15) differ by bit 1 */
-		else die("immediate #%u not encodable (mov/mvn)", v);
+		else if (opc == 13 && !s && v <= 0xffff) { emit32((cond << 28) | 0x03000000u | ((v >> 12) << 16) | (rd << 12) | (v & 0xfff)); return; }   /* mov #imm16 -> movw (GAS, v6T2+) */
+		else die("immediate #%u not encodable (mov/mvn/movw)", v);
+	} else if (opidx < ntok && (toks[opidx][0] == ':' || (toks[opidx][0] == '#' && toks[opidx][1] == ':'))) {   /* group reloc */
+		if (opc != 4 && opc != 2) die("%s: group relocations only on add/sub", toks[0]);
+		long c; int sym; int g = parse_group(toks[opidx], &c, &sym);
+		if (c < 0) { c = -c; opc = opc == 4 ? 2 : 4; }   /* negative addend: add <-> sub (GAS) */
+		u32 enc; if (!modimm_try((u32)c, &enc)) die("%s: group relocation addend %ld not encodable", toks[0], c);
+		I = 1; op2 = enc; add_reloc(cursec, here(), sym, grp_reloc(g, GK_ALU));
 	} else op2 = operand2(opidx, &I);
 	emit32((cond << 28) | (I << 25) | (opc << 21) | ((u32)s << 20) | (rn << 16) | (rd << 12) | op2);
 }
@@ -226,7 +258,7 @@ static void enc_bx(u32 cond) {   /* bx{cond} Rm — branch-and-exchange (interwo
 /* A load/store address: [Rn], [Rn, #±e], [Rn, ±Rm{, shift}] {!}, or post-indexed [Rn], #±e | ±Rm{, shift}.
  * Offsets are constant expressions (`[pc, #(bar - . - 8)]` was silently 0), `#-0` keeps U=0 (GAS does), and
  * the whole text is parsed — nothing trailing is ignored. One parser for ldr/str and the extra load/stores. */
-typedef struct { int rn, P, U, W, isreg, rm; long imm; u32 shift; } Addr;
+typedef struct { int rn, P, U, W, isreg, rm; long imm; u32 shift; int grp, gsym; } Addr;   /* grp: group-reloc index+1 (0 = none) */
 static Addr parse_addr(int first) {
 	char buf[512]; size_t bl = 0;
 	for (int i = first; i < ntok; i++) {
@@ -235,7 +267,7 @@ static Addr parse_addr(int first) {
 		bl += (size_t)n;
 	}
 	if (buf[0] != '[') die("%s: expected [Rn ...] address, got '%s'", toks[0], buf);
-	Addr a = { 0, 1, 1, 0, 0, 0, 0, 0 };
+	Addr a = { 0, 1, 1, 0, 0, 0, 0, 0, 0, -1 };
 	char *rb = strchr(buf, ']'); if (!rb) die("%s: missing ']' in address", toks[0]);
 	*rb = 0; char *after = rb + 1; while (*after == ' ') after++;
 	if (*after == '!') { a.W = 1; after++; while (*after == ' ') after++; }
@@ -246,6 +278,10 @@ static Addr parse_addr(int first) {
 	char *spec = sp; while (*spec == ' ') spec++;
 	if (*after) { if (*spec) die("%s: offset both inside and after ']'", toks[0]); if (a.W) die("%s: '!' with post-index", toks[0]); a.P = 0; spec = after; }
 	if (!*spec) return a;
+	if ((spec[0] == '#' && spec[1] == ':') || spec[0] == ':') {   /* group relocation offset */
+		long c; int sym; int g = parse_group(spec, &c, &sym);
+		a.grp = g + 1; a.gsym = sym; if (c < 0) { a.U = 0; c = -c; } a.imm = c; return a;
+	}
 	if (*spec == '#') {
 		const char *q = spec + 1; while (*q == ' ') q++;
 		long v = eval_const_expr(q);
@@ -295,8 +331,8 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 		pool_ref((cond << 28) | 0x059f0000u | (rd << 12), (u32)c, sy);
 		return;
 	}
-	if (ntok >= 3 && toks[2][0] != '[') {   /* pc-relative load: ldr Rd, <expr> (label, label+N, ., ...) */
-		if (is_byte || !is_load) die("%s: literal form supported for word ldr only", toks[0]);
+	if (ntok >= 3 && toks[2][0] != '[') {   /* pc-relative ldr/str{b} Rd, <expr> (label, label+N, ., ...) */
+		u32 pcrel = 0x050f0000u | ((u32)is_byte << 22) | ((u32)is_load << 20);   /* P=1, Rn=pc; U + offset patched in */
 		if (nldrlit >= 16384) die("too many ldr literals");
 		char ex[512]; join_toks(2, ex, sizeof ex);   /* whole operand (was toks[2] only: `ldr r0, l + 4` lost the +4) */
 		long c; int sy, dt; eval_reloc_expr(ex, &c, &sy, &dt);
@@ -305,10 +341,10 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 			int32_t delta = (int32_t)c - 8; u32 mag = (u32)(delta < 0 ? -delta : delta);
 			if (rd == 15 && (mag & 3)) die("%s: ldr to register 15 must be 4-byte aligned", toks[0]);
 			if (mag > 0xfff) die("%s: offset %d out of range", toks[0], delta);
-			emit32((cond << 28) | 0x051f0000u | ((delta >= 0 ? 1u : 0u) << 23) | (rd << 12) | mag); return;
+			emit32((cond << 28) | pcrel | ((delta >= 0 ? 1u : 0u) << 23) | (rd << 12) | mag); return;
 		}
 		if (sy < 0 || dt) die("%s: bad pc-relative operand '%s'", toks[0], ex);
-		emit32((cond << 28) | 0x059f0000u | (rd << 12));   /* ldr Rd, [pc, #0] placeholder */
+		emit32((cond << 28) | pcrel | (1u << 23) | (rd << 12));   /* [pc, #0] placeholder */
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
 		strncpy(ldrlit[nldrlit].sym, syms[sy].name, sizeof ldrlit[0].sym - 1); ldrlit[nldrlit].sym[sizeof ldrlit[0].sym - 1] = 0;
 		ldrlit[nldrlit].addend = c; ldrlit[nldrlit].kind = 0;
@@ -318,6 +354,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 	Addr a = parse_addr(2);
 	if (!a.isreg && a.imm > 0xfff) die("%s: offset %ld out of range (12-bit)", toks[0], a.imm);
 	check_pc_addr(a, rd);
+	if (a.grp) add_reloc(cursec, here(), a.gsym, grp_reloc(a.grp - 1, GK_LDR));
 	u32 off = a.isreg ? ((u32)a.rm | a.shift) : (u32)a.imm;
 	emit32((cond << 28) | (1u << 26) | ((u32)a.isreg << 25) | ((u32)a.P << 24) | ((u32)a.U << 23) | ((u32)is_byte << 22)
 	     | ((u32)a.W << 21) | ((u32)is_load << 20) | ((u32)a.rn << 16) | (rd << 12) | off);
@@ -360,30 +397,59 @@ static void enc_extend(u32 cond, u32 base) {   /* {u,s}xt{b,h,b16}{cond} Rd, Rm{
 
 /* Parse a { … } register list (operand tokens toks[1..]) into a 16-bit mask. Handles ranges (r4-r7)
  * and aliases (sp/lr/pc/fp/…); the '{' and '}' are stripped wherever the tokenizer left them. */
-static u32 reglist_at(int start) {   /* parse a { … } register list from toks[start..] into a 16-bit mask */
-	u32 mask = 0;
-	for (int i = start; i < ntok; i++) {
-		char t[32]; size_t k = 0;
-		for (const char *p = toks[i]; *p && k < sizeof t - 1; p++) if (*p != '{' && *p != '}') t[k++] = *p;
-		t[k] = 0;
-		if (!t[0]) continue;                          /* a lone '{' or '}' token */
-		char *dash = strchr(t, '-');
-		if (dash) {                                    /* range rA-rB */
-			*dash = 0; int a = reg(t), b = reg(dash + 1);
-			if (a < 0 || b < 0 || a > b) die("bad register range '%s' in list", toks[i]);
-			for (int r = a; r <= b; r++) mask |= 1u << r;
-		} else {
-			int r = reg(t); if (r < 0) die("bad register '%s' in list", t);
-			mask |= 1u << r;
+static int reglist_caret;   /* the list ended in `}^` (ldm/stm: S bit — user regs / exception return) */
+/* A register-list operand from toks[start..]: groups joined by `+` or `|`, each `{r0, r2-r5, lr}` or a constant mask
+ * expression (GAS: `{r0-r2}|0xf0`, `{r3,r4}+{r5,r6}`), optionally ending in `^`. Parsed as one string (the tokenizer
+ * split it on commas/spaces), so nothing is silently dropped or truncated. */
+static u32 reglist_at(int start) {
+	char buf[512]; size_t bl = 0;
+	for (int i = start; i < ntok; i++) { int w = snprintf(buf + bl, sizeof buf - bl, "%s%s", i > start ? "," : "", toks[i]); if (w < 0 || (size_t)w >= sizeof buf - bl) die("%s: register list too long", toks[0]); bl += (size_t)w; }
+	u32 mask = 0; reglist_caret = 0;
+	if (bl && buf[bl - 1] == '^') { reglist_caret = 1; buf[--bl] = 0; }
+	const char *p = buf;
+	for (;;) {
+		while (*p == ' ' || *p == ',') p++;
+		if (*p == '{') {
+			const char *e = strchr(p, '}'); if (!e) die("%s: missing '}' in register list", toks[0]);
+			p++;
+			while (p < e) {
+				while (p < e && (*p == ' ' || *p == ',')) p++;
+				if (p >= e) break;
+				char a[32], b[32]; size_t k = 0;
+				while (p < e && *p != ',' && *p != '-' && *p != ' ') { if (k >= sizeof a - 1) die("%s: bad register list", toks[0]); a[k++] = *p++; }
+				a[k] = 0; while (p < e && *p == ' ') p++;
+				int ra = reg(a); if (ra < 0) die("bad register '%s' in list", a);
+				if (p < e && *p == '-') {   /* range */
+					p++; while (p < e && *p == ' ') p++; k = 0;
+					while (p < e && *p != ',' && *p != ' ') { if (k >= sizeof b - 1) die("%s: bad register list", toks[0]); b[k++] = *p++; }
+					b[k] = 0; int rb = reg(b);
+					if (rb < 0 || ra > rb) die("bad register range '%s-%s' in list", a, b);
+					for (int r = ra; r <= rb; r++) mask |= 1u << r;
+				} else mask |= 1u << ra;
+			}
+			p = e + 1;
+		} else {   /* a constant mask expression, up to the next top-level + or | that starts a `{` group, or the end */
+			const char *e = p; int depth = 0;
+			while (*e && !(depth == 0 && (*e == '+' || *e == '|') && e[1] == '{')) { if (*e == '(') depth++; else if (*e == ')') depth--; e++; }
+			char ex[256]; size_t el = (size_t)(e - p); if (el >= sizeof ex) die("%s: register list expression too long", toks[0]);
+			memcpy(ex, p, el); ex[el] = 0;
+			for (char *c = ex; *c; c++) if (*c == ',') *c = ' ';
+			long v = eval_const_expr(ex); if (v < 0 || v > 0xffff) die("%s: register list mask 0x%lx out of range", toks[0], v);
+			mask |= (u32)v; p = e;
 		}
+		while (*p == ' ') p++;
+		if (!*p) break;
+		if (*p != '+' && *p != '|') die("%s: junk '%s' in register list", toks[0], p);
+		p++;
 	}
+	if (!mask) die("%s: empty register list", toks[0]);
 	return mask;
 }
 /* push/pop = STMDB/LDMIA sp!, {list}; a SINGLE register is `str Rt, [sp, #-4]!` / `ldr Rt, [sp], #4` (as GAS) */
 static int single_reg(u32 l) { return l && !(l & (l - 1)) ? __builtin_ctz(l) : -1; }
-static void enc_push(u32 cond) { u32 l = reglist_at(1); int r = single_reg(l);
+static void enc_push(u32 cond) { u32 l = reglist_at(1); int r = single_reg(l); if (reglist_caret) die("push: `^` not allowed");
 	emit32(r >= 0 ? (cond << 28) | 0x052d0004u | ((u32)r << 12) : (cond << 28) | 0x092d0000u | l); }
-static void enc_pop(u32 cond)  { u32 l = reglist_at(1); int r = single_reg(l);
+static void enc_pop(u32 cond)  { u32 l = reglist_at(1); int r = single_reg(l); if (reglist_caret) die("pop: `^` not allowed");
 	emit32(r >= 0 ? (cond << 28) | 0x049d0004u | ((u32)r << 12) : (cond << 28) | 0x08bd0000u | l); }
 
 /* ldm/stm{ia,ib,da,db} Rn[!], {list} — load/store multiple. P/U select the addressing mode:
@@ -393,7 +459,8 @@ static void enc_ldstm(int is_load, u32 cond, u32 P, u32 U) {
 	u32 wb = 0; size_t l = strlen(rn); if (l && rn[l - 1] == '!') { wb = 1; rn[l - 1] = 0; }
 	int r = reg(rn); if (r < 0) die("%s: bad base register '%s'", toks[0], toks[1]);
 	u32 base = 0x08000000u | (P << 24) | (U << 23) | ((u32)is_load << 20);
-	emit32((cond << 28) | base | (wb << 21) | ((u32)r << 16) | reglist_at(2));
+	u32 list = reglist_at(2);
+	emit32((cond << 28) | base | ((u32)reglist_caret << 22) | (wb << 21) | ((u32)r << 16) | list);
 }
 
 /* standalone shifts: lsl/lsr/asr/ror Rd, Rm, #n|Rs  == MOV Rd, Rm <shift>. */
@@ -548,6 +615,7 @@ static void enc_xldst(u32 cond, int Lbit, u32 nib) {
 	Addr a = parse_addr(ai);
 	if (a.isreg && a.shift) die("%s: no shifted index for halfword/doubleword/signed transfers", toks[0]);
 	if (!a.isreg && a.imm > 0xff) die("%s: offset %ld out of range (8-bit)", toks[0], a.imm);
+	if (a.grp) add_reloc(cursec, here(), a.gsym, grp_reloc(a.grp - 1, GK_LDRS));
 	u32 lo = a.isreg ? (u32)a.rm : (u32)a.imm & 0xf, hi = a.isreg ? 0 : ((u32)a.imm >> 4) & 0xf;
 	emit32((cond << 28) | ((u32)a.P << 24) | ((u32)a.U << 23) | ((u32)!a.isreg << 22) | ((u32)a.W << 21) | ((u32)Lbit << 20)
 	     | ((u32)a.rn << 16) | (rd << 12) | (hi << 8) | (nib << 4) | lo);
@@ -811,9 +879,22 @@ static void enc_ldc(u32 cond, int L, int N) {
 		long opt = eval_const_expr(br + 1); if (opt < 0 || opt > 255) die("%s: option %ld out of range", toks[0], opt);
 		emit32((cond << 28) | 0x0c800000u | ((u32)N << 22) | ((u32)L << 20) | ((u32)rn << 16) | (crd << 12) | (cp << 8) | (u32)opt); return;
 	}
+	if (ex[0] != '[') {   /* pc-relative `ldc p, c, label`: [pc, #±off*4], resolved at end of pass */
+		long c; int sy, dt; eval_reloc_expr(ex, &c, &sy, &dt);
+		u32 w = (cond << 28) | 0x0d8f0000u | ((u32)N << 22) | ((u32)L << 20) | (crd << 12) | (cp << 8);   /* P=1 U=1 Rn=pc */
+		if (sy < 0 && dt == 1) { int32_t d = (int32_t)c - 8; u32 mag = (u32)(d < 0 ? -d : d);
+			if ((mag & 3) || mag > 1020) die("%s: pc-relative offset %d must be a multiple of 4 within 1020", toks[0], d);
+			emit32((w & ~(1u << 23)) | ((d >= 0 ? 1u : 0u) << 23) | (mag >> 2)); return; }
+		if (sy < 0 || dt) die("%s: bad address '%s'", toks[0], ex);
+		if (nldrlit >= 16384) die("too many pc-relative fixups");
+		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = here(); ldrlit[nldrlit].addend = c; ldrlit[nldrlit].kind = 2;
+		strncpy(ldrlit[nldrlit].sym, syms[sy].name, sizeof ldrlit[0].sym - 1); ldrlit[nldrlit].sym[sizeof ldrlit[0].sym - 1] = 0; nldrlit++;
+		emit32(w); return;
+	}
 	Addr a = parse_addr(3);
 	if (a.isreg) die("%s: register offsets not allowed", toks[0]);
 	if ((a.imm & 3) || a.imm > 1020) die("%s: offset %ld must be a multiple of 4 up to 1020", toks[0], a.imm);
+	if (a.grp) add_reloc(cursec, here(), a.gsym, grp_reloc(a.grp - 1, GK_LDC));
 	if (!a.P) a.W = 1;   /* post-indexed: W=1 */
 	emit32((cond << 28) | 0x0c000000u | ((u32)a.P << 24) | ((u32)a.U << 23) | ((u32)N << 22) | ((u32)a.W << 21) | ((u32)L << 20)
 	     | ((u32)a.rn << 16) | (crd << 12) | (cp << 8) | ((u32)a.imm >> 2));
@@ -823,7 +904,7 @@ static void enc_ldc(u32 cond, int L, int N) {
  * valid for that base, so a real UAL name (e.g. ldrhs = ldr + hs) is never reinterpreted. */
 static const char *ual_name(const char *m, char *buf, size_t n) {
 	static const struct { const char *base; const char *suf[12]; } lg[] = {
-		{"ldr", {"b","h","sb","sh","d","t","bt",0}}, {"str", {"b","h","d","t","bt",0}},
+		{"ldr", {"b","h","sb","sh","d","t","bt","ht","sbt","sht",0}}, {"str", {"b","h","d","t","bt","ht",0}},
 		{"ldm", {"ia","ib","da","db","fd","ed","fa","ea",0}}, {"stm", {"ia","ib","da","db","fd","ed","fa","ea",0}},
 		{"swp", {"b",0}}, {"ldc", {"l",0}}, {"stc", {"l",0}},
 		{"umull", {"s",0}}, {"umlal", {"s",0}}, {"smull", {"s",0}}, {"smlal", {"s",0}}, {"mul", {"s",0}}, {"mla", {"s",0}},
@@ -1096,6 +1177,7 @@ void md_assemble(char **t, int n) {
 	if (!strncmp(m, "sdiv", 4)) { if (!suffix_c(m + 4, &cond)) die("%s: bad suffix", m); enc_div(1, cond); return; }
 	if (!strncmp(m, "clz", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_clz(cond); return; }
 	if (!strncmp(m, "svc", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_svc(cond); return; }
+	if (!strncmp(m, "swi", 3)) { if (!suffix_c(m + 3, &cond)) die("%s: bad suffix", m); enc_svc(cond); return; }   /* legacy name of svc */
 	if (!strcmp(m, "pld") || !strcmp(m, "pldw") || !strcmp(m, "pli")) { enc_pld(m); return; }   /* was: silently a NOP */
 	{   /* NOP-space hints, optionally conditional (e.g. `wfene` in spinlock loops) */
 		static const struct { const char *n; u32 h; } hn[] = { {"nop",0},{"yield",1},{"wfe",2},{"wfi",3},{"sev",4},{"sevl",5} };
@@ -1159,6 +1241,11 @@ void md_finish(void) {
 		int32_t delta = target - (int32_t)(ldrlit[i].off + 8);
 		u32 mag = (u32)(delta < 0 ? -delta : delta);
 		if (ldrlit[i].kind == 1) { patch_adr(ldrlit[i].sec, ldrlit[i].off, delta); }   /* adr Rd, named-label */
+		else if (ldrlit[i].kind == 2) {   /* ldc/stc pc-relative: imm8 = |delta|/4 */
+			if ((mag & 3) || mag > 1020) die("ldc/stc '%s': pc-relative offset %d must be a multiple of 4 within 1020", ldrlit[i].sym, delta);
+			u32 w = read32(ldrlit[i].sec, ldrlit[i].off);
+			patch32(ldrlit[i].sec, ldrlit[i].off, (w & ~((1u << 23) | 0xffu)) | ((delta >= 0 ? 1u : 0u) << 23) | (mag >> 2));
+		}
 		else {
 			u32 w = read32(ldrlit[i].sec, ldrlit[i].off);
 			if (mag > 0xfff) die("ldr literal '%s': offset %d out of +/-4095 range", ldrlit[i].sym, delta);

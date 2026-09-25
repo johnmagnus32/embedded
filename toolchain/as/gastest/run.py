@@ -65,7 +65,7 @@ def tier(opts, src_text):
     s = src_text.lower()
     if opts.get("error") or opts.get("error_output") or opts.get("warning") or opts.get("warning_output"): return "diagnostics"
     # flags that CHANGE the output and that our as (no options; fixed target) doesn't take
-    if re.search(r"--fix-v4bx|-mfix-v4bx|-mccs\b", flags): return "needs-flag"
+    if re.search(r"--fix-v4bx|-mfix-v4bx|-mccs\b|-mfp16-format", flags): return "needs-flag"
     if "-eb" in flags.lower() or "-mbig-endian" in flags: return "big-endian"
     if re.search(r"-march=armv(6s?-m|7e?-m|8(\.1)?-m)|-mcpu=cortex-m|armv8\.1-m|\bmve\b", flags + s): return "M-profile"
     if re.search(r"-mthumb\b|^\s*\.(thumb|code\s+16)\b|\.thumb_func", flags + "\n" + s, re.M): return "thumb"
@@ -104,6 +104,7 @@ def one(dpath, which):
             obj = os.path.join(td, "t.o")
             rc, _, err = run(([X + "as"] + flags if which == "gnu" else [OURS]) + ["-o", obj, src])
         tt = "diag-arch-gated" if arch_gated else "diag-plain"
+        if re.search(r"--fix-v4bx|-mfix-v4bx|-mccs\b|-mfp16-format", " ".join(flags)): tt = "needs-flag"   # depends on a flag we don't take
         if which != "gnu" and base.startswith(("cmdline-", "bfloat16-cmdline")): return "n/a-cmdline", "tests as' command-line flags", tt
         return ("pass", "", tt) if rc != 0 else ("fail-accepted", "accepted invalid input", tt)
     dump = next(((k, opts[k][0]) for k in ("objdump", "readelf", "nm") if opts.get(k)), None)
