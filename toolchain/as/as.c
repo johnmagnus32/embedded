@@ -85,9 +85,15 @@ int  parse_local_ref(const char *s, int *n, char *dir) {
 /* Strip C-style block comments (which may span lines) + @ and // line comments, in place, replacing
    them with spaces while preserving newlines so line boundaries stay intact. */
 static void strip_comments(char *s) {
-	int in_block = 0;
+	int in_block = 0, inq = 0;
 	for (char *p = s; *p; p++) {
 		if (in_block) { if (p[0] == '*' && p[1] == '/') { *p++ = ' '; *p = ' '; in_block = 0; } else if (*p != '\n') *p = ' '; continue; }
+		if (inq) {   /* inside "...": '@', '//' and '/*' are string bytes (kernel format strings: "%pS @ %i") */
+			if (*p == '\\' && p[1] && p[1] != '\n') p++;   /* skip an escaped char (incl. \") */
+			else if (*p == '"' || *p == '\n') inq = 0;
+			continue;
+		}
+		if (*p == '"') { inq = 1; continue; }
 		if (p[0] == '/' && p[1] == '*') { *p++ = ' '; *p = ' '; in_block = 1; continue; }
 		if (p[0] == '@' || (p[0] == '/' && p[1] == '/')) { while (*p && *p != '\n') *p++ = ' '; if (!*p) break; }
 	}
@@ -95,9 +101,11 @@ static void strip_comments(char *s) {
 
 /* Split a line into tokens on whitespace + commas ('#','{','}','[',']' stay attached to their operand). */
 #define MAXTOK 32   /* mnemonic + operands; register lists (push/pop) can be long */
-static char *toks[MAXTOK]; static int ntok; static char linebuf[512];
+static char *toks[MAXTOK]; static int ntok; static char linebuf[8192];   /* kernel .ascii/.asciz lines can be long */
 static void tokenize(const char *line) {
-	ntok = 0; strncpy(linebuf, line, sizeof linebuf - 1); linebuf[sizeof linebuf - 1] = 0;
+	ntok = 0;
+	size_t ll = strcspn(line, "\n"); if (ll >= sizeof linebuf) die("line too long (%zu > %zu bytes)", ll, sizeof linebuf - 1);   /* was silently truncated */
+	memcpy(linebuf, line, ll); linebuf[ll] = 0;
 	char *p = linebuf;
 	while (*p) {
 		while (*p == ' ' || *p == '\t' || *p == ',') p++;
