@@ -1034,6 +1034,193 @@ static int media_insn(const char *m) {
 	return 0;
 }
 
+/* ---- VFP (VFPv4-D32, UAL syntax) -------------------------------------------------------------------------
+ * Register fields: a single Sx splits as Vx = x>>1, bit = x&1; a double Dx as Vx = x&15, bit = x>>4. The bit goes
+ * to D(22) / N(7) / M(5) for the d / n / m operand. sz (bit 8) = 1 for double. */
+static int vfp_reg(const char *t, char kind) {   /* "s5" / "d17" -> index, else -1 */
+	if (!t || (t[0] | 32) != kind || !isdigit((unsigned char)t[1])) return -1;
+	char *e; long v = strtol(t + 1, &e, 10);
+	if (*e || v < 0 || v > 31) return -1;
+	return (int)v;
+}
+static int vfp_need(int i, char kind) {
+	if (i >= ntok) die("%s: missing operand", toks[0]);
+	int r = vfp_reg(toks[i], kind); if (r < 0) die("%s: expected %c register, got '%s'", toks[0], kind, toks[i]);
+	return r;
+}
+static u32 vd(int r, int dbl) { return dbl ? ((u32)(r & 15) << 12) | ((u32)(r >> 4) << 22) : ((u32)(r >> 1) << 12) | ((u32)(r & 1) << 22); }
+static u32 vn(int r, int dbl) { return dbl ? ((u32)(r & 15) << 16) | ((u32)(r >> 4) << 7)  : ((u32)(r >> 1) << 16) | ((u32)(r & 1) << 7); }
+static u32 vm(int r, int dbl) { return dbl ? (u32)(r & 15) | ((u32)(r >> 4) << 5)          : (u32)(r >> 1) | ((u32)(r & 1) << 5); }
+/* VFPExpandImm: the 8-bit modified immediate for vmov.f32/.f64 #imm, or -1 if the value isn't encodable. */
+static int vfp_imm8(double v) {   /* imm8 = a:b:cd:efgh -> (-1)^a * (1 + efgh/16) * 2^e, e = b ? cd-3 : cd+1 (same set for f32/f64) */
+	for (int i = 0; i < 256; i++) {
+		int b = (i >> 6) & 1, cd = (i >> 4) & 3, e = b ? cd - 3 : cd + 1;
+		double x = 1.0 + (i & 15) / 16.0;
+		for (int k = 0; k < e; k++) x *= 2;
+		for (int k = 0; k > e; k--) x /= 2;
+		if ((i >> 7 ? -x : x) == v) return i;
+	}
+	return -1;
+}
+/* A VFP register list {s2-s5} / {d0, d1, d2} (consecutive, one kind): first register, count, kind. */
+static void vfp_list(int start, int *first, int *count, int *dbl) {
+	char buf[256]; size_t bl = 0;
+	for (int i = start; i < ntok; i++) { int w = snprintf(buf + bl, sizeof buf - bl, "%s%s", i > start ? "," : "", toks[i]); if (w < 0 || (size_t)w >= sizeof buf - bl) die("%s: register list too long", toks[0]); bl += (size_t)w; }
+	if (buf[0] != '{' || buf[bl - 1] != '}') die("%s: expected {register list}", toks[0]);
+	buf[bl - 1] = 0;
+	*first = -1; *count = 0; *dbl = -1;
+	for (char *p = strtok(buf + 1, ", "); p; p = strtok(NULL, ", ")) {
+		char *dash = strchr(p, '-'); if (dash) *dash++ = 0;
+		int k = (p[0] | 32) == 'd'; if (*dbl < 0) *dbl = k; else if (*dbl != k) die("%s: mixed s/d registers in list", toks[0]);
+		int a = vfp_reg(p, k ? 'd' : 's'), b = dash ? vfp_reg(dash, k ? 'd' : 's') : a;
+		if (a < 0 || b < a) die("%s: bad register list entry '%s'", toks[0], p);
+		if (*first < 0) *first = a; else if (a != *first + *count) die("%s: register list must be consecutive", toks[0]);
+		*count += b - a + 1;
+	}
+	if (*first < 0) die("%s: empty register list", toks[0]);
+	if (*dbl ? *count > 16 : *first + *count > 32) die("%s: register list too long", toks[0]);
+}
+static int vfp_sysreg(const char *t) {
+	static const struct { const char *n; int r; } sr[] = { {"fpsid",0}, {"fpscr",1}, {"mvfr2",5}, {"mvfr1",6}, {"mvfr0",7}, {"fpexc",8}, {"fpinst",9}, {"fpinst2",10} };
+	for (unsigned i = 0; i < sizeof sr / sizeof *sr; i++) if (!strcasecmp(t, sr[i].n)) return sr[i].r;
+	die("%s: unknown VFP system register '%s'", toks[0], t); return 0;
+}
+/* Returns 1 if m (lowercased) is a VFP instruction (encoded), 0 if not ours. */
+static int vfp_insn(const char *m) {
+	if (m[0] != 'v') return 0;
+	static const char *const bases[] = { "vnmla", "vnmls", "vnmul", "vfnma", "vfnms", "vmla", "vmls", "vmul", "vadd", "vsub", "vdiv", "vfma", "vfms",
+		"vabs", "vneg", "vsqrt", "vmov", "vcmpe", "vcmp", "vcvtr", "vcvtb", "vcvtt", "vcvt", "vmrs", "vmsr", "vldr", "vstr",
+		"vldmia", "vldmdb", "vstmia", "vstmdb", "vldm", "vstm", "vpush", "vpop", NULL };
+	char base[16] = "", dt[16] = ""; u32 cond = 14;
+	const char *dot = strchr(m, '.'); size_t head = dot ? (size_t)(dot - m) : strlen(m);
+	if (dot) { if (strlen(dot) >= sizeof dt) return 0; strcpy(dt, dot); }
+	for (int i = 0; bases[i]; i++) {
+		size_t bl = strlen(bases[i]);
+		if (bl > head || strncmp(m, bases[i], bl)) continue;
+		char c[8] = ""; if (head - bl >= sizeof c) continue; memcpy(c, m + bl, head - bl); c[head - bl] = 0;
+		if (c[0] && !lookup_cc(c, &cond)) continue;
+		strcpy(base, bases[i]); break;
+	}
+	if (!base[0]) return 0;
+	u32 C = cond << 28;
+	int f32 = !strcmp(dt, ".f32"), f64 = !strcmp(dt, ".f64");
+	#define NEED_FDT() do { if (!f32 && !f64) die("%s: needs .f32 or .f64", toks[0]); } while (0)
+	static const struct { const char *n; u32 op; } arith3[] = {
+		{"vmla",0x0E000A00}, {"vmls",0x0E000A40}, {"vnmls",0x0E100A00}, {"vnmla",0x0E100A40}, {"vmul",0x0E200A00}, {"vnmul",0x0E200A40},
+		{"vadd",0x0E300A00}, {"vsub",0x0E300A40}, {"vdiv",0x0E800A00}, {"vfnms",0x0E900A00}, {"vfnma",0x0E900A40}, {"vfma",0x0EA00A00}, {"vfms",0x0EA00A40} };
+	for (unsigned i = 0; i < sizeof arith3 / sizeof *arith3; i++) if (!strcmp(base, arith3[i].n)) {
+		NEED_FDT(); char k = f64 ? 'd' : 's';
+		int d = vfp_need(1, k), n = ntok > 3 ? vfp_need(2, k) : d, mm = vfp_need(ntok > 3 ? 3 : 2, k);   /* `vadd d0, d1` == `vadd d0, d0, d1` */
+		if (ntok > 4) die("%s: too many operands", toks[0]);
+		emit32(C | arith3[i].op | (u32)f64 << 8 | vd(d, f64) | vn(n, f64) | vm(mm, f64)); return 1;
+	}
+	static const struct { const char *n; u32 op; } arith2[] = { {"vabs",0x0EB00AC0}, {"vneg",0x0EB10A40}, {"vsqrt",0x0EB10AC0} };
+	for (unsigned i = 0; i < 3; i++) if (!strcmp(base, arith2[i].n)) {
+		NEED_FDT(); char k = f64 ? 'd' : 's';
+		int d = vfp_need(1, k), mm = vfp_need(2, k);
+		emit32(C | arith2[i].op | (u32)f64 << 8 | vd(d, f64) | vm(mm, f64)); return 1;
+	}
+	if (!strcmp(base, "vcmp") || !strcmp(base, "vcmpe")) {
+		NEED_FDT(); char k = f64 ? 'd' : 's'; u32 E = base[4] == 'e';
+		int d = vfp_need(1, k);
+		if (ntok > 2 && toks[2][0] == '#') {   /* compare with zero: #0 / #0.0 */
+			if (strtod(toks[2] + 1, NULL) != 0.0) die("%s: can only compare with #0", toks[0]);
+			emit32(C | 0x0EB50A40 | E << 7 | (u32)f64 << 8 | vd(d, f64)); return 1;
+		}
+		int mm = vfp_need(2, k);
+		emit32(C | 0x0EB40A40 | E << 7 | (u32)f64 << 8 | vd(d, f64) | vm(mm, f64)); return 1;
+	}
+	if (!strcmp(base, "vcvt") || !strcmp(base, "vcvtr")) {
+		int rz = base[4] != 'r';
+		if (ntok > 3) die("%s: fixed-point conversions are not supported", toks[0]);
+		if (!strcmp(dt, ".f64.f32")) { emit32(C | 0x0EB70AC0 | vd(vfp_need(1, 'd'), 1) | vm(vfp_need(2, 's'), 0)); return 1; }
+		if (!strcmp(dt, ".f32.f64")) { emit32(C | 0x0EB70AC0 | 1u << 8 | vd(vfp_need(1, 's'), 0) | vm(vfp_need(2, 'd'), 1)); return 1; }
+		if (!rz && (!strncmp(dt, ".f32.", 5) || !strncmp(dt, ".f64.", 5))) die("%s: vcvtr converts to an integer", toks[0]);
+		if (!strcmp(dt, ".f32.s32") || !strcmp(dt, ".f32.u32") || !strcmp(dt, ".f64.s32") || !strcmp(dt, ".f64.u32")) {   /* int -> fp */
+			int dbl = dt[2] == '6', sgn = dt[5] == 's';
+			emit32(C | 0x0EB80A40 | (u32)sgn << 7 | (u32)dbl << 8 | vd(vfp_need(1, dbl ? 'd' : 's'), dbl) | vm(vfp_need(2, 's'), 0)); return 1;
+		}
+		if (!strcmp(dt, ".s32.f32") || !strcmp(dt, ".u32.f32") || !strcmp(dt, ".s32.f64") || !strcmp(dt, ".u32.f64")) {   /* fp -> int */
+			int dbl = dt[6] == '6', sgn = dt[1] == 's';
+			emit32(C | 0x0EBC0A40 | (u32)sgn << 16 | (u32)rz << 7 | (u32)dbl << 8 | vd(vfp_need(1, 's'), 0) | vm(vfp_need(2, dbl ? 'd' : 's'), dbl)); return 1;
+		}
+		die("%s: unsupported conversion '%s'", toks[0], dt);
+	}
+	if (!strcmp(base, "vcvtb") || !strcmp(base, "vcvtt")) {   /* half <-> single */
+		u32 T = base[4] == 't', op;
+		if (!strcmp(dt, ".f32.f16")) op = 0; else if (!strcmp(dt, ".f16.f32")) op = 1; else die("%s: needs .f32.f16 or .f16.f32", toks[0]);
+		emit32(C | 0x0EB20A40 | op << 16 | T << 7 | vd(vfp_need(1, 's'), 0) | vm(vfp_need(2, 's'), 0)); return 1;
+	}
+	if (!strcmp(base, "vmrs")) {
+		if (ntok != 3) die("vmrs: expected Rt, <sysreg>");
+		u32 rt = !strcasecmp(toks[1], "apsr_nzcv") ? 15 : need_reg(1);
+		if (rt == 15 && strcasecmp(toks[1], "apsr_nzcv")) die("vmrs: pc not allowed (use APSR_nzcv)");
+		int sr = vfp_sysreg(toks[2]); if (rt == 15 && sr != 1) die("vmrs: APSR_nzcv only from fpscr");
+		emit32(C | 0x0EF00A10 | (u32)sr << 16 | rt << 12); return 1;
+	}
+	if (!strcmp(base, "vmsr")) {
+		if (ntok != 3) die("vmsr: expected <sysreg>, Rt");
+		emit32(C | 0x0EE00A10 | (u32)vfp_sysreg(toks[1]) << 16 | need_reg_nopc(2) << 12); return 1;
+	}
+	if (!strcmp(base, "vldr") || !strcmp(base, "vstr")) {
+		int dbl = (toks[1][0] | 32) == 'd', r = vfp_need(1, dbl ? 'd' : 's');
+		if (f32 && dbl) die("%s: .32 with a d register", toks[0]);
+		Addr a = parse_addr(2);
+		if (a.isreg || a.W || !a.P || a.grp) die("%s: only [Rn{, #+/-imm}] addressing", toks[0]);
+		if (a.imm & 3 || a.imm > 1020) die("%s: offset must be a multiple of 4 within 1020", toks[0]);
+		emit32(C | (base[1] == 'l' ? 0x0D100A00 : 0x0D000A00) | (u32)a.U << 23 | (u32)dbl << 8 | (u32)a.rn << 16 | vd(r, dbl) | (u32)(a.imm >> 2)); return 1;
+	}
+	if (!strcmp(base, "vpush") || !strcmp(base, "vpop") || !strncmp(base, "vldm", 4) || !strncmp(base, "vstm", 4)) {
+		int L = base[1] == 'l' || !strcmp(base, "vpop"), db = !strcmp(base, "vpush") || !strcmp(base + 4, "db");
+		u32 rn = 13, W = 1; int li = 1;
+		if (strcmp(base, "vpush") && strcmp(base, "vpop")) {
+			char rb[16]; snprintf(rb, sizeof rb, "%s", toks[1]); size_t l = strlen(rb);
+			W = l && rb[l - 1] == '!'; if (W) rb[l - 1] = 0;
+			int r = reg(rb); if (r < 0) die("%s: bad base register '%s'", toks[0], toks[1]); rn = (u32)r; li = 2;
+			if (db && !W) die("%s: db needs writeback (!)", toks[0]);
+		}
+		int first, count, dbl; vfp_list(li, &first, &count, &dbl);
+		u32 PU = db ? 1u << 24 : 1u << 23;
+		emit32(C | 0x0C000A00 | PU | W << 21 | (u32)L << 20 | rn << 16 | (u32)dbl << 8 | vd(first, dbl) | (u32)(dbl ? 2 * count : count)); return 1;
+	}
+	if (!strcmp(base, "vmov")) {
+		if (ntok == 3 && toks[2][0] == '#') {   /* vmov.f32/.f64 Vd, #imm */
+			NEED_FDT(); int d = vfp_need(1, f64 ? 'd' : 's');
+			int i8 = vfp_imm8(strtod(toks[2] + 1, NULL)); if (i8 < 0) die("%s: immediate '%s' not encodable", toks[0], toks[2] + 1);
+			emit32(C | 0x0EB00A00 | (u32)f64 << 8 | vd(d, f64) | (u32)(i8 >> 4) << 16 | (u32)(i8 & 15)); return 1;
+		}
+		int s1 = vfp_reg(toks[1], 's'), d1 = vfp_reg(toks[1], 'd');
+		if (ntok == 3) {
+			int s2 = vfp_reg(toks[2], 's'), d2 = vfp_reg(toks[2], 'd');
+			if (s1 >= 0 && s2 >= 0) { emit32(C | 0x0EB00A40 | vd(s1, 0) | vm(s2, 0)); return 1; }                   /* vmov.f32 */
+			if (d1 >= 0 && d2 >= 0) {
+				if (f64) { emit32(C | 0x0EB00B40 | vd(d1, 1) | vm(d2, 1)); return 1; }                           /* vmov.f64 */
+				if (cond != 14) die("vmov: a NEON register move is unconditional");
+				emit32(0xF2200110 | vd(d1, 1) | vn(d2, 1) | vm(d2, 1)); return 1;                                /* NEON vorr */
+			}
+			if (s1 >= 0) { emit32(C | 0x0E000A10 | vn(s1, 0) | need_reg_nopc(2) << 12); return 1; }             /* vmov Sn, Rt */
+			if (s2 >= 0) { emit32(C | 0x0E100A10 | vn(s2, 0) | need_reg_nopc(1) << 12); return 1; }             /* vmov Rt, Sn */
+			die("vmov: unsupported operands");
+		}
+		if (ntok == 4) {
+			if (d1 >= 0) { emit32(C | 0x0C400B10 | need_reg_nopc(3) << 16 | need_reg_nopc(2) << 12 | vm(d1, 1)); return 1; }   /* vmov Dm, Rt, Rt2 */
+			int d3 = vfp_reg(toks[3], 'd');
+			if (d3 >= 0) { u32 rt = need_reg_nopc(1), rt2 = need_reg_nopc(2); if (rt == rt2) die("vmov: Rt and Rt2 must differ");
+				emit32(C | 0x0C500B10 | rt2 << 16 | rt << 12 | vm(d3, 1)); return 1; }                                      /* vmov Rt, Rt2, Dm */
+		}
+		if (ntok == 5) {
+			int sa = vfp_reg(toks[1], 's'), sb = vfp_reg(toks[2], 's');
+			if (sa >= 0) { if (sb != sa + 1 || sa == 31) die("vmov: need consecutive s registers"); emit32(C | 0x0C400A10 | need_reg_nopc(4) << 16 | need_reg_nopc(3) << 12 | vm(sa, 0)); return 1; }
+			int sc = vfp_reg(toks[3], 's'), sd = vfp_reg(toks[4], 's');
+			if (sc >= 0) { if (sd != sc + 1 || sc == 31) die("vmov: need consecutive s registers"); u32 rt = need_reg_nopc(1), rt2 = need_reg_nopc(2); if (rt == rt2) die("vmov: Rt and Rt2 must differ");
+				emit32(C | 0x0C500A10 | rt2 << 16 | rt << 12 | vm(sc, 0)); return 1; }
+		}
+		die("vmov: unsupported operands");
+	}
+	#undef NEED_FDT
+	return 0;
+}
+
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
 	for (char *c = toks[0]; *c; c++) *c = (char)tolower((unsigned char)*c);   /* GAS: mnemonics are case-insensitive */
@@ -1059,6 +1246,7 @@ void md_assemble(char **t, int n) {
 	}
 
 	if (media_insn(m)) return;
+	if (vfp_insn(m)) return;
 	if (!strncmp(m, "clrex", 5) && !m[5]) { emit32(0xf57ff01fu); return; }
 	if (!strcmp(m, "bkpt")) { u32 v = ntok > 1 ? (u32)snum(toks[1], 0, 0xffff, "bkpt number") : 0; emit32(0xe1200070u | ((v >> 4) << 8) | (v & 15)); return; }
 	{   /* tstp/teqp/cmpp/cmnp{cond}: legacy (26-bit) flag-setting compares = Rd field r15 */
