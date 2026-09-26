@@ -49,7 +49,7 @@ static const char *const GNU_SPELLING[][2] = {
 	{ "__asm", "asm" }, { "__asm__", "asm" }, { "__typeof", "typeof" }, { "__typeof__", "typeof" },
 	{ "__alignof", "_Alignof" }, { "__alignof__", "_Alignof" }, { "alignof", "_Alignof" }, { "", "" } };
 static const char *KEYWORDS[] = {
-	"int", "char", "void", "short", "long", "signed", "unsigned",          /* base integer types      */
+	"int", "char", "void", "short", "long", "signed", "unsigned", "float", "double",   /* base arithmetic types */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
 	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
@@ -114,9 +114,17 @@ Token *lex(const char *src) {
 			if (*p == '"') p++;                                                          /* skip closing quote */
 			cur = cur->next = t; continue;
 		}
-		if (isdigit((unsigned char)*p)) {                                                /* integer literal */
+		if (isdigit((unsigned char)*p) || (*p == '.' && isdigit((unsigned char)p[1]))) {   /* number */
 			Token *t = new_tok(TK_NUM, line);
-			char *end; t->val = (long)strtoull(p, &end, 0);                            /* 0x.. / 0.. / dec; strtoull: literals > LONG_MAX (e.g. 64-bit hash primes) must wrap, not saturate */
+			char *end, *fend; t->val = (long)strtoull(p, &end, 0);                     /* 0x.. / 0.. / dec; strtoull: literals > LONG_MAX (e.g. 64-bit hash primes) must wrap, not saturate */
+			double fv = strtod(p, &fend);
+			if (fend > end || *p == '.') {   /* floating: a '.', an exponent (1e5), or a hex float (0x1p3) goes past the integer */
+				t->fval = fv; t->fp = 2; end = fend;
+				if (*end == 'f' || *end == 'F') { t->fp = 1; end++; } else if (*end == 'l' || *end == 'L') end++;   /* long double == double */
+				size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
+				memcpy(t->text, p, n); t->text[n] = 0; p = end;
+				cur = cur->next = t; continue;
+			}
 			while (*end == 'u' || *end == 'U' || *end == 'l' || *end == 'L') end++;      /* skip int suffixes (UL, LL, …) */
 			size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, p, n); t->text[n] = 0; p = end;

@@ -29,6 +29,7 @@ linkobjs=()          # .o/.a already-built, passed straight to ld
 ttext=""             # -Ttext <addr> forwarded to ld
 entry=""             # -e <sym> forwarded to ld
 picflag=""           # -fPIC -> forwarded to cc1 (position-independent codegen)
+floatabi=""          # -mfloat-abi=soft|hard -> forwarded to cc1 (the kernel is soft: no VFP ABI/attributes)
 shared=""            # -shared -> build a .so (ld -shared; no -Ttext/-e)
 soname=""            # -soname NAME -> ld -soname
 libargs=()           # -l<name> / -L<dir> -> forwarded to ld (dynamic link against a .so)
@@ -60,6 +61,7 @@ while [ $# -gt 0 ]; do
     # optimization, warnings, dialect, arch/ABI tuning, and freestanding/link toggles handled
     # implicitly by our tools (static ELF, no host libc, no PIC unless -pie is passed to ld).
     -fPIC|-fpic) picflag="-fPIC" ;;          # position-independent codegen -> forwarded to cc1
+    -mfloat-abi=*) floatabi="$1" ;;          # float ABI -> forwarded to cc1
     -O*|-g*|-W*|-f*|-m*|-std=*|-pipe|-pedantic|-ansi) ;;
     -static|-nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
     -Wl,*|-Wa,*|-Wp,*) ;;                    # toolchain-passthrough we don't forward (unsupported opts)
@@ -86,11 +88,11 @@ compile_one() {
     c)
       "${CPP}" "${cppargs[@]}" "${src}" > "${i}"
       [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${i}" "${out}"; else cat "${i}"; fi; return 0; }
-      "${CC1}" ${picflag} -o "${s}" "${i}"
+      "${CC1}" ${picflag} ${floatabi} -o "${s}" "${i}"
       ;;
     i)
       [ "${mode}" = preprocess ] && { cat "${src}"; return 0; }
-      "${CC1}" ${picflag} -o "${s}" "${src}"
+      "${CC1}" ${picflag} ${floatabi} -o "${s}" "${src}"
       ;;
     S)
       "${CPP}" "${cppargs[@]}" "${src}" > "${s}"

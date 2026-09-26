@@ -70,4 +70,9 @@ torture: $(BUILD)/cc
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: clean test torture
+# AAPCS / AAPCS-VFP interop with GCC, both directions (needs the torture runtime: `make torture` first).
+abi-interop: $(BUILD)/cc
+	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null
+	@GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/abi.sh
+
+.PHONY: clean test torture abi-interop

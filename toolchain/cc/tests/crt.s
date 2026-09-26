@@ -1,8 +1,15 @@
 @ crt.s — bare-metal semihosting startup for cc tests: set a stack, call main(), then exit qemu with
 @ main()'s return value as the process exit code via ARM semihosting SYS_EXIT_EXTENDED (arbitrary code).
+@ The VFP unit is enabled first (CPACR cp10/cp11 full access, FPEXC.EN): cc code is hard-float.
 .text
 .global _start
 _start:
+	mrc  p15, 0, r0, c1, c0, 2
+	orr  r0, r0, #(0xf << 20)  @ CPACR: cp10 + cp11 full access
+	mcr  p15, 0, r0, c1, c0, 2
+	isb
+	mov  r0, #(1 << 30)
+	vmsr fpexc, r0            @ FPEXC.EN
 	movw sp, #0x0000
 	movt sp, #0x4090          @ sp = 0x40900000 (well above the loaded image in virt RAM)
 	bl   main                 @ result -> r0

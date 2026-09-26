@@ -9,16 +9,21 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL, 0, 0 };
-static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL, 0, 0 };
-static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 0, 0 };   /* plain char = unsigned (ARM default) */
-static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL, 0, 0 };   /* signed char                        */
-static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL, 0, 0 };
-static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL, 0, 0 };
-static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0 };   /* long long          (r0:r1 pair)    */
-static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL, 0, 0 };   /* unsigned long long                 */
-static Type bool_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 1, 0 };   /* _Bool: stores only 0/1        */
+static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
+static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
+static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* plain char = unsigned (ARM default) */
+static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* signed char                        */
+static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
+static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
+static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* long long          (r0:r1 pair)    */
+static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* unsigned long long                 */
+static Type bool_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 1, 0, NULL, 0, 0, 0, 0 };   /* _Bool: stores only 0/1        */
+static Type float_ty  = { TY_FLOAT,  NULL, 4, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
+static Type double_ty = { TY_DOUBLE, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
+static Type ldouble_ty = { TY_DOUBLE, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, -1 };
 Type *ty_int  = &int_ty;   Type *ty_uint   = &uint_ty;   Type *ty_bool = &bool_ty;
+Type *ty_float = &float_ty; Type *ty_double = &double_ty; Type *ty_ldouble = &ldouble_ty;
+int   is_fp(Type *t) { return t && (t->kind == TY_FLOAT || t->kind == TY_DOUBLE); }
 Type *ty_char = &char_ty;  Type *ty_schar  = &schar_ty;
 Type *ty_short = &short_ty; Type *ty_ushort = &ushort_ty;
 Type *ty_llong = &llong_ty; Type *ty_ullong = &ullong_ty;
@@ -41,7 +46,7 @@ int   align_of(Type *t) {
  * value always fits; int/long stays 32-bit, long long stays 64-bit; sign is preserved for the 32/64 types.
  * Pointers/arrays/structs pass through unchanged. */
 static Type *promote(Type *t) {
-	if (t->kind == TY_PTR || t->kind == TY_ARRAY || t->kind == TY_STRUCT) return t;
+	if (t->kind == TY_PTR || t->kind == TY_ARRAY || t->kind == TY_STRUCT || is_fp(t)) return t;
 	if (t->size == 8) return t->is_unsigned ? ty_ullong : ty_llong;
 	return (t->is_unsigned && t->size >= 4) ? ty_uint : ty_int;
 }
@@ -49,6 +54,7 @@ static Type *promote(Type *t) {
  * unsigned operand makes the result unsigned. So `ll + uint` -> ll (64 bits hold every uint), `ull + ll`
  * -> ull, `uint + int` -> uint. */
 Type *usual_arith(Type *a, Type *b) {
+	if (is_fp(a) || is_fp(b)) return (a->kind == TY_DOUBLE || b->kind == TY_DOUBLE) ? ty_double : ty_float;   /* a floating operand wins */
 	Type *pa = promote(a), *pb = promote(b);
 	int size = pa->size > pb->size ? pa->size : pb->size;
 	if (size == 8) {

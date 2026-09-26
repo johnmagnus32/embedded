@@ -21,6 +21,7 @@ typedef struct Token {
 	TokKind kind;
 	struct Token *next;
 	long val;              /* TK_NUM: the integer value                         */
+	double fval; int fp;   /* TK_NUM floating literal: its value; fp = 1 float (f suffix), 2 double (incl. l = long double) */
 	char text[64];         /* the raw lexeme (ident/keyword name, or punctuator; truncated for long strings) */
 	char *sval;            /* TK_STR: the full (untruncated) raw string contents — asm templates/format strings exceed text[64] */
 	int line;              /* source line, for diagnostics                       */
@@ -31,10 +32,10 @@ Token *lex(const char *src);                 /* tokenize the whole source into a
 int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal text -> code points (escapes + UTF-8) */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
-typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
+typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;   /* arithmetic kinds precede TY_PTR */
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
-typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; struct Member *next; } Member;   /* align: __attribute__((aligned(N))) on the member */
+typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int promoted; struct Member *next; } Member;   /* align: aligned(N) on the member; promoted: a lookup alias of an anonymous member's member (no storage of its own) */
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
 /* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
@@ -42,26 +43,39 @@ typedef struct Member { char name[64]; struct Type *type; int offset; int is_bit
 /* is_bool: _Bool (1 byte, unsigned) — every conversion INTO it yields 0/1 (x != 0), not a truncation. */
 /* vsize_off: a VARIABLY-modified array (VLA): the frame slot holding its byte size, computed where its declarator
  * was (size is then 0 and unused); 0 = a normal fixed-size type. */
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off; } Type;
+/* A function type (fn_ret set) also carries its prototype: params[nparams], variadic (1 = `...`, 2 = unknown). */
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off;
+                      struct Type **params; int nparams; int variadic;
+                      int quals;      /* 1 = const, 2 = volatile (only __builtin_types_compatible_p looks) */
+                      int tag; } Type; /* a distinct type of an otherwise-equal representation: each enum, long double (-1) */
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
 extern Type *ty_bool;                        /* _Bool */
+extern Type *ty_float, *ty_double, *ty_ldouble;   /* IEEE single / double; long double has double's representation (ARM EABI) */
+int   is_fp(Type *t);
 Type *usual_arith(Type *a, Type *b);         /* usual-arithmetic-conversion result type (drives op width+sign) */
 Type *func_ret_type(const char *name);       /* a called function's declared return type (NULL if unknown) */
 int   func_declared(const char *name);        /* 1 if `name` has a recorded function signature (=> direct `bl`, not indirect) */
 Type *func_param_type(const char *name, int i);   /* a callee's declared param i type (NULL if unknown/vararg) */
+int   func_is_variadic(const char *name);   /* declared with `...` (its calls use the base PCS) */
 /* AAPCS argument placement, shared by caller + callee. Arguments occupy consecutive "argument words": words
  * 0..3 are r0..r3, word 4+ is outgoing stack word (w-4). pos[i] = arg i's first word; returns the total. */
-int  aapcs_layout(Type **ty, int n, int first, int *pos);
+/* vfp = the AAPCS-VFP variant (hard float, non-variadic callee): float/double/HFA args go to s0-s15 instead,
+ * vreg[i] = their first s-register (-1 = core/stack; a VFP arg that overflowed to the stack has a pos). */
+int  aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg);
+int  vfp_class(Type *t, int *nel);           /* 0; 1 = float elements; 2 = double elements (a float/double/HFA) */
+extern int soft_float;                       /* -mfloat-abi=soft: no floating code, base PCS attributes */
 int  arg_words(Type *t);                     /* words an argument of type t occupies (struct = ceil(size/4)) */
-int  is_sret(Type *t);                       /* returned via a caller-supplied buffer (struct > 4 bytes) */
+int  is_sret(Type *t, int vfp);              /* returned via a caller-supplied buffer (struct > 4 bytes, not an HFA under VFP) */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
 Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);
 int   is_ptr_like(Type *t);                  /* pointer OR array (both index/decay the same way) */
 int   align_of(Type *t);                     /* byte alignment (int/ptr=4, char=1, array=elem, struct=max) */
 /* add_type is declared after the Node typedef below */
+
+#define MAXPARAMS 128   /* function parameters (C11 5.2.4.1 requires >= 127) */
 
 /* ---- AST (parse.c) ------------------------------------------------------------------------------- */
 typedef enum {
@@ -84,7 +98,8 @@ typedef struct Node {
 	NodeKind kind;
 	Type *type;                  /* result type (filled by add_type); drives ptr scaling + load width */
 	struct Node *lhs, *rhs;      /* binary/unary operands                                        */
-	long val;                    /* ND_NUM ; ND_CASE low value                                   */
+	long val;                    /* ND_NUM ; ND_CASE low value (an FP ND_NUM: its IEEE bit pattern) */
+	double fval;                 /* FP ND_NUM: the value (constant folding)                      */
 	long val2; int is_range;     /* ND_CASE `low ... high` range (GCC case ranges)               */
 	char name[64];               /* ND_VAR / ND_CALL name                                        */
 	char reg[8];                 /* ND_VAR pinned to a hard register (`register x __asm__("r7")`)*/
@@ -124,6 +139,8 @@ typedef struct Func {
 	int is_static;               /* 1 if `static` — file-local symbol, emit no .global            */
 	int reachable;               /* DCE: 0 = unreachable (drop), 1 = reachable/queued, 2 = walked  */
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
+	int vfp;                     /* AAPCS-VFP (hard float, not variadic): FP params/results in VFP registers */
+	int vfp_save;                /* a param arrives in s0-s15: d0-d7 are saved above the homed r0-r3 */
 	Attr attr;
 	Node *body;                  /* statement list                                               */
 	struct Func *next;

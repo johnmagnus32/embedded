@@ -9,6 +9,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$HERE/../../.." && pwd)
 KDIR=${KDIR:-$ROOT/projects/gameboy-v3/image/build/qemu/linux}
 GNU=${GNU:-$ROOT/projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-}
+# cc runs -mfloat-abi=soft, as the kernel is built (no VFP code/ABI attributes)
 CC=$ROOT/toolchain/cc/build/cc; AS=$ROOT/toolchain/as/build/as
 W=${WORK:-/tmp/kernel_parity}; mkdir -p "$W"
 dirs=${*:-lib crypto kernel mm fs}
@@ -32,7 +33,7 @@ for d in $dirs; do
 		pp=$(sed 's/^savedcmd_[^:]*:= //' "$o" | sed -e "s#^[^ ]*gcc#${GNU}gcc#" -e 's# -c # -E #' -e "s# -o [^ ]*\.o # -o $f.i #")
 		eval "$pp" >/dev/null 2>&1 || continue
 		total=$((total + 1))
-		"$CC" -o "$f.s" "$f.i" 2>"$f.err" || { echo "$d/$b: cc failed: $(head -1 "$f.err")"; continue; }
+		"$CC" -mfloat-abi=soft -o "$f.s" "$f.i" 2>"$f.err" || { echo "$d/$b: cc failed: $(head -1 "$f.err")"; continue; }
 		"$AS" -o "$f.ours.o" "$f.s" 2>"$f.err" || { echo "$d/$b: our as failed: $(head -1 "$f.err")"; continue; }
 		"${GNU}as" -mcpu=cortex-a7 -o "$f.gnu.o" "$f.s" 2>"$f.err" || { echo "$d/$b: GNU as failed: $(grep -m1 Error "$f.err")"; continue; }
 		bad=""

@@ -18,12 +18,15 @@ void die(const char *fmt, ...) {
 }
 
 int pic = 0;   /* -fPIC: emit position-independent code (global/string access via the GOT) */
+int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; default hard (gnueabihf) */
 
 int main(int argc, char **argv) {
 	const char *out = "a.s", *in = NULL;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
 		else if (!strcmp(argv[i], "-fPIC") || !strcmp(argv[i], "-fpic")) pic = 1;
+		else if (!strcmp(argv[i], "-mfloat-abi=hard")) soft_float = 0;
+		else if (!strcmp(argv[i], "-mfloat-abi=soft")) soft_float = 1;   /* no floating code allowed; no VFP ABI attributes (the kernel) */
 		else if (argv[i][0] != '-') in = argv[i];
 		else die("unknown option '%s'", argv[i]);
 	}

@@ -14,7 +14,7 @@ WORK = os.environ.get("CTORTURE_WORK", "/tmp/ctorture")
 SUITE = os.path.join(WORK, "gcc-13.3.0/gcc/testsuite/gcc.c-torture/execute")
 X = os.environ.get("GNU", os.path.join(ROOT, "projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-"))
 CC = os.path.join(ROOT, "toolchain/cc/build/cc"); AS = os.path.join(ROOT, "toolchain/as/build/as"); LD = os.path.join(ROOT, "toolchain/ld/build/ld")
-LIBC_SRC = ["string.c", "stdlib.c", "stdio.c", "printf.c", "malloc.c", "lldiv.c"]
+LIBC_SRC = ["string.c", "stdlib.c", "stdio.c", "printf.c", "malloc.c", "lldiv.c", "fpconv.c"]
 INC = ["-nostdinc", "-isystem", os.path.join(ROOT, "libc/include"), "-isystem", os.path.join(ROOT, "kernel/include/uapi")]
 CPP_FLAGS = ["-E"] + INC + ["-std=gnu89", "-w", "-D__TORTURE__"]
 GCC_FLAGS = ["-O0", "-marm", "-mcpu=cortex-a7", "-std=gnu89", "-w", "-fno-builtin-printf"]
