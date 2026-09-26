@@ -1,0 +1,122 @@
+refdes,subcircuit,lcsc,symbol,note
+U1,mcu,C94355,easyeda2kicad:STM32F411RET6,MCU · STM32F411RET6 · #1
+C1,mcu,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM32 VDD pin 19 decoupling · CC0603KRX7R9BB104 · #6
+C2,mcu,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM32 VDD pin 32 decoupling · CC0603KRX7R9BB104 · #6
+C3,mcu,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM32 VDD pin 48 decoupling · CC0603KRX7R9BB104 · #6
+C4,mcu,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM32 VDD pin 64 decoupling · CC0603KRX7R9BB104 · #6
+C5,mcu,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM32 VBAT decoupling · CC0603KRX7R9BB104 · #6
+C6,mcu,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM32 NRST filter · CC0603KRX7R9BB104 · #6
+C7,mcu,C109456,easyeda2kicad:CC0603KRX5R6BB475,STM32 VCAP_1 · CC0603KRX5R6BB475 · #7
+C8,mcu,C109456,easyeda2kicad:CC0603KRX5R6BB475,STM32 VDD bulk · CC0603KRX5R6BB475 · #7
+FB1,mcu,C1002,easyeda2kicad:GZ1608D601TF,STM32 VDD→VDDA ferrite · GZ1608D601TF · #5
+C9,mcu,C100042,easyeda2kicad:CC0603KRX7R9BB103,STM32 VDDA HF bypass · CC0603KRX7R9BB103 · #8
+C10,mcu,C106215,easyeda2kicad:CC0603KRX5R7BB105,STM32 VDDA bulk · CC0603KRX5R7BB105 · #9
+R1,mcu,C99198,easyeda2kicad:RC0603JR-0710KL,BOOT0 pull-down · RC0603JR-0710KL · #10
+J1,mcu,C358687,easyeda2kicad:MTP125-1105S1,SWD header (ST-Link V2 order) · Pin Header 1x5 · #13
+J2,mcu,C49257,easyeda2kicad:Header-Male-2.54_1x3,"UART console header (USART2, v1 order) · Pin Header 1x3 · #14"
+R2,mcu,C23193,easyeda2kicad:0603WAF5100T5E,Power LED resistor · 0603WAF5100T5E · #11
+D1,mcu,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,Power LED (lit when +3V3 is up) · 19-213SYGC/S530-E2/5T · #12
+Y1,clock,C57131,easyeda2kicad:DSX321G8MHz,HSE crystal 8 MHz CL 12 pF · KDS 1C208000BC0R · #74
+C11,clock,C106997,easyeda2kicad:CC0402JRNPO9BN150,HSE load cap (OSC_IN) · CC0402JRNPO9BN150 · #75
+C12,clock,C106997,easyeda2kicad:CC0402JRNPO9BN150,HSE load cap (OSC_OUT) · CC0402JRNPO9BN150 · #75
+R3,clock,C21189,easyeda2kicad:0603WAF0000T5E,HSE series R (keep 0 Ω) · 0603WAF0000T5E · #77
+U2,fpga,C2678152,easyeda2kicad:ICE40UP5K-SG48I,FPGA / PPU · iCE40UP5K-SG48I · #2
+C13,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCC pin 5 decoupling · CC0603KRX7R9BB104 · #6
+C14,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCC pin 30 decoupling · CC0603KRX7R9BB104 · #6
+C15,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCCIO_0 decoupling · CC0603KRX7R9BB104 · #6
+C16,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 SPI_VCCIO1 decoupling · CC0603KRX7R9BB104 · #6
+C17,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCCIO_2 decoupling · CC0603KRX7R9BB104 · #6
+C18,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VPP_2V5 decoupling · CC0603KRX7R9BB104 · #6
+C19,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCCPLL decoupling · CC0603KRX7R9BB104 · #6
+C20,fpga,C109456,easyeda2kicad:CC0603KRX5R6BB475,iCE40 VCCPLL bulk · CC0603KRX5R6BB475 · #7
+FB2,fpga,C1002,easyeda2kicad:GZ1608D601TF,iCE40 1.2 V→VCCPLL ferrite · GZ1608D601TF · #5
+R4,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,CRESET_B pull-up · RC0603JR-0710KL · #10
+R5,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,CDONE pull-up · RC0603JR-0710KL · #10
+R6,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,SS_B pull-down (slave-boot strap) · RC0603JR-0710KL · #10
+R7,fpga,C23193,easyeda2kicad:0603WAF5100T5E,CDONE LED resistor · 0603WAF5100T5E · #11
+D2,fpga,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,CDONE LED (lit = FPGA not configured) · 19-213SYGC/S530-E2/5T · #12
+U3,fpga-ldo,C151376,easyeda2kicad:AP2127K-1.2TRG1,iCE40 1.2 V core LDO · AP2127K-1.2TRG1 · #4
+C21,fpga-ldo,C109456,easyeda2kicad:CC0603KRX5R6BB475,LDO input cap · CC0603KRX5R6BB475 · #7
+C22,fpga-ldo,C109456,easyeda2kicad:CC0603KRX5R6BB475,LDO output cap · CC0603KRX5R6BB475 · #7
+C23,fpga-ldo,C109456,easyeda2kicad:CC0603KRX5R6BB475,iCE40 1.2 V bulk · CC0603KRX5R6BB475 · #7
+U4,nor,C97521,easyeda2kicad:W25Q128JVSIQTR,NOR flash 128 Mbit (shares SPI3 with iCE40 config) · W25Q128JVSIQ · #3
+C24,nor,C14663,easyeda2kicad:CC0603KRX7R9BB104,W25Q128 VCC decoupling · CC0603KRX7R9BB104 · #6
+R8,nor,C99198,easyeda2kicad:RC0603JR-0710KL,NOR /CS pull-up (deselected through reset) · RC0603JR-0710KL · #10
+J3,display,C41417332,easyeda2kicad:HXPM2.54-1X20PZC,"LCD socket, 2090 JP1 8-bit side · HX PM2.54-1x20P ZC · #16"
+J4,display,C41417332,easyeda2kicad:HXPM2.54-1X20PZC,"LCD socket, 2090 JP2 far side (mechanical) · HX PM2.54-1x20P ZC · #17"
+C25,display,C14663,easyeda2kicad:CC0603KRX7R9BB104,LCD VIN HF decoupling · CC0603KRX7R9BB104 · #18
+C26,display,C1713,easyeda2kicad:CL21A106KOQNNNE,LCD VIN bulk · CL21A106KOQNNNE · #18
+U5,lcd-boost,C84817,easyeda2kicad:MT3608,LCD 5 V boost · MT3608 · #68
+L1,lcd-boost,C57269,easyeda2kicad:SWPA4030S4R7MT,Boost inductor 4.7 µH · SWPA4030S4R7MT · #69
+D3,lcd-boost,C8678,easyeda2kicad:SS34_C8678,Boost Schottky · SS34 · #73
+C27,lcd-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,Boost input cap · CL21A106KOQNNNE · #70
+C28,lcd-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,Boost output cap · CL21A226MAQNNNE · #71
+R9,lcd-boost,C14890,easyeda2kicad:0603WAF7322T5E,Boost FB R1 (top) · 0603WAF7322T5E · #72
+R10,lcd-boost,C99198,easyeda2kicad:RC0603JR-0710KL,Boost FB R2 (bottom) · RC0603JR-0710KL · #72
+U6,amp,C910544,easyeda2kicad:MAX98357AETE+T,I2S Class-D amp (6 dB) · MAX98357AETE+T · #19
+R11,amp,C23219,easyeda2kicad:0603WAF6203T5E,SD_MODE strap 620k (mono L/2+R/2) · 0603WAF6203T5E · #20
+C29,amp,C14663,easyeda2kicad:CC0603KRX7R9BB104,Amp VDD HF bypass · CC0603KRX7R9BB104 · #21
+C30,amp,C17024,easyeda2kicad:CL21A106KPFNNNE,Amp VDD bulk · CL21A106KPFNNNE · #22
+J5,amp,,manual:SolderPad_1x02,"Speaker solder pads (CES-2704-088L050 leads, #23) · SolderPad_1x02 · #23"
+U7,imu,C481766,easyeda2kicad:LSM6DSOXTR,IMU 6-axis (I2C 0x6A) · LSM6DSOXTR · #24
+R12,imu,C99198,easyeda2kicad:RC0603JR-0710KL,IMU INT1 anti-I3C pull-down · RC0603JR-0710KL · #25
+C31,imu,C14663,easyeda2kicad:CC0603KRX7R9BB104,IMU VDD decoupling · CC0603KRX7R9BB104 · #26
+C32,imu,C14663,easyeda2kicad:CC0603KRX7R9BB104,IMU VDDIO decoupling · CC0603KRX7R9BB104 · #27
+U8,haptics,C527464,easyeda2kicad:DRV2605LDGSR,Haptic driver (I2C 0x5A) · DRV2605LDGSR · #28
+C33,haptics,C15849,easyeda2kicad:CL10A105KB8NNNC,Haptic REG cap (LDO stability) · CL10A105KB8NNNC · #29
+C34,haptics,C14663,easyeda2kicad:CC0603KRX7R9BB104,Haptic VDD HF bypass · CC0603KRX7R9BB104 · #30
+C35,haptics,C1713,easyeda2kicad:CL21A106KOQNNNE,Haptic VDD bulk · CL21A106KOQNNNE · #31
+J6,haptics,,manual:SolderPad_1x02,"LRA solder pads (VG0832022D leads: red +, blue −, #32) · SolderPad_1x02 · #32"
+R13,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C1 SCL pull-up · 0603WAF1501T5E · #33
+R14,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C1 SDA pull-up · 0603WAF1501T5E · #33
+J7,usb-c,C165948,easyeda2kicad:TYPE-C-31-M-12,USB-C receptacle (power only) · TYPE-C-31-M-12 · #34
+R15,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,CC1 Rd 5.1k · RC0603FR-075K1L · #35
+R16,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,CC2 Rd 5.1k · RC0603FR-075K1L · #35
+U9,charger,C54313,easyeda2kicad:BQ24074RGTR,Power-path charger · BQ24074RGTR · #36
+R17,charger,C21189,easyeda2kicad:0603WAF0000T5E,EN2 strap to charger OUT · 0603WAF0000T5E · #37
+C36,charger,C19666,easyeda2kicad:CL10A475KO8NNNC,Charger IN cap · CL10A475KO8NNNC · #38
+C37,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger OUT cap · CL21A106KOQNNNE · #39
+C38,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger BAT cap · CL21A106KOQNNNE · #40
+R18,charger,C22975,easyeda2kicad:0603WAF2001T5E,ISET 2.0k (~445 mA charge) · 0603WAF2001T5E · #41
+R19,charger,C22978,easyeda2kicad:0603WAF3301T5E,ILIM 3.3k (~462 mA input) · 0603WAF3301T5E · #42
+R20,charger,C99198,easyeda2kicad:RC0603JR-0710KL,TS NTC-defeat · RC0603JR-0710KL · #43
+R21,charger,C23231,easyeda2kicad:0603WAF6802T5E,TMR safety-timer 68k · 0603WAF6802T5E · #76
+R22,charger,C99198,easyeda2kicad:RC0603JR-0710KL,/CHG pull-up · RC0603JR-0710KL · #10
+R23,charger,C99198,easyeda2kicad:RC0603JR-0710KL,/PGOOD pull-up · RC0603JR-0710KL · #10
+J8,charger,C295747,easyeda2kicad:S2B-PH-SM4-TB,Battery connector (Adafruit 2011 / PKCELL LP-803860) · S2B-PH-SM4-TB(LF)(SN) · #54
+SW1,charger,C319012,easyeda2kicad:SS-12D10L5,Power slide switch (true off) · XKB SS-12D10L5 · #55
+U10,buck-boost,C202140,easyeda2kicad:TPS63021DSJR,3.3 V buck-boost · TPS63021DSJR · #44
+R24,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost FB→VOUT tie · 0603WAF0000T5E · #45
+R25,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost PS/SYNC strap · 0603WAF0000T5E · #46
+C39,buck-boost,C14663,easyeda2kicad:CC0603KRX7R9BB104,Buck-boost VINA bypass · CC0603KRX7R9BB104 · #47
+C40,buck-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,Buck-boost input cap · CL21A106KOQNNNE · #48
+C41,buck-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,Buck-boost input cap · CL21A106KOQNNNE · #48
+C42,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,Buck-boost output cap · CL21A226MAQNNNE · #49
+C43,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,Buck-boost output cap · CL21A226MAQNNNE · #49
+C44,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,Buck-boost output cap · CL21A226MAQNNNE · #49
+L2,buck-boost,C408407,easyeda2kicad:MWSA0503S-1R5MT,Buck-boost inductor 1.5 µH · MWSA0503S-1R5MT · #50
+R26,battery-sense,C25803,easyeda2kicad:0603WAF1003T5E,Battery divider top 100k 1% · 0603WAF1003T5E · #51
+R27,battery-sense,C25803,easyeda2kicad:0603WAF1003T5E,Battery divider bottom 100k 1% · 0603WAF1003T5E · #51
+C45,battery-sense,C14663,easyeda2kicad:CC0603KRX7R9BB104,Battery-ADC filter · CC0603KRX7R9BB104 · #52
+U11,expander,C2864778,easyeda2kicad:PCA9555PWR,Button expander (I2C 0x20) · PCA9555PWR · #56
+R28,expander,C99198,easyeda2kicad:RC0603JR-0710KL,Expander INT pull-up · RC0603JR-0710KL · #62
+C46,expander,C14663,easyeda2kicad:CC0603KRX7R9BB104,PCA9555 VDD decoupling · CC0603KRX7R9BB104 · #63
+SW2,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,UP tactile · TS-1187A-B-A-B · #57
+SW3,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,DOWN tactile · TS-1187A-B-A-B · #57
+SW4,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,LEFT tactile · TS-1187A-B-A-B · #57
+SW5,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,RIGHT tactile · TS-1187A-B-A-B · #57
+SW6,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,A tactile · TS-1187A-B-A-B · #58
+SW7,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,B tactile · TS-1187A-B-A-B · #58
+SW8,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,X tactile · TS-1187A-B-A-B · #58
+SW9,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,Y tactile · TS-1187A-B-A-B · #58
+SW10,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,START tactile · TS-1187A-B-A-B · #59
+SW11,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,SELECT tactile · TS-1187A-B-A-B · #59
+SW12,buttons,C127481,easyeda2kicad:SKRTLBE010,VOLUP side tactile · SKRTLBE010 · #60
+SW13,buttons,C127481,easyeda2kicad:SKRTLBE010,VOLDOWN side tactile · SKRTLBE010 · #60
+SW14,buttons,C127481,easyeda2kicad:SKRTLBE010,L side tactile · SKRTLBE010 · #61
+SW15,buttons,C127481,easyeda2kicad:SKRTLBE010,R side tactile · SKRTLBE010 · #61
+U12,bluetooth,,manual:BT830-SA-01-T_R,"Bluetooth module (UART-HCI, BLE host on MCU) · Ezurio BT830-SA-01 · #64"
+C47,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,BT830 VREG_OUT_HV stability cap · CC0603KRX5R6BB475 · #65
+C48,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,BT830 VDD_PADS decoupling · CC0603KRX7R9BB104 · #66
+C49,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,BT830 VREG_IN_HV decoupling · CC0603KRX7R9BB104 · #66
+C50,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,BT830 3.3 V burst reservoir · CC0603KRX5R6BB475 · #67
