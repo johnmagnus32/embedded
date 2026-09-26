@@ -9,15 +9,16 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL };
-static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL };
-static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL };   /* plain char = unsigned (ARM default) */
-static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL };   /* signed char                        */
-static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL };
-static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL };
-static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL };   /* long long          (r0:r1 pair)    */
-static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL };   /* unsigned long long                 */
-Type *ty_int  = &int_ty;   Type *ty_uint   = &uint_ty;
+static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL, 0 };
+static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL, 0 };
+static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 0 };   /* plain char = unsigned (ARM default) */
+static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL, 0 };   /* signed char                        */
+static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL, 0 };
+static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL, 0 };
+static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL, 0 };   /* long long          (r0:r1 pair)    */
+static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL, 0 };   /* unsigned long long                 */
+static Type bool_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 1 };   /* _Bool: stores only 0/1        */
+Type *ty_int  = &int_ty;   Type *ty_uint   = &uint_ty;   Type *ty_bool = &bool_ty;
 Type *ty_char = &char_ty;  Type *ty_schar  = &schar_ty;
 Type *ty_short = &short_ty; Type *ty_ushort = &ushort_ty;
 Type *ty_llong = &llong_ty; Type *ty_ullong = &ullong_ty;
@@ -27,6 +28,7 @@ Type *array_of(Type *base, int len) { Type *t = calloc(1, sizeof *t); t->kind = 
 int   is_ptr(Type *t) { return t && t->kind == TY_PTR; }
 int   is_ptr_like(Type *t) { return t && (t->kind == TY_PTR || t->kind == TY_ARRAY); }
 int   align_of(Type *t) {
+	if (t->align && t->kind != TY_STRUCT) return t->align;   /* typedef'd aligned(N) */
 	if (t->kind == TY_ARRAY) return align_of(t->base);
 	if (t->kind == TY_STRUCT) {
 		if (t->align) return t->align;   /* forced by __attribute__((packed))=1 / ((aligned(N))) */
@@ -85,13 +87,15 @@ void add_type(Node *n) {
 	case ND_NEG: case ND_BITNOT:
 		n->type = promote(n->lhs->type); return;      /* shift/negate/complement keep the (promoted) operand type */
 	case ND_CALL: {                                   /* result = the callee's declared return type */
-		Type *rt = n->lhs ? NULL : func_ret_type(n->name);   /* indirect (fn-ptr) call: unknown -> int */
+		Type *ct = n->lhs ? n->lhs->type : NULL;   /* indirect: through a function (pointer) type -> its return type */
+		if (ct && is_ptr(ct) && ct->base && ct->base->fn_ret) ct = ct->base;
+		Type *rt = n->lhs ? (ct && ct->fn_ret ? ct->fn_ret : NULL) : func_ret_type(n->name);   /* unknown -> int */
 		n->type = rt ? rt : ty_int; return;
 	}
 	case ND_EQ: case ND_NE: case ND_LT: case ND_LE: case ND_GT: case ND_GE:
 	case ND_AND: case ND_OR: case ND_NOT:
 		n->type = ty_int; return;                     /* comparisons/logical yield a plain int */
-	case ND_ASSIGN: n->type = n->lhs->type; return;
+	case ND_ASSIGN: case ND_RMW: n->type = n->lhs->type; return;
 	case ND_COND:   /* ?: over two arithmetic arms takes the usual-arithmetic-conversion type (so a mixed
 	                 * 32/64 ?: is 64-bit and each arm gets widened in codegen); else the `then` arm's type. */
 		n->type = (n->then->type && n->els->type && n->then->type->kind < TY_PTR && n->els->type->kind < TY_PTR)

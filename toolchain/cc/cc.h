@@ -32,15 +32,17 @@ Token *lex(const char *src);                 /* tokenize the whole source into a
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
-typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; struct Member *next; } Member;
+typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; struct Member *next; } Member;   /* align: __attribute__((aligned(N))) on the member */
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
 /* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
  * it declares a function returning fn_ret (not a variable); as a parameter it adjusts to a function pointer. */
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; } Type;
+/* is_bool: _Bool (1 byte, unsigned) — every conversion INTO it yields 0/1 (x != 0), not a truncation. */
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; } Type;
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
+extern Type *ty_bool;                        /* _Bool */
 Type *usual_arith(Type *a, Type *b);         /* usual-arithmetic-conversion result type (drives op width+sign) */
 Type *func_ret_type(const char *name);       /* a called function's declared return type (NULL if unknown) */
 int   func_declared(const char *name);        /* 1 if `name` has a recorded function signature (=> direct `bl`, not indirect) */
@@ -68,6 +70,7 @@ typedef enum {
 	ND_NEG, ND_NOT, ND_BITNOT,                                   /* unary - ! ~                       */
 	ND_COND, ND_CAST, ND_COMMA, ND_STMTEXPR, ND_REGVAR,          /* c?a:b ; (type)expr ; (a,b) ; ({...}) ; global reg var */
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
+	ND_RMW, ND_CUR,                                              /* lhs op= rhs / ++ / -- (lvalue evaluated ONCE) ; its old value */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
 	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_LABELADDR, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, &&label, inline asm, block */
 } NodeKind;
@@ -95,7 +98,13 @@ typedef struct Node {
 	struct Node *body;           /* ND_BLOCK: statement list (chained via ->next)                */
 	struct Node *args;           /* ND_CALL: argument list (chained via ->next)                  */
 	struct Node *next;           /* next statement / next argument in a list                     */
+	int is_post;                 /* ND_RMW: x++ / x-- — the result is the OLD value               */
+	struct Node *target;         /* ND_CUR: the ND_RMW whose old value it reads (a back-link, not a child) */
 } Node;
+
+/* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
+ * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
+typedef struct Attr { int weak, used, align; char section[64], alias[64]; } Attr;
 
 /* A compiled function: name, its parameter count, the total stack frame it needs, and its body list. */
 typedef struct Func {
@@ -109,6 +118,7 @@ typedef struct Func {
 	int is_static;               /* 1 if `static` — file-local symbol, emit no .global            */
 	int reachable;               /* DCE: 0 = unreachable (drop), 1 = reachable/queued, 2 = walked  */
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
+	Attr attr;
 	Node *body;                  /* statement list                                               */
 	struct Func *next;
 } Func;
@@ -133,6 +143,7 @@ typedef struct Gvar {
 	int is_static;               /* 1 = `static` -> file-local symbol, emit no .global             */
 	int is_topasm;               /* 1 = file-scope `asm("...")` -> emit `str` verbatim (e.g. .weak/.set aliases) */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
+	Attr attr;
 	char str[1024];              /* is_str / is_topasm: the decoded text (adjacent literals concatenated) */
 	struct Gvar *next;
 } Gvar;
@@ -147,5 +158,6 @@ void gen(Func *prog, const char *out);   /* emit ARM assembly text for the whole
 
 /* ---- shared (cc.c) ------------------------------------------------------------------------------- */
 void die(const char *fmt, ...);          /* "cc: ..." + exit(1) */
+int  name_is_weak(const char *name);     /* declared weak on a prototype (parse.c) */
 
 #endif

@@ -29,6 +29,12 @@ static void gen_stmt(Node *n);
 static void gen_addr(Node *n);
 static void gen_binary64(Node *n);
 
+/* Call a runtime helper (memcpy, __divdi3, ...) with its args already in r0-r3: realign sp to 8 (AAPCS) around
+ * the call — the stack machine's one-word pushes may leave it 4-aligned — and restore it from a saved slot. */
+static int log2i(int n) { int k = 0; while ((1 << k) < n) k++; return k; }
+static void emit_libcall(const char *fn) {   /* saves the DISTANCE to the old sp (relative: survives an alloca slide) */
+	fprintf(o, "\tmov ip, sp\n\tbic sp, sp, #7\n\tsub sp, sp, #8\n\tsub ip, ip, sp\n\tstr ip, [sp]\n\tbl %s\n\tldr ip, [sp]\n\tadd sp, sp, ip\n", fn);
+}
 /* Materialize a 32-bit constant into r0 with movw (+movt for the high half) — no literal pool needed. */
 static void load_imm(const char *reg, long v) {
 	unsigned u = (unsigned)v;
@@ -80,6 +86,11 @@ static void gen_expr_w(Node *n, int want64) {
 	gen_expr(n);
 	if (want64 && !is64(n->type)) extend64(n->type);
 }
+/* Evaluate a condition and set Z from its truth: a 64-bit value is true if EITHER word is nonzero. */
+static void gen_test(Node *n) {
+	gen_expr(n);
+	fprintf(o, is64(n->type) ? "\torrs r0, r0, r1\n" : "\tcmp r0, #0\n");
+}
 
 /* Load/store through an address by WIDTH: 1/2/4 -> ldrb|ldrsb / ldrh|ldrsh / ldr (narrow loads sign- or
  * zero-extend by the type's sign); 8 -> a register pair (r0=low, r1=high). Stores don't care about sign. */
@@ -94,6 +105,13 @@ static void store(Type *ty) {   /* addr in r1 (32-bit) / r2 (64-bit); value in r
 	else if (ty->size == 2) fprintf(o, "\tstrh r0, [r1]\n");
 	else if (ty->size == 8) fprintf(o, "\tstr r0, [r2]\n\tstr r1, [r2, #4]\n");   /* value pair r0:r1, addr r2 */
 	else                    fprintf(o, "\tstr r0, [r1]\n");
+}
+/* Convert the value in r0(:r1) of type src for storing into a _Bool: nonzero (either word) -> 1. Other narrow
+ * targets need nothing here (the store truncates). */
+static void to_bool(Type *dst, Type *src) {
+	if (!dst || !dst->is_bool) return;
+	if (is64(src)) fprintf(o, "\torr r0, r0, r1\n");
+	fprintf(o, "\tcmp r0, #0\n\tmovne r0, #1\n");
 }
 /* (type) cast on the value in r0: narrowing to char/short truncates + re-extends per the target's sign;
  * widening to int/pointer is a no-op (a narrow load already extended). Non-scalar targets: nothing to do. */
@@ -114,12 +132,18 @@ static void emit_addimm(const char *dst, const char *src, int imm) {
 	fprintf(o, "\tmovw ip, #%u\n", a & 0xffffu); if (a >> 16) fprintf(o, "\tmovt ip, #%u\n", a >> 16);
 	fprintf(o, "\t%s %s, %s, ip\n", neg ? "sub" : "add", dst, src);
 }
+/* ldr/str `reg, [base, #off]`; an offset past the 12-bit immediate goes through ip (so reg may be ip/sp only
+ * as the loaded register, never as base). */
+static void mem_op(const char *op, const char *reg, const char *base, int off) {
+	if (off > -4096 && off < 4096) { fprintf(o, "\t%s %s, [%s, #%d]\n", op, reg, base, off); return; }
+	emit_addimm("ip", base, off); fprintf(o, "\t%s %s, [ip]\n", op, reg);
+}
 /* Copy `size` bytes [src+soff] -> [dst+doff]; dst/src must not be r2 (the scratch). Big copies call memcpy
  * (as GCC does), which clobbers r0-r3/r12/lr — callers treat every register as clobbered. */
 static void emit_copy(const char *dst, int doff, const char *src, int soff, int size) {
-	if (size > 64) {
+	if (size > 64 || doff + size > 4095 || soff + size > 4095) {   /* big, or past the ldr/str immediate range */
 		fprintf(o, "\tmov r3, %s\n", src); emit_addimm("r0", dst, doff); emit_addimm("r1", "r3", soff);
-		load_imm("r2", size); fprintf(o, "\tbl memcpy\n"); return;
+		load_imm("r2", size); emit_libcall("memcpy"); return;
 	}
 	int i;
 	for (i = 0; i + 4 <= size; i += 4) fprintf(o, "\tldr r2, [%s, #%d]\n\tstr r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
@@ -197,8 +221,8 @@ static void gen_binary64(Node *n) {
 		fprintf(o, "\tmul r1, r1, r2\n\tmla r1, r0, r3, r1\n\tumull r0, r12, r0, r2\n\tadd r1, r1, r12\n"); return;
 	case ND_SHL:    gen_shift64(0, 0);   return;   /* shift count is already in r2 (rhs low word) */
 	case ND_SHR:    gen_shift64(1, !u);  return;   /* right: logical if unsigned, arithmetic if signed */
-	case ND_DIV:    fprintf(o, u ? "\tbl __udivdi3\n" : "\tbl __divdi3\n"); return; /* n=r0:r1 d=r2:r3 -> q=r0:r1 */
-	case ND_MOD:    fprintf(o, u ? "\tbl __umoddi3\n" : "\tbl __moddi3\n"); return; /*                 -> r=r0:r1 */
+	case ND_DIV:    emit_libcall(u ? "__udivdi3" : "__divdi3"); return;   /* n=r0:r1 d=r2:r3 -> q=r0:r1 */
+	case ND_MOD:    emit_libcall(u ? "__umoddi3" : "__moddi3"); return;   /*                 -> r=r0:r1 */
 	case ND_EQ:     fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
 	case ND_NE:     fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tmov r0, #0\n\tmovne r0, #1\n"); return;
 	/* ordering via a full 64-bit subtract (subs/sbcs set N,V,C for the whole result); only lt/ge (signed)
@@ -239,33 +263,34 @@ static void gen_bitfield_load(Node *n) {
 	if (lsh) fprintf(o, "\tlsl r0, r0, #%d\n", lsh);
 	if (rsh) fprintf(o, sg ? "\tasr r0, r0, #%d\n" : "\tlsr r0, r0, #%d\n", rsh);
 }
-/* Bitfield write (read-modify-write): store rhs into lhs's field, leaving the storage unit's other bits:
- * clear the field bits (bic) and OR the masked, shifted value back in. The expression's value is the field
- * as stored (truncated to its width), so the field is re-read afterwards. */
-static void gen_bitfield_store(Node *n) {
-	Node *lhs = n->lhs;
+/* Bitfield put: value r0(:r1 when wide), r2 = &unit -> clear the field bits (bic) and OR the masked, shifted
+ * value in, leaving the unit's other bits. Leaves r0 = the field as stored (re-read: truncated to its width),
+ * which is the value of the assignment expression. */
+static void bitfield_put(Node *lhs) {
 	int sz = lhs->bf_type->size, bo = lhs->bit_offset, bw = lhs->bit_width;
 	unsigned long long fm = bw >= 64 ? ~0ULL : (1ULL << bw) - 1, pm = fm << bo;   /* field mask, placed mask */
-	gen_addr(lhs); fprintf(o, "\tpush {r0}\n");
 	if (bf_wide(lhs)) {
-		gen_expr_w(n->rhs, 1); fprintf(o, "\tpop {r2}\n");      /* r0:r1 = value, r2 = &unit */
 		load_imm("r3", fm & 0xffffffff); fprintf(o, "\tand r0, r0, r3\n"); load_imm("r3", fm >> 32); fprintf(o, "\tand r1, r1, r3\n");
 		shl64c(bo);
 		for (int w = 0; w < 2; w++) {
 			fprintf(o, "\tldr r3, [r2, #%d]\n", 4 * w); load_imm("ip", w ? pm >> 32 : pm & 0xffffffff);
 			fprintf(o, "\tbic r3, r3, ip\n\torr r3, r3, r%d\n\tstr r3, [r2, #%d]\n", w, 4 * w);
 		}
-		fprintf(o, "\tmov r0, r2\n"); gen_bitfield_load(lhs);
-		return;
+	} else {
+		fprintf(o, sz == 1 ? "\tldrb r3, [r2]\n" : sz == 2 ? "\tldrh r3, [r2]\n" : "\tldr r3, [r2]\n");
+		load_imm("ip", fm); fprintf(o, "\tand r0, r0, ip\n");      /* value &= fieldmask */
+		if (bo) fprintf(o, "\tlsl r0, r0, #%d\n\tlsl ip, ip, #%d\n", bo, bo);   /* value + mask into place */
+		fprintf(o, "\tbic r3, r3, ip\n\torr r3, r3, r0\n");
+		fprintf(o, sz == 1 ? "\tstrb r3, [r2]\n" : sz == 2 ? "\tstrh r3, [r2]\n" : "\tstr r3, [r2]\n");
 	}
-	gen_expr(n->rhs); fprintf(o, "\tpop {r1}\n");                 /* r0 = value, r1 = &unit */
-	fprintf(o, sz == 1 ? "\tldrb r2, [r1]\n" : sz == 2 ? "\tldrh r2, [r1]\n" : "\tldr r2, [r1]\n");
-	load_imm("r3", fm); fprintf(o, "\tand r0, r0, r3\n");      /* value &= fieldmask */
-	if (bo) fprintf(o, "\tlsl r0, r0, #%d\n\tlsl r3, r3, #%d\n", bo, bo);   /* shift value + mask into place */
-	fprintf(o, "\tbic r2, r2, r3\n\torr r2, r2, r0\n");          /* clear field, OR the new bits in */
-	fprintf(o, sz == 1 ? "\tstrb r2, [r1]\n" : sz == 2 ? "\tstrh r2, [r1]\n" : "\tstr r2, [r1]\n");
-	fprintf(o, "\tmov r0, r1\n"); gen_bitfield_load(lhs);
+	fprintf(o, "\tmov r0, r2\n"); gen_bitfield_load(lhs);
 }
+static void gen_bitfield_store(Node *n) {
+	gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");
+	gen_expr_w(n->rhs, bf_wide(n->lhs)); to_bool(n->lhs->bf_type, n->rhs->type); fprintf(o, "\tpop {r2}\n");
+	bitfield_put(n->lhs);
+}
+static void fp_mem(const char *op, const char *reg, int off) { mem_op(op, reg, "r11", off); }   /* a frame slot [r11, #off] */
 
 /* GCC builtins that reach codegen with a non-constant argument (constant ones were folded by the parser).
  * They are never real functions — emitting `bl __builtin_clz` leaves an undefined symbol — so expand inline,
@@ -274,11 +299,31 @@ static long builtin_const_arg(Node *n) {
 	if (!n->args || n->args->kind != ND_NUM) die("cc: %s needs a constant argument", n->name);
 	return n->args->val;
 }
+static int cur_alloca_slot;   /* frame slot holding the alloca floor (0 = the function uses no alloca) */
 static void gen_builtin(Node *n) {
 	const char *b = n->name + 10;   /* after "__builtin_" */
+	if (!strcmp(b, "alloca")) {
+		/* The temporaries live in [sp, floor); the new block goes right under floor, so slide the temporaries down
+		 * by the (8-rounded) size, then floor -= size. Nothing holds an absolute pointer into the temporaries
+		 * (call sites restore sp relatively), so the slide is invisible. */
+		if (!cur_alloca_slot || !n->args || n->args->next) die("cc: alloca: bad call");
+		int lp = uniq(), done = uniq();
+		gen_expr(n->args);
+		fprintf(o, "\tadd r0, r0, #7\n\tbic r0, r0, #7\n"); fp_mem("ldr", "r2", cur_alloca_slot);
+		fprintf(o, "\tsub r1, r2, sp\n\tmov r3, sp\n\tsub sp, sp, r0\n\tsub r2, r2, r0\n\tmov ip, #0\n"
+		           ".L%d:\n\tcmp ip, r1\n\tbeq .L%d\n\tldr r0, [r3, ip]\n\tstr r0, [sp, ip]\n\tadd ip, ip, #4\n\tb .L%d\n.L%d:\n", lp, done, lp, done);
+		fp_mem("str", "r2", cur_alloca_slot); fprintf(o, "\tmov r0, r2\n");
+		return;
+	}
 	if (!strcmp(b, "return_address")) {   /* level 0 = our saved lr ([fp,#4] after `push {r11, lr}`); deeper: 0, like GCC on ARM */
 		fprintf(o, builtin_const_arg(n) == 0 ? "\tldr r0, [r11, #4]\n" : "\tmov r0, #0\n"); return; }
 	if (!strcmp(b, "frame_address")) { fprintf(o, builtin_const_arg(n) == 0 ? "\tmov r0, r11\n" : "\tmov r0, #0\n"); return; }
+	if (!strcmp(b, "trap")) { fprintf(o, "\t.inst 0xe7f000f0\n"); return; }   /* GCC's ARM trap: a permanently-undefined insn */
+	if (!strcmp(b, "prefetch")) {   /* (addr[, rw[, locality]]): evaluate every argument, prefetch addr */
+		if (!n->args) die("cc: __builtin_prefetch needs an address");
+		for (Node *a = n->args->next; a; a = a->next) gen_expr(a);
+		gen_expr(n->args); fprintf(o, "\tpld [r0]\n"); return;
+	}
 	if (!strcmp(b, "thread_pointer")) { fprintf(o, "\tmrc p15, 0, r0, c13, c0, 3\n"); return; }   /* TPIDRURO, as GCC reads it */
 	if (!n->args || n->args->next) die("cc: unsupported builtin '%s'", n->name);
 	gen_expr(n->args);   /* the one operand: r0, or r0:r1 if 64-bit */
@@ -322,7 +367,7 @@ static void gen_expr(Node *n) {
 		return;
 	}
 	case ND_DEREF: gen_expr(n->lhs);                        /* pointer -> r0, then load the pointee by width */
-		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type);   /* an aggregate *p IS its address */
+		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT && !n->type->fn_ret) load(n->type);   /* an aggregate *p IS its address; *fp is the function */
 		return;
 	case ND_ASSIGN:
 		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */
@@ -336,10 +381,12 @@ static void gen_expr(Node *n) {
 		}
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
 		gen_expr_w(n->rhs, is64(n->lhs->type));             /* value in r0(:r1), widened to the dest width */
+		to_bool(n->lhs->type, n->rhs->type);
 		if (is64(n->lhs->type)) { fprintf(o, "\tpop {r2}\n"); store(n->lhs->type); }   /* addr r2; str r0:r1 */
-		else { fprintf(o, "\tpop {r1}\n"); store(n->lhs->type); }                      /* addr r1; store by width */
+		else { fprintf(o, "\tpop {r1}\n"); store(n->lhs->type); if (n->lhs->type->size < 4) gen_cast(n->lhs->type); }   /* addr r1; value = as stored (narrowed) */
 		return;                                             /* r0(:r1) keeps the value (assignment result) */
 	case ND_CAST:   gen_expr(n->lhs);
+		if (n->type->is_bool) { to_bool(n->type, n->lhs->type); return; }
 		if (is64(n->type)) { if (!is64(n->lhs->type)) extend64(n->lhs->type); }   /* widen 32->64 (sign/zero) */
 		else gen_cast(n->type);                                                   /* 64->32 keeps r0 low word; then narrow to char/short */
 		return;
@@ -347,6 +394,25 @@ static void gen_expr(Node *n) {
 	case ND_STMTEXPR:                                            /* ({...}): run the block; the last expr leaves its value in r0(:r1) */
 		for (Node *s = n->body; s; s = s->next) gen_stmt(s);
 		return;
+	case ND_CUR: {                                               /* the ND_RMW's saved old value (val 0) / operand (val 1) */
+		int at = n->target->offset + (n->val ? 12 : 4);
+		fp_mem("ldr", "r0", at); if (is64(n->type)) fp_mem("ldr", "r1", at + 4);
+		return;
+	}
+	case ND_RMW: {   /* slot [off] = &lvalue, [off+4..] = old value, [off+12..] = operand; rhs combines them */
+		Node *lv = n->lhs; int off = n->offset, bf = lv->kind == ND_MEMBER && lv->bit_width, w = is64(lv->type);
+		gen_addr(lv); fp_mem("str", "r0", off);
+		gen_expr(n->init); fp_mem("str", "r0", off + 12); if (is64(n->init->type)) fp_mem("str", "r1", off + 16);
+		fp_mem("ldr", "r0", off);
+		if (bf) gen_bitfield_load(lv); else load(lv->type);
+		fp_mem("str", "r0", off + 4); if (w) fp_mem("str", "r1", off + 8);
+		gen_expr_w(n->rhs, w || (bf && bf_wide(lv))); to_bool(bf ? lv->bf_type : lv->type, n->rhs->type);
+		if (bf) { fp_mem("ldr", "r2", off); bitfield_put(lv); }
+		else if (w) { fp_mem("ldr", "r2", off); store(lv->type); }
+		else { fp_mem("ldr", "r1", off); store(lv->type); if (lv->type->size < 4 && !n->is_post) { fprintf(o, "\tmov r0, r1\n"); load(lv->type); } }   /* value = as stored (narrowed) */
+		if (n->is_post) { fp_mem("ldr", "r0", off + 4); if (w) fp_mem("ldr", "r1", off + 8); }
+		return;
+	}
 	case ND_VA_START:                                            /* ap = &(first variadic arg) */
 		gen_addr(n->lhs); emit_addimm("r1", "r11", 8 + 4 * cur_nfixed); fprintf(o, "\tstr r1, [r0]\n");
 		return;
@@ -370,24 +436,24 @@ static void gen_expr(Node *n) {
 		if (is64(n->type)) fprintf(o, "\tmvn r0, r0\n\tmvn r1, r1\n");
 		else               fprintf(o, "\tmvn r0, r0\n");
 		return;
-	case ND_NOT:    gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
+	case ND_NOT:    gen_test(n->lhs); fprintf(o, "\tmov r0, #0\n\tmoveq r0, #1\n"); return;
 	case ND_AND: {                                          /* a && b — short-circuit */
 		int f = uniq(), e = uniq();
-		gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", f);
-		gen_expr(n->rhs); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", f);
+		gen_test(n->lhs); fprintf(o, "\tbeq .L%d\n", f);
+		gen_test(n->rhs); fprintf(o, "\tbeq .L%d\n", f);
 		fprintf(o, "\tmov r0, #1\n\tb .L%d\n.L%d:\n\tmov r0, #0\n.L%d:\n", e, f, e);
 		return;
 	}
 	case ND_OR: {                                           /* a || b — short-circuit */
 		int t = uniq(), e = uniq();
-		gen_expr(n->lhs); fprintf(o, "\tcmp r0, #0\n\tbne .L%d\n", t);
-		gen_expr(n->rhs); fprintf(o, "\tcmp r0, #0\n\tbne .L%d\n", t);
+		gen_test(n->lhs); fprintf(o, "\tbne .L%d\n", t);
+		gen_test(n->rhs); fprintf(o, "\tbne .L%d\n", t);
 		fprintf(o, "\tmov r0, #0\n\tb .L%d\n.L%d:\n\tmov r0, #1\n.L%d:\n", e, t, e);
 		return;
 	}
 	case ND_COND: {                                         /* cond ? then : els — both arms widened to the result width */
 		int els = uniq(), end = uniq(), w = is64(n->type);
-		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", els);
+		gen_test(n->cond); fprintf(o, "\tbeq .L%d\n", els);
 		gen_expr_w(n->then, w); fprintf(o, "\tb .L%d\n.L%d:\n", end, els);
 		gen_expr_w(n->els, w);  fprintf(o, ".L%d:\n", end);
 		return;
@@ -402,27 +468,32 @@ static void gen_expr(Node *n) {
 			at[i] = pt ? pt : av[i]->type;
 		}
 		int sret = is_sret(n->type), total = aapcs_layout(at, nargs, sret, pos);
-		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs ? 1 : 0;
+		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs ? 1 : 0, regw = total ? 4 : 0;
 		/* One area from sp, laid out in argument-word order: [0,16) = r0..r3 staging, then the outgoing stack
-		 * words, then the callee-pointer slot. Addressed off sp, so nested calls (which move sp and restore it)
-		 * never disturb placed args. `pop {r0-r3}` loads the registers and leaves sp at the stack args. */
-		int area = (total || cw) ? 4 + nstk + cw : 0; area += area & 1;   /* keep sp 8-aligned at the call */
-		if (area) emit_addimm("sp", "sp", -4 * area);
+		 * words, then the callee-pointer slot, then the caller's sp. Addressed off sp, so nested calls (which
+		 * move sp and restore it) never disturb placed args. The stack machine's one-word pushes leave sp only
+		 * 4-aligned, so the area is placed 8-ALIGNED (AAPCS: sp % 8 == 0 at a call; doubleword stack args and
+		 * va_arg rely on it) and the saved DISTANCE to the caller's sp restores it after (relative, so an
+		 * alloca that slides the live temporaries down stays correct). No value is live in r0-r3 here. */
+		int area = regw + nstk + cw + 1; area += area & 1;
+		int cslot = 4 * (regw + nstk), spslot = 4 * (area - 1);
+		fprintf(o, "\tmov r3, sp\n"); emit_addimm("sp", "sp", -4 * area); fprintf(o, "\tbic sp, sp, #7\n\tsub r3, r3, sp\n"); mem_op("str", "r3", "sp", spslot);
 		for (int i = 0; i < nargs; i++) {
 			if (at[i]->kind == TY_STRUCT) {                        /* by value: copy its bytes into its words */
 				gen_expr(av[i]); emit_copy("sp", 4 * pos[i], "r0", 0, at[i]->size);
 				continue;
 			}
-			gen_expr_w(av[i], is64(at[i]));
-			fprintf(o, "\tstr r0, [sp, #%d]\n", 4 * pos[i]);
-			if (is64(at[i])) fprintf(o, "\tstr r1, [sp, #%d]\n", 4 * pos[i] + 4);
+			gen_expr_w(av[i], is64(at[i])); to_bool(at[i], av[i]->type);
+			mem_op("str", "r0", "sp", 4 * pos[i]);
+			if (is64(at[i])) mem_op("str", "r1", "sp", 4 * pos[i] + 4);
 		}
 		if (sret) { emit_addimm("r0", "r11", n->offset); fprintf(o, "\tstr r0, [sp]\n"); }   /* hidden r0 = &result temp */
-		if (cw) { gen_expr(n->lhs); fprintf(o, "\tstr r0, [sp, #%d]\n\tldr r12, [sp, #%d]\n", 4 * (4 + nstk), 4 * (4 + nstk)); }
-		if (area) fprintf(o, "\tpop {r0, r1, r2, r3}\n");
+		if (cw) { gen_expr(n->lhs); mem_op("str", "r0", "sp", cslot); mem_op("ldr", "r12", "sp", cslot); }
+		if (regw) fprintf(o, "\tpop {r0, r1, r2, r3}\n");
 		if (cw) fprintf(o, "\tblx r12\n");
 		else    fprintf(o, "\tbl %s\n", n->name);                /* result in r0(:r1) */
-		if (area > 4) emit_addimm("sp", "sp", 4 * (area - 4));
+		mem_op("ldr", "ip", "sp", spslot - 4 * regw); fprintf(o, "\tadd sp, sp, ip\n");   /* back to the caller's (possibly 4-aligned) sp */
+		if (regw) fprintf(o, "\tsub sp, sp, #16\n");   /* the distance was measured from the area base, below the popped r0-r3 */
 		if (n->type->kind == TY_STRUCT) {                          /* a struct call yields its temp's ADDRESS */
 			if (!sret && n->type->size) { emit_addimm("r1", "r11", n->offset); fprintf(o, "\tstr r0, [r1]\n"); }   /* <= 4 bytes came back in r0 */
 			emit_addimm("r0", "r11", n->offset);
@@ -523,8 +594,9 @@ static void gen_asm(Node *n) {
 	Node *ops[16]; int nops = 0;
 	for (Node *a = n->args; a; a = a->next) { if (nops >= 16) die("cc: too many asm operands"); ops[nops++] = a; }
 	int nouts = n->val, regof[16], used = n->asm_clobber & ~(1 << 14), isimm[16] = {0}; char subst[16][24];   /* clobbered regs are off-limits for operands */
-	for (int i = 0; i < nops; i++) {                       /* immediates + pinned registers */
+	for (int i = 0; i < nops; i++) {                       /* immediates + pinned registers; a matching digit ("0") resolves later */
 		if (strchr(ops[i]->cons, 'i')) { regof[i] = -2; isimm[i] = 1; snprintf(subst[i], 24, "%ld", ops[i]->val); continue; }
+		if (ops[i]->cons[0] >= '0' && ops[i]->cons[0] <= '9') { if (ops[i]->cons[0] - '0' >= nouts || i < nouts) die("cc: asm matching constraint \"%s\" must be an input naming an output", ops[i]->cons); regof[i] = -3; continue; }
 		int rn = asm_regnum(ops[i]->reg); regof[i] = rn; if (rn >= 0) used |= 1 << rn;
 	}
 	#define ASM_MEM(i) (strpbrk(ops[i]->cons, "mQoV") != NULL)   /* memory constraints: m/o/V general, Q = single-register address (ARM) */
@@ -542,14 +614,23 @@ static void gen_asm(Node *n) {
 		if (rn < 0) die("cc: out of registers for asm operands");
 		regof[i] = rn; used |= 1 << rn;
 	}
+	for (int i = 0; i < nops; i++) if (regof[i] == -3) {   /* "N": the SAME register as output N (a 64-bit input tied to a 32-bit output passes its low word) */
+		int d = ops[i]->cons[0] - '0'; regof[i] = regof[d]; hireg[i] = is64(ops[i]->type) ? hireg[d] : -1;
+		if (regof[i] < 0) die("cc: asm matching constraint names a non-register operand");
+	}
 	/* AAPCS: r4-r10 are callee-saved. Our stack-machine code never keeps values in them, but GCC-built callers
 	 * (the rest of the kernel) do, so any we hand to the asm block must be restored afterwards. */
 	char csave[48] = ""; for (int r = 4; r <= 10; r++) if ((used | n->asm_clobber) & (1 << r)) {   /* allocated OR clobbered callee-saved */ if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
 	if (csave[0]) fprintf(o, "\tpush {%s}\n", csave);
 	/* an "m" operand references memory: hold its ADDRESS in the reg and substitute "[reg]" */
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
+	/* Each register output's lvalue is evaluated ONCE: its address goes to the asm's frame slot, read back
+	 * for a "+r" input value and for the final store (asm("" : "+r"(*f())) calls f once). */
+	for (int i = 0; i < nouts; i++) if (regof[i] >= 0 && !ASM_MEM(i)) { gen_addr(ops[i]); fp_mem("str", "r0", n->offset + 4 * i); }
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) {
-		if (ASM_MEM(i)) gen_addr(ops[i]); else gen_expr(ops[i]);
+		if (ASM_MEM(i)) gen_addr(ops[i]);
+		else if (i < nouts) { fp_mem("ldr", "r0", n->offset + 4 * i); load(ops[i]->type); }   /* "+r": the current value */
+		else gen_expr(ops[i]);
 		fprintf(o, hireg[i] >= 0 ? "\tpush {r0, r1}\n" : "\tpush {r0}\n");   /* a pair's value is r0:r1 */
 	}
 	for (int i = nops - 1; i >= 0; i--) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) {
@@ -562,9 +643,8 @@ static void gen_asm(Node *n) {
 		else fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
 	}
 	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
-		gen_addr(ops[i]);
-		if (hireg[i] >= 0) fprintf(o, "\tmov r2, r0\n\tpop {r0, r1}\n");   /* 64-bit store: addr r2, value r0:r1 */
-		else fprintf(o, "\tmov r1, r0\n\tpop {r0}\n");
+		if (hireg[i] >= 0) { fprintf(o, "\tpop {r0, r1}\n"); fp_mem("ldr", "r2", n->offset + 4 * i); }   /* 64-bit store: addr r2, value r0:r1 */
+		else { fprintf(o, "\tpop {r0}\n"); fp_mem("ldr", "r1", n->offset + 4 * i); }
 		store(ops[i]->type);
 	}
 	if (csave[0]) fprintf(o, "\tpop {%s}\n", csave);
@@ -581,13 +661,13 @@ static void gen_stmt(Node *n) {
 			else if (sz == 3) fprintf(o, "\tldrb r1, [r0, #2]\n\tldrh r0, [r0]\n\torr r0, r0, r1, lsl #16\n");
 			else if (sz) fprintf(o, sz == 2 ? "\tldrh r0, [r0]\n" : "\tldrb r0, [r0]\n");
 		}
-		else if (n->lhs) gen_expr_w(n->lhs, is64(cur_ret));
+		else if (n->lhs) { gen_expr_w(n->lhs, is64(cur_ret)); if (cur_ret && cur_ret->is_bool) to_bool(cur_ret, n->lhs->type); else if (cur_ret && cur_ret->size < 4) gen_cast(cur_ret); }   /* callee narrows (AAPCS) */
 		fprintf(o, "\tb .L%d\n", ret_label); return;
 	case ND_EXPRSTMT: gen_expr(n->lhs); return;
 	case ND_BLOCK:    for (Node *s = n->body; s; s = s->next) gen_stmt(s); return;
 	case ND_IF: {
 		int els = uniq(), end = uniq();
-		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", els);
+		gen_test(n->cond); fprintf(o, "\tbeq .L%d\n", els);
 		gen_stmt(n->then); fprintf(o, "\tb .L%d\n.L%d:\n", end, els);
 		if (n->els) gen_stmt(n->els);
 		fprintf(o, ".L%d:\n", end);
@@ -597,7 +677,7 @@ static void gen_stmt(Node *n) {
 		int begin = uniq(), end = uniq(), sb = brk_lbl, sc = cont_lbl;
 		brk_lbl = end; cont_lbl = begin;                    /* continue -> re-test, break -> exit */
 		fprintf(o, ".L%d:\n", begin);
-		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", end);
+		gen_test(n->cond); fprintf(o, "\tbeq .L%d\n", end);
 		gen_stmt(n->body); fprintf(o, "\tb .L%d\n.L%d:\n", begin, end);
 		brk_lbl = sb; cont_lbl = sc;
 		return;
@@ -608,7 +688,7 @@ static void gen_stmt(Node *n) {
 		fprintf(o, ".L%d:\n", begin);
 		gen_stmt(n->body);
 		fprintf(o, ".L%d:\n", cont);
-		gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbne .L%d\n.L%d:\n", begin, end);
+		gen_test(n->cond); fprintf(o, "\tbne .L%d\n.L%d:\n", begin, end);
 		brk_lbl = sb; cont_lbl = sc;
 		return;
 	}
@@ -617,7 +697,7 @@ static void gen_stmt(Node *n) {
 		brk_lbl = end; cont_lbl = cont;                     /* continue -> the inc step, break -> exit */
 		if (n->init) gen_stmt(n->init);
 		fprintf(o, ".L%d:\n", begin);
-		if (n->cond) { gen_expr(n->cond); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n", end); }
+		if (n->cond) { gen_test(n->cond); fprintf(o, "\tbeq .L%d\n", end); }
 		gen_stmt(n->body);
 		fprintf(o, ".L%d:\n", cont);
 		if (n->inc) gen_expr(n->inc);
@@ -627,15 +707,22 @@ static void gen_stmt(Node *n) {
 	}
 	case ND_SWITCH: {                                       /* eval, compare-chain to each case, then body */
 		int end = uniq(), sb = brk_lbl; brk_lbl = end;
-		gen_expr(n->cond);                                  /* switch value -> r0 */
-		int def = 0;
+		gen_expr(n->cond);                                  /* switch value -> r0 (r0:r1 if 64-bit) */
+		int def = 0, w = is64(n->cond->type), u = n->cond->type && n->cond->type->is_unsigned;
 		for (Node *c = n->case_list; c; c = c->case_next) {
 			c->offset = uniq();                             /* the label this case jumps to */
 			if (c->is_default) { def = c->offset; continue; }
-			if (c->is_range) {                                  /* case lo ... hi: match the inclusive range */
+			if (w) {                                        /* 64-bit: compare the pair (a range via 64-bit subtracts) */
+				load_imm("r2", c->val & 0xffffffff); load_imm("r3", (c->val >> 32) & 0xffffffff);
+				if (!c->is_range) { fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tbeq .L%d\n", c->offset); continue; }
 				int skip = uniq();
-				load_imm("r1", c->val);  fprintf(o, "\tcmp r0, r1\n\tblt .L%d\n", skip);
-				load_imm("r1", c->val2); fprintf(o, "\tcmp r0, r1\n\tbgt .L%d\n", skip);
+				fprintf(o, "\tsubs ip, r0, r2\n\tsbcs ip, r1, r3\n\tb%s .L%d\n", u ? "lo" : "lt", skip);   /* x < lo */
+				load_imm("r2", c->val2 & 0xffffffff); load_imm("r3", (c->val2 >> 32) & 0xffffffff);
+				fprintf(o, "\tsubs ip, r2, r0\n\tsbcs ip, r3, r1\n\tb%s .L%d\n\tb .L%d\n.L%d:\n", u ? "lo" : "lt", skip, c->offset, skip);   /* hi < x */
+			} else if (c->is_range) {                           /* case lo ... hi: match the inclusive range */
+				int skip = uniq();
+				load_imm("r1", c->val);  fprintf(o, "\tcmp r0, r1\n\tb%s .L%d\n", u ? "lo" : "lt", skip);
+				load_imm("r1", c->val2); fprintf(o, "\tcmp r0, r1\n\tb%s .L%d\n", u ? "hi" : "gt", skip);
 				fprintf(o, "\tb .L%d\n.L%d:\n", c->offset, skip);
 			} else {
 				load_imm("r1", c->val); fprintf(o, "\tcmp r0, r1\n\tbeq .L%d\n", c->offset);
@@ -659,16 +746,19 @@ static void gen_stmt(Node *n) {
 	}
 }
 
-/* Give every struct-returning call in the subtree a result temp below the function's locals (frame grows). */
-static void alloc_call_temps(Node *n, int *frame) {
+/* Frame temps below the locals (frame grows): a result slot per struct-returning call, an address+old-value slot per ND_RMW. */
+static void alloc_temps(Node *n, int *frame) {
 	if (!n) return;
+	if (n->kind == ND_RMW) { *frame += 24; n->offset = -*frame; }   /* &lvalue + old value + operand */
+	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_alloca") && !cur_alloca_slot) { *frame += 4; cur_alloca_slot = -*frame; }
+	if (n->kind == ND_ASM && n->val) { *frame += 4 * n->val; n->offset = -*frame; }   /* one address per output */
 	if (n->kind == ND_CALL && n->type && n->type->kind == TY_STRUCT && strncmp(n->name, "__builtin_", 10)) {
 		*frame += n->type->size < 4 ? 4 : (n->type->size + 3) & ~3; n->offset = -*frame;   /* >= 4: an r0 return is stored as a word */
 	}
-	alloc_call_temps(n->lhs, frame); alloc_call_temps(n->rhs, frame); alloc_call_temps(n->cond, frame);
-	alloc_call_temps(n->then, frame); alloc_call_temps(n->els, frame); alloc_call_temps(n->init, frame); alloc_call_temps(n->inc, frame);
-	for (Node *c = n->body; c; c = c->next) alloc_call_temps(c, frame);
-	for (Node *a = n->args; a; a = a->next) alloc_call_temps(a, frame);
+	alloc_temps(n->lhs, frame); alloc_temps(n->rhs, frame); alloc_temps(n->cond, frame);
+	alloc_temps(n->then, frame); alloc_temps(n->els, frame); alloc_temps(n->init, frame); alloc_temps(n->inc, frame);
+	for (Node *c = n->body; c; c = c->next) alloc_temps(c, frame);
+	for (Node *a = n->args; a; a = a->next) alloc_temps(a, frame);
 }
 /* Frame: [r11+8..] homed r0..r3 (when the function takes any argument words) contiguous with the caller's
  * stack args, so every param is at [r11, #8 + 4*word]; [r11] saved r11/lr; below r11 the locals + call temps. */
@@ -676,19 +766,36 @@ static void gen_func(Func *f) {
 	ret_label = uniq(); cur_func_id = func_seq++; ngot = 0; cur_gen_func = f->name;
 	cur_nfixed = f->nfixed_words; cur_ret = f->ret_type;
 	int frame = f->frame, homed = f->nfixed_words || f->variadic;
-	for (Node *s = f->body; s; s = s->next) alloc_call_temps(s, &frame);
+	cur_alloca_slot = 0;
+	for (Node *s = f->body; s; s = s->next) alloc_temps(s, &frame);
 	frame = (frame + 7) & ~7;
-	if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
+	if (f->attr.section[0]) fprintf(o, "\t.section %s,\"ax\",%%progbits\n", f->attr.section);   /* __attribute__((section)) (__init ...) */
+	else fprintf(o, "\t.text\n");
+	fprintf(o, "\t.p2align %d\n", log2i(f->attr.align > 4 ? f->attr.align : 4));
+	if (f->attr.weak || name_is_weak(f->name)) fprintf(o, "\t.weak %s\n", f->name);
+	else if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
 	if (homed) fprintf(o, "\tpush {r0, r1, r2, r3}\n");
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (frame) emit_addimm("sp", "sp", -frame);   /* ip is free here; frame may exceed the imm range */
+	if (cur_alloca_slot) { fprintf(o, "\tmov ip, sp\n"); fp_mem("str", "ip", cur_alloca_slot); }   /* alloca floor = the frame's bottom */
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
 	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
 	if (homed) fprintf(o, "\tadd sp, sp, #16\n");            /* discard the homed r0..r3 */
 	fprintf(o, "\tbx lr\n");
 }
 
+/* Section, binding and alignment of one file-scope object: `deflt` is .data/.bss; an attribute section wins
+ * (`.bss*` names are NOBITS). The alignment is the type's, raised by aligned(N). */
+static void gvar_head(Gvar *g, const char *deflt) {
+	if (g->attr.section[0]) fprintf(o, "\t.section %s,\"aw\",%s\n", g->attr.section, strncmp(g->attr.section, ".bss", 4) ? "%progbits" : "%nobits");
+	else fprintf(o, "\t%s\n", deflt);
+	if (g->attr.weak || name_is_weak(g->name)) fprintf(o, "\t.weak %s\n", g->name);
+	else if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
+	fprintf(o, "\t.type %s, %%object\n", g->name);      /* STT_OBJECT + a real .size -> exported size (copy relocs) */
+	int al = align_of(g->type); if (g->attr.align > al) al = g->attr.align;
+	if (al > 1) fprintf(o, "\t.p2align %d\n", log2i(al));
+}
 /* Emit the file-scope objects: string literals in .rodata, initialized globals in .data, zero-init in .bss;
  * an `extern` decl defines nothing — it's a reference the linker resolves against the real definition. */
 static void gen_data(void) {
@@ -697,10 +804,7 @@ static void gen_data(void) {
 		fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
-		fprintf(o, "\t.data\n");
-		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
-		fprintf(o, "\t.type %s, %%object\n", g->name);      /* STT_OBJECT + a real .size -> exported size (copy relocs) */
-		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n"); else if (align_of(g->type) == 2) fprintf(o, "\t.align 1\n");
+		gvar_head(g, ".data");
 		fprintf(o, "%s:\n", g->name);
 		for (Init *it = g->init; it; it = it->next) {
 			if (it->kind == INIT_CONST) {
@@ -712,11 +816,8 @@ static void gen_data(void) {
 		}
 		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}
-	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->is_topasm && !g->init && !g->is_extern) {
-		fprintf(o, "\t.bss\n");
-		if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
-		fprintf(o, "\t.type %s, %%object\n", g->name);
-		if (align_of(g->type) >= 4) fprintf(o, "\t.align 2\n"); else if (align_of(g->type) == 2) fprintf(o, "\t.align 1\n");
+	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->is_topasm && !g->init && !g->is_extern && !g->attr.alias[0]) {
+		gvar_head(g, ".bss");
 		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
 		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}
@@ -740,7 +841,7 @@ static void dce_mark(Func *prog, Node *n) {   /* mark functions referenced anywh
 	for (Node *a = n->args; a; a = a->next) dce_mark(prog, a);
 }
 static void dce(Func *prog) {
-	for (Func *f = prog; f; f = f->next) f->reachable = f->is_static ? 0 : 1;   /* roots: exported functions */
+	for (Func *f = prog; f; f = f->next) f->reachable = f->is_static && !f->attr.used ? 0 : 1;   /* roots: exported + __used functions */
 	for (Gvar *gv = globals; gv; gv = gv->next)                                 /* + functions in data initializers */
 		for (Init *it = gv->init; it; it = it->next)
 			if (it->kind == INIT_SYM) { Func *fn = find_func(prog, it->sym); if (fn) fn->reachable = 1; }
@@ -751,7 +852,6 @@ static void dce(Func *prog) {
 }
 void gen(Func *prog, const char *out) {
 	o = fopen(out, "w"); if (!o) die("cc: cannot open %s", out);
-	fprintf(o, "\t.text\n");
 	dce(prog);
 	for (Func *f = prog; f; f = f->next) if (f->reachable) gen_func(f);
 	gen_data();
