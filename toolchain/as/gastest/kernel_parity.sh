@@ -17,6 +17,9 @@ symtab() {   # "value size type bind section-name name", section indices resolve
 	"${GNU}readelf" -SW "$1" | awk '/^ +\[ *[0-9]+\]/{gsub(/[\[\]]/," "); print $1, $2}' > "$1.secmap"
 	"${GNU}readelf" -sW "$1" | awk 'NR==FNR{m[$1]=$2; next} FNR>3 && $1 ~ /:$/ {n=($7 in m)?m[$7]:$7; if (n==".ARM.attributes") next; print $2, $3, $4, $5, n, $8}' "$1.secmap" -
 }
+shdrs() {   # "name type flags align" per section, sorted (section ORDER may differ: .rel.X placement)
+	"${GNU}readelf" -SW "$1" | sed -n 's/^ *\[ *[0-9]*\] //p' | awk '$1 != "" && $1 !~ /^NULL/ { fl = (NF == 10) ? $7 : "-"; print $1, $2, fl, $NF }' | sort
+}
 relocs() { "${GNU}readelf" -rW "$1" | awk -v s=".rel$2" 'index($0,"\x27" s "\x27"){p=1;next} /^Relocation section/{p=0} p&&/R_ARM/{print $3}' | sort | uniq -c; }
 
 total=0; same=0
@@ -39,8 +42,9 @@ for d in $dirs; do
 			[ "$(relocs "$f.ours.o" "$sec")" = "$(relocs "$f.gnu.o" "$sec")" ] || bad="$bad $sec(relocs)"
 		done
 		diff -q <(symtab "$f.ours.o") <(symtab "$f.gnu.o") >/dev/null || bad="$bad symtab"
+		diff -q <(shdrs "$f.ours.o") <(shdrs "$f.gnu.o") >/dev/null || bad="$bad shdrs"
 		if [ -z "$bad" ]; then same=$((same + 1)); else echo "$d/$b: DIFF:$bad"; fi
 	done
 done
-echo "kernel parity: $same/$total objects identical to GNU as (section bytes + relocs + symbol table)"
+echo "kernel parity: $same/$total objects identical to GNU as (section bytes + relocs + symbol table + section headers)"
 [ "$same" = "$total" ]

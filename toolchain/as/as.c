@@ -65,7 +65,8 @@ static void map_to(int state, int deferred_ok) {   /* deferred_ok: a plain data 
 	if (*m == MAP_UNDEF && state == MAP_ARM && o > 0) add_mapsym(MAP_DATA, 0);
 	*m = state; add_mapsym(state, o);
 }
-void map_insn(void) { map_to(MAP_ARM, 0); }
+static void sec_align_at_least(u32 a) { if (cursec >= 0 && secs[cursec].align < a) secs[cursec].align = a; }
+void map_insn(void) { map_to(MAP_ARM, 0); sec_align_at_least(4); }
 void map_pool_data(void) { mapstate[cursec] = MAP_DATA; add_mapsym(MAP_DATA, (u32)secs[cursec].len); }   /* s_ltorg: $d unconditionally */
 /* GAS writes code-alignment padding (and its $d/$a pair) after parsing, so those symbols come LAST in the table. */
 static struct { int sec; u32 d_at, a_at; } padmap[4096]; static int npadmap;
@@ -98,7 +99,7 @@ int section_symbol(int sec);
 int sec_get(const char *name, u32 type, u32 flags) {
 	int i = sec_find(name); if (i >= 0) { cursec = i; return i; }
 	if (nsec >= MAXSEC) die("too many sections");
-	secs[nsec] = (Section){ strdup(name), type, flags, NULL, 0, 0, 0 };
+	secs[nsec] = (Section){ strdup(name), type, flags, NULL, 0, 0, 0, 1, 0 };
 	cursec = nsec++; section_symbol(cursec);   /* GAS makes the section symbol when the section is created */
 	return cursec;
 }
@@ -197,7 +198,8 @@ static void def_label(const char *name) {
 }
 
 /* Emit the bytes of a C-string token like "\"Unknown error\000\"" (quotes included), decoding escapes
- * (\ooo octal, \n \t \r \b \f \\ \" \0). add_nul appends a terminating NUL (.asciz), else not (.ascii). */
+ * (\ooo octal, \xHH.. hex, \n \t \r \b \f \\ \" \0). add_nul appends a terminating NUL (.asciz), else not (.ascii). */
+static struct { int sym; char *target; } alias_of[4096]; static int nalias;   /* pending `.set name, target` */
 static void emit_string(const char *tok, int add_nul) {
 	const char *p = tok; if (*p == '"') p++;
 	while (*p && *p != '"') {
@@ -205,6 +207,8 @@ static void emit_string(const char *tok, int add_nul) {
 		if (*p == '\\') {
 			p++;
 			if (*p >= '0' && *p <= '7') { int v = 0, n = 0; while (*p >= '0' && *p <= '7' && n < 3) { v = v*8 + (*p++ - '0'); n++; } b = (u8)v; }
+			else if ((*p == 'x' || *p == 'X') && isxdigit((unsigned char)p[1])) {   /* GAS: \x takes ALL following hex digits, low byte kept */
+				unsigned v = 0; p++; while (isxdigit((unsigned char)*p)) { v = v * 16 + (isdigit((unsigned char)*p) ? *p - '0' : (tolower((unsigned char)*p) - 'a' + 10)); p++; } b = (u8)v; }
 			else { switch (*p) { case 'n': b='\n'; break; case 't': b='\t'; break; case 'r': b='\r'; break;
 			                     case 'b': b='\b'; break; case 'f': b='\f'; break; default: b=(u8)*p; } p++; }
 		} else b = (u8)*p++;
@@ -224,11 +228,38 @@ static void select_section(void) {
 	else if (!strncmp(nm, ".rodata", 7)) flags = SHF_ALLOC;
 	else if (!strncmp(nm, ".data",   5)) flags = SHF_ALLOC | SHF_WRITE;
 	else if (!strncmp(nm, ".bss",    4)) { flags = SHF_ALLOC | SHF_WRITE; type = SHT_NOBITS; }
-	if (ntok >= 3 && toks[2][0] == '"') { const char *f = toks[2]; flags = 0;   /* explicit "flags" overrides */
-		if (strchr(f, 'a')) flags |= SHF_ALLOC;
-		if (strchr(f, 'x')) flags |= SHF_EXECINSTR;
-		if (strchr(f, 'w')) flags |= SHF_WRITE; }
-	sec_get(nm, type, flags);
+	else if (!strncmp(nm, ".tbss", 5)) { flags = SHF_ALLOC | SHF_WRITE | 0x400; type = SHT_NOBITS; }   /* SHF_TLS */
+	else if (!strncmp(nm, ".tdata", 6)) flags = SHF_ALLOC | SHF_WRITE | 0x400;
+	else if (!strncmp(nm, ".init_array", 11)) { flags = SHF_ALLOC | SHF_WRITE; type = 14; }
+	else if (!strncmp(nm, ".fini_array", 11)) { flags = SHF_ALLOC | SHF_WRITE; type = 15; }
+	else if (!strncmp(nm, ".note", 5)) type = 7;
+	u32 entsize = 0;
+	if (ntok >= 3 && toks[2][0] == '"') { flags = 0;   /* explicit "flags" overrides: GAS letters */
+		for (const char *f = toks[2] + 1; *f && *f != '"'; f++) switch (*f) {
+		case 'a': flags |= SHF_ALLOC; break;
+		case 'w': flags |= SHF_WRITE; break;
+		case 'x': flags |= SHF_EXECINSTR; break;
+		case 'M': flags |= 0x10; break;    /* SHF_MERGE */
+		case 'S': flags |= 0x20; break;    /* SHF_STRINGS */
+		case 'T': flags |= 0x400; break;   /* SHF_TLS */
+		default: die(".section %s: unsupported flag '%c'", nm, *f);
+		}
+		if (ntok >= 4) {   /* type: %progbits / @nobits / ... */
+			const char *t = toks[3] + (toks[3][0] == '%' || toks[3][0] == '@');
+			if      (!strcmp(t, "progbits")) type = SHT_PROGBITS;
+			else if (!strcmp(t, "nobits")) type = SHT_NOBITS;
+			else if (!strcmp(t, "note")) type = 7;
+			else if (!strcmp(t, "init_array")) type = 14;
+			else if (!strcmp(t, "fini_array")) type = 15;
+			else if (!strcmp(t, "preinit_array")) type = 16;
+			else die(".section %s: unsupported type '%s'", nm, toks[3]);
+		}
+		if (flags & 0x10) { if (ntok < 5) die(".section %s: M needs an entity size", nm); entsize = (u32)eval_const_expr(toks[4]); }
+	}
+	int explicit = ntok >= 3 && toks[2][0] == '"', old = sec_find(nm);
+	if (explicit && old >= 0 && secs[old].flags != flags) die(".section %s: changed section attributes", nm);   /* GAS: an error, not a silent merge */
+	int si = sec_get(nm, type, flags);
+	if (entsize) secs[si].entsize = entsize;
 }
 
 static const char *cur_stmt;   /* raw text of the current statement (labels peeled) — for expression operands */
@@ -527,6 +558,7 @@ static void do_directive(void) {
 		long a = ntok >= 2 ? eval_const_expr(toks[1]) : 2;
 		if (strcmp(d, ".balign") ? (a < 0 || a > 16) : (a < 0 || a > 65536 || (a & (a - 1)))) die("%s: bad alignment '%s'", d, toks[1]);
 		u32 bytes = (!strcmp(d, ".balign")) ? (u32)a : (1u << a);
+		sec_align_at_least(bytes ? bytes : 1);
 		u32 pad = bytes ? (bytes - (u32)(secs[cursec].len % bytes)) % bytes : 0;
 		if (secs[cursec].type == SHT_NOBITS) { map_frag_data(); secs[cursec].len += pad; return; }
 		if (secs[cursec].flags & SHF_EXECINSTR) {   /* code: zero bytes to a word boundary ($d), then NOPs ($a) */
@@ -568,6 +600,7 @@ static void do_directive(void) {
 		if (!strcmp(d, ".fill")) { if (a2[0]) size = eval_const_expr(a2); if (a3[0]) val = eval_const_expr(a3); if (size < 0 || size > 8) die(".fill: bad size %ld", size); }
 		else if (a2[0]) val = eval_const_expr(a2);
 		if (n < 0) die("%s: negative size %ld", d, n);
+		if (n * size == 0) return;   /* GAS: "repeat count is zero, ignored" — no frag, so no mapping symbol either */
 		if (secs[cursec].type == SHT_NOBITS) { if (val) die("%s: non-zero fill in a NOBITS section", d); map_frag_data(); secs[cursec].len += (size_t)(n * size); }
 		else { map_frag_data(); for (long i = 0; i < n; i++) for (long k = 0; k < size; k++) { u8 b = (u8)(k < 4 ? (val >> (8 * k)) : 0); emit(&b, 1); } }
 	} else if (!strcmp(d, ".ascii") || !strcmp(d, ".asciz") || !strcmp(d, ".string")) {
@@ -583,15 +616,30 @@ static void do_directive(void) {
 		} else if (ntok >= 3 && !(isalpha((unsigned char)toks[2][0]) || toks[2][0] == '_' || toks[2][0] == '.')) {   /* `.equ N, 16` / `.set N, 4*4`: absolute */
 			const char *q = strchr(cur_stmt, ','); if (!q) die(".set: expected 'name, value'");
 			syms[i].sec = SEC_ABS; syms[i].value = (u32)eval_const_expr(q + 1); syms[i].defined = 1;
-		} else if (ntok >= 3) {   /* alias: copy the target's location/type (target must be defined by now) */
-			int j = sym_find(toks[2]);
-			if (j < 0 || !syms[j].defined) die(".set: alias target '%s' undefined", toks[2]);
-			syms[i].sec = syms[j].sec; syms[i].value = syms[j].value; syms[i].defined = 1;
-			if (!syms[i].type) syms[i].type = syms[j].type;
+		} else if (ntok >= 3) {   /* alias: copy the target's location/type — at the END (GAS: the target may come later) */
+			if (nalias >= (int)(sizeof alias_of / sizeof *alias_of)) die(".set: too many aliases");
+			alias_of[nalias].sym = i; alias_of[nalias].target = strdup(toks[2]); nalias++;
 		} else die(".set: expected 'name, . [+ N]' or 'name, target'");
 	} else if (!md_directive(toks, ntok)) {
 		die("unknown directive '%s'", d);
 	}
+}
+
+/* Resolve `.set name, target` aliases once the whole input is read (chains resolve over repeated passes).
+ * A target never defined in this file is an error (not silently an undefined alias). */
+static void resolve_aliases(void) {
+	for (int left = nalias, prev = -1; left && left != prev; ) {
+		prev = left; left = 0;
+		for (int k = 0; k < nalias; k++) {
+			if (!alias_of[k].target) continue;
+			int i = alias_of[k].sym, j = sym_find(alias_of[k].target);
+			if (j < 0 || !syms[j].defined) { left++; continue; }
+			syms[i].sec = syms[j].sec; syms[i].value = syms[j].value; syms[i].defined = 1;
+			if (!syms[i].type) syms[i].type = syms[j].type;
+			alias_of[k].target = NULL;
+		}
+	}
+	for (int k = 0; k < nalias; k++) if (alias_of[k].target) die(".set: alias target '%s' undefined", alias_of[k].target);
 }
 
 static void parse_line(char *line) {
@@ -899,6 +947,7 @@ int main(int argc, char **argv) {
 
 	md_flush_pools();       /* GAS dumps pending literal pools at the end of parsing (before fixups/write) */
 	check_fb_resolved();
+	resolve_aliases();      /* .set name, target — targets may be defined after the .set */
 	resolve_deferred();     /* data words / .size that referenced not-yet-defined labels */
 	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
 	reduce_local_relocs();  /* fold local-symbol relocs to section-symbol + in-place value (GNU parity) */

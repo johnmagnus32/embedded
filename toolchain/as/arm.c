@@ -1259,7 +1259,7 @@ void md_finish(void) {
 		u32 base = read32(brfix[i].sec, brfix[i].off);
 		/* resolve ONLY a LOCAL same-section symbol; a GLOBAL one keeps a reloc even if defined here
 		 * (it may be interposed/PLT-routed at link time), matching GNU as. */
-		if (si >= 0 && syms[si].defined && !syms[si].global && syms[si].sec == brfix[i].sec) {
+		if (si >= 0 && syms[si].defined && !syms[si].global && !syms[si].weak && syms[si].sec == brfix[i].sec) {   /* weak: overridable at link time -> reloc */
 			int32_t rel = (int32_t)syms[si].value - (int32_t)(brfix[i].off + 8);
 			patch32(brfix[i].sec, brfix[i].off, (base & 0xff000000u) | ((rel >> 2) & 0x00ffffffu));
 		} else {

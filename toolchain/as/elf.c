@@ -46,6 +46,7 @@ static void build_symtab(Obj *o) {
 			int is_local = syms[i].defined && !syms[i].global && !syms[i].weak;   /* weak binds like global (comes after locals) */
 			if (!syms[i].name || is_local != (pass == 0)) continue;
 			if (is_local && !used[i] && syms[i].type != STT_SECTION && !strncmp(syms[i].name, ".L", 2)) continue;
+			if (!syms[i].defined && syms[i].weak && !used[i]) continue;   /* GAS drops an unreferenced undefined .weak (an unreferenced .global stays) */
 			int e = o->ne++; o->symmap[i] = e;
 			o->esym[e].st_name  = (syms[i].type == STT_SECTION) ? 0 : str_add(&o->str, syms[i].name);   /* section syms are nameless (GNU) */
 			o->esym[e].st_value = syms[i].value;
@@ -71,10 +72,10 @@ static void plan_headers(Obj *o) {
 static void build_shdrs(Obj *o) {
 	str_add(&o->shstr, "");
 	for (int i = 0; i < nsec; i++) { Elf32_Shdr *h = &o->sh[secs[i].shndx];
-		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = secs[i].type == 0x70000003u ? 1 : 4; }   /* SHT_ARM_ATTRIBUTES: byte-aligned (GAS) */
+		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = secs[i].align; h->sh_entsize = secs[i].entsize; }   /* GAS: the largest alignment requested in the section (default 1) */
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) { char nm[128]; snprintf(nm, sizeof nm, ".rel%s", secs[i].name);
 		Elf32_Shdr *h = &o->sh[o->relof[i]];
-		h->sh_type = SHT_REL; h->sh_name = str_add(&o->shstr, nm);
+		h->sh_type = SHT_REL; h->sh_name = str_add(&o->shstr, nm); h->sh_flags = 0x40;   /* SHF_INFO_LINK: sh_info names a section (GAS) */
 		h->sh_link = o->symtab_ndx; h->sh_info = secs[i].shndx;   /* link=symtab it indexes, info=section it patches */
 		h->sh_addralign = 4; h->sh_entsize = sizeof(Elf32_Rel); }
 	Elf32_Shdr *st = &o->sh[o->symtab_ndx];
