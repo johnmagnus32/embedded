@@ -15,6 +15,11 @@ void *memcpy(void *dst, const void *src, size_t n)
 	return dst;
 }
 
+void *mempcpy(void *dst, const void *src, size_t n)
+{
+	return (unsigned char *)memcpy(dst, src, n) + n;
+}
+
 void *memmove(void *dst, const void *src, size_t n)
 {
 	unsigned char *d = dst;
