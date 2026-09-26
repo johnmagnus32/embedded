@@ -154,6 +154,7 @@ static void gen_addr(Node *n) {
 	switch (n->kind) {
 	case ND_VAR:   /* fp-relative: locals are below fp (negative), stack params above it (positive) */
 		emit_addimm("r0", "r11", n->offset);
+		if (n->vla_obj) fprintf(o, "\tldr r0, [r0]\n");   /* a VLA: the slot holds its block's address */
 		return;
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
 	case ND_MEMBER: gen_addr(n->lhs); emit_addimm("r0", "r0", n->offset); return;
@@ -300,6 +301,8 @@ static long builtin_const_arg(Node *n) {
 	return n->args->val;
 }
 static int cur_alloca_slot;   /* frame slot holding the alloca floor (0 = the function uses no alloca) */
+static Node *vla_marks[256]; static int nvla_marks;   /* this function's VLA declarations, in source order */
+static int cur_setjmp_save;   /* frame slots for r4-r10 in a function using __builtin_setjmp (0 = none) */
 static void gen_builtin(Node *n) {
 	const char *b = n->name + 10;   /* after "__builtin_" */
 	if (!strcmp(b, "alloca")) {
@@ -318,6 +321,21 @@ static void gen_builtin(Node *n) {
 	if (!strcmp(b, "return_address")) {   /* level 0 = our saved lr ([fp,#4] after `push {r11, lr}`); deeper: 0, like GCC on ARM */
 		fprintf(o, builtin_const_arg(n) == 0 ? "\tldr r0, [r11, #4]\n" : "\tmov r0, #0\n"); return; }
 	if (!strcmp(b, "frame_address")) { fprintf(o, builtin_const_arg(n) == 0 ? "\tmov r0, r11\n" : "\tmov r0, #0\n"); return; }
+	if (!strcmp(b, "setjmp")) {   /* GCC's builtin: buf[0] = fp, buf[1] = resume address, buf[2] = sp; 0 now, 1 via longjmp */
+		int land = uniq(), done = uniq();
+		if (!n->args) die("cc: __builtin_setjmp needs a buffer");
+		gen_expr(n->args);
+		fprintf(o, "\tstr r11, [r0]\n\tstr sp, [r0, #8]\n\tmovw r1, #:lower16:.L%d\n\tmovt r1, #:upper16:.L%d\n\tstr r1, [r0, #4]\n"
+		           "\tmov r0, #0\n\tb .L%d\n.L%d:\n\tmov r0, #1\n.L%d:\n", land, land, done, land, done);
+		return;
+	}
+	if (!strcmp(b, "longjmp")) {   /* (buf, 1): resume at buf's setjmp with its fp + sp */
+		if (!n->args || !n->args->next) die("cc: __builtin_longjmp needs (buffer, 1)");
+		if (n->args->next->kind != ND_NUM || n->args->next->val != 1) die("cc: __builtin_longjmp's value must be the constant 1");
+		gen_expr(n->args);
+		fprintf(o, "\tldr r1, [r0, #4]\n\tldr r11, [r0]\n\tldr sp, [r0, #8]\n\tbx r1\n");
+		return;
+	}
 	if (!strcmp(b, "trap")) { fprintf(o, "\t.inst 0xe7f000f0\n"); return; }   /* GCC's ARM trap: a permanently-undefined insn */
 	if (!strcmp(b, "prefetch")) {   /* (addr[, rw[, locality]]): evaluate every argument, prefetch addr */
 		if (!n->args) die("cc: __builtin_prefetch needs an address");
@@ -735,7 +753,17 @@ static void gen_stmt(Node *n) {
 		return;
 	}
 	case ND_CASE: fprintf(o, ".L%d:\n", n->offset); return;  /* label placed inline in the switch body */
-	case ND_ASM: gen_asm(n); return;   /* %N-substituted template + constraint-driven operand load/store */
+	case ND_ASM: gen_asm(n); return;
+	case ND_VLAMARK: {   /* first run: remember the floor; re-run (a loop): rewind sp/floor to it, freeing the last instance
+	                      * and everything allocated after it — so later declarations' marks are reset too */
+		int k = 0; while (k < nvla_marks && vla_marks[k] != n) k++;
+		int set = uniq(), done = uniq();
+		fp_mem("ldr", "r0", n->offset); fprintf(o, "\tcmp r0, #0\n\tbeq .L%d\n\tmov sp, r0\n", set); fp_mem("str", "r0", cur_alloca_slot);
+		fprintf(o, "\tb .L%d\n.L%d:\n", done, set); fp_mem("ldr", "r0", cur_alloca_slot); fp_mem("str", "r0", n->offset);
+		fprintf(o, ".L%d:\n", done);
+		if (k + 1 < nvla_marks) { fprintf(o, "\tmov r0, #0\n"); for (int j = k + 1; j < nvla_marks; j++) fp_mem("str", "r0", vla_marks[j]->offset); }
+		return;
+	}   /* %N-substituted template + constraint-driven operand load/store */
 	case ND_GOTO:
 		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tbx r0\n"); return; }   /* computed goto */
 		fprintf(o, "\tb " CLABEL_FMT "\n", cur_gen_func, n->name); return;
@@ -751,7 +779,9 @@ static void alloc_temps(Node *n, int *frame) {
 	if (!n) return;
 	if (n->kind == ND_RMW) { *frame += 24; n->offset = -*frame; }   /* &lvalue + old value + operand */
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_alloca") && !cur_alloca_slot) { *frame += 4; cur_alloca_slot = -*frame; }
+	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_setjmp") && !cur_setjmp_save) { *frame += 28; cur_setjmp_save = -*frame; }
 	if (n->kind == ND_ASM && n->val) { *frame += 4 * n->val; n->offset = -*frame; }   /* one address per output */
+	if (n->kind == ND_VLAMARK) { if (nvla_marks >= 256) die("cc: too many VLA declarations in one function"); *frame += 4; n->offset = -*frame; vla_marks[nvla_marks++] = n; }
 	if (n->kind == ND_CALL && n->type && n->type->kind == TY_STRUCT && strncmp(n->name, "__builtin_", 10)) {
 		*frame += n->type->size < 4 ? 4 : (n->type->size + 3) & ~3; n->offset = -*frame;   /* >= 4: an r0 return is stored as a word */
 	}
@@ -766,7 +796,7 @@ static void gen_func(Func *f) {
 	ret_label = uniq(); cur_func_id = func_seq++; ngot = 0; cur_gen_func = f->name;
 	cur_nfixed = f->nfixed_words; cur_ret = f->ret_type;
 	int frame = f->frame, homed = f->nfixed_words || f->variadic;
-	cur_alloca_slot = 0;
+	cur_alloca_slot = 0; nvla_marks = 0; cur_setjmp_save = 0;
 	for (Node *s = f->body; s; s = s->next) alloc_temps(s, &frame);
 	frame = (frame + 7) & ~7;
 	if (f->attr.section[0]) fprintf(o, "\t.section %s,\"ax\",%%progbits\n", f->attr.section);   /* __attribute__((section)) (__init ...) */
@@ -779,8 +809,13 @@ static void gen_func(Func *f) {
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
 	if (frame) emit_addimm("sp", "sp", -frame);   /* ip is free here; frame may exceed the imm range */
 	if (cur_alloca_slot) { fprintf(o, "\tmov ip, sp\n"); fp_mem("str", "ip", cur_alloca_slot); }   /* alloca floor = the frame's bottom */
+	if (nvla_marks) { fprintf(o, "\tmov ip, #0\n"); for (int i = 0; i < nvla_marks; i++) fp_mem("str", "ip", vla_marks[i]->offset); }   /* no VLA allocated yet */
+	/* A longjmp may arrive from code that used r4-r10: the caller still expects them preserved (AAPCS). */
+	if (cur_setjmp_save) for (int r = 4; r <= 10; r++) { char rn[4]; snprintf(rn, sizeof rn, "r%d", r); fp_mem("str", rn, cur_setjmp_save + 4 * (r - 4)); }
 	for (Node *s = f->body; s; s = s->next) gen_stmt(s);
-	fprintf(o, ".L%d:\n\tmov sp, r11\n\tpop {r11, lr}\n", ret_label);            /* epilogue */
+	fprintf(o, ".L%d:\n", ret_label);
+	if (cur_setjmp_save) for (int r = 4; r <= 10; r++) { char rn[4]; snprintf(rn, sizeof rn, "r%d", r); fp_mem("ldr", rn, cur_setjmp_save + 4 * (r - 4)); }
+	fprintf(o, "\tmov sp, r11\n\tpop {r11, lr}\n");            /* epilogue */
 	if (homed) fprintf(o, "\tadd sp, sp, #16\n");            /* discard the homed r0..r3 */
 	fprintf(o, "\tbx lr\n");
 }
@@ -801,7 +836,11 @@ static void gvar_head(Gvar *g, const char *deflt) {
 static void gen_data(void) {
 	for (Gvar *g = globals; g; g = g->next) if (g->is_topasm) fprintf(o, "%s\n", g->str);   /* file-scope asm: .weak/.set etc, verbatim */
 	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
-		fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str);
+		if (!g->wide) { fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str); continue; }
+		int n = g->type->len; unsigned *w = malloc(n * sizeof *w); int wl = wstr_decode(g->str, w, n);   /* wide: one word/halfword per character */
+		fprintf(o, "\t.section .rodata\n\t.p2align %d\n%s:\n", g->wide == 4 ? 2 : 1, g->name);
+		for (int i = 0; i <= wl; i++) fprintf(o, g->wide == 4 ? "\t.word %u\n" : "\t.hword %u\n", i < wl ? (g->wide == 4 ? w[i] : w[i] & 0xffff) : 0);
+		free(w);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
 		gvar_head(g, ".data");

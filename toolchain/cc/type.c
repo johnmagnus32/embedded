@@ -9,15 +9,15 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL, 0 };
-static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL, 0 };
-static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 0 };   /* plain char = unsigned (ARM default) */
-static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL, 0 };   /* signed char                        */
-static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL, 0 };
-static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL, 0 };
-static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL, 0 };   /* long long          (r0:r1 pair)    */
-static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL, 0 };   /* unsigned long long                 */
-static Type bool_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 1 };   /* _Bool: stores only 0/1        */
+static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL, 0, 0 };
+static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL, 0, 0 };
+static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 0, 0 };   /* plain char = unsigned (ARM default) */
+static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL, 0, 0 };   /* signed char                        */
+static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL, 0, 0 };
+static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL, 0, 0 };
+static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0 };   /* long long          (r0:r1 pair)    */
+static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL, 0, 0 };   /* unsigned long long                 */
+static Type bool_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 1, 0 };   /* _Bool: stores only 0/1        */
 Type *ty_int  = &int_ty;   Type *ty_uint   = &uint_ty;   Type *ty_bool = &bool_ty;
 Type *ty_char = &char_ty;  Type *ty_schar  = &schar_ty;
 Type *ty_short = &short_ty; Type *ty_ushort = &ushort_ty;

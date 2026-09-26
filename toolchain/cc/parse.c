@@ -26,19 +26,22 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
 
 /* ---- locals (per function) ----------------------------------------------------------------------- */
 /* gname: a block-scope `static`/`extern` name bound to a GLOBAL symbol (no frame slot). */
-static struct { char name[64]; int offset; Type *type; char reg[8]; char gname[64]; } locals[1024];
+static struct { char name[64]; int offset; Type *type; char reg[8]; char gname[64]; int vla; } locals[1024];
 static int nlocals, local_bytes;   /* local_bytes = total frame bytes used by locals+params so far */
 /* Lookups scan newest-first, so an inner declaration shadows an outer one; a block restores nlocals at its
  * `}` (block scope), but never reclaims the inner block's frame space. */
 static const char *local_reg(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].reg; return ""; }
 static int local_exists(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return 1; return 0; }
 static Node *node(NodeKind kind);
+static Node *binary(NodeKind k, Node *l, Node *r);
+static Node *unary(NodeKind k, Node *l);
+static Node *num(long v);
 static Init *global_init(Type *ty);
 static Node *local_ref(const char *name) {   /* the node for a block-scope name: its frame slot, or its global */
 	for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) {
 		Node *n = node(locals[i].gname[0] ? ND_GVAR : ND_VAR); n->type = locals[i].type;
 		if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); return n; }
-		strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); return n;
+		strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla; return n;
 	}
 	die("parse: internal: no local '%s'", name); return 0;
 }
@@ -46,7 +49,7 @@ static int add_local(const char *name, Type *ty) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
 	local_bytes += (ty->size + 3) & ~3;   /* a 4-aligned slot big enough for the whole object (arrays too) */
 	int off = -local_bytes;               /* offset points at the object's first (lowest) byte */
-	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0;
+	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0;
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 	return off;
 }
@@ -54,7 +57,7 @@ static int add_local(const char *name, Type *ty) {
  * CALLER's frame (above our saved r11/lr), at [r11, #8 + 4*(i-4)]. */
 static void add_local_at(const char *name, Type *ty, int off) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
-	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
+	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0; strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
 }
 
 /* ---- typedef names + enum constants (both resolved at parse time) -------------------------------- */
@@ -74,6 +77,7 @@ static Type *declarator(Type *base, char *name);
 static Node *init_of(Node *dest, Type *ty);   /* aggregate brace-initializer (defined later; used by compound literals) */
 typedef struct InitPlace InitPlace;
 static InitPlace *init_places(Type *ty);
+static void typedef_decl(Type *base, Attr battr);
 static int str_decode(const char *s, unsigned char *out, int cap);
 
 /* One shared initializer traversal (like a real compiler's InitListChecker): parse the initializer syntax
@@ -167,10 +171,9 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
 		if (consume("register")) { if (sc) *sc |= SC_REGISTER; continue; }   /* tracked: file-scope `register T x asm("rN")` */
 		if (consume("const") || consume("volatile") || consume("restrict") || consume("inline")) continue;
-		if (consume("__const__") || consume("__const") || consume("__volatile__") || consume("__restrict__") || consume("__restrict") || consume("__inline__") || consume("__inline")) continue;   /* GNU alt spellings */
 		if (consume("__extension__")) continue;   /* GNU no-op prefix */
 		if (consume("__attribute__")) { attribute(); continue; }
-		if (consume("signed") || consume("__signed__")) { saw_signed = 1; seen = 1; continue; }
+		if (consume("signed")) { saw_signed = 1; seen = 1; continue; }
 		if (consume("unsigned")) { is_uns = 1;     seen = 1; continue; }
 		if (consume("void"))     { base = B_VOID;  seen = 1; continue; }
 		if (consume("_Bool"))    { base = B_BOOL;  seen = 1; continue; }
@@ -181,7 +184,7 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("struct")) { tagty = struct_decl(0); seen = 1; continue; }
 		if (consume("union"))  { tagty = struct_decl(1); seen = 1; continue; }
 		if (consume("enum")) { tagty = enum_decl(); seen = 1; continue; }
-		if (consume("typeof") || consume("__typeof__") || consume("__typeof")) {   /* typeof(type) or typeof(expr) -> that type */
+		if (consume("typeof")) {   /* typeof(type) or typeof(expr) -> that type */
 			expect("(");
 			if (is_typename()) { char d[64]; tagty = declarator(declspec(NULL, NULL), d); }
 			else { Node *e = assign(); add_type(e); tagty = e->type ? e->type : ty_int; }   /* unevaluated: type only */
@@ -202,11 +205,35 @@ static Type *declspec(int *td, int *sc) {
 }
 static Node *assign(void);        /* fwd: array bounds may be a constant expression, e.g. [52 + 8*32] */
 static long eval_const(Node *n);
+/* ---- variable-length arrays ----
+ * A VLA type's byte size lives in a frame slot, assigned by a statement queued (vla_pending) where the
+ * declarator is parsed; the declaration/typedef/function prologue/expression that parsed it emits the queue
+ * (take_vla_pending) so the size is computed at that point, as C requires. */
+static int in_func;                                      /* parsing a function (params or body): VLAs allowed */
+static Node vla_ph, *vla_pt = &vla_ph;
+static Node *take_vla_pending(void) { Node *h = vla_ph.next; vla_ph.next = NULL; vla_pt = &vla_ph; return h; }
+static Node *vsize_node(Type *t) {   /* sizeof(t): a constant, or a VLA's size slot */
+	if (!t->vsize_off) return num(t->size);
+	Node *v = node(ND_VAR); strcpy(v->name, "__vla_size"); v->offset = t->vsize_off; v->type = ty_uint; return v;
+}
+static Node *with_vla_pending(Node *val) {   /* an expression whose type parse queued VLA sizes: ({ sizes; val; }) */
+	Node *p = take_vla_pending(); if (!p) return val;
+	Node *se = node(ND_STMTEXPR), **pp = &se->body; for (Node *b = p; b; b = b->next) pp = &b->next;
+	se->body = p; *pp = unary(ND_EXPRSTMT, val); add_type(val); se->type = val->type; return se;
+}
 static Type *type_suffix(Type *base) {
-	if (consume("[")) {                                       /* [] (param) allowed; else a constant expr */
-		int n = 0;
-		if (!consume("]")) { n = (int)eval_const(assign()); expect("]"); }
-		return array_of(type_suffix(base), n);                /* outer dim wraps inner */
+	if (consume("[")) {                                       /* [] (param) allowed; else a constant expr, or a VLA bound */
+		if (consume("]")) return array_of(type_suffix(base), 0);
+		Node *e = assign(); expect("]");
+		Type *inner = type_suffix(base);                        /* outer dim wraps inner */
+		int ok = 1; long n = eval_try(e, &ok);
+		if (ok && !inner->vsize_off) return array_of(inner, (int)n);
+		if (!in_func) die("parse: variable-length array outside a function (line %d)", tk->line);
+		Type *t = array_of(inner, 0); t->size = 0;
+		t->vsize_off = add_local("", ty_uint);
+		Node *cnt = node(ND_CAST); cnt->lhs = ok ? num(n) : e; cnt->type = ty_uint;
+		vla_pt = vla_pt->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, vsize_node(t), binary(ND_MUL, cnt, vsize_node(inner))));
+		return t;
 	}
 	return base;
 }
@@ -221,11 +248,11 @@ static Type *func_type(Type *ret) { Type *ft = calloc(1, sizeof *ft); *ft = *ret
 /* declarator = "*"* ( "(" "*" name? ")" fn-or-array-suffix | name? ) array-suffix ; the name is optional
  * (abstract declarators in prototypes/casts). A "(*name)(...)" grouping is a pointer to a function type. */
 static Type *declarator(Type *base, char *name) {
-	while (consume("*")) { base = pointer_to(base); while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }   /* `char * const` */
+	while (consume("*")) { base = pointer_to(base); while (consume("const") || consume("volatile") || consume("restrict")) ; }   /* `char * const` */
 	while (consume("__attribute__")) attribute();       /* e.g. `void * __attribute__((...)) name` */
 	if (consume("(")) {                                      /* grouped declarator: (*name)... = pointer ; (name)... = plain grouping (e.g. function-type typedef `T (name)(params)`) */
 		int ptr = 0;
-		while (consume("*")) { ptr = 1; while (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")) ; }
+		while (consume("*")) { ptr = 1; while (consume("const") || consume("volatile") || consume("restrict")) ; }
 		name[0] = 0; if (tk->kind == TK_IDENT) ident(name);
 		int arrlen = -1;                                                /* array-of-pointers: `void (*fns[N])(args)` */
 		if (consume("[")) { arrlen = is("]") ? 0 : (int)eval_const(assign()); expect("]"); }
@@ -383,9 +410,9 @@ static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->n
 /* ---- node constructors --------------------------------------------------------------------------- */
 static int is_typename(void) {   /* does a declaration start at the cursor? */
 	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool")
-	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof") || is("__typeof__") || is("__typeof")
+	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__")
-	    || is("__signed__") || is("__const__") || is("__const") || is("__volatile__") || is("__restrict__") || is("__restrict") || is("__inline__") || is("__inline") || is("__extension__") || is("__auto_type")
+	    || is("__extension__") || is("__auto_type")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
 static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
@@ -458,6 +485,14 @@ static Node *builtin_lower(char *name) {
 	if (!strcmp(b, "isdigit")) {
 		expect("("); Node *c = assign(); expect(")"); bi_seq++; char nc[64]; Node *bc = bind_tmp(nc, "c", c);
 		char src[256]; snprintf(src, sizeof src, "((unsigned)%s - 48u < 10u)", nc); return stmtexpr_of(bc, parse_snippet(src));
+	}
+	if (!strcmp(b, "add_overflow_p") || !strcmp(b, "sub_overflow_p") || !strcmp(b, "mul_overflow_p")) {
+		/* (a, b, (T)c): would a OP b overflow T? — the storing form into a T temporary (c only gives the type) */
+		expect("("); Node *a = assign(); expect(","); Node *bb = assign(); expect(","); Node *c = assign(); expect(")");
+		bi_seq++; char na[64], nb[64], nc[64]; Node *ba = bind_tmp(na, "a", a), *bbn = bind_tmp(nb, "b", bb), *bc = bind_tmp(nc, "c", c);
+		ba->next = bbn; bbn->next = bc;
+		char src[256]; snprintf(src, sizeof src, "__builtin_%.3s_overflow(%s, %s, &%s)", b, na, nb, nc);
+		return stmtexpr_of(ba, parse_snippet(src));
 	}
 	int op = !strcmp(b, "add_overflow") ? '+' : !strcmp(b, "sub_overflow") ? '-' : !strcmp(b, "mul_overflow") ? '*' : 0;
 	if (op) {   /* __builtin_OP_overflow(a, b, &res): *res = a OP b (wrapped to res's type); value = did it overflow */
@@ -538,14 +573,20 @@ static Node *builtin_lower(char *name) {
 		Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
 		snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
 		size_t len = 0;
+		for (Token *t = tk; t->kind == TK_STR; t = t->next) if (t->wide > g->wide) g->wide = t->wide;   /* L"a" "b" is wide */
 		while (tk->kind == TK_STR) {                         /* adjacent string literals concatenate: "a" "b" -> "ab" */
 			size_t n = strlen(tk->sval);
 			if (len + n >= sizeof g->str) die("parse: string literal too long (>%d) — raise Gvar.str", (int)sizeof g->str);
 			memcpy(g->str + len, tk->sval, n); len += n; tk = tk->next;
 		}
 		g->str[len] = 0;
-		unsigned char *dec = malloc(len + 1); int dl = str_decode(g->str, dec, (int)len + 1); free(dec);
-		g->type = array_of(ty_char, dl + 1);                 /* char[N]: sizeof "ab" == 3; decays to char* like any array */
+		if (g->wide) {   /* wchar_t (unsigned int, ARM EABI) / char16_t elements */
+			unsigned *w = malloc((len + 1) * sizeof *w); int wl = wstr_decode(g->str, w, (int)len + 1); free(w);
+			g->type = array_of(g->wide == 4 ? ty_uint : ty_ushort, wl + 1);
+		} else {
+			unsigned char *dec = malloc(len + 1); int dl = str_decode(g->str, dec, (int)len + 1); free(dec);
+			g->type = array_of(ty_char, dl + 1);             /* char[N]: sizeof "ab" == 3; decays to char* like any array */
+		}
 		Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = g->type;
 		return gv;
 	}
@@ -662,8 +703,12 @@ static Node *struct_member(Node *base, const char *mname) {
 }
 
 /* postfix := primary ( "[" expr "]" | "." ident | "->" ident )* ; a[i] = *(a+i), p->m = (*p).m. */
+static Node *postfix_ops(Node *n);
 static Node *postfix(void) {
-	Node *n = primary();
+	return postfix_ops(primary());
+}
+/* The postfix operators applied to an already-parsed operand (also a compound literal: (int[]){1,2}[i]). */
+static Node *postfix_ops(Node *n) {
 	for (;;) {
 		if (consume("[")) { Node *idx = expr(); expect("]"); n = unary(ND_DEREF, new_add(n, idx)); }
 		else if (consume(".")) { char m[64]; ident(m); n = struct_member(n, m); }
@@ -693,12 +738,17 @@ static Node *unary_expr(void) {
 			static int cl_seq;
 			char nm[32]; snprintf(nm, sizeof nm, ".Lcl%d", cl_seq++);
 			InitPlace *pl = init_places(t);                  /* first: `(T[]){...}` takes its size from the braces */
+			if (!in_func) {   /* file scope (a static initializer's `&(struct B){...}`): an anonymous static object */
+				Gvar *g = add_global(); snprintf(g->name, sizeof g->name, ".Lcl%d", cl_seq++); g->type = t; g->is_static = 1;
+				g->init = lower_global(pl, t->size);
+				Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = t; return postfix_ops(gv);
+			}
 			int off = add_local(nm, t);
 			Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = t;
 			Node *initb = lower_local(v, pl, t->size);       /* block of member/element assignments to v */
 			Node *y = node(ND_VAR); strncpy(y->name, nm, 63); y->offset = off; y->type = t;
 			initb->next = unary(ND_EXPRSTMT, y);             /* ...then the statement-expression yields v */
-			Node *se = node(ND_STMTEXPR); se->body = initb; se->type = t; return se;
+			Node *se = node(ND_STMTEXPR); se->body = initb; se->type = t; return postfix_ops(se);
 		}
 		Node *e = unary_expr(); add_type(e);
 		if (t->kind == TY_STRUCT && e->type && e->type->kind != TY_STRUCT) {   /* GNU cast to union: (U)x == a temp U with its x-typed member set */
@@ -712,13 +762,13 @@ static Node *unary_expr(void) {
 			Node *st = unary(ND_EXPRSTMT, binary(ND_ASSIGN, mv, e)); st->next = unary(ND_EXPRSTMT, y);
 			Node *se = node(ND_STMTEXPR); se->body = st; se->type = t; return se;
 		}
-		Node *n = node(ND_CAST); n->lhs = e; n->type = t; return n;
+		Node *n = node(ND_CAST); n->lhs = e; n->type = t; return with_vla_pending(n);
 	}
 	if (consume("sizeof")) {                                 /* sizeof(type) or sizeof expr -> a constant */
-		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return num(t->size); }
-		Node *e = unary_expr(); add_type(e); return num(e->type ? e->type->size : 4);
+		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return with_vla_pending(vsize_node(t)); }
+		Node *e = unary_expr(); add_type(e); return e->type ? vsize_node(e->type) : num(4);
 	}
-	if (consume("__alignof__") || consume("__alignof") || consume("_Alignof") || consume("alignof")) {   /* __alignof__(type|expr) -> a constant */
+	if (consume("_Alignof")) {   /* __alignof__(type|expr) -> a constant */
 		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return num(align_of(t)); }
 		Node *e = unary_expr(); add_type(e); return num(e->type ? align_of(e->type) : 4);
 	}
@@ -740,13 +790,13 @@ static Node *new_add(Node *l, Node *r) {
 	add_type(l); add_type(r);
 	if (is_ptr_like(l->type) && is_ptr_like(r->type)) die("parse: cannot add two pointers");
 	if (!is_ptr_like(l->type) && is_ptr_like(r->type)) { Node *t = l; l = r; r = t; }
-	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));   /* scale by element size */
+	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, vsize_node(l->type->base));   /* scale by element size (a VLA row: runtime) */
 	return binary(ND_ADD, l, r);
 }
 static Node *new_sub(Node *l, Node *r) {
 	add_type(l); add_type(r);
-	if (is_ptr_like(l->type) && is_ptr_like(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), num(l->type->base->size));
-	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, num(l->type->base->size));
+	if (is_ptr_like(l->type) && is_ptr_like(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), vsize_node(l->type->base));
+	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, vsize_node(l->type->base));
 	return binary(ND_SUB, l, r);
 }
 static Node *mul(void)   { Node *n = unary_expr(); for (;;) { if (consume("*")) n = binary(ND_MUL, n, unary_expr()); else if (consume("/")) n = binary(ND_DIV, n, unary_expr()); else if (consume("%")) n = binary(ND_MOD, n, unary_expr()); else return n; } }
@@ -869,8 +919,8 @@ static Node *stmt(void) {
 		Node *n = node(ND_CASE); n->is_default = 1; n->case_next = cur_switch->case_list; cur_switch->case_list = n; return n; }
 	if (consume("break"))    { expect(";"); return node(ND_BREAK); }
 	if (consume("continue")) { expect(";"); return node(ND_CONTINUE); }
-	if (is("__asm__") || is("asm")) {                        /* __asm__ volatile("tmpl" : outs : ins : clobbers); */
-		tk = tk->next; consume("volatile"); consume("__volatile__"); consume("goto");
+	if (is("asm")) {                        /* __asm__ volatile("tmpl" : outs : ins : clobbers); */
+		tk = tk->next; consume("volatile"); consume("goto");
 		expect("("); Node *n = node(ND_ASM);
 		char buf[4096]; size_t bl = 0; buf[0] = 0;           /* template: concatenate adjacent string literals */
 		while (tk->kind == TK_STR) { size_t l = strlen(tk->sval); if (bl + l >= sizeof buf) die("parse: asm template too long (>%d)", (int)sizeof buf); memcpy(buf + bl, tk->sval, l); bl += l; buf[bl] = 0; tk = tk->next; }
@@ -981,11 +1031,7 @@ static Node *stmt(void) {
 		decl_attr = (Attr){0};
 		int td, sc = 0; Type *base = declspec(&td, &sc);
 		Attr battr = decl_attr;
-		if (td) { char nm[64]; Type *ty = declarator(base, nm);
-			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; }   /* function-type typedef `typedef R name(params)` */
-				ty = func_type(ty); }   /* a FUNCTION type */
-			while (consume("__attribute__")) attribute();
-			add_typedef(nm, aligned_type(ty, decl_attr.align)); expect(";"); return node(ND_BLOCK); }
+		if (td) { typedef_decl(base, battr); Node *b = node(ND_BLOCK); b->body = take_vla_pending(); return b; }   /* a VLA typedef's size is computed HERE */
 		if (consume(";")) return node(ND_BLOCK);             /* type-only (e.g. a struct definition) */
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
 		do {
@@ -1008,6 +1054,16 @@ static Node *stmt(void) {
 				if ((sc & SC_STATIC) && consume("=")) g->init = global_init(ty);   /* sizes an unsized array in place */
 				continue;
 			}
+			for (Node *v = take_vla_pending(); v; ) { Node *nx = v->next; v->next = NULL; bc = bc->next = v; v = nx; }   /* this declarator's VLA sizes */
+			if (ty->vsize_off) {   /* a VLA object: its slot holds an alloca'd block, behind a mark (re-running this frees the last one) */
+				if (is("=")) die("parse: a variable-length array cannot be initialized (line %d)", tk->line);
+				int off = add_local(nm, pointer_to(ty->base)); locals[nlocals - 1].type = ty; locals[nlocals - 1].vla = 1;
+				bc = bc->next = node(ND_VLAMARK);
+				Node *pv = node(ND_VAR); strncpy(pv->name, nm, 63); pv->offset = off; pv->type = pointer_to(ty->base);
+				Node *al = node(ND_CALL); strcpy(al->name, "__builtin_alloca"); al->args = vsize_node(ty);
+				bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, pv, al));
+				continue;
+			}
 			if (ty->kind == TY_ARRAY && ty->len == 0 && consume("=")) {   /* unsized `T x[] = ...`: the initializer sizes it, THEN allocate */
 				InitPlace *pl = init_places(ty);
 				int off = add_local(nm, ty);
@@ -1016,7 +1072,7 @@ static Node *stmt(void) {
 				continue;
 			}
 			int off = add_local(nm, ty);
-			if (consume("__asm__") || consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
+			if (consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{") || ty->kind == TY_ARRAY) bc = bc->next = init_of(v, ty);   /* aggregate initializer (incl. char a[N] = "str") */
 				else bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, assign())); }
@@ -1027,11 +1083,25 @@ static Node *stmt(void) {
 	Node *n = unary(ND_EXPRSTMT, expr()); expect(";"); return n;
 }
 
+/* `typedef T a, *b, c[N], d(params);` (declspec already read): each declarator names a type; `name(params)` is
+ * a FUNCTION type; aligned(N) makes an over-aligned copy. */
+static void typedef_decl(Type *base, Attr battr) {
+	do {
+		decl_attr = battr;
+		char nm[64]; Type *ty = declarator(base, nm);
+		if (is("(")) { skip_parens(); ty = func_type(ty); }
+		while (consume("__attribute__")) attribute();
+		add_typedef(nm, aligned_type(ty, decl_attr.align));
+	} while (consume(","));
+	expect(";");
+}
+
 /* ---- functions ----------------------------------------------------------------------------------- */
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
 static Func *function_tail(const char *name, Type *ret) {
 	strncpy(cur_func_name, name, sizeof cur_func_name - 1);   /* for `__func__` inside the body */
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret;
+	in_func = 1;
 	nlocals = 0; local_bytes = 0;
 	expect("(");
 	struct { char name[64]; Type *ty; } prm[16]; int np = 0;   /* collect params, then assign offsets by kind */
@@ -1046,6 +1116,12 @@ static Func *function_tail(const char *name, Type *ret) {
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
 			if (np >= 16) die("parse: too many function parameters (>16) — raise prm[]");
 			strncpy(prm[np].name, p, 63); prm[np].ty = ty; np++;
+			{   /* visible at once — a later parameter's VLA bound may use it (`int n, int a[n]`); a param's AAPCS
+			     * position depends only on the ones before it. (K&R retyping rebinds all of them below.) */
+				Type *pts[16]; int pos[16]; for (int i = 0; i < np; i++) pts[i] = prm[i].ty;
+				aapcs_layout(pts, np, is_sret(ret), pos);
+				if (p[0]) add_local_at(p, ty, 8 + 4 * pos[np - 1]);
+			}
 		} while (consume(","));
 	}
 	expect(")");
@@ -1064,6 +1140,7 @@ static Func *function_tail(const char *name, Type *ret) {
 		expect(";");
 	}
 	decl_attr = fattr;
+	Node *vla_prologue = take_vla_pending();   /* VLA parameter bounds (`int a[n][m]`, `x[i++]`): evaluated at entry */
 	f->nparams = np;
 	{ Type *pts[16]; for (int i = 0; i < np && i < 16; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic); }   /* publish the signature for callers */
 	/* Bind params per AAPCS (aapcs_layout, the same placement callers use; an sret function's hidden buffer
@@ -1077,10 +1154,13 @@ static Func *function_tail(const char *name, Type *ret) {
 	}
 	while (consume("__attribute__")) attribute();       /* e.g. int f(void) __attribute__((noreturn)) { … } */
 	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
-	if (consume(";")) return NULL;                           /* a prototype — no body to compile */
+	if (consume(";")) { in_func = 0; return NULL; }          /* a prototype — no body to compile (bounds never evaluated) */
 	expect("{");
-	Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt();
+	Node h = {0}, *c = &h;
+	for (Node *v = vla_prologue; v; ) { Node *nx = v->next; v->next = NULL; c = c->next = v; v = nx; }
+	while (!consume("}")) c = c->next = stmt();
 	f->body = h.next;
+	in_func = 0;
 	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
 	return f;   /* add_type runs in a final pass (parse()), once every function's return type is recorded */
 }
@@ -1274,8 +1354,12 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 			#undef INIT_MEMBER
 			int at = 0;
 			while (!is("}")) {
-				if (is(".")) {   /* designated: reposition the member cursor absolutely */
-					expect("."); char mn[64]; ident(mn); consume("=");
+				int olddes = tk->kind == TK_IDENT && tk->next && !strcmp(tk->next->text, ":");   /* GNU old-style `member: value` */
+				if (is(".") || olddes) {   /* designated: reposition the member cursor absolutely */
+					char mn[64];
+					if (!olddes) expect(".");
+					ident(mn);
+					if (olddes) expect(":"); else consume("=");
 					int f = -1; for (int i = 0; i < nm; i++) if (!strcmp(marr[i]->name, mn)) { f = i; break; }
 					if (f < 0) die("parse: struct has no member '%s'", mn);
 					at = f;
@@ -1325,6 +1409,18 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 		expect("["); int lo = (int)eval_const(assign()); int hi = lo; if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("=");
 		InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);
 		for (int k = lo; k <= hi; k++) for (InitPlace *p = th.next; p; p = p->next) pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset);
+		return ty->size;
+	}
+	if (ty->kind == TY_ARRAY && tk->kind == TK_STR && tk->wide && ty->base->size == tk->wide) {   /* wchar_t arr[] = L"..." */
+		size_t cap = 1; for (Token *t = tk; t && t->kind == TK_STR; t = t->next) cap += strlen(t->sval);
+		char *raw = malloc(cap); size_t rl = 0;
+		while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); memcpy(raw + rl, tk->sval, n); rl += n; tk = tk->next; }
+		raw[rl] = 0;
+		unsigned *w = malloc(cap * sizeof *w); int wl = wstr_decode(raw, w, (int)cap);
+		int total = ty->len > 0 ? ty->len : wl + 1;
+		if (ty->len == 0) { ty->len = total; ty->size = total * ty->base->size; }
+		for (int i = 0; i < wl && i < total; i++) pi_append(tail, base + i * ty->base->size, ty->base, num(w[i]), 0, 0);
+		free(raw); free(w);
 		return ty->size;
 	}
 	if (ty->kind == TY_ARRAY && ty->base->kind == TY_CHAR && tk->kind == TK_STR) {   /* char arr[] = "..." -> inline bytes */
@@ -1389,16 +1485,26 @@ static int as_addr_const(Node *e, char *sym, long *ad) {
 	case ND_ADDR: { long s = *ad; if (addr_of_lval(e->lhs, sym, ad)) return 1; *ad = s; return as_addr_const(e->lhs, sym, ad); }   /* &lval, or &&func: a bare function name is already ND_ADDR(GVAR), so `&func` == `func` */
 	case ND_CAST: return as_addr_const(e->lhs, sym, ad);
 	case ND_GVAR: case ND_VAR: strncpy(sym, e->name, 63); return 1;   /* bare name -> its address (array/func decay) */
-	case ND_LABELADDR: if (snprintf(sym, 64, CLABEL_FMT, cur_func_name, e->name) >= 64) die("parse: label symbol too long ('%s')", e->name); return 1;   /* static void *t[] = { &&l } */
-	case ND_MEMBER: if (e->type && e->type->kind == TY_ARRAY) return addr_of_lval(e, sym, ad); return 0;   /* an array-typed member used as a value decays to its address (&s.arr[0]) */
+	case ND_LABELADDR: if (snprintf(sym, SYMEXPR_MAX, CLABEL_FMT, cur_func_name, e->name) >= SYMEXPR_MAX) die("parse: label symbol too long ('%s')", e->name); return 1;   /* static void *t[] = { &&l } */
+	case ND_MEMBER: case ND_DEREF:   /* an array-typed member / row used as a value decays to its address (&s.arr[0], &a[3][5]) */
+		return e->type && e->type->kind == TY_ARRAY ? addr_of_lval(e, sym, ad) : 0;
 	case ND_ADD:
 		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad += c; return 1; }
 		ok = 1;
 		if (as_addr_const(e->rhs, sym, ad)) { c = eval_try(e->lhs, &ok); if (!ok) return 0; *ad += c; return 1; }
 		return 0;
 	case ND_SUB:
-		if (as_addr_const(e->lhs, sym, ad)) { c = eval_try(e->rhs, &ok); if (!ok) return 0; *ad -= c; return 1; }
+		if (as_addr_const(e->lhs, sym, ad)) {
+			c = eval_try(e->rhs, &ok); if (ok) { *ad -= c; return 1; }
+			char s2[SYMEXPR_MAX] = ""; long a2 = 0;   /* address - address: the assembler folds `a - b` (&&l1 - &&l0) */
+			if (!as_addr_const(e->rhs, s2, &a2) || strchr(s2, '-')) return 0;
+			if (strlen(sym) + strlen(s2) + 4 >= SYMEXPR_MAX) die("parse: address difference too long");
+			strcat(sym, " - "); strcat(sym, s2); *ad -= a2; return 1;
+		}
 		return 0;
+	case ND_DIV:   /* (p - q) / sizeof *p of byte-sized pointers (void* / label addresses): the difference itself */
+		c = eval_try(e->rhs, &ok); if (!ok || c != 1) return 0;
+		return as_addr_const(e->lhs, sym, ad);
 	case ND_COND:   /* CONST ? addrA : addrB (kernel: `(false) ? fnA : fnB`) -> fold the taken branch */
 		c = eval_try(e->cond, &ok); if (!ok) return 0;
 		return as_addr_const(c ? e->then : e->els, sym, ad);
@@ -1415,7 +1521,7 @@ static Init *lower_global(InitPlace *places, int total) {
 	for (InitPlace *p = places; p; p = p->next) if (p->off + p->ty->size > size) size = p->off + p->ty->size;   /* flexible array tail */
 	unsigned char *img = calloc(size + 1, 1); char **symat = calloc(size + 1, sizeof *symat); long *symadd = calloc(size + 1, sizeof *symadd);
 	for (InitPlace *p = places; p; p = p->next) {
-		char sym[64] = ""; long addend = 0;
+		char sym[SYMEXPR_MAX] = ""; long addend = 0;
 		for (int k = 0; k < p->ty->size; k++) for (int q = p->off + k - 3; q <= p->off + k; q++) if (q >= 0 && symat[q]) symat[q] = NULL;   /* overwritten */
 		if (!p->bit_width && as_addr_const(p->expr, sym, &addend)) {
 			if (p->ty->size != 4) die("parse: address constant in a %d-byte initializer", p->ty->size);
@@ -1434,7 +1540,7 @@ static Init *lower_global(InitPlace *places, int total) {
 	for (int at = 0; at < size; ) {
 		int nz = 0; while (at + nz < size && !img[at + nz] && !symat[at + nz]) nz++;   /* zero run (no symbol starts in it) */
 		if (nz >= 4 || at + nz == size) { if (nz) { c = c->next = mkinit(INIT_ZERO); c->size = nz; at += nz; } continue; }
-		if (symat[at]) { c = c->next = mkinit(INIT_SYM); strncpy(c->sym, symat[at], 63); c->val = symadd[at]; c->size = 4; at += 4; continue; }
+		if (symat[at]) { c = c->next = mkinit(INIT_SYM); snprintf(c->sym, sizeof c->sym, "%s", symat[at]); c->val = symadd[at]; c->size = 4; at += 4; continue; }
 		int w = at % 4 == 0 && at + 4 <= size && !symat[at + 1] && !symat[at + 2] && !symat[at + 3];
 		c = c->next = mkinit(INIT_CONST); c->size = w ? 4 : 1;
 		c->val = w ? (long)(img[at] | img[at + 1] << 8 | img[at + 2] << 16 | (unsigned long)img[at + 3] << 24) : img[at];
@@ -1534,8 +1640,8 @@ Func *parse(Token *tok) {
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
 		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_parens(); consume(";"); continue; }
-		if (is("asm") || is("__asm__")) {   /* file-scope basic asm: `asm("...");` — emit its text verbatim (kernel COND_SYSCALL .weak/.set) */
-			tk = tk->next; consume("volatile"); consume("__volatile__"); expect("(");
+		if (is("asm")) {   /* file-scope basic asm: `asm("...");` — emit its text verbatim (kernel COND_SYSCALL .weak/.set) */
+			tk = tk->next; consume("volatile"); expect("(");
 			char buf[1024]; size_t bl = 0; buf[0] = 0;
 			while (tk->kind == TK_STR) {   /* concatenate + decode adjacent string literals */
 				unsigned char dec[1024]; int dl = str_decode(tk->sval, dec, sizeof dec);
@@ -1550,11 +1656,7 @@ Func *parse(Token *tok) {
 		int td, sc; Type *base = declspec(&td, &sc);               /* type keywords/qualifiers + storage class; struct/enum defs register */
 		Attr battr = decl_attr;                               /* declspec attributes apply to every declarator */
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
-		if (td) { char nm[64]; Type *ty = declarator(base, nm);
-			if (is("(")) { int d = 1; tk = tk->next; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; }   /* function-type typedef `typedef R name(params)` */
-				ty = func_type(ty); }   /* a FUNCTION type */
-			while (consume("__attribute__")) attribute();
-			add_typedef(nm, aligned_type(ty, decl_attr.align)); expect(";"); continue; }
+		if (td) { typedef_decl(base, battr); continue; }   /* (file scope: type_suffix rejects a VLA) */
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
 		if (ty->fn_ret) {   /* `fn_t f, g;` via a function typedef: function PROTOTYPES, no storage (kernel fs_param_type) */
 			for (;;) { record_func_sig(name, ty->fn_ret, 0, 0, 1); decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC); if (!consume(",")) break; decl_attr = battr; ty = declarator(base, name);
@@ -1567,7 +1669,7 @@ Func *parse(Token *tok) {
 			else decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
 			continue;
 		}
-		if (consume("asm") || consume("__asm__")) {          /* `register T x asm("rN")` (global reg var) or an asm rename */
+		if (consume("asm")) {          /* `register T x asm("rN")` (global reg var) or an asm rename */
 			expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind == TK_STR) tk = tk->next; expect(")");
 			if ((sc & SC_REGISTER) && ngregs < 16) { strncpy(gregs[ngregs].name, name, 63); strncpy(gregs[ngregs].reg, s, 7); ngregs++; expect(";"); continue; }
 			/* else: an asm symbol rename on a normal global — ignore the name, fall through as an ordinary global */

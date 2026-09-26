@@ -10,15 +10,50 @@
 #include <ctype.h>
 #include "cc.h"
 
+/* One UTF-8 sequence at p -> *cp; returns its length (an invalid lead byte is taken as one raw byte). */
+static int utf8_decode(const char *p, unsigned *cp) {
+	const unsigned char *u = (const unsigned char *)p;
+	int n = u[0] >= 0xf0 ? 4 : u[0] >= 0xe0 ? 3 : u[0] >= 0xc0 ? 2 : 1;
+	unsigned v = n == 1 ? u[0] : u[0] & (0x7f >> n);
+	for (int i = 1; i < n; i++) { if ((u[i] & 0xc0) != 0x80) { *cp = u[0]; return 1; } v = (v << 6) | (u[i] & 0x3f); }
+	*cp = v; return n;
+}
+/* A wide literal's raw text -> code points: C escapes (\ooo up to 3 digits, \x all hex digits, \n ...) and
+ * UTF-8 multibyte characters. Returns the count (excluding the terminator), dying past cap. */
+int wstr_decode(const char *s, unsigned *out, int cap) {
+	int n = 0;
+	while (*s) {
+		unsigned v;
+		if (*s == '\\') {
+			s++;
+			switch (*s) {
+			case 'n': v = '\n'; s++; break; case 't': v = '\t'; s++; break; case 'r': v = '\r'; s++; break;
+			case 'a': v = '\a'; s++; break; case 'b': v = '\b'; s++; break; case 'f': v = '\f'; s++; break; case 'v': v = '\v'; s++; break;
+			case 'x': s++; v = 0; while (isxdigit((unsigned char)*s)) { v = v * 16 + (isdigit((unsigned char)*s) ? *s - '0' : (*s | 32) - 'a' + 10); s++; } break;
+			default:
+				if (*s >= '0' && *s <= '7') { v = 0; for (int k = 0; k < 3 && *s >= '0' && *s <= '7'; k++, s++) v = v * 8 + (*s - '0'); }
+				else { v = (unsigned char)*s; s++; }
+			}
+		} else if ((unsigned char)*s >= 0x80) s += utf8_decode(s, &v);
+		else v = (unsigned char)*s++;
+		if (n >= cap) die("lex: wide literal too long");
+		out[n++] = v;
+	}
+	return n;
+}
+/* GNU alternate keyword spellings, canonicalized here so the parser only ever sees one form. */
+static const char *const GNU_SPELLING[][2] = {
+	{ "__attribute", "__attribute__" }, { "__signed", "signed" }, { "__signed__", "signed" },
+	{ "__const", "const" }, { "__const__", "const" }, { "__volatile", "volatile" }, { "__volatile__", "volatile" },
+	{ "__restrict", "restrict" }, { "__restrict__", "restrict" }, { "__inline", "inline" }, { "__inline__", "inline" },
+	{ "__asm", "asm" }, { "__asm__", "asm" }, { "__typeof", "typeof" }, { "__typeof__", "typeof" },
+	{ "__alignof", "_Alignof" }, { "__alignof__", "_Alignof" }, { "alignof", "_Alignof" }, { "", "" } };
 static const char *KEYWORDS[] = {
 	"int", "char", "void", "short", "long", "signed", "unsigned",          /* base integer types      */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
-	"__signed__", "__const__", "__const", "__volatile__", "__restrict__", "__restrict", "__inline__", "__inline",  /* GNU alt spellings */
 	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
-	"__alignof__", "__alignof", "_Alignof", "alignof",                      /* alignof operator (type|expr) */
-	"typeof", "__typeof__", "__typeof",                                      /* GNU typeof(expr|type) — all three spellings */
-	"__asm__", "__volatile__", "asm",                                       /* inline assembly         */
+	"_Alignof", "typeof", "asm",                                            /* alignof operator; GNU typeof; inline assembly */
 	"__label__",                                                            /* GNU local-label declaration */
 	"__auto_type",                                                          /* GNU type inference (kernel min/max) */
 	"return", "if", "else", "while", "do", "for", "break", "continue", "switch", "case", "default", "goto",  /* control flow */
@@ -43,6 +78,10 @@ Token *lex(const char *src) {
 		if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }      /* line comment  */
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) { if(*p=='\n')line++; p++; } if(*p) p+=2; continue; }
 
+		int wide = 0;                                                                    /* literal prefix: L/U (4-byte), u (2), u8 (plain) */
+		if ((p[0] == 'L' || p[0] == 'U') && (p[1] == '\'' || p[1] == '"')) { wide = 4; p++; }
+		else if (p[0] == 'u' && p[1] == '8' && p[2] == '"') p += 2;
+		else if (p[0] == 'u' && (p[1] == '\'' || p[1] == '"')) { wide = 2; p++; }
 		if (*p == '\'') {                                                                /* char literal 'x' / '\n' / '\001' / '\xff' */
 			long v; p++;
 			if (*p == '\\') { p++;
@@ -58,7 +97,8 @@ Token *lex(const char *src) {
 					if (*p >= '0' && *p <= '7') { v = 0; for (int k = 0; k < 3 && *p>='0' && *p<='7'; k++, p++) v = v*8 + (*p-'0'); }   /* \NNN octal */
 					else { v = (unsigned char)*p; p++; }
 				}
-			} else { v = (unsigned char)*p; p++; }
+			} else if (wide && (unsigned char)*p >= 0x80) { unsigned cp; p += utf8_decode(p, &cp); v = cp; }   /* L'Ä': the code point */
+			else { v = (unsigned char)*p; p++; }
 			if (*p != '\'') die("lex: unterminated char literal on line %d", line);
 			p++;
 			Token *t = new_tok(TK_NUM, line); t->val = v; cur = cur->next = t; continue;
@@ -66,7 +106,7 @@ Token *lex(const char *src) {
 		if (*p == '"') {                                                                 /* string literal */
 			const char *s = ++p;                                                         /* skip opening quote */
 			while (*p && *p != '"') { if (*p == '\\' && p[1]) p += 2; else p++; }         /* keep escapes intact */
-			Token *t = new_tok(TK_STR, line);
+			Token *t = new_tok(TK_STR, line); t->wide = wide;
 			size_t full = p - s;
 			t->sval = malloc(full + 1); memcpy(t->sval, s, full); t->sval[full] = 0;     /* full raw text (as spelled) — unbounded */
 			size_t n = full; if (n >= sizeof t->text) n = sizeof t->text - 1;
@@ -87,7 +127,7 @@ Token *lex(const char *src) {
 			Token *t = new_tok(TK_IDENT, line);
 			size_t n = p - s; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, s, n); t->text[n] = 0;
-			if (!strcmp(t->text, "__attribute")) strcpy(t->text, "__attribute__");   /* GCC accepts the trailing-__-less spelling (kernel noinstr) */
+			for (int i = 0; GNU_SPELLING[i][0][0]; i++) if (!strcmp(t->text, GNU_SPELLING[i][0])) { strcpy(t->text, GNU_SPELLING[i][1]); break; }   /* one canonical keyword */
 			for (int i = 0; KEYWORDS[i]; i++) if (!strcmp(t->text, KEYWORDS[i])) { t->kind = TK_KW; break; }
 			cur = cur->next = t; continue;
 		}

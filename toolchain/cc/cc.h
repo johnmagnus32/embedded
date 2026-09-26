@@ -24,9 +24,11 @@ typedef struct Token {
 	char text[64];         /* the raw lexeme (ident/keyword name, or punctuator; truncated for long strings) */
 	char *sval;            /* TK_STR: the full (untruncated) raw string contents — asm templates/format strings exceed text[64] */
 	int line;              /* source line, for diagnostics                       */
+	int wide;              /* TK_STR / char TK_NUM: element width of an L"" / U"" (4) or u"" (2) literal; 0 = plain */
 } Token;
 
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
+int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal text -> code points (escapes + UTF-8) */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;
@@ -38,7 +40,9 @@ typedef struct Member { char name[64]; struct Type *type; int offset; int is_bit
 /* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
  * it declares a function returning fn_ret (not a variable); as a parameter it adjusts to a function pointer. */
 /* is_bool: _Bool (1 byte, unsigned) — every conversion INTO it yields 0/1 (x != 0), not a truncation. */
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; } Type;
+/* vsize_off: a VARIABLY-modified array (VLA): the frame slot holding its byte size, computed where its declarator
+ * was (size is then 0 and unused); 0 = a normal fixed-size type. */
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off; } Type;
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
@@ -71,6 +75,7 @@ typedef enum {
 	ND_COND, ND_CAST, ND_COMMA, ND_STMTEXPR, ND_REGVAR,          /* c?a:b ; (type)expr ; (a,b) ; ({...}) ; global reg var */
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
 	ND_RMW, ND_CUR,                                              /* lhs op= rhs / ++ / -- (lvalue evaluated ONCE) ; its old value */
+	ND_VLAMARK,                                                  /* a VLA declaration's stack mark (re-execution frees its last instance) */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
 	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_LABELADDR, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, &&label, inline asm, block */
 } NodeKind;
@@ -99,6 +104,7 @@ typedef struct Node {
 	struct Node *args;           /* ND_CALL: argument list (chained via ->next)                  */
 	struct Node *next;           /* next statement / next argument in a list                     */
 	int is_post;                 /* ND_RMW: x++ / x-- — the result is the OLD value               */
+	int vla_obj;                 /* ND_VAR: a VLA object — its slot holds the (alloca'd) address, not the array */
 	struct Node *target;         /* ND_CUR: the ND_RMW whose old value it reads (a back-link, not a child) */
 } Node;
 
@@ -128,7 +134,8 @@ void  add_type(Node *n);         /* recursively annotate a subtree with result t
 /* A global's initializer, as a flat list of emitted items (constant word/byte, a symbol's address, or
  * a run of zero bytes for padding / uninitialized tail). NULL init => the whole object goes in .bss. */
 enum { INIT_CONST, INIT_SYM, INIT_ZERO };
-typedef struct Init { int kind; long val; char sym[64]; int size; struct Init *next; } Init;
+#define SYMEXPR_MAX 192   /* INIT_SYM: a symbol, or a difference `a - b` (label/anchor offsets in static data) */
+typedef struct Init { int kind; long val; char sym[SYMEXPR_MAX]; int size; struct Init *next; } Init;
 
 /* File-scope objects: global variables and string literals, emitted by gen() as .data/.bss/.rodata. */
 /* storage-class bits declspec() reports for file-scope objects (they set symbol binding). */
@@ -142,6 +149,7 @@ typedef struct Gvar {
 	int is_extern;               /* 1 = `extern` decl -> reference only, emit no storage           */
 	int is_static;               /* 1 = `static` -> file-local symbol, emit no .global             */
 	int is_topasm;               /* 1 = file-scope `asm("...")` -> emit `str` verbatim (e.g. .weak/.set aliases) */
+	int wide;                    /* is_str: element width of a wide literal (4 = L/U, 2 = u); 0 = char */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
 	Attr attr;
 	char str[1024];              /* is_str / is_topasm: the decoded text (adjacent literals concatenated) */
