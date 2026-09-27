@@ -40,6 +40,22 @@ void *memset(void *dst, int c, size_t n)
 	return dst;
 }
 
+/* ARM RTABI (4.3.4) memory helpers — part of the C library in the EABI (glibc/musl define them too); compilers
+ * such as clang call them. The 4/8 variants only promise alignment. NOTE the argument order of the
+ * memset family: (dest, n, c). */
+void __aeabi_memcpy(void *d, const void *s, size_t n)  { memcpy(d, s, n); }
+void __aeabi_memcpy4(void *d, const void *s, size_t n) { memcpy(d, s, n); }
+void __aeabi_memcpy8(void *d, const void *s, size_t n) { memcpy(d, s, n); }
+void __aeabi_memmove(void *d, const void *s, size_t n)  { memmove(d, s, n); }
+void __aeabi_memmove4(void *d, const void *s, size_t n) { memmove(d, s, n); }
+void __aeabi_memmove8(void *d, const void *s, size_t n) { memmove(d, s, n); }
+void __aeabi_memset(void *d, size_t n, int c)  { memset(d, c, n); }
+void __aeabi_memset4(void *d, size_t n, int c) { memset(d, c, n); }
+void __aeabi_memset8(void *d, size_t n, int c) { memset(d, c, n); }
+void __aeabi_memclr(void *d, size_t n)  { memset(d, 0, n); }
+void __aeabi_memclr4(void *d, size_t n) { memset(d, 0, n); }
+void __aeabi_memclr8(void *d, size_t n) { memset(d, 0, n); }
+
 int memcmp(const void *a, const void *b, size_t n)
 {
 	const unsigned char *x = a, *y = b;
