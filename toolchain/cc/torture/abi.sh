@@ -15,7 +15,7 @@ build() {   # build <gcc|ours> <name>
 fail=0
 for callee in gcc ours; do for caller in gcc ours; do
 	build "$callee" callee; build "$caller" caller
-	"$T/ld/build/ld" -Ttext 0x40000000 -o "$W/m.elf" "$RT/crt_gnu.o" "$W/caller.o" "$W/callee.o" $(ls "$RT"/*.ours.o)
+	"$T/ld/build/ld" -Ttext 0x40000000 -o "$W/m.elf" "$RT/crt_gnu.o" "$W/caller.o" "$W/callee.o" $(ls "$RT"/*.ours.o) "$T/rt/build/libosrt.a"
 	set +e; timeout 10 qemu-system-arm -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel "$W/m.elf"; rc=$?; set -e
 	if [ "$rc" = 255 ]; then echo "PASS callee=$callee caller=$caller"; else echo "FAIL callee=$callee caller=$caller: $rc (want 255: one bit per case)"; fail=1; fi
 done; done

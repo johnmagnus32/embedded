@@ -14,7 +14,8 @@ WORK = os.environ.get("CTORTURE_WORK", "/tmp/ctorture")
 SUITE = os.path.join(WORK, "gcc-13.3.0/gcc/testsuite/gcc.c-torture/execute")
 X = os.environ.get("GNU", os.path.join(ROOT, "projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-"))
 CC = os.path.join(ROOT, "toolchain/cc/build/cc"); AS = os.path.join(ROOT, "toolchain/as/build/as"); LD = os.path.join(ROOT, "toolchain/ld/build/ld")
-LIBC_SRC = ["string.c", "stdlib.c", "stdio.c", "printf.c", "malloc.c", "lldiv.c", "fpconv.c"]
+LIBC_SRC = ["string.c", "stdlib.c", "stdio.c", "printf.c", "malloc.c"]
+RTLIB = os.path.join(ROOT, "toolchain/rt/build/libosrt.a")   # OUR compiler runtime (the libgcc analogue): ends every link of ours
 INC = ["-nostdinc", "-isystem", os.path.join(ROOT, "libc/include"), "-isystem", os.path.join(ROOT, "kernel/include/uapi")]
 CPP_FLAGS = ["-E"] + INC + ["-std=gnu89", "-w", "-D__TORTURE__"]
 GCC_FLAGS = ["-O0", "-marm", "-mcpu=cortex-a7", "-std=gnu89", "-w", "-fno-builtin-printf"]
@@ -44,11 +45,12 @@ def build_runtime():
         rc, _, e = run([X + "gcc"] + [f for f in GCC_FLAGS if not f.startswith("-std")] + ["-std=gnu11", "-c", "-o", b + ".gnu.o", s] + INC)
         if rc: sys.exit("runtime: GCC failed on %s: %s" % (s, last(e)))
         ours.append(b + ".ours.o"); gnu.append(b + ".gnu.o")
+    if run(["make", "-s", "-C", os.path.join(ROOT, "toolchain/rt")])[0] or not os.path.exists(RTLIB): sys.exit("runtime: building toolchain/rt failed")
     crt_o = os.path.join(rt, "crt.o"); crt_g = os.path.join(rt, "crt_gnu.o")
     if run([AS, "-o", crt_o, os.path.join(ROOT, "toolchain/cc/tests/crt.s")])[0]: sys.exit("runtime: crt.s")
     if run([X + "as", "-mcpu=cortex-a7", "-mfpu=vfpv4", "-o", crt_g, os.path.join(HERE, "crt_gnu.s")])[0]: sys.exit("runtime: crt_gnu.s")
     libgcc = run([X + "gcc", "-print-libgcc-file-name"])[1].strip()
-    return [crt_o] + ours, [crt_g] + gnu, libgcc
+    return [crt_o] + ours + [RTLIB], [crt_g] + gnu, libgcc
 
 def tier(src):
     """Feature area, from the source text (reported, not hidden)."""

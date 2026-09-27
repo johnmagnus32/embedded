@@ -18,8 +18,8 @@ pass=0; fail=0; skip=0
 red(){ printf '\033[31m%s\033[0m\n' "$*"; }; grn(){ printf '\033[32m%s\033[0m\n' "$*"; }; yel(){ printf '\033[33m%s\033[0m\n' "$*"; }
 ok(){ grn "PASS  $*"; pass=$((pass+1)); }; no(){ red "FAIL  $*"; fail=$((fail+1)); }; sk(){ yel "SKIP  $*"; skip=$((skip+1)); }
 
-echo "==== 1. build the five tools ===="
-for t in cpp cc as ar ld; do
+echo "==== 1. build the five tools + the compiler runtime ===="
+for t in cpp cc as ar ld rt; do
   make -s -C "${TC}/${t}" >/dev/null 2>&1 && echo "  built ${t}" || { no "build ${t}"; exit 1; }
 done
 
@@ -38,7 +38,9 @@ if [ -d "${BIN}" ] && [ -d "${DYN}" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ] &
   install -m0755 "${TC}/as/build/as"   "${BIN}/os-as"
   install -m0755 "${TC}/ld/build/ld"   "${BIN}/os-ld"
   install -m0755 "${TC}/ar/build/ar"   "${BIN}/os-ar"
-  reb=1
+  install -m0755 "${TC}/os-cc"         "${BIN}/arm-os-custom-gcc"               # the driver (links the runtime)
+  mkdir -p "${BIN}/../lib"; install -m0644 "${TC}/rt/build/libosrt.a" "${BIN}/../lib/libosrt.a"
+  reb=1; rm -f "${DYN}"/*.c.o   # objects of sources since moved/removed must not be linked
   for c in "${REPO}"/libc/src/*.c; do
     "${CC}" -fPIC -I"${REPO}/libc/include" -I"${REPO}/libc/src" -I"${REPO}/kernel/include/uapi" \
       -c "${c}" -o "${DYN}/$(basename "${c}").o" 2>/dev/null || reb=0
@@ -58,8 +60,17 @@ fi
 echo "==== 4. static boot (best-effort) ===="
 STAT="$(ls -d "${IMG}"/libc/stage-libc-custom* 2>/dev/null | grep -v dynamic | head -1)"
 if [ -n "${STAT}" ] && [ -f "${STAT}/libc.a" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ] && [ -n "${UAPI}" ]; then
-  CC="${BIN}/arm-os-custom-gcc" LIBC_STAGE="${STAT}" LIBC_INCLUDE="${REPO}/libc/include" UAPI_INCLUDE="${UAPI}" \
-    GEN_INIT_CPIO="${GIC}" REFKERNEL="${KERNEL}" bash "${HERE}/boot.sh" && ok "static boot" || no "static boot"
+  # rebuild libc.a from the CURRENT sources with the new tools (the staged one may predate them)
+  ST="$(mktemp -d)"; reb=1
+  for c in "${REPO}"/libc/src/*.c; do
+    "${BIN}/arm-os-custom-gcc" -I"${REPO}/libc/include" -I"${REPO}/libc/src" -I"${REPO}/kernel/include/uapi" \
+      -c "${c}" -o "${ST}/$(basename "${c}").o" 2>/dev/null || reb=0
+  done
+  rm -f "${STAT}/libc.a"; "${BIN}/os-ar" rc "${STAT}/libc.a" "${ST}"/*.c.o || reb=0; rm -rf "${ST}"
+  if [ "${reb}" = 1 ]; then
+    CC="${BIN}/arm-os-custom-gcc" LIBC_STAGE="${STAT}" LIBC_INCLUDE="${REPO}/libc/include" UAPI_INCLUDE="${UAPI}" \
+      GEN_INIT_CPIO="${GIC}" REFKERNEL="${KERNEL}" bash "${HERE}/boot.sh" && ok "static boot" || no "static boot"
+  else no "rebuild libc.a with the new tools"; fi
 else sk "static boot (no static libc-custom stage)"; fi
 
 echo "==== 5. loader host-logic units (best-effort) ===="

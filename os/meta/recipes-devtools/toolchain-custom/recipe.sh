@@ -25,9 +25,9 @@ do_build() {
   bin="${dest}/bin"
   command -v cc >/dev/null 2>&1 || die "toolchain-custom: need host 'cc' to build the tools"
 
-  log "toolchain-custom: building cpp/cc/as/ar/ld from ${src}"
+  log "toolchain-custom: building cpp/cc/as/ar/ld + the rt runtime from ${src}"
   local tool
-  for tool in cpp cc as ar ld; do
+  for tool in cpp cc as ar ld rt; do
     make -s -C "${src}/${tool}" >/dev/null || die "toolchain-custom: build failed for ${tool}"
   done
 
@@ -43,6 +43,8 @@ do_build() {
   ln -sf forge-ar "${bin}/${pfx}ar"
   ln -sf forge-as "${bin}/${pfx}as"
   ln -sf forge-ld "${bin}/${pfx}ld"
+  # the compiler runtime (toolchain/rt, our libgcc): the driver appends ../lib/libosrt.a to every link
+  mkdir -p "${dest}/lib"; install -m0644 "${src}/rt/build/libosrt.a" "${dest}/lib/libosrt.a"
 
   # sanity: the driver compiles + links a trivial program to a 32-bit ARM object
   local TMP; TMP="$(mktemp -d)"

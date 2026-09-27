@@ -58,7 +58,7 @@ Type *usual_arith(Type *a, Type *b);         /* usual-arithmetic-conversion resu
 Type *func_ret_type(const char *name);       /* a called function's declared return type (NULL if unknown) */
 int   func_declared(const char *name);        /* 1 if `name` has a recorded function signature (=> direct `bl`, not indirect) */
 Type *func_param_type(const char *name, int i);   /* a callee's declared param i type (NULL if unknown/vararg) */
-int   func_is_variadic(const char *name);   /* declared with `...` (its calls use the base PCS) */
+int   func_base_pcs(const char *name);      /* calls use the base PCS: declared with `...`, or pcs("aapcs") */
 /* AAPCS argument placement, shared by caller + callee. Arguments occupy consecutive "argument words": words
  * 0..3 are r0..r3, word 4+ is outgoing stack word (w-4). pos[i] = arg i's first word; returns the total. */
 /* vfp = the AAPCS-VFP variant (hard float, non-variadic callee): float/double/HFA args go to s0-s15 instead,
@@ -125,7 +125,7 @@ typedef struct Node {
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
-typedef struct Attr { int weak, used, align; char section[64], alias[64]; } Attr;
+typedef struct Attr { int weak, used, align, pcs; char section[64], alias[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp") */
 
 /* A compiled function: name, its parameter count, the total stack frame it needs, and its body list. */
 typedef struct Func {

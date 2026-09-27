@@ -23,3 +23,10 @@ _start:
 	svc  0x123456             @ semihosting call
 hang:
 	b    hang
+
+@ raise(sig): the runtime's division-by-zero hook (__aeabi_idiv0) signals SIGFPE through it, as libgcc's does;
+@ bare metal has no signals — return 0. Weak: a program's own raise() wins.
+.weak raise
+raise:
+	mov  r0, #0
+	bx   lr

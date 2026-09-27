@@ -306,8 +306,8 @@ static void gen_binary64(Node *n) {
 		fprintf(o, "\tmul r1, r1, r2\n\tmla r1, r0, r3, r1\n\tumull r0, r12, r0, r2\n\tadd r1, r1, r12\n"); return;
 	case ND_SHL:    gen_shift64(0, 0);   return;   /* shift count is already in r2 (rhs low word) */
 	case ND_SHR:    gen_shift64(1, !u);  return;   /* right: logical if unsigned, arithmetic if signed */
-	case ND_DIV:    emit_libcall(u ? "__udivdi3" : "__divdi3"); return;   /* n=r0:r1 d=r2:r3 -> q=r0:r1 */
-	case ND_MOD:    emit_libcall(u ? "__umoddi3" : "__moddi3"); return;   /*                 -> r=r0:r1 */
+	case ND_DIV:    emit_libcall(u ? "__aeabi_uldivmod" : "__aeabi_ldivmod"); return;   /* RTABI: n=r0:r1 d=r2:r3 -> q=r0:r1, r=r2:r3 */
+	case ND_MOD:    emit_libcall(u ? "__aeabi_uldivmod" : "__aeabi_ldivmod"); fprintf(o, "\tmov r0, r2\n\tmov r1, r3\n"); return;
 	case ND_EQ:     fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tmov r0, #0\n\tmoveq r0, #1\n"); return;
 	case ND_NE:     fprintf(o, "\tcmp r0, r2\n\tcmpeq r1, r3\n\tmov r0, #0\n\tmovne r0, #1\n"); return;
 	/* ordering via a full 64-bit subtract (subs/sbcs set N,V,C for the whole result); only lt/ge (signed)
@@ -588,7 +588,7 @@ static void gen_expr(Node *n) {
 			Type *pt = callee ? func_param_type(callee, i) : ft && i < ft->nparams ? ft->params[i] : 0;
 			at[i] = pt ? pt : av[i]->type->kind == TY_FLOAT ? ty_double : av[i]->type;   /* no prototype / a vararg: float promotes to double */
 		}
-		int vfp = !soft_float && !(callee ? func_is_variadic(callee) : ft && ft->variadic == 1);   /* AAPCS-VFP unless the callee is variadic (base PCS) */
+		int vfp = !soft_float && !(callee ? func_base_pcs(callee) : ft && ft->variadic == 1);   /* AAPCS-VFP unless the callee is variadic / pcs("aapcs") */
 		int sret = is_sret(n->type, vfp), total = aapcs_layout(at, nargs, sret, vfp, pos, vreg);
 		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs ? 1 : 0, regw = total ? 4 : 0, vs = 0;   /* vs: s-registers used */
 		for (int i = 0; i < nargs; i++) if (vreg[i] >= 0) { int nel, k = vfp_class(at[i], &nel), e = vreg[i] + nel * (k == 2 ? 2 : 1); if (e > vs) vs = e; }

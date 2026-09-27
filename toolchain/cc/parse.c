@@ -90,6 +90,7 @@ static Init *lower_global(InitPlace *places, int total);
 static Node *lower_local(Node *dest, InitPlace *places, int total);
 static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
+static void sig_set_pcs(const char *name, int pcs);
 /* Declaration attributes collected since the last reset; declarations snapshot/reset it (see Attr). */
 static Attr decl_attr;
 static long eval_const(Node *n); static Node *assign(void);
@@ -107,7 +108,7 @@ static void decl_symbol_attrs(const char *name, const Attr *a, int is_static) {
 	if (a->alias[0]) { if (!is_static && !a->weak) topasm("\t.global %s%s", name, ""); topasm("\t.set %s, %s", name, a->alias); }
 }
 static void attr_merge(Attr *to, const Attr *a) {
-	to->weak |= a->weak; to->used |= a->used; if (a->align > to->align) to->align = a->align;
+	to->weak |= a->weak; to->used |= a->used; if (a->align > to->align) to->align = a->align; if (a->pcs) to->pcs = a->pcs;
 	if (a->section[0]) strcpy(to->section, a->section);
 	if (a->alias[0]) strcpy(to->alias, a->alias);
 }
@@ -120,6 +121,12 @@ static void attribute(void) {
 		if (L > 4 && !strncmp(t, "__", 2) && !strcmp(t + L - 2, "__")) { snprintf(nm, sizeof nm, "%.*s", (int)(L - 4), t + 2); } else snprintf(nm, sizeof nm, "%s", t);
 		tk = tk->next;
 		if (!strcmp(nm, "weak")) decl_attr.weak = 1;
+		else if (!strcmp(nm, "pcs") && consume("(")) {   /* the RTABI helpers are pcs("aapcs"): core-register args/results under hard float */
+			if (tk->kind != TK_STR) die("parse: __attribute__((pcs)) needs a string (line %d)", tk->line);
+			if (!strcmp(tk->sval, "aapcs")) decl_attr.pcs = 1; else if (!strcmp(tk->sval, "aapcs-vfp")) decl_attr.pcs = 2;
+			else die("parse: unknown pcs \"%s\"", tk->sval);
+			tk = tk->next; expect(")");
+		}
 		else if (!strcmp(nm, "used")) decl_attr.used = 1;
 		else if ((!strcmp(nm, "section") || !strcmp(nm, "alias")) && consume("(")) {
 			char buf[64] = ""; size_t bl = 0;
@@ -1114,6 +1121,7 @@ static Node *stmt(void) {
 				Type *pts[MAXPARAMS]; int np = 0, va = proto_params(pts, &np);   /* the parameter TYPES decide how calls pass FP args */
 				record_func_sig(nm, ty, pts, np, va);
 				while (consume("__attribute__")) attribute();   /* trailing: `void h(void) __attribute__((error("...")))` */
+				sig_set_pcs(nm, decl_attr.pcs);
 				continue;
 			}
 			if (sc & (SC_STATIC | SC_EXTERN)) {   /* block-scope static/extern: a GLOBAL object, only the NAME is block-scoped */
@@ -1237,9 +1245,11 @@ static Func *function_tail(const char *name, Type *ret) {
 		expect(";");
 	}
 	decl_attr = fattr;
+	while (consume("__attribute__")) attribute();       /* trailing: int f(void) __attribute__((noreturn)) { … } — before the binding (pcs) */
 	Node *vla_prologue = take_vla_pending();   /* VLA parameter bounds (`int a[n][m]`, `x[i++]`): evaluated at entry */
 	f->nparams = np;
 	{ Type *pts[MAXPARAMS]; for (int i = 0; i < np && i < MAXPARAMS; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic ? 1 : unproto ? 2 : 0); }   /* publish the signature for callers */
+	sig_set_pcs(name, decl_attr.pcs);
 	/* Bind params per AAPCS (aapcs_layout, the same placement callers use; an sret function's hidden buffer
 	 * pointer takes word 0). gen_func homes r0..r3 right above the frame record, contiguous with the caller's
 	 * stack args, so a core/stack param lives at [r11, #8 + 4*word]; varargs begin after the last fixed word.
@@ -1249,13 +1259,12 @@ static Func *function_tail(const char *name, Type *ret) {
 	{
 		Type *pts[MAXPARAMS]; int pos[MAXPARAMS], vr[MAXPARAMS];
 		for (int i = 0; i < np; i++) pts[i] = prm[i].ty;
-		f->vfp = !soft_float && !f->variadic;
+		f->vfp = !soft_float && !func_base_pcs(name);   /* base PCS: variadic, or pcs("aapcs") on this or an earlier declaration */
 		f->nfixed_words = aapcs_layout(pts, np, is_sret(ret, f->vfp), f->vfp, pos, vr);
 		for (int i = 0; i < np; i++) f->vfp_save |= vr[i] >= 0;
 		for (int i = 0; i < np; i++) if (prm[i].name[0])
 			add_local_at(prm[i].name, prm[i].ty, vr[i] >= 0 ? 8 + 4 * vr[i] : 8 + 4 * pos[i] + (f->vfp_save ? 64 : 0));
 	}
-	while (consume("__attribute__")) attribute();       /* e.g. int f(void) __attribute__((noreturn)) { … } */
 	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
 	if (consume(";")) { in_func = 0; return NULL; }          /* a prototype — no body to compile (bounds never evaluated) */
 	expect("{");
@@ -1755,7 +1764,7 @@ static Init *global_init(Type *ty) {
  * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
  * Populated for every prototype/definition. */
 #define MAXFUNCSIG 32768   /* a preprocessed kernel TU declares thousands of functions (was 512 -> silently dropped) */
-static struct { char name[64]; Type *ret; Type **params; int nparams; int variadic; } func_sigs[MAXFUNCSIG]; static int nfunc_sigs;   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
+static struct { char name[64]; Type *ret; Type **params; int nparams; int variadic, base_pcs; } func_sigs[MAXFUNCSIG]; static int nfunc_sigs;   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic) {
 	int idx = -1;
 	for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) { idx = i; break; }
@@ -1775,9 +1784,13 @@ int func_declared(const char *name) {
 	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return 1;
 	return 0;
 }
-int func_is_variadic(const char *name) {   /* only a `...` prototype; unknown params (2) use the normal (VFP) PCS, like GCC */
-	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name)) return func_sigs[k].variadic == 1;
+int func_base_pcs(const char *name) {   /* a `...` prototype or pcs("aapcs"); unknown params (2) use the normal (VFP) PCS, like GCC */
+	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name)) return func_sigs[k].variadic == 1 || func_sigs[k].base_pcs;
 	return 0;
+}
+static void sig_set_pcs(const char *name, int pcs) {   /* a declaration's pcs(...) attribute -> its calls */
+	if (!pcs) return;
+	for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name)) { func_sigs[k].base_pcs = pcs == 1; return; }
 }
 Type *func_param_type(const char *name, int i) {
 	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name))

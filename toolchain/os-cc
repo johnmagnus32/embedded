@@ -13,13 +13,15 @@
 #
 # Modes: -E (preprocess only), -S (stop at asm), -c (stop at .o), default (compile+link).
 # The real tools are installed BESIDE this script (os-cpp/os-cc1/os-as/os-ld); we find
-# them by our own location so the driver is relocatable.
+# them by our own location so the driver is relocatable. A link always ends with our compiler
+# runtime ../lib/libosrt.a (toolchain/rt — the libgcc analogue), exactly as gcc appends libgcc.
 # (No `set -u`: several arg arrays are legitimately empty — e.g. a source with no -I — and expanding
 #  an empty array under nounset aborts on older bash. Every scalar below is explicitly initialized.)
 set -eo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 CPP="${here}/os-cpp"; CC1="${here}/os-cc1"; AS="${here}/os-as"; LD="${here}/os-ld"
+RTLIB="${here}/../lib/libosrt.a"   # the compiler runtime (64-bit division, int64<->FP, ...)
 
 mode=link            # link | compile | asm | preprocess
 out=""
@@ -142,4 +144,5 @@ else
   [ -n "${ttext}" ] && ldflags+=(-Ttext "${ttext}")
   [ -n "${entry}" ] && ldflags+=(-e "${entry}")
 fi
-"${LD}" "${ldflags[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}"
+[ -f "${RTLIB}" ] || die "compiler runtime ${RTLIB} missing (build toolchain/rt and install it beside bin/)"
+"${LD}" "${ldflags[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${RTLIB}"
