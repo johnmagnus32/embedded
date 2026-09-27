@@ -31,6 +31,8 @@ const u32 md_r_glob_dat = 21;               /* R_ARM_GLOB_DAT: loader writes an 
  * must become a runtime R_ARM_RELATIVE base-fixup. PC-relative branches (CALL/JUMP24) are bias-invariant
  * — the linker resolves them statically — so they need no dynamic reloc. */
 int md_needs_dynamic_reloc(u32 type) { return type == R_ARM_ABS32; }
+/* An absolute reference that CAN'T carry a dynamic fixup (movw/movt halves): position-dependent code. */
+int md_is_abs_nonword(u32 type) { return type == R_ARM_MOVW_ABS_NC || type == R_ARM_MOVT_ABS; }
 /* Does this reloc, against an UNDEFINED symbol, denote a CALL that should be routed through a PLT stub? */
 int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP24; }
 /* Is this a PIC GOT-entry reference? The front-end resolves it to (GOT_slot - P) — S is the slot addr. */

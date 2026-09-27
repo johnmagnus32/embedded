@@ -9,7 +9,7 @@ CFLAGS += -I$(COMMON)
 
 OURAS := ../as/build/as
 OURCC := ../cc/build/cc
-GNU ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
+GNU ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
@@ -90,7 +90,7 @@ test-static: $(BUILD)/ld
 test-pie: $(BUILD)/ld
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../cc >/dev/null
 	@fail=0; t=$$(mktemp -d); \
-	$(OURAS) -o $$t/crt_pie.o tests/crt_pie.s && $(OURCC) -o $$t/pie.s tests/pie_reloc.c \
+	$(OURAS) -o $$t/crt_pie.o tests/crt_pie.s && $(OURCC) -fPIC -o $$t/pie.s tests/pie_reloc.c \
 	  && $(OURAS) -o $$t/pie.o $$t/pie.s && $(BUILD)/ld -pie -o $$t/pie.elf $$t/crt_pie.o $$t/pie.o \
 	  || { echo "FAIL: our cc/as/ld could not build the PIE"; rm -rf $$t; exit 1; }; \
 	typ=$$($(GNU)readelf -h $$t/pie.elf | sed -n 's/.*Type:[[:space:]]*\([A-Z]*\).*/\1/p'); \

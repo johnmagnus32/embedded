@@ -51,26 +51,34 @@ void die(const char *fmt, ...) {
 }
 
 /* ---- global symbol table ------------------------------------------------------------------------- */
-typedef struct { const char *name; u32 vaddr; int defined; } GSym;
+/* ELF symbol binding: a STRONG (STB_GLOBAL) definition overrides a WEAK one; two strong ones are an error; of
+ * two weak ones the first stays. An undefined WEAK reference resolves to 0 (see resolve()). */
+typedef struct { const char *name; u32 vaddr; int defined, weak; } GSym;
 #define MAXGSYM 4096
 static GSym gsyms[MAXGSYM]; static int ngsym;
 static GSym *gsym_find(const char *name) { for (int i = 0; i < ngsym; i++) if (!strcmp(gsyms[i].name, name)) return &gsyms[i]; return NULL; }
-static void gsym_define(const char *name, u32 vaddr) {
+static void gsym_define(const char *name, u32 vaddr, int weak) {
 	GSym *g = gsym_find(name);
-	if (g) { if (g->defined) die("duplicate definition of '%s'", name); g->vaddr = vaddr; g->defined = 1; return; }
+	if (g && g->defined) {
+		if (!weak && !g->weak) die("duplicate definition of '%s'", name);
+		if (weak) return;                                /* the existing (strong, or first weak) one stays */
+		g->vaddr = vaddr; g->weak = 0; return;           /* strong overrides weak */
+	}
+	if (g) { g->vaddr = vaddr; g->defined = 1; g->weak = weak; return; }
 	if (ngsym >= MAXGSYM) die("too many global symbols");
-	gsyms[ngsym++] = (GSym){ name, vaddr, 1 };
+	gsyms[ngsym++] = (GSym){ name, vaddr, 1, weak };
 }
+static int is_def(Elf32_Sym *s) { int b = ELF32_ST_BIND(s->st_info); return (b == STB_GLOBAL || b == STB_WEAK) && s->st_shndx != SHN_UNDEF && s->st_name; }
 
 /* ---- archive member selection -------------------------------------------------------------------- */
-/* Does object o define global symbol `name`? */
+/* Does object o define global (or weak) symbol `name`? */
 static int defines_global(Obj *o, const char *name) {
 	for (int k = 0; k < o->nsym; k++) { Elf32_Sym *s = &o->sym[k];
-		if (ELF32_ST_BIND(s->st_info) == STB_GLOBAL && s->st_shndx != SHN_UNDEF && s->st_name
-		    && !strcmp(o->strtab + s->st_name, name)) return 1; }
+		if (is_def(s) && !strcmp(o->strtab + s->st_name, name)) return 1; }
 	return 0;
 }
-/* Is `name` currently NEEDED: referenced undefined by an active object AND not yet defined by one? */
+/* Is `name` currently NEEDED: referenced undefined (STRONGLY — a weak reference never pulls a member) by an
+ * active object AND not yet defined by one? A member whose definition is weak still satisfies it (GNU ld). */
 static int needed_globally(const char *name) {
 	for (int i = 0; i < nobj; i++) if (objs[i].active && defines_global(&objs[i], name)) return 0;
 	for (int i = 0; i < nobj; i++) if (objs[i].active) for (int k = 0; k < objs[i].nsym; k++) {
@@ -87,7 +95,7 @@ static void pull_archive_members(void) {
 	while (changed) { changed = 0;
 		for (int i = 0; i < nobj; i++) { if (objs[i].active) continue;
 			for (int k = 0; k < objs[i].nsym; k++) { Elf32_Sym *s = &objs[i].sym[k];
-				if (ELF32_ST_BIND(s->st_info) != STB_GLOBAL || s->st_shndx == SHN_UNDEF || !s->st_name) continue;
+				if (!is_def(s)) continue;
 				if (needed_globally(objs[i].strtab + s->st_name)) { objs[i].active = 1; changed = 1; break; }
 			}
 		}
@@ -99,7 +107,10 @@ static u32 resolve(Obj *o, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
 	if (s->st_shndx == SHN_UNDEF) {                     /* external — must be defined elsewhere */
 		GSym *g = gsym_find(o->strtab + s->st_name);
-		if (!g || !g->defined) die("undefined symbol '%s' (referenced in %s)", o->strtab + s->st_name, o->path);
+		if (!g || !g->defined) {
+			if (ELF32_ST_BIND(s->st_info) == STB_WEAK) return 0;   /* an undefined weak reference is 0 */
+			die("undefined symbol '%s' (referenced in %s)", o->strtab + s->st_name, o->path);
+		}
 		return g->vaddr;
 	}
 	if (s->st_shndx == SHN_ABS) return s->st_value;     /* absolute value, not relocated */
@@ -227,8 +238,9 @@ static void layout(Layout *L) {
 static void build_globals(void) {
 	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int k = 0; k < objs[i].nsym; k++) {
 		Elf32_Sym *s = &objs[i].sym[k];
-		if (ELF32_ST_BIND(s->st_info) == STB_GLOBAL && s->st_shndx != SHN_UNDEF && s->st_name)
-			gsym_define(objs[i].strtab + s->st_name, objs[i].sec_vaddr[s->st_shndx] + s->st_value);
+		if (is_def(s))
+			gsym_define(objs[i].strtab + s->st_name, s->st_shndx == SHN_ABS ? s->st_value : objs[i].sec_vaddr[s->st_shndx] + s->st_value,
+			            ELF32_ST_BIND(s->st_info) == STB_WEAK);
 	} }
 }
 
@@ -415,6 +427,9 @@ static void relocate(const Layout *L) {
 			md_apply_reloc(&objs[i], type, loc, S, P);
 			/* PIE/shared: the static patch above wrote the LINK-TIME value (base 0). Record an
 			 * R_ARM_RELATIVE so the loader adds the load bias to it. Absolute symbols carry no address. */
+			if ((pie || shared) && md_is_abs_nonword(type) && sym->st_shndx != SHN_ABS)   /* GNU ld: the same error */
+				die("%s: absolute movw/movt reference to '%s' can't be position-independent — recompile with -fPIC",
+				    objs[i].path, sym->st_name ? objs[i].strtab + sym->st_name : "(section)");
 			if ((pie || shared) && md_needs_dynamic_reloc(type)
 			    && sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS) {
 				if (ndynrel >= MAXDYNREL) die("too many dynamic relocations");
@@ -561,7 +576,7 @@ int script_run(const char *path) {
 			}
 			long v = script_eval(e0, e1, dot);
 			if (!strcmp(nm,".")) dot = (u32)v;              /* move the location counter */
-			else { GSym *g=gsym_find(nm); if(!(provide && g && g->defined)) gsym_define(nm,(u32)v); }
+			else { GSym *g=gsym_find(nm); if(!(provide && g && g->defined)) gsym_define(nm,(u32)v,0); }
 			p = e1; while (p<nstok && (!strcmp(stok[p],";")||!strcmp(stok[p],")"))) p++;
 			continue;
 		}
@@ -597,7 +612,7 @@ int script_run(const char *path) {
 				if (!strcmp(stok[q],"KEEP")) { q++; if(q<body_end&&!strcmp(stok[q],"(")) q++; continue; }
 				if (q+1<body_end && !strcmp(stok[q+1],"=")) {  /* in-body `SYM = expr;` */
 					int e0=q+2,e1=e0; while(e1<body_end&&strcmp(stok[e1],";"))e1++;
-					long v=script_eval(e0,e1,*vc); if(strcmp(stok[q],".")) gsym_define(stok[q],(u32)v); else *vc=(u32)v;
+					long v=script_eval(e0,e1,*vc); if(strcmp(stok[q],".")) gsym_define(stok[q],(u32)v,0); else *vc=(u32)v;
 					q=e1; if(q<body_end&&!strcmp(stok[q],";"))q++; continue;
 				}
 				if (!strcmp(stok[q],"(")) { q++; continue; }
@@ -710,7 +725,7 @@ int main(int argc, char **argv) {
 	layout(&L);
 	build_globals();
 	finalize_got();                                      /* fill each GOT slot's link-time value (post-addresses) */
-	if (pie || shared) gsym_define("_DYNAMIC", L.dynamic_vaddr);   /* so `.word _DYNAMIC` finds the array */
+	if (pie || shared) gsym_define("_DYNAMIC", L.dynamic_vaddr, 0);   /* so `.word _DYNAMIC` finds the array */
 	u32 entry = 0;                                       /* a plain .so has none; ld.so IS a .so WITH an entry */
 	GSym *start = gsym_find(entry_sym);
 	if (start && start->defined) entry = start->vaddr;

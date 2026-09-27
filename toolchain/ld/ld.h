@@ -144,6 +144,7 @@ extern const u32 md_r_got_prel;                                    /* the arch's
 extern const u32 md_r_glob_dat;                                    /* the arch's GOT-import reloc (R_ARM_GLOB_DAT) */
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P);      /* patch one relocation in place */
 int  md_needs_dynamic_reloc(u32 type);                             /* 1 if this reloc must become a runtime RELATIVE */
+int  md_is_abs_nonword(u32 type);   /* movw/movt absolute halves: not position-independent (rejected in -pie/-shared) */
 int  md_is_call_reloc(u32 type);                                   /* 1 if a CALL-type reloc (route via PLT if imported) */
 int  md_is_got_reloc(u32 type);                                    /* 1 if a PIC GOT-entry reloc (resolve to GOT slot) */
 #endif
