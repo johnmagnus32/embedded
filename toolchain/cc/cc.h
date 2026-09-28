@@ -35,7 +35,7 @@ int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal te
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT, TY_VECTOR } TypeKind;   /* arithmetic kinds precede TY_PTR */
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
-typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int promoted; struct Member *next; } Member;   /* align: aligned(N) on the member; promoted: a lookup alias of an anonymous member's member (no storage of its own) */
+typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int packed; int promoted; struct Member *next; } Member;   /* align: aligned(N) on the member; packed: packed on the member (alignment 1); promoted: a lookup alias of an anonymous member's member (no storage of its own) */
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
 /* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
@@ -142,7 +142,9 @@ typedef struct Node {
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
-typedef struct Attr { int weak, used, align, pcs, vis; char section[64], alias[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
+typedef struct Attr { int weak, used, align, pcs, vis, packed; char section[64], alias[64], cleanup[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
+                                                                                         * packed: on a member (its alignment 1) or an enum (its smallest type);
+                                                                                         * cleanup: a local's scope-exit function (cleanup(fn));
                                                                                          * vis: 0 unset, else VIS_* */
 enum { VIS_DEFAULT = 1, VIS_HIDDEN, VIS_INTERNAL, VIS_PROTECTED };
 extern int default_vis;                      /* -fvisibility=: a definition's visibility when it names none (0 = default) */

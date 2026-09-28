@@ -16,6 +16,7 @@ static Token *tk;                                  /* the parse cursor */
 static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
 static char cur_func_name[64];                     /* name of the function being parsed, for `__func__` */
 static Type *cur_fn_ret;                           /* ...and its return type */
+static int stmtexpr_body;                          /* the next block is a ({...})'s: its last expression is the value */
 static struct { char from[64], to[64]; } lscope[512]; static int nlscope, lscope_seq;   /* __label__ renames, innermost last */
 static void map_label(char *name) { for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return; } }
 
@@ -154,9 +155,25 @@ static int mode_of(const char *m) {   /* an integer mode's byte size; a floating
 	for (unsigned i = 0; i < sizeof md / sizeof *md; i++) if (!strcmp(b, md[i].n)) return md[i].v;
 	die("parse: unsupported mode(%s) (line %d)", m, tk->line); return 0;
 }
+/* Attributes with no effect on the code this compiler generates — optimization hints, diagnostics, sanitizer and
+ * instrumentation controls: accepted and dropped (with any payload). An attribute neither handled nor listed here
+ * is an error, never silently ignored: it may change layout or behavior (cleanup, packed, constructor, naked...). */
+static int attr_ignorable(const char *nm) {
+	static const char *const ok[] = {
+		"noreturn", "unused", "maybe_unused", "deprecated", "unavailable", "warn_unused_result", "format", "format_arg",
+		"nonnull", "returns_nonnull", "sentinel", "nonstring", "access", "warning", "error", "designated_init", "fallthrough",
+		"may_alias", "warn_if_not_aligned", "const", "pure", "malloc", "alloc_size", "alloc_align", "assume_aligned", "leaf",
+		"nothrow", "returns_twice", "noinline", "always_inline", "gnu_inline", "flatten", "noclone", "noipa", "hot", "cold",
+		"optimize", "artificial", "externally_visible", "no_reorder", "retain", "nocommon", "tls_model",
+		"no_instrument_function", "no_profile_instrument_function", "no_sanitize", "no_sanitize_address",
+		"no_address_safety_analysis", "no_sanitize_thread", "no_sanitize_undefined", "no_sanitize_coverage",
+		"no_stack_protector", "no_split_stack", "zero_call_used_regs", "randomize_layout", "no_randomize_layout", NULL };
+	for (int i = 0; ok[i]; i++) if (!strcmp(nm, ok[i])) return 1;
+	return 0;
+}
 /* `__attribute__((a, b(x), ...))` (the keyword already consumed): record the declaration attributes we honor
- * into decl_attr (the type attributes into pend_*); anything else (noreturn, format, unused, ...) is skipped with
- * its payload. */
+ * into decl_attr (the type attributes into pend_*); the ignorable ones are skipped with their payload; any other is
+ * an error. */
 static void attribute(void) {
 	expect("("); expect("(");
 	while (!is(")") && tk->kind != TK_EOF) {
@@ -197,6 +214,9 @@ static void attribute(void) {
 			if (n & (n - 1)) die("parse: aligned(%d) is not a power of two", n);
 			if (n > decl_attr.align) decl_attr.align = n;
 		}
+		else if (!strcmp(nm, "packed")) decl_attr.packed = 1;   /* a member's / an enum's (on an object or typedef GCC ignores it) */
+		else if (!strcmp(nm, "cleanup") && consume("(")) { ident(decl_attr.cleanup); expect(")"); }
+		else if (!attr_ignorable(nm)) die("parse: unsupported attribute '%s' (line %d)", nm, tk->line);
 		else if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); }
 		if (!consume(",")) break;
 	}
@@ -204,7 +224,8 @@ static void attribute(void) {
 }
 static void skip_parens(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }   /* skips a balanced (...) */
 /* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
- * `packed` -> *packed=1, `aligned(N)` -> *alignb=N. Unknown attributes (with any (...) payload) are skipped.
+ * `packed` -> *packed=1, `aligned(N)` -> *alignb=N, scalar_storage_order, transparent_union. The ignorable ones
+ * (attr_ignorable) are skipped with any (...) payload; any other is an error.
  * A name may be spelled bare or double-underscored (packed / __packed__). */
 static void parse_attribute(int *packed, int *alignb, int *sso, int *tunion) {
 	expect("("); expect("(");
@@ -218,8 +239,16 @@ static void parse_attribute(int *packed, int *alignb, int *sso, int *tunion) {
 			*sso = !strcmp(tk->sval, "big-endian");      /* little-endian is this target's own order */
 			tk = tk->next; expect(")");
 		}
-		else if (!strcmp(tk->text, "aligned") || !strcmp(tk->text, "__aligned__")) { tk = tk->next; if (consume("(")) { int n = (int)eval_const(assign()); if (alignb && n > *alignb) *alignb = n; expect(")"); } }
-		else { tk = tk->next; if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); } }
+		else if (!strcmp(tk->text, "aligned") || !strcmp(tk->text, "__aligned__")) {   /* bare: the target's biggest alignment, 8 */
+			tk = tk->next; int n = 8; if (consume("(")) { n = (int)eval_const(assign()); expect(")"); }
+			if (n > *alignb) *alignb = n;
+		}
+		else {
+			char nm[64]; const char *t = tk->text; size_t L = strlen(t);
+			if (L > 4 && !strncmp(t, "__", 2) && !strcmp(t + L - 2, "__")) snprintf(nm, sizeof nm, "%.*s", (int)(L - 4), t + 2); else snprintf(nm, sizeof nm, "%s", t);
+			if (!attr_ignorable(nm)) die("parse: unsupported attribute '%s' on a struct/union (line %d)", nm, tk->line);
+			tk = tk->next; if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); }
+		}
 		if (!consume(",")) break;
 	}
 	expect(")"); expect(")");
@@ -422,30 +451,30 @@ static Type *tag_here(const char *name) { return strmap_get(&scope->tags, name);
 static void  tag_add(const char *name, Type *t) { if (name[0]) strmap_put(&scope->tags, strdup(name), t); }
 /* Assign every member a byte offset (and, for bitfields, a bit offset within its storage unit) and set the
  * struct's size + alignment. Little-endian bit allocation, GCC/SysV rules: a bitfield lives entirely inside
- * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed`
- * removes all inter-member padding and caps the struct alignment at 1; `aligned(N)` raises it to N. */
+ * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed` (on
+ * the struct, or on one member) makes the members' alignment 1 — no padding — unless one has aligned(N), which
+ * still holds (and so still aligns the struct); `aligned(N)` on the struct raises it to N. */
 static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 	long long bitpos = 0; int salign = 1;   /* in BITS: 64-bit so a ~2 GB member can't overflow */
 	if (is_union) {                         /* every member overlaps at offset 0; size = widest member */
 		int maxsz = 0;
 		for (Member *m = ty->members; m; m = m->next) {
-			int ma = packed ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;
+			int ma = packed || m->packed ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;
 			m->offset = 0; if (m->is_bitfield) m->bit_offset = 0;
 			if (m->type->size > maxsz) maxsz = m->type->size;
 			if (ma > salign) salign = ma;
 		}
-		if (packed) salign = 1;
 		if (alignb > salign) salign = alignb;
 		ty->size = (maxsz + salign - 1) & ~(salign - 1);
 		ty->align = salign;
 		return;
 	}
 	for (Member *m = ty->members; m; m = m->next) {
-		int msz = m->type->size, ma = packed ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;   /* aligned(N) holds even when packed */
+		int pk = packed || m->packed, msz = m->type->size, ma = pk ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;   /* aligned(N) holds even when packed */
 		if (m->is_bitfield) {
 			int unit = ma * 8;
 			if (m->bit_width == 0) { bitpos = (bitpos + unit - 1) / unit * unit; continue; }   /* :0 -> align, no storage */
-			if (!packed && (bitpos % unit) + m->bit_width > msz * 8)     /* would straddle the storage unit */
+			if (!pk && (bitpos % unit) + m->bit_width > msz * 8)     /* would straddle the storage unit */
 				bitpos = (bitpos + unit - 1) / unit * unit;
 			m->offset = (int)((bitpos / unit) * ma);
 			m->bit_offset = (int)(bitpos - m->offset * 8LL);
@@ -457,7 +486,6 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 		}
 		if (ma > salign) salign = ma;
 	}
-	if (packed) salign = 1;
 	if (alignb > salign) salign = alignb;
 	long long bytes = (bitpos + 7) / 8;
 	if (bytes > 0x7fffffffLL) die("parse: struct too large (%lld bytes)", bytes);
@@ -500,7 +528,8 @@ static Type *struct_decl(int is_union) {
 			if (consume(":")) { m->is_bitfield = 1; m->bit_width = (int)eval_const(assign()); }   /* type name : width */
 			while (consume("__attribute__")) attribute();
 			no_type_attrs();
-			m->align = decl_attr.align;
+			m->align = decl_attr.align; m->packed = decl_attr.packed;
+			if (decl_attr.cleanup[0]) die("parse: cleanup on struct member '%s' (line %d)", mname, tk->line);
 			mc = mc->next = m;
 		} while (consume(","));
 		expect(";");
@@ -528,9 +557,18 @@ static Type *struct_decl(int is_union) {
 }
 
 /* enum [tag] { NAME [= const] , ... } — registers each constant's value. The enum TYPE is GCC's: unsigned int
- * when no value is negative, else int; (unsigned) long long if a value needs more than 32 bits. A tag
+ * when no value is negative, else int; (unsigned) long long if a value needs more than 32 bits; a packed enum the
+ * smallest (unsigned) char/short/int that holds its values. A tag
  * remembers its type (`enum E x;` after the definition), so an enum bitfield `E f : 2` holding 3 reads 3. */
+static int enum_attrs(void) {   /* attributes on the enum type itself (before its tag / after its `}`): packed, or ignorable */
+	Attr outer = decl_attr; decl_attr = (Attr){0};
+	while (consume("__attribute__")) attribute();
+	Attr a = decl_attr; decl_attr = outer; no_type_attrs();
+	if (a.weak || a.used || a.align || a.pcs || a.vis || a.section[0] || a.alias[0] || a.cleanup[0]) die("parse: an unsupported attribute on an enum type (line %d)", tk->line);
+	return a.packed;
+}
 static Type *enum_decl(void) {
+	int packed = enum_attrs();
 	char tag[70] = ""; if (tk->kind == TK_IDENT) { snprintf(tag, sizeof tag, "enum %s", tk->text); tk = tk->next; }
 	if (!consume("{")) { Type *t = tag[0] ? tag_find(tag) : NULL; return t ? t : ty_uint; }   /* forward/unknown: GCC's unsigned default */
 	long val = 0, lo = 0, hi = 0;
@@ -546,7 +584,11 @@ static Type *enum_decl(void) {
 		if (!consume(",")) break;
 	}
 	expect("}");
+	packed |= enum_attrs();
 	Type *t = lo < 0 ? (lo < -2147483648L || hi > 2147483647L ? ty_llong : ty_int) : (hi > 4294967295L ? ty_ullong : ty_uint);
+	if (packed)   /* GCC: the smallest integer type holding every value (signed only if one is negative) */
+		t = lo < 0 ? (lo >= -128 && hi <= 127 ? ty_schar : lo >= -32768 && hi <= 32767 ? ty_short : t)
+		           : (hi <= 255 ? ty_char : hi <= 65535 ? ty_ushort : t);
 	static int enum_seq; Type *et = calloc(1, sizeof *et); *et = *t; et->tag = ++enum_seq; t = et;   /* each enum is its own type */
 	if (tag[0]) tag_add(tag, t);
 	return t;
@@ -916,7 +958,7 @@ static Node *builtin_lower(char *name) {
 	}
 	if (consume("(")) {
 		if (is("{")) {   /* GNU statement expression ({ stmts...; last-expr; }) — value is the last expr */
-			Node *n = node(ND_STMTEXPR); n->body = stmt()->body; expect(")"); return n;
+			stmtexpr_body = 1; Node *n = node(ND_STMTEXPR); n->body = stmt()->body; expect(")"); return n;
 		}
 		Node *n = expr(); expect(")"); return n;
 	}
@@ -1286,16 +1328,66 @@ static int has_jump_target(Node *n) {
 	}
 	return 0;
 }
+/* __attribute__((cleanup(fn))) locals (the kernel's guard() / __free()): fn(&var) runs whenever var's scope is left —
+ * the block's end, a return (after its value is computed), break/continue out of it, a goto to a label outside it —
+ * innermost first, as in GCC. The active ones form a stack (an entry's `up` is the one declared before it); a jump
+ * runs the entries between its own point and its target's. A jump INTO such a scope (goto, case) is an error. */
+typedef struct Cleanup { Node *var; char fn[64]; struct Cleanup *up; } Cleanup;
+static Cleanup *cleanups;                                 /* the innermost active one (NULL: none) */
+static Cleanup *brk_cleanups, *cont_cleanups, *case_cleanups;   /* ...at the start of the innermost break / continue / case target */
+typedef struct { Node *n; Cleanup *at; } JumpAt;          /* a goto / label and the cleanups active there */
+static JumpAt *fn_gotos, *fn_labels; static int nfn_gotos, nfn_labels, fn_gotos_cap, fn_labels_cap;
+static void jump_note(JumpAt **a, int *n, int *cap, Node *x) {
+	if (*n == *cap) { *cap = *cap ? 2 * *cap : 64; *a = realloc(*a, *cap * sizeof **a); }
+	(*a)[*n].n = x; (*a)[*n].at = cleanups; (*n)++;
+}
+static Node *cleanup_calls(Cleanup *from, Cleanup *to) {   /* fn(&var) for the entries from `from` down to (not incl.) `to` */
+	Node h = {0}, *c = &h;
+	for (Cleanup *e = from; e != to; e = e->up) {
+		if (!e) die("parse: internal: a jump target outside the cleanup chain");
+		Node *call = node(ND_CALL); strcpy(call->name, e->fn); call->args = unary(ND_ADDR, ref(e->var));
+		c = c->next = unary(ND_EXPRSTMT, call);
+	}
+	return h.next;
+}
+static Node *then_stmt(Node *list, Node *last) {   /* { list...; last } — or last alone */
+	if (!list) return last;
+	Node *b = node(ND_BLOCK), *c = list; while (c->next) c = c->next; c->next = last; b->body = list; return b;
+}
+static void push_cleanup(Node *var) {   /* a local just declared (and initialized) with cleanup(fn): its scope begins */
+	if (!decl_attr.cleanup[0]) return;
+	Cleanup *e = calloc(1, sizeof *e); e->var = var; strcpy(e->fn, decl_attr.cleanup); e->up = cleanups; cleanups = e;
+}
+static void no_cleanup(const char *what) { if (decl_attr.cleanup[0]) die("parse: cleanup on %s (line %d): only a local variable has a scope to leave", what, tk->line); }
+static Node *loop_body(void) {   /* break and continue in it leave the cleanup scopes begun inside it */
+	Cleanup *sb = brk_cleanups, *sc = cont_cleanups; brk_cleanups = cont_cleanups = cleanups;
+	Node *b = stmt(); brk_cleanups = sb; cont_cleanups = sc; return b;
+}
+/* After a function body: a goto out of cleanup scopes runs them first; into one is an error. */
+static void resolve_goto_cleanups(void) {
+	for (int i = 0; i < nfn_gotos; i++) {
+		Node *g = fn_gotos[i].n; Cleanup *from = fn_gotos[i].at, *to = NULL; int found = 0;
+		for (int k = 0; k < nfn_labels && !found; k++) if (!strcmp(fn_labels[k].n->name, g->name)) { to = fn_labels[k].at; found = 1; }
+		if (!found || from == to) continue;
+		Cleanup *e = from; while (e && e != to) e = e->up;
+		if (e != to) die("parse: goto %s jumps into the scope of a cleanup variable", g->name);
+		Node *jump = node(ND_GOTO); *jump = *g; jump->next = NULL;
+		Node *nx = g->next; *g = *then_stmt(cleanup_calls(from, to), jump); g->next = nx;
+	}
+	nfn_gotos = nfn_labels = 0;
+}
 static Node *stmt(void) {
 	if (consume(";")) return node(ND_BLOCK);                  /* empty statement (e.g. `while (...) ;`) */
 	if (consume("switch")) {                                 /* switch (e) body ; cases attach to it */
 		Node *n = node(ND_SWITCH); expect("("); n->cond = expr(); expect(")");
-		Node *save = cur_switch; cur_switch = n; n->then = stmt(); cur_switch = save;
+		Node *save = cur_switch; Cleanup *sb = brk_cleanups, *sk = case_cleanups; cur_switch = n; brk_cleanups = case_cleanups = cleanups;
+		n->then = stmt(); cur_switch = save; brk_cleanups = sb; case_cleanups = sk;
 		fold_const_switch(n);
 		return n;
 	}
 	if (consume("case")) {                                   /* case CONST: */
 		if (!cur_switch) die("parse: 'case' outside switch");
+		if (cleanups != case_cleanups) die("parse: a case label in the scope of a cleanup variable (line %d)", tk->line);
 		Node *n = node(ND_CASE); n->val = eval_const(conditional());   /* folds casts etc: `case (blk_status_t)1:` */
 		if (consume("...")) { n->val2 = eval_const(conditional()); n->is_range = 1; }   /* GCC `case lo ... hi:` */
 		expect(":");
@@ -1303,9 +1395,10 @@ static Node *stmt(void) {
 		return n;
 	}
 	if (consume("default")) { if (!cur_switch) die("parse: 'default' outside switch"); expect(":");
+		if (cleanups != case_cleanups) die("parse: a default label in the scope of a cleanup variable (line %d)", tk->line);
 		Node *n = node(ND_CASE); n->is_default = 1; n->case_next = cur_switch->case_list; cur_switch->case_list = n; return n; }
-	if (consume("break"))    { expect(";"); return node(ND_BREAK); }
-	if (consume("continue")) { expect(";"); return node(ND_CONTINUE); }
+	if (consume("break"))    { expect(";"); return then_stmt(cleanup_calls(cleanups, brk_cleanups), node(ND_BREAK)); }
+	if (consume("continue")) { expect(";"); return then_stmt(cleanup_calls(cleanups, cont_cleanups), node(ND_CONTINUE)); }
 	if (is("asm")) {                        /* __asm__ volatile("tmpl" : outs : ins : clobbers); */
 		tk = tk->next; consume("volatile"); consume("goto");
 		expect("("); Node *n = node(ND_ASM);
@@ -1368,16 +1461,23 @@ static Node *stmt(void) {
 		tk = tk->next; skip_parens(); consume(";"); return node(ND_BLOCK);
 	}
 	if (consume("goto"))     { Node *n = node(ND_GOTO);
-		if (consume("*")) n->lhs = expr();                  /* GNU computed goto: `goto *p;` (p from &&label) */
-		else { ident(n->name); map_label(n->name); }
+		if (consume("*")) {                                 /* GNU computed goto: `goto *p;` (p from &&label) */
+			n->lhs = expr();
+			if (cleanups) die("parse: a computed goto in the scope of a cleanup variable (line %d)", tk->line);
+		}
+		else { ident(n->name); map_label(n->name); jump_note(&fn_gotos, &nfn_gotos, &fn_gotos_cap, n); }
 		expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
-		Node *n = node(ND_LABEL); ident(n->name); map_label(n->name); expect(":"); return n;
+		Node *n = node(ND_LABEL); ident(n->name); map_label(n->name); expect(":"); jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, n); return n;
 	}
 	if (consume("return")) {   /* `return;` allowed */
 		Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";");
 		if (n->lhs && is_vec(cur_fn_ret)) vec_assign_ok(cur_fn_ret, type_of(n->lhs), "a return");
-		return n;
+		if (!cleanups) return n;
+		Node *h = NULL, **t = &h;                            /* the value first, then the cleanups, then the return */
+		if (n->lhs) n->lhs = ref(bind(&t, cur_fn_ret, n->lhs));
+		*t = cleanup_calls(cleanups, NULL);
+		return then_stmt(h, n);
 	}
 	if (consume("if")) {
 		Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt();
@@ -1392,18 +1492,33 @@ static Node *stmt(void) {
 			if (dead->kind == ND_BLOCK) while (dead->body && !node_has_jump_target(dead->body)) dead->body = dead->body->next; }
 		return n;
 	}
-	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
-	if (consume("do")) { Node *n = node(ND_DOWHILE); n->body = stmt(); expect("while"); expect("("); n->cond = expr(); expect(")"); expect(";"); return n; }
+	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = loop_body(); return n; }
+	if (consume("do")) { Node *n = node(ND_DOWHILE); n->body = loop_body(); expect("while"); expect("("); n->cond = expr(); expect(")"); expect(";"); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
 		Node *n = node(ND_FOR); expect("("); int saved_nl = nlocals; scope_push();   /* the init declaration's scope is the for statement */
+		Cleanup *c0 = cleanups;
 		if (is_typename()) n->init = stmt();       /* declaration eats its own ; */
 		else if (!consume(";")) { n->init = unary(ND_EXPRSTMT, expr()); expect(";"); }
 		if (!consume(";")) { n->cond = expr(); expect(";"); }
 		if (!is(")")) n->inc = expr();
-		expect(")"); n->body = stmt(); nlocals = saved_nl; scope_pop(); return n;
+		expect(")"); n->body = loop_body(); nlocals = saved_nl; scope_pop();
+		if (cleanups == c0) return n;
+		Node *calls = cleanup_calls(cleanups, c0); cleanups = c0;   /* the init's cleanup variables: their scope is the loop */
+		Node *b = node(ND_BLOCK); b->body = n; n->next = calls; return b;
 	}
 	if (consume("{")) { int saved_ls = nlscope, saved_nl = nlocals; scope_push();   /* a block is a scope: its declarations end at `}` */
-		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next;
+		int value = stmtexpr_body; stmtexpr_body = 0; Cleanup *c0 = cleanups;
+		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h, *last = NULL; while (!consume("}")) { last = c; c = c->next = stmt(); }
+		if (cleanups != c0) {   /* leaving the block: its cleanups — after a ({...})'s value is computed */
+			if (value && c->kind == ND_EXPRSTMT && c->lhs) {
+				Node *h2 = NULL, **t2 = &h2, *v = bind(&t2, NULL, c->lhs);
+				last->next = h2; c = h2;
+				c->next = cleanup_calls(cleanups, c0); while (c->next) c = c->next;
+				c = c->next = unary(ND_EXPRSTMT, ref(v));
+			} else { c->next = cleanup_calls(cleanups, c0); }
+			cleanups = c0;
+		}
+		n->body = h.next;
 		nlscope = saved_ls; nlocals = saved_nl; scope_pop(); return n; }
 	if (is("__auto_type")) {   /* GNU __auto_type: the local's type is inferred from its initializer (kernel min/max) */
 		tk = tk->next;
@@ -1433,7 +1548,7 @@ static Node *stmt(void) {
 				Type *pts[MAXPARAMS]; int np = 0, va = proto_params(pts, &np);   /* the parameter TYPES decide how calls pass FP args */
 				record_func_sig(nm, ty, pts, np, va);
 				while (consume("__attribute__")) attribute();   /* trailing: `void h(void) __attribute__((error("...")))` */
-				no_type_attrs();
+				no_type_attrs(); no_cleanup("a function");
 				sig_set_pcs(nm, decl_attr.pcs);
 				continue;
 			}
@@ -1444,7 +1559,7 @@ static Node *stmt(void) {
 					static int sseq; char sn[80]; snprintf(sn, sizeof sn, "%.60s.%d", nm, sseq++); g = new_global(sn); g->is_static = 1; g->type = ty;
 				} else if (!(g = global_find(nm))) { g = new_global(nm); g->type = ty; g->is_extern = 1; }
 				while (consume("__attribute__")) attribute();
-				no_type_attrs();
+				no_type_attrs(); no_cleanup("a static or extern object");
 				attr_merge(&g->attr, &decl_attr);
 				if (sc & SC_TLS) g->is_tls = 1;
 				add_local_at(nm, ty, 0); strncpy(locals[nlocals - 1].gname, g->name, 63);   /* bound BEFORE the initializer: it may name itself (&x.head) */
@@ -1454,6 +1569,7 @@ static Node *stmt(void) {
 			for (Node *v = take_vla_pending(); v; ) { Node *nx = v->next; v->next = NULL; bc = bc->next = v; v = nx; }   /* this declarator's VLA sizes */
 			if (ty->vsize_off) {   /* a VLA object: its slot holds an alloca'd block, behind a mark (re-running this frees the last one) */
 				if (is("=")) die("parse: a variable-length array cannot be initialized (line %d)", tk->line);
+				no_cleanup("a variable-length array");
 				int off = add_local(nm, pointer_to(ty->base)); locals[nlocals - 1].type = ty; locals[nlocals - 1].vla = 1;
 				bc = bc->next = node(ND_VLAMARK);
 				Node *pv = node(ND_VAR); strncpy(pv->name, nm, 63); pv->offset = off; pv->type = pointer_to(ty->base);
@@ -1466,6 +1582,7 @@ static Node *stmt(void) {
 				int off = add_local(nm, ty);
 				Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty;
 				bc = bc->next = lower_local(v, pl, ty->size);
+				push_cleanup(v);
 				continue;
 			}
 			int off = add_local(nm, ty);
@@ -1473,6 +1590,7 @@ static Node *stmt(void) {
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{") || ty->kind == TY_ARRAY) bc = bc->next = init_of(v, ty);   /* aggregate initializer (incl. char a[N] = "str") */
 				else { Node *r = assign(); if (is_vec(ty)) vec_assign_ok(ty, type_of(r), "an initializer"); bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, r)); } }
+			{ Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; push_cleanup(v); }   /* once initialized */
 		} while (consume(","));
 		expect(";");
 		Node *n = node(ND_BLOCK); n->body = blk.next; return n;
@@ -1488,7 +1606,7 @@ static void typedef_decl(Type *base, Attr battr) {
 		char nm[64]; Type *ty = declarator(base, nm);
 		if (is("(")) ty = func_proto(ty);
 		while (consume("__attribute__")) attribute();
-		no_type_attrs();
+		no_type_attrs(); no_cleanup("a typedef");
 		add_typedef(nm, aligned_type(ty, decl_attr.align));
 	} while (consume(","));
 	expect(";");
@@ -1533,6 +1651,7 @@ static Func *function_tail(const char *name, Type *ret) {
 		do {
 			if (consume("...")) { f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
+			no_cleanup("a parameter");
 			if (is("(")) ty = pointer_to(func_proto(ty));   /* function-typed param `R name(args)` -> function pointer */
 			else if (ty->fn_ret) ty = pointer_to(ty);                  /* param typed with a function typedef -> function pointer */
 			if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);   /* array param decays to pointer */
@@ -1564,7 +1683,7 @@ static Func *function_tail(const char *name, Type *ret) {
 	}
 	decl_attr = fattr;
 	while (consume("__attribute__")) attribute();       /* trailing: int f(void) __attribute__((noreturn)) { … } — before the binding (pcs) */
-	no_type_attrs();
+	no_type_attrs(); no_cleanup("a function");
 	Node *vla_prologue = take_vla_pending();   /* VLA parameter bounds (`int a[n][m]`, `x[i++]`): evaluated at entry */
 	f->nparams = np;
 	{ Type *pts[MAXPARAMS]; for (int i = 0; i < np && i < MAXPARAMS; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic ? 1 : unproto ? 2 : 0); }   /* publish the signature for callers */
@@ -1591,7 +1710,10 @@ static Func *function_tail(const char *name, Type *ret) {
 	expect("{");
 	Node h = {0}, *c = &h;
 	for (Node *v = vla_prologue; v; ) { Node *nx = v->next; v->next = NULL; c = c->next = v; v = nx; }
+	cleanups = brk_cleanups = cont_cleanups = case_cleanups = NULL; nfn_gotos = nfn_labels = 0;
 	while (!consume("}")) c = c->next = stmt();
+	if (cleanups) { c->next = cleanup_calls(cleanups, NULL); cleanups = NULL; }   /* falling off the end */
+	resolve_goto_cleanups();
 	f->body = h.next;
 	in_func = 0; scope_pop();
 	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
@@ -2217,7 +2339,7 @@ Func *parse(Token *tok) {
 				if (ty->size > 0 && g->type->size == 0) g->type = ty;   /* a later declaration completes the type */
 			}
 			while (consume("__attribute__")) attribute();
-			no_type_attrs();
+			no_type_attrs(); no_cleanup("a global");
 			attr_merge(&g->attr, &decl_attr);
 			if (decl_attr.alias[0]) decl_symbol_attrs(name, &decl_attr, g->is_static);
 			if (consume("=")) {
