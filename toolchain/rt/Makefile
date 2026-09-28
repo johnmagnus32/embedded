@@ -19,12 +19,18 @@ CSRCS := divide.c int64.c bits.c fpconv.c half.c
 SSRCS := aeabi.s
 OBJS  := $(CSRCS:%.c=$(BUILD)/%.o) $(SSRCS:%.s=$(BUILD)/%.o)
 
-$(BUILD)/libosrt.a: $(OBJS)
+# Two phases: bring the tools up to date first, THEN build with them as ordinary prerequisites — so a changed
+# compiler or assembler rebuilds every object (their timestamps are only trustworthy once they're rebuilt).
+all: tools
+	@$(MAKE) --no-print-directory lib
+lib: $(BUILD)/libosrt.a
+
+$(BUILD)/libosrt.a: $(OBJS) $(AR)
 	rm -f $@; $(AR) rc $@ $(OBJS)
 
-$(BUILD)/%.o: %.c | tools $(BUILD)
+$(BUILD)/%.o: %.c $(CPP) $(CC1) $(AS) | $(BUILD)
 	$(CPP) $< > $(BUILD)/$*.i && $(CC1) -fPIC -o $(BUILD)/$*.s $(BUILD)/$*.i && $(AS) -o $@ $(BUILD)/$*.s   # PIC: it links into libc.so / ld.so too
-$(BUILD)/%.o: %.s | tools $(BUILD)
+$(BUILD)/%.o: %.s $(AS) | $(BUILD)
 	$(AS) -o $@ $<
 
 $(BUILD):
@@ -32,9 +38,9 @@ $(BUILD):
 tools:
 	@for t in cpp cc as ar ld; do $(MAKE) -s -C $(TC)/$$t >/dev/null || exit 1; done
 
-test: $(BUILD)/libosrt.a
+test: all
 	@GNU=$(abspath $(GNU)) QEMU=$(QEMU) ./test/rttest.sh
 
 clean:
 	rm -rf $(BUILD)
-.PHONY: tools test clean
+.PHONY: all lib tools test clean

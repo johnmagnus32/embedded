@@ -1014,5 +1014,6 @@ void gen(Func *prog, const char *out) {
 	dce(prog);
 	for (Func *f = prog; f; f = f->next) if (f->reachable) gen_func(f);
 	gen_data();
+	fprintf(o, "\t.section .note.GNU-stack,\"\",%%progbits\n");   /* this code needs no executable stack (as GCC marks it) */
 	fclose(o);
 }

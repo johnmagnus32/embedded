@@ -124,3 +124,5 @@ __clear_cache:
 	svc	#0
 	pop	{r7, pc}
 	.size __clear_cache, . - __clear_cache
+
+	.section .note.GNU-stack,"",%progbits   @ no executable stack needed
