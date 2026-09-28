@@ -31,6 +31,8 @@ extern const char *entry_sym;   /* entry symbol: -e wins over the script's ENTRY
 extern int bsymbolic;           /* -Bsymbolic: a .so's own definitions bind locally (not preemptible) */
 extern const char *interp_path; /* --dynamic-linker (default /lib/ld.so.1) */
 extern int stack_override;      /* -z [no]execstack: PT_GNU_STACK flags (0 = decide from the inputs' .note.GNU-stack) */
+extern int norelro;             /* -z norelro: no PT_GNU_RELRO */
+extern int warn_rwx;            /* warn about a read-write-execute PT_LOAD */
 #define PAGE 0x1000u            /* segment alignment: each PT_LOAD maps on its own pages => W^X enforceable */
 
 void  die(const char *fmt, ...) __attribute__((noreturn));

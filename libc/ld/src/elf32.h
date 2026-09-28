@@ -32,6 +32,7 @@ typedef struct {
 #define PT_DYNAMIC  2
 #define PT_INTERP   3
 #define PT_PHDR     6   /* describes the program header table itself */
+#define PT_GNU_RELRO 0x6474e552u   /* read-only after relocation: we write-protect it once relocating is done */
 
 /* Dynamic-section entry (.dynamic is an array of these, terminated by DT_NULL). */
 typedef struct {

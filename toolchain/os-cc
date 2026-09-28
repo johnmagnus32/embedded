@@ -31,6 +31,7 @@ linkobjs=()          # .o/.a already-built, passed straight to ld
 ttext=""             # -Ttext <addr> forwarded to ld
 entry=""             # -e <sym> forwarded to ld
 picflag=""           # -fPIC -> forwarded to cc1 (position-independent codegen)
+visflag=""           # -fvisibility=X -> forwarded to cc1 (definitions' default symbol visibility)
 floatabi=""          # -mfloat-abi=soft|hard -> forwarded to cc1 (the kernel is soft: no VFP ABI/attributes)
 shared=""            # -shared -> build a .so (ld -shared; no -Ttext/-e)
 soname=""            # -soname NAME -> ld -soname
@@ -66,9 +67,11 @@ while [ $# -gt 0 ]; do
     -Wl,*) IFS=, read -r -a wl <<< "${1#-Wl,}"; ldextra+=("${wl[@]}") ;;   # linker options, as gcc passes them
     -Wa,*|-Wp,*) ;;                          # assembler/preprocessor passthrough we don't forward
     -fPIC|-fpic) picflag="-fPIC" ;;          # position-independent codegen -> forwarded to cc1
+    -fvisibility=*) visflag="$1" ;;          # default symbol visibility -> forwarded to cc1
     -mfloat-abi=*) floatabi="$1" ;;          # float ABI -> forwarded to cc1
     -O*|-g*|-W*|-f*|-m*|-std=*|-pipe|-pedantic|-ansi) ;;
-    -static|-nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
+    -static) ldextra+=(-static) ;;           # a static link: ld takes no shared objects, -l finds lib<name>.a
+    -nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
     -pie|--pie) linkpie=1 ;;
     -*.o|-*.a) die "unexpected option '$1'" ;;
     *.c|*.i) inputs+=("$1") ;;
@@ -92,11 +95,11 @@ compile_one() {
     c)
       "${CPP}" "${cppargs[@]}" "${src}" > "${i}"
       [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${i}" "${out}"; else cat "${i}"; fi; return 0; }
-      "${CC1}" ${picflag} ${floatabi} -o "${s}" "${i}"
+      "${CC1}" ${picflag} ${visflag} ${floatabi} -o "${s}" "${i}"
       ;;
     i)
       [ "${mode}" = preprocess ] && { cat "${src}"; return 0; }
-      "${CC1}" ${picflag} ${floatabi} -o "${s}" "${src}"
+      "${CC1}" ${picflag} ${visflag} ${floatabi} -o "${s}" "${src}"
       ;;
     S)
       "${CPP}" "${cppargs[@]}" "${src}" > "${s}"

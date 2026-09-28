@@ -125,11 +125,13 @@ static void topasm(const char *fmt, const char *a, const char *b) {   /* a file-
 /* A declaration with no storage of its own (a prototype, an extern): weak -> `.weak name`; alias -> the symbol
  * `name` is defined as `alias` (`.set`), global unless static. */
 static void decl_symbol_attrs(const char *name, const Attr *a, int is_static) {
+	if (!is_static && vis_directive(a->vis)) topasm("\t%s %s", vis_directive(a->vis), name);   /* a declaration's own visibility */
 	if (a->weak) { strmap_put(&weak_names, strdup(name), (void *)1); topasm("\t.weak %s%s", name, ""); }
 	if (a->alias[0]) { if (!is_static && !a->weak) topasm("\t.global %s%s", name, ""); topasm("\t.set %s, %s", name, a->alias); }
 }
 static void attr_merge(Attr *to, const Attr *a) {
 	to->weak |= a->weak; to->used |= a->used; if (a->align > to->align) to->align = a->align; if (a->pcs) to->pcs = a->pcs;
+	if (a->vis) to->vis = a->vis;
 	if (a->section[0]) strcpy(to->section, a->section);
 	if (a->alias[0]) strcpy(to->alias, a->alias);
 }
@@ -149,6 +151,13 @@ static void attribute(void) {
 			tk = tk->next; expect(")");
 		}
 		else if (!strcmp(nm, "used")) decl_attr.used = 1;
+		else if (!strcmp(nm, "visibility") && consume("(")) {   /* the symbol's ELF visibility (st_other) */
+			if (tk->kind != TK_STR) die("parse: __attribute__((visibility)) needs a string (line %d)", tk->line);
+			const char *v = tk->sval;
+			decl_attr.vis = !strcmp(v, "default") ? VIS_DEFAULT : !strcmp(v, "hidden") ? VIS_HIDDEN : !strcmp(v, "internal") ? VIS_INTERNAL
+			              : !strcmp(v, "protected") ? VIS_PROTECTED : (die("parse: unknown visibility \"%s\"", v), 0);
+			tk = tk->next; expect(")");
+		}
 		else if ((!strcmp(nm, "section") || !strcmp(nm, "alias")) && consume("(")) {
 			char buf[64] = ""; size_t bl = 0;
 			if (tk->kind != TK_STR) die("parse: __attribute__((%s)) needs a string (line %d)", nm, tk->line);

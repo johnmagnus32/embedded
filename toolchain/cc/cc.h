@@ -125,7 +125,11 @@ typedef struct Node {
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
-typedef struct Attr { int weak, used, align, pcs; char section[64], alias[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp") */
+typedef struct Attr { int weak, used, align, pcs, vis; char section[64], alias[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
+                                                                                         * vis: 0 unset, else VIS_* */
+enum { VIS_DEFAULT = 1, VIS_HIDDEN, VIS_INTERNAL, VIS_PROTECTED };
+extern int default_vis;                      /* -fvisibility=: a definition's visibility when it names none (0 = default) */
+const char *vis_directive(int vis);          /* ".hidden" / ".internal" / ".protected", or NULL for default/unset */
 
 /* A compiled function: name, its parameter count, the total stack frame it needs, and its body list. */
 typedef struct Func {

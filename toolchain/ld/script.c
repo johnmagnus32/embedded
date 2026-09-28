@@ -34,6 +34,8 @@ Seg *segs; int nseg; static int segcap;
 Elf32_Phdr *phdrs; int nphdr; static int phcap;
 u32 hdrsz;
 static int headers_mapped, gnu_stack;
+static int relro;                                         /* the default layout's RELRO region is on */
+static const char *const relro_secs[] = { ".preinit_array", ".init_array", ".fini_array", ".data.rel.ro", ".got", 0 };
 static const char *script_name;
 
 /* ---- tokens -------------------------------------------------------------------------------------------- */
@@ -275,13 +277,16 @@ static const char default_script[] =
 	"  .rel.dyn  : { *(.rel.dyn) }\n"
 	"  .dynamic  : { *(.dynamic) }\n"
 	"  . = ALIGN(0x1000);\n"                               /* the writable segment starts on a fresh page: W^X */
-	"  .data.rel.ro : { *(.data.rel.ro .data.rel.ro.*) }\n"   /* read-only once relocated (with the GOT: RELRO) */
-	"  .got      : { *(.got.plt) *(.got) }\n"
+	/* RELRO: written only while relocating, then write-protected — .init/.fini arrays, .data.rel.ro, the GOT
+	 * (.got.plt too: our loader binds eagerly, as GNU ld's -z now); a dynamic output ends it on a page boundary */
 	"  .preinit_array : { PROVIDE_HIDDEN(__preinit_array_start = .); KEEP(*(.preinit_array)) PROVIDE_HIDDEN(__preinit_array_end = .); }\n"
 	"  .init_array : { PROVIDE_HIDDEN(__init_array_start = .); KEEP(*(SORT_BY_NAME(.init_array.*))) KEEP(*(.init_array))\n"
 	"                  PROVIDE_HIDDEN(__init_array_end = .); }\n"
 	"  .fini_array : { PROVIDE_HIDDEN(__fini_array_start = .); KEEP(*(SORT_BY_NAME(.fini_array.*))) KEEP(*(.fini_array))\n"
 	"                  PROVIDE_HIDDEN(__fini_array_end = .); }\n"
+	"  .data.rel.ro : { *(.data.rel.ro .data.rel.ro.*) }\n"
+	"  .got      : { *(.got.plt) *(.got) }\n"
+	"  %s\n"                                                /* `. = ALIGN(0x1000);` when RELRO applies */
 	"  .data     : { *(.data .data.*) }\n"
 	"  PROVIDE(_edata = .); PROVIDE(edata = .); PROVIDE(__bss_start = .); PROVIDE(__bss_start__ = .);\n"
 	"  .bss      : { *(.dynbss) *(.bss .bss.*) *(COMMON) }\n"
@@ -296,7 +301,9 @@ void script_read(const char *path) {
 		text = malloc(n + 1); if (fread(text, 1, n, f) != (size_t)n) die("read %s failed", path);
 		text[n] = 0; fclose(f); script_name = path;
 	} else {
-		text = malloc(sizeof default_script + 16); sprintf(text, default_script, load_base); script_name = "(default)";
+		relro = !norelro && (shared || pie || nshlib);     /* a loader will apply it: a dynamic output */
+		text = malloc(sizeof default_script + 64); sprintf(text, default_script, load_base, relro ? ". = ALIGN(0x1000);" : "");
+		script_name = "(default)";
 	}
 	tokenize(text);
 	for (p = 0; p < ntok; ) {
@@ -639,6 +646,12 @@ static void build_segments(void) {
 	OutSec *ex = outsec_named(".ARM.exidx");
 	if (ex) add_phdr((Elf32_Phdr){ PT_ARM_EXIDX, ex->off, ex->vaddr, ex->lma, ex->size, ex->size, PF_R, 4 });
 	if (gnu_stack) add_phdr((Elf32_Phdr){ PT_GNU_STACK, 0, 0, 0, 0, 0, (u32)gnu_stack, 16 });
+	OutSec *r0 = NULL, *r1 = NULL;                       /* RELRO: from the first to the last relro section present */
+	for (int i = 0; relro && relro_secs[i]; i++) { OutSec *os = outsec_named(relro_secs[i]); if (os) { if (!r0) r0 = os; r1 = os; } }
+	if (r0) {
+		u32 end = align_to(r1->vaddr + r1->size, PAGE);  /* the script ended it on a page boundary */
+		add_phdr((Elf32_Phdr){ PT_GNU_RELRO, r0->off, r0->vaddr, r0->lma, end - r0->vaddr, end - r0->vaddr, PF_R, 1 });
+	}
 }
 OutSec *outsec_named(const char *name) {
 	for (int i = 0; i < noutsec; i++) if (!strcmp(outsecs[i]->name, name)) return outsecs[i];
@@ -689,6 +702,10 @@ void layout_run(void) {
 	}
 	for (int i = 0; i < nst; i++)
 		if (st[i].kind == S_ASSERT && !st[i].ok) die("linker script %s: ASSERT failed: %s", script_name, st[i].a.sym);
+	for (int i = 0; i < nseg && warn_rwx; i++)          /* as GNU ld: code and writable data sharing a page defeat W^X */
+		if ((segs[i].flags & (PF_W | PF_X)) == (PF_W | PF_X))
+			fprintf(stderr, "ld: warning: LOAD segment at %#x has RWX permissions (%s puts code and writable data on one page)\n",
+			        segs[i].vaddr, script_name);
 	for (int i = 0; i < noutsec; i++) for (int k = i + 1; k < noutsec; k++) {   /* sections may not share addresses */
 		OutSec *a = outsecs[i], *b = outsecs[k];
 		if (a->vaddr < b->vaddr + b->size && b->vaddr < a->vaddr + a->size)

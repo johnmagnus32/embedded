@@ -179,6 +179,8 @@ static void scan_one(Obj *o, int t, u32 off, u32 type, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
 	const char *nm = s->st_name ? o->strtab + s->st_name : NULL;
 	if (s->st_shndx == SHN_UNDEF && nm) {
+		if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT && !defined_locally(nm) && ELF32_ST_BIND(s->st_info) != STB_WEAK)
+			die("hidden symbol '%s' (referenced in %s) isn't defined", nm, o->path);   /* never resolved at run time (GNU: the same) */
 		int imp = import_if_external(nm);
 		if (imp >= 0) { import_ref(o, t, off, type, &imports[imp]); return; }
 		if (!defined_locally(nm)) {

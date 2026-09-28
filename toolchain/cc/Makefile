@@ -50,6 +50,9 @@ test: $(BUILD)/cc
 	case "$$secs" in "k:=.rodata tab:=.data.rel.ro,\"aw\",%progbits fns:=.data.rel.ro,\"aw\",%progbits cv:=.data w:=.data ") \
 	  echo "PASS const data: .rodata / .data.rel.ro (-fPIC, addresses) / .data (volatile, non-const)"; pass=$$((pass+1));; \
 	  *) echo "FAIL const data placement: $$secs"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -o $$t/vis.s tests/visibility.c; vis=$$(grep -oE '\.(hidden|protected|internal) [a-z_]+' $$t/vis.s | sort | tr '\n' ' '); \
+	case "$$vis" in ".hidden hidden_ext .hidden hidden_fn .protected prot_var ") echo "PASS visibility: .hidden / .protected emitted"; pass=$$((pass+1));; \
+	  *) echo "FAIL visibility directives: '$$vis'"; fail=$$((fail+1));; esac; \
 	$(BUILD)/cc -o $$t/u.s tests/uart.c && $(OURAS) -o $$t/u.o $$t/u.s && $(OURLD) -Ttext 0x40000000 -o $$t/u.elf $$t/crt.o $$t/u.o $(RTLIB); \
 	out=$$(timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/u.elf 2>/dev/null); \
 	case "$$out" in *"cc UART works"*) echo "PASS uart: cc program printed via PL011 (real I/O)"; pass=$$((pass+1));; \

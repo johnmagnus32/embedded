@@ -87,6 +87,8 @@ test-static: $(BUILD)/ld
 	$(BUILD)/ld -o $$t/D.elf $$t/crt0.o $$t/lsm.o $$t/used.o $$t/helper.o; \
 	if cmp -s $$t/C.elf $$t/D.elf; then echo "PASS archive: helper pulled, unused dropped (== direct link)"; \
 	  else echo "FAIL archive: link with lib.a differs from equivalent direct link"; fail=1; fi; \
+	mkdir -p $$t/L; cp $$t/lib.a $$t/L/libx.a; $(BUILD)/ld -o $$t/E.elf $$t/crt0.o $$t/lsm.o -L$$t/L -lx \
+	  && cmp -s $$t/C.elf $$t/E.elf && echo "PASS -lx finds libx.a (no .so in the -L dir)" || { echo "FAIL -lx did not link libx.a"; fail=1; }; \
 	printf '.section .tiny,"aw"\n.word used\n' > $$t/tiny.s; $(OURAS) -o $$t/tiny.o $$t/tiny.s; \
 	python3 tests/corrupt.py shrink $$t/tiny.o .tiny 1 $$t/tiny1.o; python3 tests/corrupt.py armap $$t/lib.a $$t/badmap.a; \
 	$(BUILD)/ld -o $$t/X.elf $$t/crt0.o $$t/lsm.o $$t/used.o $$t/helper.o $$t/tiny1.o 2>$$t/e1; s1=$$?; \

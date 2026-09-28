@@ -548,6 +548,10 @@ static void do_directive(void) {
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR); prevsec = was;
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE); prevsec = was;
 	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { int i = sym_intern(toks[1]); syms[i].global = 1;   /* (intern FIRST: it may grow syms) */
+	} else if (!strcmp(d, ".hidden") || !strcmp(d, ".internal") || !strcmp(d, ".protected")) {   /* symbol visibility (st_other) */
+		int v = d[1] == 'h' ? STV_HIDDEN : d[1] == 'i' ? STV_INTERNAL : STV_PROTECTED;
+		if (ntok < 2) die("%s: expected a symbol", d);
+		for (int k = 1; k < ntok; k++) { int i = sym_intern(toks[k]); syms[i].vis = v; }
 	} else if (!strcmp(d, ".weak")) { int i = sym_intern(toks[1]); syms[i].weak = 1;   /* STB_WEAK binding (kernel COND_SYSCALL) */
 	} else if (!strcmp(d, ".type")) { int i = sym_intern(toks[1]);
 		if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;

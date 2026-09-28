@@ -919,6 +919,8 @@ static void gen_func(Func *f) {
 	if (f->attr.section[0]) fprintf(o, "\t.section %s,\"ax\",%%progbits\n", f->attr.section);   /* __attribute__((section)) (__init ...) */
 	else fprintf(o, "\t.text\n");
 	fprintf(o, "\t.p2align %d\n", log2i(f->attr.align > 4 ? f->attr.align : 4));
+	if (!f->is_static && vis_directive(f->attr.vis ? f->attr.vis : default_vis))   /* explicit, else -fvisibility= */
+		fprintf(o, "\t%s %s\n", vis_directive(f->attr.vis ? f->attr.vis : default_vis), f->name);
 	if (f->attr.weak || name_is_weak(f->name)) fprintf(o, "\t.weak %s\n", f->name);
 	else if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
 	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
@@ -964,6 +966,11 @@ static void gvar_head(Gvar *g, const char *deflt) {
  * an `extern` decl defines nothing — it's a reference the linker resolves against the real definition. */
 static void gen_data(void) {
 	for (Gvar *g = globals; g; g = g->next) if (g->is_topasm) fprintf(o, "%s\n", g->str);   /* file-scope asm: .weak/.set etc, verbatim */
+	for (Gvar *g = globals; g; g = g->next) {            /* object visibility: its own, else -fvisibility= for a definition */
+		if (g->is_str || g->is_topasm || g->is_static) continue;
+		const char *v = vis_directive(g->attr.vis ? g->attr.vis : g->is_extern ? 0 : default_vis);
+		if (v) fprintf(o, "\t%s %s\n", v, g->name);
+	}
 	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
 		if (!g->wide) { fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str); continue; }
 		int n = g->type->len; unsigned *w = malloc(n * sizeof *w); int wl = wstr_decode(g->str, w, n);   /* wide: one word/halfword per character */

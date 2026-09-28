@@ -35,6 +35,8 @@ const char *entry_sym = NULL;              /* -e; else the script's ENTRY(); els
 int bsymbolic = 0;                         /* -Bsymbolic */
 const char *interp_path = "/lib/ld.so.1";  /* --dynamic-linker: the PT_INTERP a dynamic program names */
 int stack_override;                        /* -z noexecstack / execstack: PT_GNU_STACK's flags, else from the inputs */
+int norelro;                               /* -z norelro */
+int warn_rwx = 1;                          /* --no-warn-rwx-segments turns the RWX-segment warning off */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
 void die(const char *fmt, ...) {
@@ -162,16 +164,31 @@ static void relocate(void) {
 	}
 }
 
-/* An input file is an archive if it opens with the ar magic; otherwise treat it as a relocatable object. */
-static int is_archive(const char *path) {
+/* An input file's kind, from its first bytes: an archive (ar magic), a shared object (ELF ET_DYN, used as a
+ * provider), else a relocatable object (elf_load validates it). */
+enum { IN_OBJECT, IN_ARCHIVE, IN_SHARED };
+static int input_kind(const char *path) {
 	FILE *f = fopen(path, "rb"); if (!f) die("cannot open %s", path);
-	char m[8]; size_t n = fread(m, 1, 8, f); fclose(f);
-	return n == 8 && !memcmp(m, "!<arch>\n", 8);
+	u8 h[18]; size_t n = fread(h, 1, sizeof h, f); fclose(f);
+	if (n >= 8 && !memcmp(h, "!<arch>\n", 8)) return IN_ARCHIVE;
+	if (n >= 18 && !memcmp(h, "\177ELF", 4) && (h[16] | h[17] << 8) == ET_DYN) return IN_SHARED;
+	return IN_OBJECT;
 }
 static int file_exists(const char *p) { FILE *f = fopen(p, "rb"); if (f) { fclose(f); return 1; } return 0; }
+static int link_static;                                   /* -static: no shared objects at all */
+static void load_input(const char *path, int kind) {
+	if (kind == IN_ARCHIVE) ar_load(path);               /* lazy members, pulled on demand */
+	else if (kind == IN_SHARED) {
+		if (link_static) die("%s: a shared object in a -static link", path);
+		load_shared(path);                               /* a provider: its exports, not its sections */
+	} else elf_load(path);                               /* always-linked object */
+}
 /* -z KEYWORD: the ones with a meaning here; any other is an error (never silently ignored). */
 static void z_option(const char *k) {
-	if (!strcmp(k, "noexecstack")) stack_override = PF_R | PF_W;
+	if (!strcmp(k, "relro")) norelro = 0;
+	else if (!strcmp(k, "norelro")) norelro = 1;
+	else if (!strcmp(k, "now")) ;                        /* our loader always binds at startup (eager) */
+	else if (!strcmp(k, "noexecstack")) stack_override = PF_R | PF_W;
 	else if (!strcmp(k, "execstack")) stack_override = PF_R | PF_W | PF_X;
 	else if (!strncmp(k, "max-page-size=", 14) || !strncmp(k, "common-page-size=", 17)) {
 		if (strtoul(strchr(k, '=') + 1, NULL, 0) != PAGE) die("-z %s: this linker lays out %#x-byte pages only", k, PAGE);
@@ -180,8 +197,12 @@ static void z_option(const char *k) {
 
 int main(int argc, char **argv) {
 	const char *out = "a.out", *script_path = NULL;
-	const char **libnames = NULL, **libdirs = NULL; int nlibname = 0, libcap = 0, nlibdir = 0, dircap = 0;
-	int ttext = 0;
+	/* Inputs are processed in command-line order once every option is read (-L applies to every -l, wherever it
+	 * appears, as in GNU ld): a file, or -l<name> searched per -L dir as lib<name>.so then lib<name>.a — .a only
+	 * under -Bstatic/-static. */
+	struct { const char *name; int lib, bstatic; } *in = NULL; int nin = 0, incap = 0;
+	const char **libdirs = NULL; int nlibdir = 0, dircap = 0;
+	int ttext = 0, bstatic = 0;
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "-o") && i + 1 < argc) out = argv[++i];
@@ -192,6 +213,8 @@ int main(int argc, char **argv) {
 		else if (!strcmp(a, "-pie") || !strcmp(a, "--pie")) { pie = 1; load_base = 0; }
 		else if (!strcmp(a, "-shared") || !strcmp(a, "--shared")) { shared = 1; load_base = 0; }
 		else if (!strcmp(a, "-Bsymbolic")) bsymbolic = 1;
+		else if (!strcmp(a, "--no-warn-rwx-segments")) warn_rwx = 0;
+		else if (!strcmp(a, "--warn-rwx-segments")) warn_rwx = 1;
 		else if (!strcmp(a, "--build-id=none") || !strcmp(a, "--start-group") || !strcmp(a, "--end-group")) ;   /* we emit no build-id;
 		                                                     * archives already resolve as one group (see resolve_symbols) */
 		else if (!strncmp(a, "--dynamic-linker=", 17)) interp_path = a + 17;
@@ -200,28 +223,32 @@ int main(int argc, char **argv) {
 		else if (!strncmp(a, "-z", 2) && a[2]) z_option(a + 2);
 		else if (!strcmp(a, "-soname") && i + 1 < argc) soname = argv[++i];
 		else if (!strncmp(a, "-soname=", 8)) soname = a + 8;
+		else if (!strcmp(a, "-static")) link_static = bstatic = 1;
+		else if (!strcmp(a, "-Bstatic") || !strcmp(a, "-dn") || !strcmp(a, "-non_shared")) bstatic = 1;
+		else if (!strcmp(a, "-Bdynamic") || !strcmp(a, "-dy") || !strcmp(a, "-call_shared")) { if (link_static) die("-Bdynamic after -static"); bstatic = 0; }
 		else if (!strncmp(a, "-l", 2)) {
 			if (!a[2] && i + 1 == argc) die("-l needs a name");
-			libnames = grow(libnames, nlibname, &libcap, sizeof *libnames); libnames[nlibname++] = a[2] ? a + 2 : argv[++i];
+			in = grow(in, nin, &incap, sizeof *in); in[nin].name = a[2] ? a + 2 : argv[++i]; in[nin].lib = 1; in[nin++].bstatic = bstatic;
 		} else if (!strncmp(a, "-L", 2)) {
 			if (!a[2] && i + 1 == argc) die("-L needs a directory");
 			libdirs = grow(libdirs, nlibdir, &dircap, sizeof *libdirs); libdirs[nlibdir++] = a[2] ? a + 2 : argv[++i];
 		}
 		else if (a[0] == '-') die("unknown option '%s'", a);
-		else if (is_archive(a)) ar_load(a);                  /* lazy members, pulled on demand */
-		else elf_load(a);                                     /* always-linked object */
+		else { in = grow(in, nin, &incap, sizeof *in); in[nin].name = a; in[nin].lib = 0; in[nin++].bstatic = bstatic; }
+	}
+	for (int k = 0; k < nin; k++) {
+		if (!in[k].lib) { load_input(in[k].name, input_kind(in[k].name)); continue; }
+		char path[512]; int found = 0;
+		for (int d = 0; d < nlibdir && !found; d++)
+			for (int t = in[k].bstatic; t < 2 && !found; t++) {   /* lib<name>.so (unless static), then lib<name>.a */
+				snprintf(path, sizeof path, "%s/lib%s.%s", libdirs[d], in[k].name, t ? "a" : "so");
+				if (file_exists(path)) { load_input(strdup(path), t ? IN_ARCHIVE : IN_SHARED); found = 1; }
+			}
+		if (!found) die("cannot find -l%s (searched %d -L dir(s) for lib%s%s.a)", in[k].name, nlibdir, in[k].name, in[k].bstatic ? "" : ".so / lib");
 	}
 	if (!nobj) die("usage: ld [-o out] [-T script | -Ttext addr] [-e sym] [-pie | -shared [-soname name] [-Bsymbolic]] [-z kw] [--dynamic-linker path] [-L dir] [-l name] obj.o|lib.a ...");
 	if (script_path && ttext) die("-Ttext and -T both place the image: use one");
 
-	for (int i = 0; i < nlibname; i++) {                 /* -l<name>: lib<name>.so under a -L dir (a provider) */
-		char path[512]; int loaded = 0;
-		for (int d = 0; d < nlibdir && !loaded; d++) {
-			snprintf(path, sizeof path, "%s/lib%s.so", libdirs[d], libnames[i]);
-			if (file_exists(path)) { load_shared(strdup(path)); loaded = 1; }
-		}
-		if (!loaded) die("cannot find -l%s (searched %d -L dir(s) for lib%s.so)", libnames[i], nlibdir, libnames[i]);
-	}
 	resolve_symbols();
 	if (shared && !soname) { const char *b = strrchr(out, '/'); soname = b ? b + 1 : out; }
 

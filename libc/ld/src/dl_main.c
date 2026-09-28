@@ -47,6 +47,7 @@ static inline long raw_syscall6(long nr, long a0, long a1, long a2,
 #define SYS_write  4
 #define SYS_open   5    /* legacy open (simpler than openat for a single file) */
 #define SYS_close  6
+#define SYS_mprotect 125
 #define SYS_mmap2 192
 
 #define PROT_READ  1
@@ -97,6 +98,22 @@ static void *dl_mmap(uint32_t addr, uint32_t len, int prot, int flags, int fd, u
 
 /* ---- map a .so's LOAD segments into memory --------------------------------- *
  * Returns the load base (= mapped_addr - min_vaddr). Opens and closes the fd. */
+/* Record an object's PT_GNU_RELRO: written only while relocating, write-protected after (dl_protect_relro). */
+static void dl_find_relro(dso_t *d, const Elf32_Phdr *ph, int phnum, Elf32_Addr base)
+{
+	for (int i = 0; i < phnum; i++)
+		if (ph[i].p_type == PT_GNU_RELRO) { d->relro = ph[i].p_vaddr + base; d->relrosz = ph[i].p_memsz; }
+}
+/* Make an object's RELRO region read-only: the pages wholly inside it (start rounded down, end rounded down, as
+ * glibc does — the linker page-aligns the end, so none of the object's writable data shares a protected page). */
+static void dl_protect_relro(const dso_t *d, const char *what)
+{
+	if (!d->relro) return;
+	uint32_t start = d->relro & ~0xFFFu, end = (d->relro + d->relrosz) & ~0xFFFu;
+	if (end > start && raw_syscall3(SYS_mprotect, (long)start, (long)(end - start), PROT_READ) != 0)
+		dl_die(what);
+}
+
 static Elf32_Addr dl_map_so(const char *path, dso_t *d)
 {
 	long fd = raw_syscall3(SYS_open, (long)path, 0 /*O_RDONLY*/, 0);
@@ -172,14 +189,10 @@ static Elf32_Addr dl_map_so(const char *path, dso_t *d)
 	if (!dyn) dl_die("no PT_DYNAMIC in libc.so");
 	dl_memset(d, 0, sizeof *d);
 	if (!dl_parse(d, dyn, base)) dl_die("dl_parse libc.so failed");
+	dl_find_relro(d, ph, phnum, base);
 	return base;
 }
 
-/* ---- the main linker loop -------------------------------------------------- */
-/* hidden visibility: _start's `bl _dl_main` resolves PC-relative, NOT through
- * the PLT — so we don't need a resolved GOT entry to call ourselves. This
- * eliminates the one JUMP_SLOT self-reference the linker would otherwise have. */
-__attribute__((noreturn, used, visibility("hidden")))
 /* Apply one object's relocation table (REL or JMPREL) against the lookup scope; any unresolved entry is fatal. */
 static void relocate_table(const dso_t *d, const Elf32_Rel *rel, Elf32_Word sz, const dso_t *const *scope, const char *what)
 {
@@ -190,6 +203,11 @@ static void relocate_table(const dso_t *d, const Elf32_Rel *rel, Elf32_Word sz, 
 			dl_die(what);
 }
 
+/* ---- the main linker loop -------------------------------------------------- */
+/* hidden visibility: _start's `bl _dl_main` resolves PC-relative, NOT through
+ * the PLT — so we don't need a resolved GOT entry to call ourselves. This
+ * eliminates the one JUMP_SLOT self-reference the linker would otherwise have. */
+__attribute__((noreturn, used, visibility("hidden")))
 void _dl_main(long *sp)
 {
 	/* 1. Parse the initial stack to get argc/argv/envp/auxv. */
@@ -249,6 +267,7 @@ void _dl_main(long *sp)
 		if (!dyn) dl_die("no PT_DYNAMIC in program");
 		dl_memset(&prog, 0, sizeof prog);
 		if (!dl_parse(&prog, dyn, prog_base)) dl_die("dl_parse program failed");
+		dl_find_relro(&prog, prog_phdr, prog_phnum, prog_base);
 	}
 
 	/* 3. Map the program's dependency, read from its DT_NEEDED (NOT hardcoded).
@@ -284,6 +303,8 @@ void _dl_main(long *sp)
 	relocate_table(&libc, libc.jmprel, libc.pltrelsz, scope, "unresolved libc JUMP_SLOT");
 	relocate_table(&prog, prog.jmprel, prog.pltrelsz, scope, "unresolved program JUMP_SLOT");
 	relocate_table(&prog, prog.rel, prog.relsz, scope, "unresolved program REL");
+	dl_protect_relro(&libc, "mprotect libc.so RELRO failed");   /* relocating is done: its GOT etc. go read-only */
+	dl_protect_relro(&prog, "mprotect program RELRO failed");
 
 	dl_puts("ld.so: relocations done, jumping to program\n");
 

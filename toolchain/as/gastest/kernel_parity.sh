@@ -14,9 +14,9 @@ CC=$ROOT/toolchain/cc/build/cc; AS=$ROOT/toolchain/as/build/as
 W=${WORK:-/tmp/kernel_parity}; mkdir -p "$W"
 dirs=${*:-lib crypto kernel mm fs}
 
-symtab() {   # "value size type bind section-name name", section indices resolved to names
+symtab() {   # "value size type bind visibility section-name name", section indices resolved to names
 	"${GNU}readelf" -SW "$1" | awk '/^ +\[ *[0-9]+\]/{gsub(/[\[\]]/," "); print $1, $2}' > "$1.secmap"
-	"${GNU}readelf" -sW "$1" | awk 'NR==FNR{m[$1]=$2; next} FNR>3 && $1 ~ /:$/ {n=($7 in m)?m[$7]:$7; if (n==".ARM.attributes") next; print $2, $3, $4, $5, n, $8}' "$1.secmap" -
+	"${GNU}readelf" -sW "$1" | awk 'NR==FNR{m[$1]=$2; next} FNR>3 && $1 ~ /:$/ {n=($7 in m)?m[$7]:$7; if (n==".ARM.attributes") next; print $2, $3, $4, $5, $6, n, $8}' "$1.secmap" -
 }
 shdrs() {   # "name type flags align" per section, sorted (section ORDER may differ: .rel.X placement)
 	"${GNU}readelf" -SW "$1" | sed -n 's/^ *\[ *[0-9]*\] //p' | awk '$1 != "" && $1 !~ /^NULL/ { fl = (NF == 10) ? $7 : "-"; print $1, $2, fl, $NF }' | sort

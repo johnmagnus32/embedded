@@ -22,7 +22,8 @@ typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shn
                  int mapstate, lastmap, secsym; } Section;   /* align: sh_addralign (GAS: max requested; an ARM insn = 4);
                                                                  * entsize: M sections; mapstate/lastmap: its mapping-symbol
                                                                  * state + latest $a/$d (-1 none); secsym: its STT_SECTION symbol */
-typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak, sized; } Sym;   /* sized: had a .size */
+typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak, sized, vis; } Sym;   /* sized: had a .size;
+                                                                                                         * vis: STV_* (.hidden …) */
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */

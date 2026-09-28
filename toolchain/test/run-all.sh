@@ -56,6 +56,10 @@ if [ -d "${BIN}" ] && [ -d "${DYN}" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ] &
       GEN_INIT_CPIO="${GIC}" REFKERNEL="${KERNEL}" PIC=0 SRC="${HERE}/boot/nopic.c" BUILD="${HERE}/.bootbed-nopic" \
       MARKER="nopic: environ shared; libc function pointers work" bash "${HERE}/boot-dynamic.sh" \
       && ok "dynamic boot, non-PIC program (copy relocs + canonical PLT)" || no "dynamic boot, non-PIC program"
+    CC="${CC}" LIBC_DYN_STAGE="${DYN}" LIBC_INCLUDE="${REPO}/libc/include" UAPI_INCLUDE="${REPO}/kernel/include/uapi" \
+      GEN_INIT_CPIO="${GIC}" REFKERNEL="${KERNEL}" SRC="${HERE}/boot/relro.c" BUILD="${HERE}/.bootbed-relro" \
+      MARKER="relro: .data.rel.ro is read-only after relocation (alpha beta)" bash "${HERE}/boot-dynamic.sh" \
+      && ok "dynamic boot, RELRO write-protected" || no "dynamic boot, RELRO"
   else no "rebuild libc.so/ld.so.1 with the new tools"; fi
 else
   sk "dynamic boot (engine QEMU build not staged)"

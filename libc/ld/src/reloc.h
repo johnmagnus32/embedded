@@ -34,6 +34,9 @@ typedef struct {
 
 	const char       *needed[8]; /* DT_NEEDED names (strtab ptrs); NULL-terminated */
 	int               nneeded;
+
+	Elf32_Addr        relro;     /* PT_GNU_RELRO, runtime address (0 = none)      */
+	Elf32_Word        relrosz;   /* ...and its size                               */
 } dso_t;
 
 /* SysV ELF hash of a symbol name (the classic algorithm; matches DT_HASH). */
