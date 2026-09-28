@@ -1,16 +1,21 @@
 /*
- * ld.h — the interface between the linker's three layers (mirrors the assembler's split, and GNU's):
+ * ld.h — the interface between the linker's layers (mirrors the assembler's split, and GNU's):
  *
- *   FRONT-END  (ld.c)   generic linking ALGORITHM: load objects, lay out sections at addresses, build +
- *                       resolve the global symbol table, drive the relocation pass. Calls the hooks below.
- *   OBJ BACKEND (elf.c) object-FORMAT layer: parse an ELF32 relocatable into an Obj, and serialize the
- *                       output ET_EXEC. Everything that knows the on-disk ELF layout lives here.  (~BFD)
- *   MD BACKEND (arm.c)  machine-dependent: apply ONE relocation of a given type + the ELF machine id.
- *                       THE only architecture-specific file.  (~bfd/elf32-arm reloc handling)
+ *   FRONT-END  (ld.c)       generic linking ALGORITHM: load inputs, resolve the global symbol table, drive
+ *                           layout, apply relocations (via the md backend).
+ *   LAYOUT     (script.c)   the ONE layout engine: a linker script (-T, or the built-in default script)
+ *                           maps input sections to output sections, assigns run/load addresses, and groups
+ *                           output sections into loadable segments.
+ *   DYNAMIC    (dynamic.c)  dynamic-linking tables (imports, PLT, GOT, .dynsym/.hash/.dynstr/.dynamic,
+ *                           dynamic relocations): built ONCE from one relocation scan, carried in linker-made
+ *                           sections that the layout engine places like any input section.
+ *   OBJ BACKEND (elf.c)     object-FORMAT layer: read ELF32 relocatables / archives / shared objects, and
+ *                           serialize the output image.  (~BFD)
+ *   MD BACKEND (arm.c)      machine-dependent: relocation encodings, PLT stubs, the ELF machine id.
+ *                           THE only architecture-specific file.  (~bfd/elf32-arm)
  *
  * The ELF format itself (structs + constants) + low-level helpers are shared with `as` via
- * common/elf.h + common/elfutil.h — our miniature libbfd. Another CPU = a new arm.c; another object
- * format = a new elf.c.
+ * common/elf.h + common/elfutil.h — our miniature libbfd.
  */
 #ifndef LD_H
 #define LD_H
@@ -18,143 +23,99 @@
 #include "elfutil.h"    /* shared helpers: rd32/wr32, alignup, Strtab */
 #include "strmap.h"     /* shared string-keyed hash map */
 
-extern u32 load_base;           /* where the image maps: default 0x10000 (hosted), override with -Ttext <addr> */
-extern int pie;                 /* -pie: emit ET_DYN with self-relocation metadata (base 0, load-bias fixups) */
-extern int shared;              /* -shared: emit an ET_DYN LIBRARY (exports .dynsym/.hash; no entry point) */
+extern u32 load_base;           /* default layout: where the image (headers included) starts; -Ttext <addr> */
+extern int pie;                 /* -pie: ET_DYN at base 0; absolute refs become load-bias fixups */
+extern int shared;              /* -shared: an ET_DYN LIBRARY (exports .dynsym/.hash; no required entry) */
 extern const char *soname;      /* -soname NAME (default: output basename) -> DT_SONAME */
-#define PAGE      0x1000u       /* segment alignment: each PT_LOAD maps on its own page => W^X enforceable */
+extern const char *entry_sym;   /* entry symbol: -e wins over the script's ENTRY() */
+#define PAGE 0x1000u            /* segment alignment: each PT_LOAD maps on its own pages => W^X enforceable */
 
-/* Dynamic relocation table (PIE only): the virtual addresses of every word that holds an absolute
- * reference. relocate() collects them; the writer emits one R_ARM_RELATIVE per entry into .rel.dyn,
- * and the runtime crt walks that table adding the load bias to each. */
-#define MAXDYNREL 16384
-extern u32 dynrel[MAXDYNREL]; extern int ndynrel;
-#define NDYNENT 5               /* .dynamic entries: DT_REL, DT_RELSZ, DT_RELENT, DT_RELCOUNT, DT_NULL */
+void  die(const char *fmt, ...) __attribute__((noreturn));
+void *grow(void *v, int n, int *cap, size_t esz);   /* ensure room for element n (doubling); returns v */
 
+/* ---- inputs ------------------------------------------------------------------------------------ */
+struct OutSec;
 typedef struct {
 	const char *path; u8 *data; long size;      /* whole file (mutable — relocations patch it in place) */
-	Elf32_Ehdr *eh; Elf32_Shdr *sh; int nsh;
+	Elf32_Ehdr *eh; Elf32_Shdr *sh; int nsh; const char *shstr;
 	Elf32_Sym *sym; int nsym; const char *strtab;
-	u32 *sec_vaddr;                              /* [nsh] assigned virtual (run) address of each allocated section */
-	u32 *sec_lma;                                /* [nsh] assigned load address (== sec_vaddr unless AT> in the script) */
-	int active;                                  /* 1 = contributes to output; archive members start 0 (lazy) */
+	u32 *sec_vaddr;                              /* [nsh] run address of each placed section               */
+	u32 *sec_lma;                                /* [nsh] load address (== sec_vaddr unless AT/AT> moves it) */
+	struct OutSec **sec_out;                     /* [nsh] its output section; NULL = unplaced; &os_discard  */
+	int active;                                  /* 1 = contributes to output; archive members join when pulled */
 } Obj;
-extern Obj **objs; extern int nobj;           /* every loaded object (grows); archive members join when pulled */
+extern Obj **objs; extern int nobj;              /* every loaded object; archive members join when pulled */
 Obj *obj_new(void);
+static inline const char *sec_name(const Obj *o, int j) { return o->shstr + o->sh[j].sh_name; }
 
-/* The global symbol table (hashed): a DEFINED symbol records where (obj/symidx) until layout gives it an address;
- * a linker/script-defined one has obj == NULL and its vaddr set directly. */
-typedef struct { const char *name; u32 vaddr; int defined, weak, strong_ref; Obj *obj; int symidx; } GSym;
+Obj *elf_load(const char *path);                 /* elf.c: an always-linked object file            */
+void ar_load(const char *path);                  /* elf.c: register an archive's symbol index      */
+Obj *ar_pull(const char *sym);                   /* elf.c: load the member defining sym, or NULL    */
+void load_shared(const char *path);              /* elf.c: read a .so's exports + soname (a provider) */
+
+/* -l: a shared library we link AGAINST (a provider): its exports + soname; its sections are not laid out. */
+typedef struct { const char *soname; int used; } ShLib;           /* used -> a DT_NEEDED */
+typedef struct { const char *name; int lib; u32 size; } ShExport; /* a provider's exported symbol (+ its size) */
+extern ShLib *shlibs; extern int nshlib;
+extern ShExport *shexports; extern int nshexport;
+
+/* ---- the global symbol table (hashed) ---------------------------------------------------------- */
+/* An object definition records where (obj/symidx) until layout gives it an address. A LINKER-SCRIPT symbol
+ * (obj == NULL) is declared when the script is read (linker = 1) and gets its value during layout; abs = it was
+ * assigned outside SECTIONS (an absolute value, not an image address); os = the output section it follows. */
+typedef struct { const char *name; u32 vaddr; int defined, weak, strong_ref; Obj *obj; int symidx;
+                 int linker, abs, hidden; struct OutSec *os; } GSym;
 GSym *gsym_find(const char *name);
-void  gsym_define(const char *name, u32 vaddr, int weak);   /* a linker/script-defined symbol */
+GSym *gsym_get(const char *name);                /* find or create (an undefined, unreferenced entry) */
+int   defined_locally(const char *name);         /* defined by one of our objects or by the script */
+u32   sym_addr(const Obj *o, int symidx);        /* a DEFINED object symbol's final address */
+int   sym_is_abs(const Obj *o, int symidx);      /* does the symbol (after resolution) have an absolute value? */
 
-/* -shared exports: the global/weak DEFINED symbols this .so publishes into .dynsym/.hash, so other
- * objects (and our runtime loader's dso_lookup) can resolve against it. Collected before layout (names
- * size the tables); each symbol's final vaddr is read from its obj at write time. */
-typedef struct { const char *name; Obj *obj; int symidx; } Export;
-#define MAXEXPORT 8192
-extern Export exports[]; extern int nexport;
+/* ---- output sections + segments (script.c) ------------------------------------------------------ */
+typedef struct { Obj *obj; int shndx; } InSec;   /* an input section placed in an output section */
+typedef struct OutSec {
+	const char *name;
+	u32 type, flags, entsize;                    /* from the inputs: PROGBITS/NOBITS/…; SHF_* union     */
+	u32 vaddr, lma, size, off;                   /* run address, load address, size, file offset        */
+	InSec first;                                 /* its first input (sh_link/sh_info carry over from it) */
+	int index;                                   /* section-header index in the output (0 = not emitted) */
+	int seg;                                     /* its PT_LOAD (segs[] index)                          */
+	int done;                                    /* addresses assigned (this layout pass)               */
+} OutSec;
+extern OutSec os_discard;                        /* sec_out marker: matched by /DISCARD/                 */
+extern OutSec **outsecs; extern int noutsec;     /* emitted output sections, in address-assignment order */
 
-/* -l/-L: a shared library we link AGAINST (a provider). We read its exports + soname; we do NOT lay out
- * its sections. An undefined ref matching one of its exports becomes an IMPORT resolved at runtime. */
-typedef struct { const char *soname; int used; } ShLib;    /* used=1 -> emit a DT_NEEDED for it */
-#define MAXSHLIB 16
-extern ShLib shlibs[]; extern int nshlib;
-typedef struct { const char *name; int lib; u32 size; } ShExport;  /* a symbol a provider exports (+ its size) */
-#define MAXSHEXPORT 16384
-extern ShExport shexports[]; extern int nshexport;
+typedef struct { u32 vaddr, lma, off, filesz, memsz, flags; } Seg;   /* one PT_LOAD */
+extern Seg *segs; extern int nseg;
+extern Elf32_Phdr *phdrs; extern int nphdr;      /* the program header table (PT_LOADs + PHDR/INTERP/DYNAMIC/…) */
+extern u32 hdrsz;                                /* ELF header + program header table bytes            */
 
-/* An IMPORT the consumer resolves at runtime: an undefined symbol found in a provider. A CALLED import
- * gets a PLT stub + GOT slot + JUMP_SLOT reloc (plt_index >= 0). A DATA import (addressed via an ABS32
- * literal) gets a copy of the variable in the exe's own .dynbss + an R_ARM_COPY (is_data=1). dynsym_index
- * is its slot in the output .dynsym. */
-typedef struct { const char *name; int lib; int plt_index; int dynsym_index; int is_data; u32 copy_vaddr, copy_size; } Import;
-#define MAXIMPORT 8192
-extern Import imports[]; extern int nimport;
-extern int nplt;                /* PLT/GOT/rel.plt entry count (== number of distinct CALLED imports) */
-#define PLTENT 16               /* bytes per PIC .plt stub: ldr ip,[pc,#4]; add ip,pc,ip; ldr pc,[ip]; .word got-pc
-                                 * (PC-relative to the GOT slot -> bias-invariant, no reloc, W^X-clean in a .so) */
+void script_read(const char *path);              /* -T script (NULL = the built-in default script)    */
+extern GSym **declared; extern int ndeclared;    /* the symbols the script defines, in script order     */
+void layout_match(Obj *o);                       /* map o's allocatable sections to output sections   */
+void layout_run(void);                           /* orphans, addresses, segments, output indices       */
+OutSec *outsec_named(const char *name);          /* an emitted output section by name, or NULL        */
 
-/* Copy relocations (.rel.dyn, R_ARM_COPY): one per DATA import — the loader memcpy's the variable from
- * its provider into the exe's .dynbss slot at r_offset. Collected by relocate(), emitted after RELATIVE. */
-typedef struct { u32 offset; u32 dynsym_index; } CopyRel;
-#define MAXCOPYREL 4096
-extern CopyRel copyrel[]; extern int ncopyrel;
+/* ---- dynamic linking (dynamic.c) ---------------------------------------------------------------- */
+extern Obj *linker_obj;                          /* the linker-made sections (.got, .plt, .dynamic, …)  */
+enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELDYN, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_NSEC };
+void dyn_init(void);                             /* create linker_obj (its sections empty)             */
+void dyn_scan(void);                             /* ONE relocation scan -> imports / PLT / GOT / dynamic relocs */
+void dyn_size(void);                             /* size linker_obj's sections from the tables built    */
+void dyn_fill(void);                             /* after layout: their contents                       */
+int  dyn_target(Obj *o, int symidx, u32 type, u32 *S);   /* relocation target inside a linker-made table */
 
-/* PIC GOT (from R_ARM_GOT_PREL): one slot per distinct referenced symbol. A LOCAL-defined symbol's slot
- * holds its link-time address + gets an R_ARM_RELATIVE (loader adds the bias); an IMPORTED symbol's slot
- * is 0 + gets an R_ARM_GLOB_DAT against its .dynsym entry (loader writes the resolved address). Built
- * before layout so the count sizes .got; each slot's vaddr is assigned in layout. */
-typedef struct { const char *name; int is_import; int dynsym_index; u32 vaddr; u32 symval;
-                 Obj *def_obj; int def_symidx; } GotEnt;   /* def_obj/def_symidx: a LOCAL def, to resolve symval post-layout */
-#define MAXGOT 8192
-extern GotEnt gotents[]; extern int ngotent;
-/* GLOB_DAT relocations (.rel.dyn, R_ARM_GLOB_DAT): one per IMPORTED GOT slot. */
-typedef struct { u32 offset; u32 dynsym_index; } GlobDat;
-#define MAXGLOBDAT 8192
-extern GlobDat globdat[]; extern int nglobdat;
-
-/* Linker-script driven layout (subset): when `-T script.ld` is given, the script (not the built-in
- * 2-segment model) places sections + defines symbols. outsecs[] is the resulting output-section list
- * (name + placement), used to emit section headers; the actual bytes come from each input section's
- * assigned sec_vaddr, exactly as the normal path. */
-typedef struct { char name[64]; u32 vaddr, lma, size; int nobits; int exec, write; } OutSec;   /* lma: load addr (== vaddr unless AT>) */
-#define MAXOUTSEC 64
-extern OutSec outsecs[]; extern int noutsec;
-extern int scripted;                                               /* 1 = a linker script drives layout */
-int  script_run(const char *path);                                 /* parse + lay out per the script; 1 if used */
-void elf_write_script(const char *out, u32 entry);                 /* write the ET_EXEC from the script layout */
-
-void die(const char *fmt, ...);                                    /* front-end (ld.c) */
-Obj *elf_load(const char *path);                                    /* elf.c: an always-linked object file */
-void ar_load(const char *path);                                     /* elf.c: register an archive's symbol index */
-Obj *ar_pull(const char *sym);                                      /* elf.c: load the member defining sym, or NULL */
-u32  pick_nbucket(u32 nsyms);                                      /* .hash bucket count (ld.c; used by elf.c) */
-
-/* The result of layout(): two loadable segments (W^X). Segment 0 is R-X (headers + .text + .rodata);
- * segment 1 is R-W (.data then .bss). Each is page-aligned so it maps with its own permissions; within
- * a segment we keep vaddr == LOAD_BASE + file-offset (identity map), so the writer needs no offset table.
- * A segment is absent when its *_memsz is 0 (e.g. a program with no writable data). */
-typedef struct {
-	u32 rx_filesz;                              /* seg 0 size from LOAD_BASE (== memsz; headers included) */
-	u32 rw_vaddr, rw_off, rw_filesz, rw_memsz;  /* seg 1: vaddr, file offset, on-disk size, in-mem size  */
-	/* PIE only: the .rel.dyn (R_ARM_RELATIVE table) and .dynamic array live at the tail of seg 0. */
-	u32 text_size;                              /* .text+.rodata size (seg 0 minus headers and the two below) */
-	u32 reldyn_vaddr, reldyn_off, reldyn_sz;    /* .rel.dyn: ndynrel * sizeof(Elf32_Rel)                     */
-	u32 dynamic_vaddr, dynamic_off, dynamic_sz; /* .dynamic: the DT_* array + PT_DYNAMIC target              */
-	u32 dynamic_count;                          /* number of Elf32_Dyn entries (varies: pie vs shared)       */
-	/* -shared / dynamic consumer: the dynamic symbol table, also in the read-only seg-0 tail. */
-	u32 hash_vaddr, hash_off, hash_sz;          /* .hash: SysV [nbucket, nchain, bucket[], chain[]]          */
-	u32 dynsym_vaddr, dynsym_off, dynsym_sz;    /* .dynsym: (1 + nimport + nexport) * sizeof(Elf32_Sym)      */
-	u32 dynstr_vaddr, dynstr_off, dynstr_sz;    /* .dynstr: '\0' + import/export names + needed sonames      */
-	/* dynamic CONSUMER only (imports from a .so): PT_INTERP + a PLT (R-X) with its GOT (R-W). */
-	u32 interp_vaddr, interp_off, interp_sz;    /* .interp: the ld.so path string                            */
-	u32 plt_vaddr, plt_off, plt_sz;             /* .plt: nplt * PLTENT  (R-X code)                           */
-	u32 relplt_vaddr, relplt_off, relplt_sz;    /* .rel.plt: nplt * sizeof(Elf32_Rel) (JUMP_SLOTs -> DT_JMPREL) */
-	u32 gotplt_vaddr, gotplt_off, gotplt_sz;    /* .got.plt: nplt * 4  (R-W: loader writes resolved addrs)   */
-	u32 got_vaddr, got_off, got_sz;             /* .got: ngotent * 4 (R-W PIC slots; RELATIVE/GLOB_DAT)      */
-	u32 dynbss_vaddr, dynbss_sz;                /* .dynbss: copy-reloc slots for DATA imports (R-W NOBITS)   */
-} Layout;
-
-#define INTERP_PATH "/lib/ld.so.1"   /* the runtime loader a dynamic consumer names in PT_INTERP */
-
-/* ---- OBJECT-FORMAT backend (elf.c) --------------------------------------------------------------- */
-Obj *elf_load(const char *path);                                   /* parse one .o file into objs[] (active) */
-Obj *elf_parse(const char *path, u8 *data, long size, int active); /* parse an in-memory ELF image into objs[] */
-void ar_load(const char *path);                                    /* split a .a into objs[] as LAZY members  */
-void load_shared(const char *path);                                /* read a .so's exports+soname (a provider) */
-void elf_write_exec(const char *out, u32 entry, const Layout *L);
+/* ---- output (elf.c) ------------------------------------------------------------------------------ */
+void elf_write(const char *out, u32 entry);
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
-extern const u16 md_e_machine;                                     /* EM_ARM — checked on load, stamped on write */
-extern const u32 md_r_relative;                                    /* the arch's base-fixup reloc (R_ARM_RELATIVE) */
-extern const u32 md_r_jump_slot;                                   /* the arch's PLT reloc (R_ARM_JUMP_SLOT) */
-extern const u32 md_r_copy;                                        /* the arch's data-import reloc (R_ARM_COPY) */
-extern const u32 md_r_got_prel;                                    /* the arch's PIC GOT-entry reloc (R_ARM_GOT_PREL) */
-extern const u32 md_r_glob_dat;                                    /* the arch's GOT-import reloc (R_ARM_GLOB_DAT) */
-void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P);      /* patch one relocation in place */
-int  md_needs_dynamic_reloc(u32 type);                             /* 1 if this reloc must become a runtime RELATIVE */
-int  md_is_abs_nonword(u32 type);   /* movw/movt absolute halves: not position-independent (rejected in -pie/-shared) */
-int  md_is_call_reloc(u32 type);                                   /* 1 if a CALL-type reloc (route via PLT if imported) */
-int  md_is_got_reloc(u32 type);                                    /* 1 if a PIC GOT-entry reloc (resolve to GOT slot) */
+extern const u16 md_e_machine;                   /* EM_ARM — checked on load, stamped on write */
+extern const u32 md_r_relative, md_r_jump_slot, md_r_copy, md_r_glob_dat, md_r_abs32;   /* dynamic relocation types */
+extern const u32 md_plt_entsize;                 /* bytes per PLT stub */
+void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P);   /* patch one relocation in place */
+void md_plt_entry(u8 *p, u32 stub, u32 slot);    /* one PLT stub at vaddr `stub` jumping through GOT `slot` */
+int  md_needs_dynamic_reloc(u32 type);           /* an absolute word: a runtime RELATIVE in a PIE/.so  */
+int  md_is_abs_nonword(u32 type);                /* movw/movt absolute halves: not position-independent */
+int  md_is_call_reloc(u32 type);                 /* a call (routed via the PLT when imported)          */
+int  md_is_got_reloc(u32 type);                  /* a PIC GOT-entry reference (S = the symbol's GOT slot) */
 #endif

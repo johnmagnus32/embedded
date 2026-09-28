@@ -1,14 +1,19 @@
 /*
  * ld.c — the linker FRONT-END (architecture- and format-generic linking algorithm) + driver.
  *
- * Produces a STATIC ELF executable from one or more relocatable objects, the inverse of the assembler:
- * `as` emitted section-relative bytes + relocations; `ld` assigns real virtual addresses and patches
- * them in. Four phases: load objects (elf.c) -> lay out allocatable sections at addresses -> resolve
- * the global symbol table -> apply relocations (via the md backend). The write-out is elf.c's job.
+ * Produces an ELF executable (static, PIE, or dynamically linked) or a shared object from relocatable objects,
+ * archives and shared libraries — the inverse of the assembler: `as` emitted section-relative bytes +
+ * relocations; `ld` gives them real addresses and patches them in. The phases, in order:
  *
- * The generic linking logic lives here; the ELF on-disk details are in elf.c and the per-relocation
- * encoding is in arm.c, so this file changes for neither a new object format nor a new architecture.
- * Milestone 1: one PT_LOAD, fixed base, PROGBITS/NOBITS only (no archives / dynamic linking yet).
+ *   load       objects, archive indexes, shared-library exports                       (elf.c)
+ *   resolve    the global symbol table; archive members pulled for strong references  (here)
+ *   script     read the linker script (-T, or the built-in default)                     (script.c)
+ *   match      input sections -> output sections                                        (script.c)
+ *   scan       one relocation pass: imports, PLT, GOT, dynamic relocations              (dynamic.c)
+ *   layout     orphans, addresses, segments                                             (script.c)
+ *   fill       the linker-made tables' contents                                         (dynamic.c)
+ *   relocate   patch every relocation (encodings in arm.c)                              (here)
+ *   write      the output file                                                          (elf.c)
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -19,39 +24,25 @@
 
 Obj **objs; int nobj; static int objcap;
 Obj *obj_new(void) {
-	if (nobj == objcap) { objcap = objcap ? objcap * 2 : 64; objs = realloc(objs, objcap * sizeof *objs); if (!objs) die("out of memory"); }
+	objs = grow(objs, nobj, &objcap, sizeof *objs);
 	return objs[nobj++] = calloc(1, sizeof(Obj));
 }
-u32 load_base = 0x00010000u;               /* image base; -Ttext <addr> overrides (e.g. bare-metal 0x40000000) */
+u32 load_base = 0x00010000u;               /* default layout: image base; -Ttext <addr> overrides (bare-metal 0x40000000) */
 int pie = 0;                               /* -pie: ET_DYN, base 0, absolute refs become load-bias fixups */
-u32 dynrel[MAXDYNREL]; int ndynrel;        /* PIE/shared: vaddrs needing an R_ARM_RELATIVE (filled by relocate()) */
-int shared = 0;                            /* -shared: emit a .so — exported .dynsym/.hash, no entry point */
+int shared = 0;                            /* -shared: emit a .so — exported .dynsym/.hash, no required entry */
 const char *soname = NULL;                 /* -soname NAME -> DT_SONAME (default: the output basename) */
-Export exports[MAXEXPORT]; int nexport;    /* -shared: the exported symbols, collected before layout */
-ShLib shlibs[MAXSHLIB]; int nshlib;        /* -l: shared libraries we link against (providers) */
-ShExport shexports[MAXSHEXPORT]; int nshexport;  /* the symbols those providers export */
-Import imports[MAXIMPORT]; int nimport;    /* undefined refs resolved to a provider -> runtime imports */
-int nplt;                                  /* PLT/GOT/rel.plt entries (distinct CALLED imports) */
-CopyRel copyrel[MAXCOPYREL]; int ncopyrel; /* R_ARM_COPY entries (one per DATA import), emitted in .rel.dyn */
-GotEnt gotents[MAXGOT]; int ngotent;       /* PIC GOT slots (one per GOT_PREL symbol) */
-GlobDat globdat[MAXGLOBDAT]; int nglobdat; /* R_ARM_GLOB_DAT entries (one per IMPORTED GOT slot) */
-static const char *entry_sym = "_start";   /* entry point symbol; -e/--entry overrides */
-
-/* SysV .hash bucket count: the largest prime (from bfd's table) not exceeding the symbol count, so
- * `h % nbucket` spreads well. Any positive value is correct; a prime just avoids clustering. */
-u32 pick_nbucket(u32 nsyms) {
-	static const u32 primes[] = { 1,3,17,37,67,97,131,197,263,521,1031,2053,4099,8209,16411,0 };
-	u32 best = 1;
-	for (int i = 0; primes[i]; i++) { if (primes[i] <= nsyms) best = primes[i]; else break; }
-	return best;
-}
-static u32 dynstr_bytes(void);      /* defined below; used by layout() to size .dynstr */
-static int count_dyn_entries(void); /* defined below; used by layout() to size .dynamic */
+const char *entry_sym = NULL;              /* -e; else the script's ENTRY(); else _start */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
 void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
 	fputs("ld: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
+}
+void *grow(void *v, int n, int *cap, size_t esz) {
+	if (n < *cap) return v;
+	*cap = *cap ? *cap * 2 : 64;
+	if (!(v = realloc(v, (size_t)*cap * esz))) die("out of memory");
+	return v;
 }
 
 /* ---- global symbol table ------------------------------------------------------------------------- */
@@ -60,18 +51,10 @@ void die(const char *fmt, ...) {
  * reference pulls an archive member (a member whose definition is weak still satisfies it, as in GNU ld). */
 static StrMap gsyms;
 GSym *gsym_find(const char *name) { return strmap_get(&gsyms, name); }
-static GSym *gsym_get(const char *name) {
+GSym *gsym_get(const char *name) {
 	GSym *g = strmap_get(&gsyms, name);
 	if (!g) { g = calloc(1, sizeof *g); g->name = name; strmap_put(&gsyms, name, g); }
 	return g;
-}
-void gsym_define(const char *name, u32 vaddr, int weak) {   /* linker/script-defined: an absolute address */
-	GSym *g = gsym_get(name);
-	if (g->defined) {
-		if (!weak && !g->weak) die("duplicate definition of '%s'", name);
-		if (weak) return;
-	}
-	g->defined = 1; g->weak = weak; g->vaddr = vaddr; g->obj = NULL;
 }
 static const char **pending; static int npending, pendcap;   /* strongly referenced, not yet defined: archive candidates */
 /* Enter one object's global/weak symbols: its definitions (binding rules) and its undefined references. */
@@ -85,361 +68,94 @@ static void add_symbols(Obj *o) {
 		if (s->st_shndx == SHN_UNDEF) {
 			if (b == STB_GLOBAL && !g->strong_ref) {
 				g->strong_ref = 1;
-				if (!g->defined) {
-					if (npending == pendcap) { pendcap = pendcap ? pendcap * 2 : 256; pending = realloc(pending, pendcap * sizeof *pending); }
-					pending[npending++] = name;
-				}
+				if (!g->defined) { pending = grow(pending, npending, &pendcap, sizeof *pending); pending[npending++] = name; }
 			}
 			continue;
 		}
 		int weak = b == STB_WEAK;
 		if (g->defined) {
-			if (!weak && !g->weak) die("duplicate definition of '%s' (in %s and %s)", name, g->obj ? g->obj->path : "the link", o->path);
+			if (!weak && !g->weak) die("duplicate definition of '%s' (in %s and %s)", name, g->obj->path, o->path);
 			if (weak || !g->weak) continue;              /* the existing (strong, or first weak) one stays */
 		}
 		g->defined = 1; g->weak = weak; g->obj = o; g->symidx = k;
+		g->hidden = ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT;
 	}
 }
 /* Symbol resolution: enter every command-line object, then pull archive members for strongly referenced,
  * still-undefined symbols until nothing new is needed (resolution across all archives at once, like
- * --start-group). Unresolved references are reported by resolve() when a relocation needs them. */
+ * --start-group). Unresolved references are reported when the relocation scan meets them. */
 static void resolve_symbols(void) {
 	for (int i = 0; i < nobj; i++) add_symbols(objs[i]);
 	for (int i = 0; i < npending; i++) {                 /* the list grows as pulled members add references */
-		GSym *g = gsym_find(pending[i]);
-		if (g->defined) continue;
+		if (gsym_find(pending[i])->defined) continue;
 		Obj *m = ar_pull(pending[i]);
 		if (m) add_symbols(m);
 	}
 }
-/* After layout: every object-defined global's final address. */
+static int discarded(const Obj *o, int shndx) {
+	return shndx != SHN_ABS && shndx < 0xff00 && (!o->sec_out[shndx] || o->sec_out[shndx] == &os_discard);
+}
+/* After layout: every object-defined global's final address (one in a discarded section no longer defines it). */
 static void build_globals(void) {
 	for (size_t i = 0; i < gsyms.cap; i++) {
 		GSym *g = gsyms.vals[i];
 		if (!g || !g->defined || !g->obj) continue;
-		Elf32_Sym *s = &g->obj->sym[g->symidx];
-		g->vaddr = s->st_shndx == SHN_ABS ? s->st_value : g->obj->sec_vaddr[s->st_shndx] + s->st_value;
+		if (discarded(g->obj, g->obj->sym[g->symidx].st_shndx)) { g->defined = 0; continue; }
+		g->vaddr = sym_addr(g->obj, g->symidx);
 	}
 }
-/* Is `name` defined by one of our own objects? Then it resolves locally — not an import. */
-static int defined_locally(const char *name) { GSym *g = gsym_find(name); return g && g->defined && g->obj; }
+int defined_locally(const char *name) { GSym *g = gsym_find(name); return g && (g->defined || g->linker); }
+u32 sym_addr(const Obj *o, int symidx) {
+	const Elf32_Sym *s = &o->sym[symidx];
+	return s->st_shndx == SHN_ABS ? s->st_value : o->sec_vaddr[s->st_shndx] + s->st_value;
+}
+int sym_is_abs(const Obj *o, int symidx) {
+	const Elf32_Sym *s = &o->sym[symidx];
+	if (s->st_shndx != SHN_UNDEF) return s->st_shndx == SHN_ABS;
+	GSym *g = gsym_find(o->strtab + s->st_name);
+	if (!g || !(g->defined || g->linker)) return 1;      /* undefined weak: 0 at any load address */
+	return g->obj ? g->obj->sym[g->symidx].st_shndx == SHN_ABS : g->abs;
+}
 
-/* Resolve one object-local symbol index to a final virtual address. */
+/* A relocation's symbol, resolved to its final address. */
 static u32 resolve(Obj *o, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
-	if (s->st_shndx == SHN_UNDEF) {                     /* external — must be defined elsewhere */
-		GSym *g = gsym_find(o->strtab + s->st_name);
-		if (!g || !g->defined) {
-			if (ELF32_ST_BIND(s->st_info) == STB_WEAK) return 0;   /* an undefined weak reference is 0 */
-			die("undefined symbol '%s' (referenced in %s)", o->strtab + s->st_name, o->path);
-		}
-		return g->vaddr;
+	if (s->st_shndx == SHN_UNDEF) {
+		const char *nm = o->strtab + s->st_name;
+		GSym *g = gsym_find(nm);
+		if (g && g->defined) return g->vaddr;
+		if (ELF32_ST_BIND(s->st_info) == STB_WEAK) return 0;   /* an undefined weak reference is 0 */
+		if (g && g->obj) die("'%s' (referenced in %s) is defined in a discarded section of %s", nm, o->path, g->obj->path);
+		die("undefined symbol '%s' (referenced in %s)", nm, o->path);
 	}
-	if (s->st_shndx == SHN_ABS) return s->st_value;     /* absolute value, not relocated */
-	return o->sec_vaddr[s->st_shndx] + s->st_value;     /* defined here (incl. STT_SECTION: value 0) */
-}
-
-/* ---- phases -------------------------------------------------------------------------------------- */
-/* Assign every allocatable input section a virtual address, grouped into two page-aligned segments so
- * the kernel can map them with different permissions (W^X). Both segments keep vaddr == LOAD_BASE +
- * file-offset (the RW segment is bumped to a page boundary in file AND memory together, preserving that
- * identity), so the writer places each PROGBITS section at file offset vaddr - LOAD_BASE.
- *   seg 0 (R-X): headers + read-only sections   — SHF_ALLOC && !SHF_WRITE   (.text, .rodata)
- *   seg 1 (R-W): writable data then .bss         — SHF_ALLOC &&  SHF_WRITE   (.data [PROGBITS], .bss [NOBITS])
- * Three placement passes so sections of like kind are contiguous regardless of input order. */
-enum { RO = 0, RW = 1 };            /* writability axis: SHF_WRITE clear / set   */
-enum { PROGBITS = 0, NOBITS = 1 };  /* storage axis: file-backed / zero-filled   */
-static void place(int want_write, int nobits, u32 *cur) {
-	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
-		Elf32_Shdr *s = &objs[i]->sh[j];
-		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size) continue;
-		if (!!(s->sh_flags & SHF_WRITE) != want_write) continue;
-		if ((s->sh_type == SHT_NOBITS) != nobits) continue;
-		*cur = alignup(*cur, s->sh_addralign); objs[i]->sec_vaddr[j] = *cur; *cur += s->sh_size;
-	} }
-}
-/* PIE: how many R_ARM_RELATIVE entries .rel.dyn will hold — one per absolute reference to a relocatable
- * address. Counts exactly what relocate() will later collect (same predicate, same iteration order), so
- * the space reserved here matches the entries filled there. */
-static int count_pie_relocs(void) {
-	int n = 0;
-	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
-		Elf32_Shdr *rs = &objs[i]->sh[j];
-		if (rs->sh_type != SHT_REL || !(objs[i]->sh[rs->sh_info].sh_flags & SHF_ALLOC)) continue;
-		Elf32_Rel *rel = (Elf32_Rel *)(objs[i]->data + rs->sh_offset);
-		for (int r = 0, m = rs->sh_size / sizeof(Elf32_Rel); r < m; r++) {
-			Elf32_Sym *sym = &objs[i]->sym[ELF32_R_SYM(rel[r].r_info)];
-			/* RELATIVE only for a DEFINED relocatable address; UNDEF (imports) go via PLT/COPY, ABS is fixed. */
-			if (md_needs_dynamic_reloc(ELF32_R_TYPE(rel[r].r_info))
-			    && sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS) n++;
-		}
-	} }
-	return n;
-}
-static void layout(Layout *L) {
-	int need_dynamic = pie || shared || nimport || ngotent;              /* anything carrying a .dynamic */
-	int need_dynsym  = shared || nimport;                                /* a .dynsym (exports and/or imports) */
-	int has_interp   = nimport && !shared;                               /* a program names its loader; a .so must NOT */
-	/* Over-reserve phdr slots (unused ones become harmless padding before .text): 2 PT_LOAD + optional
-	 * PT_DYNAMIC + optional PT_INTERP (a consumer program only). */
-	int nphdr = 2 + (need_dynamic ? 1 : 0) + (has_interp ? 1 : 0);
-	u32 hdrsz = sizeof(Elf32_Ehdr) + nphdr * sizeof(Elf32_Phdr);
-	u32 cur = load_base + hdrsz;
-	place(RO, PROGBITS, &cur);               /* seg 0: read-only PROGBITS (.text, .rodata)          */
-	L->text_size = cur - (load_base + hdrsz);
-	if (has_interp) {                        /* seg 0 tail: PT_INTERP string naming the runtime loader (program only) */
-		L->interp_vaddr = cur; L->interp_off = cur - load_base;
-		L->interp_sz = (u32)sizeof(INTERP_PATH); cur += L->interp_sz;
-	}
-	if (nplt) {                              /* seg 0 tail: the PLT stubs (executable) */
-		cur = alignup(cur, 4); L->plt_vaddr = cur; L->plt_off = cur - load_base;
-		L->plt_sz = (u32)nplt * PLTENT; cur += L->plt_sz;
-	}
-	if (need_dynsym) {                       /* seg 0 tail: dynamic symbol tables .hash / .dynsym / .dynstr */
-		u32 nchain = 1u + (u32)nimport + (u32)nexport, nbucket = pick_nbucket(nchain);  /* idx 0 = null sym */
-		cur = alignup(cur, 4); L->hash_vaddr = cur; L->hash_off = cur - load_base;
-		L->hash_sz = (2 + nbucket + nchain) * 4; cur += L->hash_sz;      /* [nbucket, nchain, bucket[], chain[]] */
-		cur = alignup(cur, 4); L->dynsym_vaddr = cur; L->dynsym_off = cur - load_base;
-		L->dynsym_sz = nchain * sizeof(Elf32_Sym); cur += L->dynsym_sz;
-		L->dynstr_vaddr = cur; L->dynstr_off = cur - load_base;
-		L->dynstr_sz = dynstr_bytes(); cur += L->dynstr_sz;
-	}
-	if (nplt) {                              /* seg 0 tail: the PLT relocation table (JUMP_SLOTs -> DT_JMPREL) */
-		cur = alignup(cur, 4); L->relplt_vaddr = cur; L->relplt_off = cur - load_base;
-		L->relplt_sz = (u32)nplt * sizeof(Elf32_Rel); cur += L->relplt_sz;
-	}
-	int ndata = 0;                           /* DATA imports -> one copy slot + one R_ARM_COPY each */
-	for (int i = 0; i < nimport; i++) if (imports[i].is_data) ndata++;
-	if (pie || shared || ndata || ngotent) { /* seg 0 tail: .rel.dyn — RELATIVE (ABS32 + GOT-local) + GLOB_DAT (GOT-import) + COPY -> DT_REL */
-		int nrelative = (pie || shared) ? count_pie_relocs() : 0;   /* a plain consumer emits no ABS32 RELATIVEs */
-		cur = alignup(cur, 4); L->reldyn_vaddr = cur; L->reldyn_off = cur - load_base;
-		L->reldyn_sz = (u32)(nrelative + ngotent + ndata) * sizeof(Elf32_Rel); cur += L->reldyn_sz;
-	}
-	if (need_dynamic) {                      /* seg 0 tail: the .dynamic array */
-		cur = alignup(cur, 4); L->dynamic_vaddr = cur; L->dynamic_off = cur - load_base;
-		L->dynamic_count = (u32)count_dyn_entries();
-		L->dynamic_sz = L->dynamic_count * sizeof(Elf32_Dyn); cur += L->dynamic_sz;
-	}
-	L->rx_filesz = cur - load_base;
-	cur = load_base + alignup(cur - load_base, PAGE);   /* page-align the R-W segment (file + mem)   */
-	L->rw_vaddr = cur; L->rw_off = cur - load_base;
-	if (nplt) {                              /* seg 1 head: the PLT's GOT — WRITABLE (loader stores here) */
-		L->gotplt_vaddr = cur; L->gotplt_off = cur - load_base;
-		L->gotplt_sz = (u32)nplt * 4; cur += L->gotplt_sz;
-	}
-	if (ngotent) {                           /* seg 1: the PIC GOT — writable slots (RELATIVE local / GLOB_DAT import) */
-		L->got_vaddr = cur; L->got_off = cur - load_base;
-		for (int i = 0; i < ngotent; i++) {
-			gotents[i].vaddr = cur; cur += 4;
-			if (gotents[i].is_import) {
-				if (nglobdat >= MAXGLOBDAT) die("too many GLOB_DAT relocations");
-				globdat[nglobdat++] = (GlobDat){ gotents[i].vaddr, (u32)gotents[i].dynsym_index };
-			} else {
-				if (ndynrel >= MAXDYNREL) die("too many dynamic relocations");
-				dynrel[ndynrel++] = gotents[i].vaddr;   /* RELATIVE: slot holds the link addr, loader adds bias */
-			}
-		}
-		L->got_sz = cur - L->got_vaddr;
-	}
-	place(RW, PROGBITS, &cur);               /* seg 1: writable PROGBITS (.got.plt, .got, then .data) — on disk + memory */
-	L->rw_filesz = cur - L->rw_vaddr;
-	place(RW, NOBITS, &cur);                 /* seg 1 tail: .bss (NOBITS) — memory only, no file bytes    */
-	if (ndata) {                             /* .dynbss: one NOBITS slot per DATA import + its R_ARM_COPY reloc */
-		cur = alignup(cur, 4); L->dynbss_vaddr = cur;
-		for (int i = 0; i < nimport; i++) if (imports[i].is_data) {
-			cur = alignup(cur, 4); imports[i].copy_vaddr = cur; cur += imports[i].copy_size;
-			if (ncopyrel >= MAXCOPYREL) die("too many copy relocations");
-			copyrel[ncopyrel++] = (CopyRel){ imports[i].copy_vaddr, (u32)imports[i].dynsym_index };
-		}
-		L->dynbss_sz = cur - L->dynbss_vaddr;
-	}
-	L->rw_memsz = cur - L->rw_vaddr;
-}
-
-/* -shared: collect the global/weak DEFINED (section-relative) symbols to export into .dynsym/.hash.
- * Run before layout — the names size the tables; the final vaddr is read from the obj at write time. */
-static void build_exports(void) {
-	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int k = 0; k < objs[i]->nsym; k++) {
-		Elf32_Sym *s = &objs[i]->sym[k]; int b = ELF32_ST_BIND(s->st_info);
-		if ((b == STB_GLOBAL || b == STB_WEAK) && s->st_shndx != SHN_UNDEF && s->st_shndx != SHN_ABS && s->st_name) {
-			if (nexport >= MAXEXPORT) die("too many exported symbols");
-			exports[nexport++] = (Export){ objs[i]->strtab + s->st_name, objs[i], k };
-		}
-	} }
-}
-
-/* Provider exports and our imports, hashed by name (the first provider exporting a name wins). */
-static StrMap shexport_map, import_map;
-static ShExport *shexport_of(const char *name) {
-	if (!shexport_map.n) for (int i = nshexport - 1; i >= 0; i--) strmap_put(&shexport_map, shexports[i].name, &shexports[i]);   /* first wins */
-	return strmap_get(&shexport_map, name);
-}
-static int shexport_lib(const char *name) { ShExport *e = shexport_of(name); return e ? e->lib : -1; }   /* -1: no provider */
-static u32 shexport_size(const char *name) { ShExport *e = shexport_of(name); return e ? e->size : 0; } /* a data import's copy size */
-static int find_import(const char *name) { long i = (long)strmap_get(&import_map, name); return (int)i - 1; }
-static int add_import(const char *name, int lib) {
-	if (nimport >= MAXIMPORT) die("too many imports");
-	int imp = nimport; imports[nimport++] = (Import){ .name = name, .lib = lib, .plt_index = -1, .dynsym_index = 1 + imp };
-	strmap_put(&import_map, name, (void *)(long)(imp + 1));
-	if (lib >= 0) shlibs[lib].used = 1;              /* provider known -> emit a DT_NEEDED for it */
-	return imp;
-}
-
-/* Scan active objects' relocations for undefined refs that a provider exports -> record them as IMPORTS.
- * A CALL-type reference additionally gets a PLT slot (a stub + GOT word + JUMP_SLOT reloc). Run before
- * layout — the import count sizes .dynsym/.plt/.got.plt/.rel.plt. dynsym_index = the slot after the
- * null symbol and any earlier imports (exports, if this is also -shared, follow the imports). */
-static void build_imports(void) {
-	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
-		Elf32_Shdr *rs = &objs[i]->sh[j];
-		if (rs->sh_type != SHT_REL || !(objs[i]->sh[rs->sh_info].sh_flags & SHF_ALLOC)) continue;
-		Elf32_Rel *rel = (Elf32_Rel *)(objs[i]->data + rs->sh_offset);
-		for (int r = 0, m = rs->sh_size / sizeof(Elf32_Rel); r < m; r++) {
-			if (md_is_got_reloc(ELF32_R_TYPE(rel[r].r_info))) continue;   /* GOT imports handled by build_got (GLOB_DAT) */
-			Elf32_Sym *s = &objs[i]->sym[ELF32_R_SYM(rel[r].r_info)];
-			if (s->st_shndx != SHN_UNDEF || !s->st_name) continue;
-			const char *nm = objs[i]->strtab + s->st_name;
-			if (!strcmp(nm, "_DYNAMIC")) continue;           /* linker-defined (set after layout); resolve() handles it */
-			if (defined_locally(nm)) continue;               /* resolves locally, not an import */
-			int lib = shexport_lib(nm);
-			/* A .so may reference symbols with no known provider (e.g. libc's __libc_start_main -> main):
-			 * they stay UNDEF and the runtime loader resolves them (against the program / other libs). A
-			 * plain exe has no such luxury — an undefined non-import is an error (resolve() reports it). */
-			if (lib < 0 && !shared) continue;
-			int imp = find_import(nm);
-			if (imp < 0) imp = add_import(nm, lib);
-			if (md_is_call_reloc(ELF32_R_TYPE(rel[r].r_info))) {     /* CALL -> route through a PLT stub */
-				if (imports[imp].plt_index < 0) imports[imp].plt_index = nplt++;
-			} else if (!imports[imp].is_data) {                      /* ABS32 -> DATA import: needs a copy + R_ARM_COPY */
-				imports[imp].is_data = 1;
-				imports[imp].copy_size = shexport_size(nm);
-				if (!imports[imp].copy_size)
-					die("data import '%s': provider records no size (st_size=0), cannot size its copy relocation", nm);
-			}
-		}
-	} }
-}
-
-/* PIC: find (or create) the GOT slot for the symbol objs-ref (obj, symidx). A LOCAL definition is keyed
- * by (obj, symidx) — two same-named statics are distinct; a GLOBAL/IMPORT by name (unique program-wide).
- * An IMPORT (undefined + a provider exports it) also gets a .dynsym entry so its slot's GLOB_DAT can name
- * it. Returns the GOT-entry index. Idempotent, so relocate() can call it again to read the slot vaddr. */
-static int got_find_or_add(Obj *obj, int symidx) {
-	Elf32_Sym *s = &obj->sym[symidx];
-	const char *nm = obj->strtab + s->st_name;
-	int local = (s->st_shndx != SHN_UNDEF) && (ELF32_ST_BIND(s->st_info) == STB_LOCAL);
-	static StrMap got_map;                                   /* "name" (global/import) or "@obj:symidx" (a local) -> index+1 */
-	char lkey[48]; if (local) snprintf(lkey, sizeof lkey, "@%p:%d", (void *)obj, symidx);
-	long hit = (long)strmap_get(&got_map, local ? lkey : nm);
-	if (hit) return (int)hit - 1;
-	strmap_put(&got_map, local ? strdup(lkey) : nm, (void *)(long)(ngotent + 1));
-	if (ngotent >= MAXGOT) die("too many GOT entries");
-	GotEnt *g = &gotents[ngotent];
-	*g = (GotEnt){ .name = nm, .def_symidx = -1 };
-	if (local) {                                             /* a file-local def (static / string literal) */
-		g->def_obj = obj; g->def_symidx = symidx;
-	} else if (defined_locally(nm)) {                        /* a global defined by one of our objects     */
-		/* symval resolved via the global table after build_globals(); RELATIVE slot. */
-	} else {                                                 /* an import -> GLOB_DAT slot (runtime-resolved) */
-		int lib = shexport_lib(nm);
-		if (lib < 0 && !shared)                              /* a .so may import with no known provider; an exe may not */
-			die("undefined symbol '%s' via GOT (not defined and no provider exports it)", nm);
-		int imp = find_import(nm);
-		if (imp < 0) imp = add_import(nm, lib);
-		g->is_import = 1; g->dynsym_index = imports[imp].dynsym_index;
-	}
-	return ngotent++;
-}
-/* Collect a GOT slot for every R_ARM_GOT_PREL reference (run before layout — the count sizes .got). */
-static void build_got(void) {
-	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
-		Elf32_Shdr *rs = &objs[i]->sh[j];
-		if (rs->sh_type != SHT_REL || !(objs[i]->sh[rs->sh_info].sh_flags & SHF_ALLOC)) continue;
-		Elf32_Rel *rel = (Elf32_Rel *)(objs[i]->data + rs->sh_offset);
-		for (int r = 0, m = rs->sh_size / sizeof(Elf32_Rel); r < m; r++)
-			if (md_is_got_reloc(ELF32_R_TYPE(rel[r].r_info)))
-				got_find_or_add(objs[i], ELF32_R_SYM(rel[r].r_info));
-	} }
-}
-/* After build_globals(): fill each LOCAL/GLOBAL GOT slot's initial value (its link-time address). The
- * writer stores this in the .got slot; the loader's R_ARM_RELATIVE then adds the load bias. Imports keep
- * symval 0 (their slot is filled by GLOB_DAT at runtime). */
-static void finalize_got(void) {
-	for (int i = 0; i < ngotent; i++) {
-		GotEnt *g = &gotents[i];
-		if (g->is_import) continue;
-		if (g->def_symidx >= 0) {                            /* file-local def: address from its own object */
-			Elf32_Sym *s = &g->def_obj->sym[g->def_symidx];
-			g->symval = g->def_obj->sec_vaddr[s->st_shndx] + s->st_value;
-		} else {                                             /* global def: address from the global table  */
-			GSym *gs = gsym_find(g->name);
-			if (!gs || !gs->defined) die("GOT symbol '%s' undefined at finalize", g->name);
-			g->symval = gs->vaddr;
-		}
-	}
-}
-/* Number of Elf32_Dyn entries the output carries (kept in lockstep with write_dynamic's emission). */
-static int count_dyn_entries(void) {
-	int n = 1;                                           /* DT_NULL terminator */
-	for (int i = 0; i < nshlib; i++) if (shlibs[i].used) n++;   /* DT_NEEDED per used provider */
-	if (shared) n++;                                     /* DT_SONAME */
-	if (shared || nimport) n += 5;                       /* DT_HASH/STRTAB/SYMTAB/STRSZ/SYMENT */
-	if (nplt) n += 4;                                    /* DT_PLTGOT/PLTRELSZ/PLTREL/JMPREL */
-	int ndata = 0; for (int i = 0; i < nimport; i++) if (imports[i].is_data) ndata++;
-	if (pie || shared || ndata || ngotent) n += 4;       /* DT_REL/RELSZ/RELENT/RELCOUNT (RELATIVE/GLOB_DAT/COPY) */
-	return n;
-}
-/* .dynstr size: '\0' + import names + export names + used-provider sonames + our own soname (if -shared). */
-static u32 dynstr_bytes(void) {
-	u32 n = 1;
-	for (int i = 0; i < nimport; i++) n += (u32)strlen(imports[i].name) + 1;
-	for (int i = 0; i < nexport; i++) n += (u32)strlen(exports[i].name) + 1;
-	for (int i = 0; i < nshlib; i++) if (shlibs[i].used) n += (u32)strlen(shlibs[i].soname) + 1;
-	if (shared) n += (u32)strlen(soname) + 1;
-	return n;
+	if (discarded(o, s->st_shndx))
+		die("%s: reference to %s in discarded section %s", o->path,
+		    s->st_name ? o->strtab + s->st_name : "a symbol", sec_name(o, s->st_shndx));
+	return sym_addr(o, symidx);
 }
 
 /* For each REL section, patch its target section's bytes now that addresses are known. */
-static void relocate(const Layout *L) {
-	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
-		Elf32_Shdr *rs = &objs[i]->sh[j];
-		if (rs->sh_type != SHT_REL) continue;
-		Elf32_Shdr *ts = &objs[i]->sh[rs->sh_info];              /* the section being patched */
-		if (!(ts->sh_flags & SHF_ALLOC)) continue;
-		Elf32_Rel *rel = (Elf32_Rel *)(objs[i]->data + rs->sh_offset);
-		int n = rs->sh_size / sizeof(Elf32_Rel);
-		for (int r = 0; r < n; r++) {
-			u32 type = ELF32_R_TYPE(rel[r].r_info);
-			u32 sidx = ELF32_R_SYM(rel[r].r_info);
-			Elf32_Sym *sym = &objs[i]->sym[sidx];
-			u32 S;
-			int imp = -1;
-			if (md_is_got_reloc(type)) {                                /* PIC: resolve to the symbol's GOT slot */
-				S = gotents[got_find_or_add(objs[i], sidx)].vaddr;
-			} else if ((imp = (sym->st_shndx == SHN_UNDEF && sym->st_name)   /* an import from a shared library? */
-			          ? find_import(objs[i]->strtab + sym->st_name) : -1) >= 0) {
-				if (md_is_call_reloc(type))                         /* call -> its PLT stub (JUMP_SLOT fills the GOT) */
-					S = L->plt_vaddr + (u32)PLTENT * imports[imp].plt_index;
-				else                                                /* data -> the exe's own copy in .dynbss (R_ARM_COPY) */
-					S = imports[imp].copy_vaddr;
-			} else {
-				S = resolve(objs[i], sidx);                        /* target symbol address (or local) */
-			}
-			u32 P = objs[i]->sec_vaddr[rs->sh_info] + rel[r].r_offset;    /* address being patched   */
-			u8 *loc = objs[i]->data + ts->sh_offset + rel[r].r_offset;    /* bytes to patch          */
-			md_apply_reloc(objs[i], type, loc, S, P);
-			/* PIE/shared: the static patch above wrote the LINK-TIME value (base 0). Record an
-			 * R_ARM_RELATIVE so the loader adds the load bias to it. Absolute symbols carry no address. */
-			if ((pie || shared) && md_is_abs_nonword(type) && sym->st_shndx != SHN_ABS)   /* GNU ld: the same error */
-				die("%s: absolute movw/movt reference to '%s' can't be position-independent — recompile with -fPIC",
-				    objs[i]->path, sym->st_name ? objs[i]->strtab + sym->st_name : "(section)");
-			if ((pie || shared) && md_needs_dynamic_reloc(type)
-			    && sym->st_shndx != SHN_UNDEF && sym->st_shndx != SHN_ABS) {
-				if (ndynrel >= MAXDYNREL) die("too many dynamic relocations");
-				dynrel[ndynrel++] = P;
+static void relocate(void) {
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i];
+		if (!o->active || o == linker_obj) continue;
+		for (int j = 0; j < o->nsh; j++) {
+			Elf32_Shdr *rs = &o->sh[j];
+			if (rs->sh_type != SHT_REL) continue;
+			int t = (int)rs->sh_info;
+			Elf32_Shdr *ts = &o->sh[t];                          /* the section being patched */
+			if (!(ts->sh_flags & SHF_ALLOC) || o->sec_out[t] == &os_discard) continue;
+			if (ts->sh_type == SHT_NOBITS) die("%s: relocations against NOBITS section %s", o->path, sec_name(o, t));
+			Elf32_Rel *rel = (Elf32_Rel *)(o->data + rs->sh_offset);
+			for (u32 r = 0; r < rs->sh_size / sizeof *rel; r++) {
+				u32 type = ELF32_R_TYPE(rel[r].r_info); int sidx = (int)ELF32_R_SYM(rel[r].r_info);
+				if (rel[r].r_offset > ts->sh_size - 4) die("%s: relocation offset %#x outside %s", o->path, rel[r].r_offset, sec_name(o, t));
+				u32 S;
+				if (!dyn_target(o, sidx, type, &S)) S = resolve(o, sidx);   /* GOT slot / PLT stub / copy, else the symbol */
+				md_apply_reloc(o, type, o->data + ts->sh_offset + rel[r].r_offset, S, o->sec_vaddr[t] + rel[r].r_offset);
 			}
 		}
-	} }
+	}
 }
 
 /* An input file is an archive if it opens with the ar magic; otherwise treat it as a relocatable object. */
@@ -448,292 +164,64 @@ static int is_archive(const char *path) {
 	char m[8]; size_t n = fread(m, 1, 8, f); fclose(f);
 	return n == 8 && !memcmp(m, "!<arch>\n", 8);
 }
-
-/* Does a file exist and open? (probe before load_shared, which die()s on a missing path.) */
 static int file_exists(const char *p) { FILE *f = fopen(p, "rb"); if (f) { fclose(f); return 1; } return 0; }
 
-/* ================================ linker-script layout (subset) ================================= *
- * Enough of the GNU linker-script language to place our own bare-metal scripts (libc/user.ld, sram.ld,
- * …): ENTRY, top-level `SYM = expr;`, and a SECTIONS block with `. = expr;` (incl. ALIGN), `SYM = .;`,
- * `PROVIDE(...)`, output sections `name : { *(.pat*) KEEP(*(...)) }`, and `/DISCARD/`. */
-OutSec outsecs[MAXOUTSEC]; int noutsec;
-int scripted;
-
-static char *stok[8192]; static int nstok;          /* script tokens */
-/* MEMORY regions: a named address window with its own allocation cursor (cur starts at origin). A
- * section placed `> R` takes its VMA from R's cursor; `AT> R` takes a separate LMA from R's cursor. */
-static struct { char name[32]; u32 origin, length, cur; } regions[16]; static int nregion;
-static int region_find(const char *n) { for (int i=0;i<nregion;i++) if (!strcmp(regions[i].name,n)) return i; return -1; }
-static u32 outsec_lma(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].lma; return 0; }
-static u32 outsec_addr(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].vaddr; return 0; }
-static u32 outsec_size(const char *n) { for (int i=0;i<noutsec;i++) if (!strcmp(outsecs[i].name,n)) return outsecs[i].size; return 0; }
-static long parse_num(const char *t) {   /* number with an optional K/M size suffix */
-	char *e; long v = strtol(t, &e, 0);
-	if (*e=='K'||*e=='k') v *= 1024; else if (*e=='M'||*e=='m') v *= 1024*1024;
-	return v;
-}
-static int is_spunct(char c) { return strchr("{}():;=+?,<>&|^%~", c) != NULL; }   /* '-' is NOT punct: section names contain it (.note.GNU-stack) */
-static void script_tokenize(char *s) {
-	while (*s) {
-		if (*s==' '||*s=='\t'||*s=='\n'||*s=='\r') { s++; continue; }
-		if (s[0]=='/'&&s[1]=='*') { s+=2; while (*s && !(s[0]=='*'&&s[1]=='/')) s++; if (*s) s+=2; continue; }
-		if (nstok >= 8192) die("linker script: too many tokens (>8192)");
-		if ((s[0]=='<'&&s[1]=='<')||(s[0]=='>'&&s[1]=='>')) { char *t=malloc(3); t[0]=s[0]; t[1]=s[1]; t[2]=0; stok[nstok++]=t; s+=2; continue; }   /* 2-char shift ops before single-char punct */
-		if (is_spunct(*s)) { char *t=malloc(2); t[0]=*s; t[1]=0; stok[nstok++]=t; s++; continue; }
-		char *b=s; while (*s && !is_spunct(*s) && *s!=' '&&*s!='\t'&&*s!='\n'&&*s!='\r') s++;
-		int n=(int)(s-b); char *t=malloc(n+1); memcpy(t,b,n); t[n]=0; stok[nstok++]=t;
-	}
-}
-/* expression evaluator over a token range [ev, ev_hi); `.` is the current location counter g_dot */
-static int ev, ev_hi; static u32 g_dot;
-static long e_tern(void);
-static long e_prim(void) {
-	if (ev >= ev_hi) return 0;
-	char *t = stok[ev++];
-	if (!strcmp(t,"(")) { long v=e_tern(); if (ev<ev_hi&&!strcmp(stok[ev],")")) ev++; return v; }
-	if (!strcmp(t,".")) return (long)g_dot;
-	if (!strcmp(t,"ALIGN")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; return (long)alignup((u32)g_dot,(u32)a); }
-	if (!strcmp(t,"ABSOLUTE")||!strcmp(t,"CONSTANT")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; long v=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; return v; }
-	if (!strcmp(t,"DEFINED")) { if(ev<ev_hi&&!strcmp(stok[ev],"("))ev++; char *nm=stok[ev++]; if(ev<ev_hi&&!strcmp(stok[ev],")"))ev++; GSym*g=gsym_find(nm); return (g&&g->defined)?1:0; }
-	if (!strcmp(t,"ORIGIN")||!strcmp(t,"LENGTH")||!strcmp(t,"LOADADDR")) {   /* ORIGIN(R)/LENGTH(R)/LOADADDR(sec) */
-		if (ev<ev_hi && !strcmp(stok[ev],"(")) ev++;
-		char *nm = stok[ev++];
-		if (ev<ev_hi && !strcmp(stok[ev],")")) ev++;
-		if (!strcmp(t,"LOADADDR")) return (long)outsec_lma(nm);
-		int r=region_find(nm); if(r<0) return 0; return (long)(!strcmp(t,"ORIGIN")?regions[r].origin:regions[r].length);
-	}
-	if (!strcmp(t,"SIZEOF")||!strcmp(t,"ADDR")) {   /* SIZEOF(sec)/ADDR(sec) — from an ALREADY-placed output section (backward ref) */
-		if (ev<ev_hi && !strcmp(stok[ev],"(")) ev++;
-		char *nm = stok[ev++];
-		if (ev<ev_hi && !strcmp(stok[ev],")")) ev++;
-		return (long)(!strcmp(t,"SIZEOF") ? outsec_size(nm) : outsec_addr(nm));
-	}
-	if (t[0]>='0'&&t[0]<='9') return parse_num(t);
-	GSym *g=gsym_find(t); return (g&&g->defined)?(long)g->vaddr:0;   /* symbol */
-}
-static long e_mul(void) { long l=e_prim(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"*")){ev++; l*=e_prim();} else if(!strcmp(o,"/")){ev++; long r=e_prim(); l=r?l/r:0;} else if(!strcmp(o,"%")){ev++; long r=e_prim(); l=r?l%r:0;} else break; } return l; }
-static long e_add(void) { long l=e_mul(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"+")){ev++; l+=e_mul();} else if(!strcmp(o,"-")){ev++; l-=e_mul();} else break; } return l; }
-static long e_shift(void) { long l=e_add(); while(ev<ev_hi){ char*o=stok[ev]; if(!strcmp(o,"<<")){ev++; l<<=e_add();} else if(!strcmp(o,">>")){ev++; l>>=e_add();} else break; } return l; }
-static long e_band(void)  { long l=e_shift(); while(ev<ev_hi&&!strcmp(stok[ev],"&")){ev++; l&=e_shift();} return l; }
-static long e_bxor(void)  { long l=e_band();  while(ev<ev_hi&&!strcmp(stok[ev],"^")){ev++; l^=e_band();}  return l; }
-static long e_bor(void)   { long l=e_bxor();  while(ev<ev_hi&&!strcmp(stok[ev],"|")){ev++; l|=e_bxor();}  return l; }
-static long e_tern(void) { long c=e_bor(); if(ev<ev_hi&&!strcmp(stok[ev],"?")){ev++; long a=e_tern(); if(ev<ev_hi&&!strcmp(stok[ev],":"))ev++; long b=e_tern(); return c?a:b;} return c; }
-static long script_eval(int lo, int hi, u32 dot) { ev=lo; ev_hi=hi; g_dot=dot; return e_tern(); }
-
-/* wildcard match (supports '*') of an input-section name against a script pattern */
-static int glob(const char *p, const char *s) {
-	while (*p) {
-		if (*p=='*') { p++; if(!*p) return 1; for (; *s; s++) if (glob(p,s)) return 1; return glob(p,s); }
-		if (*p != *s) return 0;
-		p++; s++;
-	}
-	return *s==0;
-}
-
-int script_run(const char *path) {
-	FILE *f=fopen(path,"rb"); if(!f) die("cannot open linker script %s", path);
-	fseek(f,0,SEEK_END); long sz=ftell(f); fseek(f,0,SEEK_SET);
-	char *buf=malloc(sz+1); if(fread(buf,1,sz,f)!=(size_t)sz) die("read %s failed", path); buf[sz]=0; fclose(f);
-	script_tokenize(buf);
-	scripted = 1;
-	u32 dot = 0; int in_sections = 0;
-	int p = 0;
-	while (p < nstok) {
-		char *t = stok[p];
-		if (!strcmp(t,"ENTRY")) { p++; if(!strcmp(stok[p],"("))p++; entry_sym = stok[p++]; if(!strcmp(stok[p],")"))p++; continue; }
-		if (!strcmp(t,"MEMORY")) {   /* MEMORY { NAME (attrs) : ORIGIN = a, LENGTH = n  ... } */
-			p++; if (p<nstok && !strcmp(stok[p],"{")) p++;
-			while (p < nstok && strcmp(stok[p],"}")) {
-				char rn[32]; strncpy(rn, stok[p++], 31); rn[31]=0;
-				if (p<nstok && !strcmp(stok[p],"(")) { while (p<nstok && strcmp(stok[p],")")) p++; if(p<nstok) p++; }   /* skip (attrs) */
-				if (p<nstok && !strcmp(stok[p],":")) p++;
-				u32 org=0, len=0;
-				while (p<nstok && strcmp(stok[p],"}")) {         /* KEY = val [, KEY = val] */
-					char *key = stok[p++]; if (p<nstok && !strcmp(stok[p],"=")) p++;
-					long v = (p<nstok) ? parse_num(stok[p++]) : 0;
-					if (!strcmp(key,"ORIGIN")||!strcmp(key,"org")) org=(u32)v;
-					else if (!strcmp(key,"LENGTH")||!strcmp(key,"len")||!strcmp(key,"l")) len=(u32)v;
-					if (p<nstok && !strcmp(stok[p],",")) p++; else break;   /* no comma -> this region's attrs end */
-				}
-				if (nregion >= 16) die("linker script: too many MEMORY regions (>16)");
-				strncpy(regions[nregion].name, rn, 31); regions[nregion].origin=org; regions[nregion].length=len; regions[nregion].cur=org; nregion++;
-			}
-			if (p<nstok) p++;   /* skip '}' */
-			continue;
-		}
-		if (!strcmp(t,"SECTIONS")) { p++; if(!strcmp(stok[p],"{"))p++; in_sections=1; continue; }
-		if (in_sections && !strcmp(t,"}")) { p++; in_sections=0; continue; }
-		if (!strcmp(t,";")) { p++; continue; }
-		/* SYM = expr ;  or  . = expr ;  (top level or in SECTIONS) */
-		int provide = 0; char *nm = t;
-		if (!strcmp(t,"PROVIDE")||!strcmp(t,"PROVIDE_HIDDEN")) { provide=1; p++; if(!strcmp(stok[p],"("))p++; nm=stok[p]; }
-		if (p+1 < nstok && !strcmp(stok[p+1],"=")) {
-			/* expr runs to the next `;` (or, inside PROVIDE(...), the closing `)`) at PAREN DEPTH 0 — so
-			 * parens inside DEFINED()/ALIGN()/(a+b) don't truncate it (e.g. `DEFINED(X) ? X : 0x20000`). */
-			int e0 = p+2, e1 = e0, depth = 0;
-			while (e1 < nstok) {
-				if (!strcmp(stok[e1],"(")) depth++;
-				else if (!strcmp(stok[e1],")")) { if (depth==0) break; depth--; }
-				else if (!strcmp(stok[e1],";") && depth==0) break;
-				e1++;
-			}
-			long v = script_eval(e0, e1, dot);
-			if (!strcmp(nm,".")) dot = (u32)v;              /* move the location counter */
-			else { GSym *g=gsym_find(nm); if(!(provide && g && g->defined)) gsym_define(nm,(u32)v,0); }
-			p = e1; while (p<nstok && (!strcmp(stok[p],";")||!strcmp(stok[p],")"))) p++;
-			continue;
-		}
-		/* output section:  name : { in-specs } [> REGION] [AT> REGION | AT(expr)]   or   /DISCARD/ : { ... } */
-		if (p+1 < nstok && !strcmp(stok[p+1],":")) {
-			int discard = !strcmp(nm, "/DISCARD/");
-			OutSec *os = discard ? NULL : &outsecs[noutsec];
-			if (os) { memset(os,0,sizeof*os); strncpy(os->name, nm, 63); }
-			p += 2;                                          /* skip name ':' */
-			while (p<nstok && strcmp(stok[p],"{")) p++;      /* skip AT(...) etc. up to '{' */
-			int body = ++p;                                  /* first body token */
-			while (p<nstok && strcmp(stok[p],"}")) p++;      /* find the closing '}' (no nested braces here) */
-			int body_end = p; if (p<nstok) p++;              /* skip '}' */
-			/* trailing region specs: `> R` sets the VMA region, `AT> R`/`AT > R`/`AT(expr)` the LMA */
-			int vr = -1, lr = -1; long lma_at = -1;
-			while (p<nstok) {
-				if (!strcmp(stok[p],">")) { p++; vr = region_find(stok[p]); p++; }
-				else if (!strcmp(stok[p],"AT>")) { p++; lr = region_find(stok[p]); p++; }
-				else if (!strcmp(stok[p],"AT")) { p++;
-					if (p<nstok && !strcmp(stok[p],">")) { p++; lr = region_find(stok[p]); p++; }
-					else if (p<nstok && !strcmp(stok[p],"(")) { int e0=++p,d=1; while(p<nstok&&d){ if(!strcmp(stok[p],"("))d++; else if(!strcmp(stok[p],")"))d--; if(d)p++;} lma_at=script_eval(e0,p,dot); if(p<nstok)p++; }
-				} else break;
-			}
-			/* choose the VMA cursor (a region's, or the global dot); compute the LMA base + a fixed delta */
-			u32 *vc = (vr>=0) ? &regions[vr].cur : &dot;
-			*vc = alignup(*vc, 4);
-			u32 vbase = *vc, lbase = vbase;
-			if (lr>=0)      { regions[lr].cur = alignup(regions[lr].cur, 4); lbase = regions[lr].cur; }
-			else if (lma_at>=0) lbase = (u32)lma_at;
-			long delta = (long)lbase - (long)vbase;          /* LMA = VMA + delta for every section here */
-			if (os) { os->vaddr = vbase; os->lma = lbase; }
-			for (int q = body; q < body_end; ) {
-				if (!strcmp(stok[q],"KEEP")) { q++; if(q<body_end&&!strcmp(stok[q],"(")) q++; continue; }
-				if (q+1<body_end && !strcmp(stok[q+1],"=")) {  /* in-body `SYM = expr;` */
-					int e0=q+2,e1=e0; while(e1<body_end&&strcmp(stok[e1],";"))e1++;
-					long v=script_eval(e0,e1,*vc); if(strcmp(stok[q],".")) gsym_define(stok[q],(u32)v,0); else *vc=(u32)v;
-					q=e1; if(q<body_end&&!strcmp(stok[q],";"))q++; continue;
-				}
-				if (!strcmp(stok[q],"(")) { q++; continue; }
-				if (!strcmp(stok[q],")")) { q++; continue; }
-				if (!strcmp(stok[q],"*") || stok[q][0]=='.' || stok[q][0]=='_' || (stok[q][0]>='a'&&stok[q][0]<='z') || (stok[q][0]>='A'&&stok[q][0]<='Z')) {
-					if (q<body_end && strcmp(stok[q],"(")) q++;    /* skip the file spec ('*') */
-					if (q<body_end && !strcmp(stok[q],"(")) q++;   /* skip '(' */
-					while (q<body_end && strcmp(stok[q],")")) {
-						char *pat = stok[q++];
-						for (int oi=0; oi<nobj; oi++) { if(!objs[oi]->active) continue;
-							for (int j=0;j<objs[oi]->nsh;j++) { Elf32_Shdr *s=&objs[oi]->sh[j];
-								if (!(s->sh_flags&SHF_ALLOC) || !s->sh_size) continue;
-								if (objs[oi]->sec_vaddr[j]) continue;         /* already placed */
-								const char *shstr = (const char *)(objs[oi]->data + objs[oi]->sh[objs[oi]->eh->e_shstrndx].sh_offset);
-								if (!glob(pat, shstr + s->sh_name)) continue;
-								if (discard) continue;                       /* dropped: leave unplaced */
-								u32 a = s->sh_addralign ? s->sh_addralign : 4;
-								*vc = alignup(*vc, a);
-								objs[oi]->sec_vaddr[j] = *vc;
-								objs[oi]->sec_lma[j]   = (u32)((long)*vc + delta);
-								*vc += s->sh_size;
-								if (s->sh_flags&SHF_EXECINSTR) os->exec=1;
-								if (s->sh_flags&SHF_WRITE) os->write=1;
-								os->nobits = (s->sh_type==SHT_NOBITS);
-							} }
-					}
-					if (q<body_end && !strcmp(stok[q],")")) q++;
-				} else q++;
-			}
-			if (os) {
-				os->size = *vc - vbase;
-				if (lr>=0) regions[lr].cur = lbase + os->size;   /* consume the LMA region too */
-				dot = *vc;
-				if (os->size) noutsec++;
-			}
-			continue;
-		}
-		/* recognized-but-ignored file/format directives: consume the keyword + any (...) argument */
-		if (!strcmp(t,"OUTPUT_ARCH")||!strcmp(t,"OUTPUT_FORMAT")||!strcmp(t,"OUTPUT")||!strcmp(t,"TARGET")||
-		    !strcmp(t,"GROUP")||!strcmp(t,"INPUT")||!strcmp(t,"SEARCH_DIR")||!strcmp(t,"STARTUP")||!strcmp(t,"FORCE_COMMON_ALLOCATION")) {
-			p++;
-			if (p<nstok && !strcmp(stok[p],"(")) { int d=1; p++; while (p<nstok && d) { if(!strcmp(stok[p],"("))d++; else if(!strcmp(stok[p],")"))d--; p++; } }
-			continue;
-		}
-		/* constructs the subset parser does NOT model: FAIL LOUD rather than silently mislay the image */
-		if (!strcmp(t,"OVERLAY")||!strcmp(t,"NOCROSSREFS")||!strcmp(t,"ASSERT")||!strcmp(t,"PHDRS")||
-		    !strcmp(t,"VERSION")||!strcmp(t,"INCLUDE")||!strcmp(t,"OUTPUT_FORMAT_ELF"))
-			die("linker script %s: unsupported construct '%s' (subset parser: no PHDRS/OVERLAY/ASSERT/...)", path, t);
-		die("linker script %s: unexpected token '%s'", path, t);
-	}
-	return 1;
-}
-
 int main(int argc, char **argv) {
-	const char *out = "a.out";
-	const char *script_path = NULL;                      /* -T <linker script> */
-	const char *libnames[MAXSHLIB]; int nlibname = 0;    /* -l names, resolved to files after the parse loop */
-	const char *libdirs[32];        int nlibdir  = 0;    /* -L search directories */
+	const char *out = "a.out", *script_path = NULL;
+	const char **libnames = NULL, **libdirs = NULL; int nlibname = 0, libcap = 0, nlibdir = 0, dircap = 0;
+	int ttext = 0;
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
-		else if (!strcmp(argv[i], "-T") && i + 1 < argc) script_path = argv[++i];   /* linker script drives layout ("-T script.ld") */
-		else if (!strcmp(argv[i], "-Ttext") && i + 1 < argc) load_base = strtoul(argv[++i], NULL, 0);   /* text base */
-		else if (!strncmp(argv[i], "-Ttext=", 7)) load_base = strtoul(argv[i] + 7, NULL, 0);
-		else if ((!strcmp(argv[i], "-e") || !strcmp(argv[i], "--entry")) && i + 1 < argc) entry_sym = argv[++i];
-		else if (!strcmp(argv[i], "-pie") || !strcmp(argv[i], "--pie")) { pie = 1; load_base = 0; }   /* PIE: link at 0, self-relocate */
-		else if (!strcmp(argv[i], "-shared") || !strcmp(argv[i], "--shared")) { shared = 1; load_base = 0; }   /* .so: ET_DYN, no entry */
-		else if (!strcmp(argv[i], "-soname") && i + 1 < argc) soname = argv[++i];
-		else if (!strncmp(argv[i], "-soname=", 8)) soname = argv[i] + 8;
-		else if (!strncmp(argv[i], "-l", 2) && argv[i][2]) { if (nlibname >= MAXSHLIB) die("too many -l"); libnames[nlibname++] = argv[i] + 2; }
-		else if (!strcmp(argv[i], "-l") && i + 1 < argc)    { if (nlibname >= MAXSHLIB) die("too many -l"); libnames[nlibname++] = argv[++i]; }
-		else if (!strncmp(argv[i], "-L", 2) && argv[i][2]) { if (nlibdir >= 32) die("too many -L"); libdirs[nlibdir++] = argv[i] + 2; }
-		else if (!strcmp(argv[i], "-L") && i + 1 < argc)    { if (nlibdir >= 32) die("too many -L"); libdirs[nlibdir++] = argv[++i]; }
-		else if (argv[i][0] == '-') die("unknown option '%s'", argv[i]);
-		else if (is_archive(argv[i])) ar_load(argv[i]);   /* lazy members, pulled on demand below */
-		else elf_load(argv[i]);                           /* always-linked object */
+		const char *a = argv[i];
+		if (!strcmp(a, "-o") && i + 1 < argc) out = argv[++i];
+		else if (!strcmp(a, "-T") && i + 1 < argc) script_path = argv[++i];
+		else if (!strcmp(a, "-Ttext") && i + 1 < argc) { load_base = strtoul(argv[++i], NULL, 0); ttext = 1; }
+		else if (!strncmp(a, "-Ttext=", 7)) { load_base = strtoul(a + 7, NULL, 0); ttext = 1; }
+		else if ((!strcmp(a, "-e") || !strcmp(a, "--entry")) && i + 1 < argc) entry_sym = argv[++i];
+		else if (!strcmp(a, "-pie") || !strcmp(a, "--pie")) { pie = 1; load_base = 0; }
+		else if (!strcmp(a, "-shared") || !strcmp(a, "--shared")) { shared = 1; load_base = 0; }
+		else if (!strcmp(a, "-soname") && i + 1 < argc) soname = argv[++i];
+		else if (!strncmp(a, "-soname=", 8)) soname = a + 8;
+		else if (!strncmp(a, "-l", 2)) {
+			if (!a[2] && i + 1 == argc) die("-l needs a name");
+			libnames = grow(libnames, nlibname, &libcap, sizeof *libnames); libnames[nlibname++] = a[2] ? a + 2 : argv[++i];
+		} else if (!strncmp(a, "-L", 2)) {
+			if (!a[2] && i + 1 == argc) die("-L needs a directory");
+			libdirs = grow(libdirs, nlibdir, &dircap, sizeof *libdirs); libdirs[nlibdir++] = a[2] ? a + 2 : argv[++i];
+		}
+		else if (a[0] == '-') die("unknown option '%s'", a);
+		else if (is_archive(a)) ar_load(a);                  /* lazy members, pulled on demand */
+		else elf_load(a);                                     /* always-linked object */
 	}
-	if (!nobj) die("usage: ld [-o out] [-Ttext addr] [-e sym] [-shared] [-L dir] [-l name] obj.o|lib.a ...");
+	if (!nobj) die("usage: ld [-o out] [-T script | -Ttext addr] [-e sym] [-pie | -shared [-soname name]] [-L dir] [-l name] obj.o|lib.a ...");
+	if (script_path && ttext) die("-Ttext and -T both place the image: use one");
 
-	/* Resolve each -l<name> to lib<name>.so under a -L dir and read its exports (a provider). */
-	for (int i = 0; i < nlibname; i++) {
+	for (int i = 0; i < nlibname; i++) {                 /* -l<name>: lib<name>.so under a -L dir (a provider) */
 		char path[512]; int loaded = 0;
 		for (int d = 0; d < nlibdir && !loaded; d++) {
 			snprintf(path, sizeof path, "%s/lib%s.so", libdirs[d], libnames[i]);
-			if (file_exists(path)) { load_shared(path); loaded = 1; }
+			if (file_exists(path)) { load_shared(strdup(path)); loaded = 1; }
 		}
 		if (!loaded) die("cannot find -l%s (searched %d -L dir(s) for lib%s.so)", libnames[i], nlibdir, libnames[i]);
 	}
 	resolve_symbols();
-
-	if (script_path) {                                   /* linker-script layout: place sections + define symbols per the script */
-		script_run(script_path);
-		build_globals();                                 /* global symbol vaddrs from their (script-placed) sections */
-		Layout L = {0};
-		u32 entry = 0; GSym *s = gsym_find(entry_sym);
-		if (s && s->defined) entry = s->vaddr;
-		else die("no '%s' symbol (entry point)", entry_sym);
-		relocate(&L);
-		elf_write_script(out, entry);
-		return 0;
-	}
-
-	Layout L = {0};
 	if (shared && !soname) { const char *b = strrchr(out, '/'); soname = b ? b + 1 : out; }
-	build_imports();                                     /* undefined refs -> providers; sizes .plt/.dynsym (sets nimport) */
-	/* Publish this object's defined globals in .dynsym: for a .so, its export set; for a dynamic PROGRAM,
-	 * so a provider can resolve back into it (e.g. libc.so's `main`/`errno` -> the program) — like
-	 * --export-dynamic. After build_imports (needs nimport); sizes .dynsym -> before layout. */
-	if (shared || nimport) build_exports();
-	build_got();                                         /* PIC: R_ARM_GOT_PREL refs -> GOT slots; sizes .got */
-	layout(&L);
+
+	script_read(script_path);                            /* declares the script's symbols */
+	if (!entry_sym) entry_sym = "_start";
+	dyn_init();
+	for (int i = 0; i < nobj; i++) if (objs[i]->active && objs[i] != linker_obj) layout_match(objs[i]);
+	dyn_scan();
+	dyn_size();
+	layout_match(linker_obj);
+	layout_run();
 	build_globals();
-	finalize_got();                                      /* fill each GOT slot's link-time value (post-addresses) */
-	if (pie || shared) gsym_define("_DYNAMIC", L.dynamic_vaddr, 0);   /* so `.word _DYNAMIC` finds the array */
+	dyn_fill();
+	relocate();
+
 	u32 entry = 0;                                       /* a plain .so has none; ld.so IS a .so WITH an entry */
 	GSym *start = gsym_find(entry_sym);
 	if (start && start->defined) entry = start->vaddr;
 	else if (!shared) die("no '%s' symbol (entry point)", entry_sym);
-	relocate(&L);
-	elf_write_exec(out, entry, &L);
+	elf_write(out, entry);
 	return 0;
 }

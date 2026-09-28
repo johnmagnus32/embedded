@@ -39,6 +39,8 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define SHF_WRITE      1
 #define SHF_ALLOC      2
 #define SHF_EXECINSTR  4
+#define SHF_LINK_ORDER 0x80    /* ordered like the section sh_link names (.ARM.exidx -> its .text) */
+#define SHF_TLS        0x400   /* thread-local storage (.tdata/.tbss) */
 #define SHN_UNDEF 0
 #define SHN_ABS   0xfff1
 #define SHN_COMMON 0xfff2   /* tentative definition (-fcommon): no section yet */
@@ -51,6 +53,10 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define STT_OBJECT  1
 #define STT_FUNC    2
 #define STT_SECTION 3
+#define STT_FILE    4
+#define STV_DEFAULT 0
+#define STV_HIDDEN  2
+#define ELF32_ST_VISIBILITY(o) ((o)&3)
 #define ELF32_ST_INFO(b,t) (((b)<<4)|((t)&0xf))
 #define ELF32_ST_BIND(i)   ((i)>>4)
 #define ELF32_ST_TYPE(i)   ((i)&0xf)
@@ -62,6 +68,9 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define PT_LOAD    1
 #define PT_DYNAMIC 2     /* points the loader/self-relocator at the .dynamic array */
 #define PT_INTERP  3     /* names the runtime loader (ld.so) for a dynamically-linked consumer */
+#define PT_PHDR    6     /* the program header table itself (lets a loader find the load bias) */
+#define PT_GNU_STACK 0x6474e551u   /* p_flags = the stack's permissions (no PF_X: non-executable stack) */
+#define PT_ARM_EXIDX 0x70000001u   /* the .ARM.exidx unwind index */
 #define PF_X 1
 #define PF_W 2
 #define PF_R 4

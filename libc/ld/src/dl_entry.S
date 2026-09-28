@@ -9,26 +9,18 @@
  *
  * SELF-RELOCATION: built by our -fPIC toolchain, ld.so's own string/global refs go through the GOT, so
  * it carries R_ARM_RELATIVE entries whose GOT slots must be biased BEFORE any C runs (else the first
- * `dl_puts` reads a wrong string pointer). So `_start` is its own micro-loader: compute the load bias,
+ * `dl_puts` reads a wrong string pointer). So `_start` is its own micro-loader: take the load bias,
  * walk our .dynamic for DT_REL/DT_RELSZ, add the bias to each RELATIVE slot, THEN hand off to _dl_main.
- * (Same algorithm as the toolchain's -pie crt. The two `.word _start/_DYNAMIC` literals below are read
- * pre-relocation, so they still hold link-time values — exactly what the bias computation needs.)
- *
- * This ALSO provides a `_dl_base` helper: discovers the linker's own load base
- * by computing the difference between the link-time `_DYNAMIC` symbol and the
- * runtime address where it landed (a classic PC-relative trick). Used by the C
- * code to compute our own base for dso_t.base, so we can resolve libc's imports
- * against ourselves (we export `__syscall3` etc. that libc.so JUMP_SLOTs).
+ * (Same algorithm as the toolchain's -pie crt.)
  */
 	.section .text._start, "ax"
 	.global _start
 	.type   _start, %function
 _start:
 	/* --- self-relocate: apply our own R_ARM_RELATIVE before any C code touches the GOT ---
-	 * Bias comes from the auxv's AT_BASE (the kernel tells us where it loaded us) — NOT from a `.text`
-	 * literal, so this bootstrap writes ONLY the .got (RW). `.word _DYNAMIC` is a plain link-time value
-	 * (UNDEF in this object -> the linker leaves it un-relocated), biased here in a register. Result:
-	 * ld.so.1 has ZERO text relocations, so it works under a W^X kernel that maps .text read-only. */
+	 * Bias comes from the auxv's AT_BASE (the kernel tells us where it loaded us); _DYNAMIC is found
+	 * PC-relatively. No `.text` word needs a fixup, so this bootstrap writes ONLY the .got (RW): ld.so.1
+	 * has ZERO text relocations and works under a W^X kernel that maps .text read-only. */
 	mov     r4, sp            /* r4 = &argc */
 	ldr     r5, [r4]          /* argc */
 	add     r4, r4, #4        /* &argv[0] */
@@ -50,8 +42,11 @@ _start:
 	moveq   r6, r1
 	b       .Laux
 .Lauxdone:
-	ldr     r7, .Llink_dynamic
-	add     r7, r7, r6        /* r7 = runtime &_DYNAMIC */
+	ldr     r7, .Ldynamic
+	add     r7, pc, r7        /* r7 = runtime &_DYNAMIC (pc reads as the .word below) */
+	b       .Ldynamic_end
+.Ldynamic: .word _DYNAMIC - .   /* R_ARM_REL32: an in-image distance, fixed at link time (no runtime fixup) */
+.Ldynamic_end:
 	mov     r8, #0            /* r8 = rel-table link-time vaddr */
 	mov     r9, #0            /* r9 = rel-table size (bytes)   */
 .Lscan:
@@ -89,24 +84,7 @@ _start:
 	bl      _dl_main      /* _dl_main(long *sp) — does not return */
 1:	b       1b            /* if it ever returns: trap */
 	.size _start, .-_start
-.Llink_dynamic: .word _DYNAMIC   /* link-time &_DYNAMIC (un-relocated: read-only, biased in a register above) */
 
-/*
- * _dl_get_base — return the linker's own load bias.
- *
- * At link time, _DYNAMIC lives at a known VMA inside the .so (the linker placed
- * it). At RUN time, it's at that VMA + the load bias. By comparing the runtime
- * address (PC-relative ldr) against the link-time address (from the GOT or a
- * plain ldr), the difference is the bias. Because we have no R_ARM_RELATIVE, the
- * GOT entry for _DYNAMIC was resolved at link time and its runtime value is
- * _DYNAMIC_linktime + base (ARM GLOB_DAT — the linker application process will
- * fix this). BUT simpler: since we have zero self-reloc, the plain value of
- * _DYNAMIC in the text literal pool = its link-time value, and we get the
- * runtime address via a PC-relative load of the .dynamic section's first entry.
- *
- * Simplest: the kernel gives us AT_BASE in the auxv which is literally our load
- * base. So we just parse that. The asm trick is a fallback; C reads AT_BASE first.
- */
 
 	/* Mark the stack non-executable (silences ld's missing-.note.GNU-stack warning). */
 	.section .note.GNU-stack,"",%progbits

@@ -14,7 +14,7 @@ QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
 # backend (arm.c). A new arch swaps arm.c; a new object format swaps elf.c.
-OBJS := $(BUILD)/ld.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
 
 $(BUILD)/ld: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
@@ -35,7 +35,8 @@ $(BUILD):
 # gate was "GNU ld accepts our .o"): link crt0 + a stub touching all four section classes (.text/.rodata/
 # .data/.bss) and prove our ld emits a valid ET_EXEC with the M2 properties: entry=_start, TWO PT_LOADs
 # split W^X (seg0 R-X, seg1 R-W, never R-W-X), a .bss whose memsz exceeds its filesz, and the R_ARM_CALL
-# placeholder (0xebfffffe) relocated to a real branch. Entry = LOAD_BASE + ehdr(52) + 2*phdr(64) = 0x10074.
+# placeholder (0xebfffffe) relocated to a real branch. Entry = _start = the first byte after the headers
+# (LOAD_BASE + ehdr + phdrs: two PT_LOADs + PT_GNU_STACK, since both inputs carry .note.GNU-stack) = 0x10094.
 test: test-static test-pie test-script
 
 test-static: $(BUILD)/ld
@@ -59,9 +60,12 @@ test-static: $(BUILD)/ld
 	f0=$$(echo "$$segs" | sed -n 1p | cut -d' ' -f3); \
 	f1=$$(echo "$$segs" | sed -n 2p | cut -d' ' -f3); \
 	bfsz=$$(echo "$$segs" | sed -n 2p | cut -d' ' -f1); bmsz=$$(echo "$$segs" | sed -n 2p | cut -d' ' -f2); \
-	bl=$$(od -An -tx4 -j124 -N4 $$t/prog.elf | tr -d ' \n'); \
+	nph=$$($(GNU)readelf -h $$t/prog.elf | sed -n 's/.*Number of program headers:[[:space:]]*//p'); \
+	start=$$($(GNU)nm $$t/prog.elf | awk '$$3 == "_start" { print "0x" $$1 }'); \
+	bl=$$(od -An -tx4 -j$$((52 + 32 * nph + 8)) -N4 $$t/prog.elf | tr -d ' \n'); \
 	[ "$$typ" = EXEC ]      && echo "PASS type=EXEC"                          || { echo "FAIL type=$$typ (want EXEC)"; fail=1; }; \
-	[ "$$ent" = 0x10074 ]   && echo "PASS entry=$$ent (_start)"               || { echo "FAIL entry=$$ent (want 0x10074)"; fail=1; }; \
+	[ "$$ent" = 0x10094 ] && [ $$((ent)) = $$((start)) ] && echo "PASS entry=$$ent (_start, after the headers)" \
+	                        || { echo "FAIL entry=$$ent _start=$$start (want both 0x10094)"; fail=1; }; \
 	[ "$$nseg" = 2 ]        && echo "PASS two PT_LOAD segments"               || { echo "FAIL $$nseg PT_LOAD (want 2)"; fail=1; }; \
 	[ "$$f0" = "RE" ]       && echo "PASS seg0 R-X (W^X: not writable)"       || { echo "FAIL seg0 flags=$$f0 (want R E)"; fail=1; }; \
 	[ "$$f1" = "RW" ]       && echo "PASS seg1 R-W (W^X: not executable)"     || { echo "FAIL seg1 flags=$$f1 (want RW)"; fail=1; }; \

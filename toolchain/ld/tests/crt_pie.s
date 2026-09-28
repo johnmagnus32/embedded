@@ -4,19 +4,21 @@
 @ LINK-TIME value that is wrong once the loader drops the image somewhere else. `ld -pie` left an
 @ R_ARM_RELATIVE in .rel.dyn for each such word; this crt is the "loader": it computes the load bias,
 @ walks the .dynamic array to find that relocation table, adds the bias to every word it names, and only
-@ then calls main(). (On qemu -M virt with the MMU off the R-X segment is writable, so patching in place
-@ is fine; a real OS would place these words in a writable .data/.got.)
+@ then calls main(). Every word it patches is in .data/.got — the code itself needs no fixup (ld refuses
+@ text relocations), so it is truly position-independent.
 .text
 .global _start
 _start:
-	mov   r4, pc              @ ARM pipeline: PC reads as &(this insn) + 8
-	sub   r4, r4, #8          @ r4 = runtime &_start
-	ldr   r5, .Llink_start    @ r5 = link-time &_start (this word is itself an R_ARM_RELATIVE target, so it
-	                          @      still holds the pre-relocation link-time value when we read it here)
-	sub   r6, r4, r5          @ r6 = load bias = runtime - link
-
-	ldr   r7, .Llink_dynamic  @ r7 = link-time &_DYNAMIC
-	add   r7, r7, r6          @ r7 = runtime &_DYNAMIC
+	ldr   r7, .Ldynamic
+	add   r7, pc, r7          @ r7 = runtime &_DYNAMIC (ARM pipeline: pc reads as the .word below)
+	b     1f
+.Ldynamic: .word _DYNAMIC - .           @ R_ARM_REL32: an in-image distance, fixed at link time
+1:	ldr   r5, .Lgot
+	add   r5, pc, r5          @ r5 = runtime &(_DYNAMIC's GOT slot)
+	b     2f
+.Lgot:     .word _DYNAMIC(GOT_PREL)     @ the slot holds the LINK-time &_DYNAMIC until the loop below biases it
+2:	ldr   r5, [r5]            @ r5 = link-time &_DYNAMIC
+	sub   r6, r7, r5          @ r6 = load bias = runtime - link
 
 	@ --- scan .dynamic for DT_REL (rel-table vaddr) and DT_RELSZ (size in bytes) ---
 	mov   r8, #0              @ r8 = rel-table link-time vaddr
@@ -67,5 +69,3 @@ _start:
 .Lhang:
 	b     .Lhang
 
-.Llink_start:    .word _start
-.Llink_dynamic:  .word _DYNAMIC
