@@ -36,7 +36,7 @@ U1,34,I2S2_CK,,PB13 — I2S2 CK → MAX98357A BCLK
 U1,35,,,PB14
 U1,36,I2S2_SD,,PB15 — I2S2 SD → MAX98357A DIN
 U1,37,LCD_LITE,,"PC6 — TIM3_CH1 open-drain PWM → 2090 LITE; internal pulls OFF (node ~4.5 V, FT pin)"
-U1,38,,,PC7
+U1,38,BB_PSYNC,,PC7 — push-pull → TPS63021 PS/SYNC: high = forced PWM; 100k pull-down = power-save through reset
 U1,39,,,PC8
 U1,40,,,PC9 — MCO2 test point for HSE if needed
 U1,41,,,PA8 — kept free: I2C3_SCL escape bus
@@ -214,7 +214,7 @@ J3,2,+5V_LCD,pwr,2 — module VIN
 J3,3,LCD_CS,,3
 J3,4,LCD_DC,,4 — module C/D
 J3,5,LCD_WR,,5
-J3,6,+3V3,pwr,6 — RD tied directly high (module has 10k pull-down)
+J3,6,+5V_LCD,pwr,6 — RD tied to module VIN: high whenever the module is powered (module has 10k pull-down; RD sets its data-buffer direction)
 J3,7,LCD_RST,,7
 J3,8,LCD_LITE,,8 — backlight gate — module pulls to ~4.5 V; driven by STM32 PC6 open-drain
 J3,9,,,9 — CTP_IRQ unused
@@ -414,7 +414,7 @@ U10,9,BB_L1,,L1
 U10,10,SYS,pwr,VIN
 U10,11,SYS,pwr,VIN
 U10,12,SYS,pwr,EN — on whenever the switch is on
-U10,13,BB_PSYNC,,PS/SYNC — 0 Ω to GND = power-save
+U10,13,BB_PSYNC,,PS/SYNC — from STM32 PC7; 100k pull-down (low = power-save)
 U10,14,,,PG — power-good unused
 U10,15,GND,gnd,PGND — exposed pad → PGND + vias
 R24,1,BB_FB,,1

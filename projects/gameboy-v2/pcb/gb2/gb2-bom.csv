@@ -32,7 +32,7 @@ C20,fpga,C109456,easyeda2kicad:CC0603KRX5R6BB475,iCE40 VCCPLL bulk · CC0603KRX5
 FB2,fpga,C1002,easyeda2kicad:GZ1608D601TF,iCE40 1.2 V→VCCPLL ferrite · GZ1608D601TF · #5
 R4,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,CRESET_B pull-up · RC0603JR-0710KL · #10
 R5,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,CDONE pull-up · RC0603JR-0710KL · #10
-R6,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,SS_B pull-down (slave-boot strap) · RC0603JR-0710KL · #10
+R6,fpga,C22978,easyeda2kicad:0603WAF3301T5E,"SS_B pull-down 3.3k (slave-boot strap, holds <0.8 V vs 128 µA worst-case IPU) · 0603WAF3301T5E · #78"
 R7,fpga,C23193,easyeda2kicad:0603WAF5100T5E,CDONE LED resistor · 0603WAF5100T5E · #11
 D2,fpga,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,CDONE LED (lit = FPGA not configured) · 19-213SYGC/S530-E2/5T · #12
 U3,fpga-ldo,C151376,easyeda2kicad:AP2127K-1.2TRG1,iCE40 1.2 V core LDO · AP2127K-1.2TRG1 · #4
@@ -87,7 +87,7 @@ J8,charger,C295747,easyeda2kicad:S2B-PH-SM4-TB,Battery connector (Adafruit 2011 
 SW1,charger,C319012,easyeda2kicad:SS-12D10L5,Power slide switch (true off) · XKB SS-12D10L5 · #55
 U10,buck-boost,C202140,easyeda2kicad:TPS63021DSJR,3.3 V buck-boost · TPS63021DSJR · #44
 R24,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost FB→VOUT tie · 0603WAF0000T5E · #45
-R25,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost PS/SYNC strap · 0603WAF0000T5E · #46
+R25,buck-boost,C25803,easyeda2kicad:0603WAF1003T5E,Buck-boost PS/SYNC pull-down 100k · 0603WAF1003T5E · #46
 C39,buck-boost,C14663,easyeda2kicad:CC0603KRX7R9BB104,Buck-boost VINA bypass · CC0603KRX7R9BB104 · #47
 C40,buck-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,Buck-boost input cap · CL21A106KOQNNNE · #48
 C41,buck-boost,C1713,easyeda2kicad:CL21A106KOQNNNE,Buck-boost input cap · CL21A106KOQNNNE · #48
