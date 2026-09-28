@@ -10,6 +10,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "cc.h"
+#include "strmap.h"
 
 static Token *tk;                                  /* the parse cursor */
 static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
@@ -24,51 +25,71 @@ static void expect(const char *s){ if (!consume(s)) die("parse: expected '%s' bu
 static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expected identifier, got '%s' (line %d)", tk->text, tk->line);
                                    strncpy(out, tk->text, 63); out[63] = 0; tk = tk->next; }
 
+/* ---- scopes (C11 6.2.1) ------------------------------------------------------------------------- */
+/* Each block (and each function, its parameters and body together) is a scope with two name spaces:
+ * ORDINARY identifiers — local objects, typedef names, enum constants — and TAGS (struct/union/enum). A
+ * lookup walks from the innermost scope out to file scope, so an inner declaration shadows an outer one and
+ * ends with its block. File-scope objects and functions are found in the globals and signature tables, under
+ * every scope's ordinary identifiers (a local, a typedef or an enum constant hides a global of the name). */
+enum { ID_LOCAL, ID_TYPEDEF, ID_ENUMC };
+typedef struct { int kind; int local; Type *type; long val; } Ident;   /* local: its locals[] index */
+typedef struct Scope { StrMap ids, tags; struct Scope *up; } Scope;
+static Scope file_scope, *scope = &file_scope;
+static void scope_push(void) { Scope *sc = calloc(1, sizeof *sc); sc->up = scope; scope = sc; }
+static void scope_pop(void) { Scope *sc = scope; scope = sc->up; strmap_clear(&sc->ids); strmap_clear(&sc->tags); free(sc); }
+static Ident *ident_find(const char *name) {
+	for (Scope *sc = scope; sc; sc = sc->up) { Ident *d = strmap_get(&sc->ids, name); if (d) return d; }
+	return NULL;
+}
+static Ident *ident_add(const char *name, int kind) {   /* in the current scope (a same-scope redeclaration replaces) */
+	Ident *d = calloc(1, sizeof *d); d->kind = kind;
+	strmap_put(&scope->ids, strdup(name), d);
+	return d;
+}
+
 /* ---- locals (per function) ----------------------------------------------------------------------- */
 /* gname: a block-scope `static`/`extern` name bound to a GLOBAL symbol (no frame slot). */
 static struct { char name[64]; int offset; Type *type; char reg[8]; char gname[64]; int vla; } locals[1024];
 static int nlocals, local_bytes;   /* local_bytes = total frame bytes used by locals+params so far */
-/* Lookups scan newest-first, so an inner declaration shadows an outer one; a block restores nlocals at its
- * `}` (block scope), but never reclaims the inner block's frame space. */
-static const char *local_reg(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return locals[i].reg; return ""; }
-static int local_exists(const char *name) { for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) return 1; return 0; }
+/* A block restores nlocals at its `}` (its names end with its scope) but never reclaims its frame space. */
+static int local_index(const char *name) { Ident *d = ident_find(name); return d && d->kind == ID_LOCAL ? d->local : -1; }
+static const char *local_reg(const char *name) { int i = local_index(name); return i >= 0 ? locals[i].reg : ""; }
+static int local_exists(const char *name) { return local_index(name) >= 0; }
 static Node *node(NodeKind kind);
 static Node *binary(NodeKind k, Node *l, Node *r);
 static Node *unary(NodeKind k, Node *l);
 static Node *num(long v);
 static Init *global_init(Type *ty);
 static Node *local_ref(const char *name) {   /* the node for a block-scope name: its frame slot, or its global */
-	for (int i = nlocals - 1; i >= 0; i--) if (!strcmp(locals[i].name, name)) {
-		Node *n = node(locals[i].gname[0] ? ND_GVAR : ND_VAR); n->type = locals[i].type;
-		if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); return n; }
-		strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla; return n;
-	}
-	die("parse: internal: no local '%s'", name); return 0;
+	int i = local_index(name);
+	if (i < 0) die("parse: internal: no local '%s'", name);
+	Node *n = node(locals[i].gname[0] ? ND_GVAR : ND_VAR); n->type = locals[i].type;
+	if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); return n; }
+	strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla; return n;
 }
 static int add_local(const char *name, Type *ty) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
 	local_bytes += (ty->size + 3) & ~3;   /* a 4-aligned slot big enough for the whole object (arrays too) */
 	int off = -local_bytes;               /* offset points at the object's first (lowest) byte */
 	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0;
-	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
+	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty;
+	if (name[0]) ident_add(name, ID_LOCAL)->local = nlocals;
+	nlocals++;
 	return off;
 }
 /* Bind a name to an explicit offset without allocating frame space — for params 5+ that live in the
  * CALLER's frame (above our saved r11/lr), at [r11, #8 + 4*(i-4)]. */
 static void add_local_at(const char *name, Type *ty, int off) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
-	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0; strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty; nlocals++;
+	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0; strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty;
+	if (name[0]) ident_add(name, ID_LOCAL)->local = nlocals;
+	nlocals++;
 }
 
-/* ---- typedef names + enum constants (both resolved at parse time) -------------------------------- */
-#define MAXTYPEDEFS 16384   /* a preprocessed kernel TU has thousands of typedefs; at 256 the table overflowed
-                             * silently -> a later typedef (e.g. Elf64_Sxword) wasn't recognized as a typename. */
-static struct { char name[64]; Type *type; } typedefs[MAXTYPEDEFS]; static int ntypedefs;
-static Type *typedef_find(const char *n) { for (int i = 0; i < ntypedefs; i++) if (!strcmp(typedefs[i].name, n)) return typedefs[i].type; return NULL; }
-static void  add_typedef(const char *n, Type *t) { if (ntypedefs >= MAXTYPEDEFS) die("cc: too many typedefs (>%d) — raise MAXTYPEDEFS", MAXTYPEDEFS); strncpy(typedefs[ntypedefs].name, n, 63); typedefs[ntypedefs].type = t; ntypedefs++; }
-#define MAXENUMC 16384   /* a kernel TU has thousands of enum constants (was 512 -> silently dropped) */
-static struct { char name[64]; long val; } enumc[MAXENUMC]; static int nenumc;
-static int   enum_find(const char *n, long *v) { for (int i = 0; i < nenumc; i++) if (!strcmp(enumc[i].name, n)) { *v = enumc[i].val; return 1; } return 0; }
+/* ---- typedef names + enum constants (both resolved at parse time, scoped like any identifier) ----- */
+static Type *typedef_find(const char *n) { Ident *d = ident_find(n); return d && d->kind == ID_TYPEDEF ? d->type : NULL; }
+static void  add_typedef(const char *n, Type *t) { ident_add(n, ID_TYPEDEF)->type = t; }
+static int   enum_find(const char *n, long *v) { Ident *d = ident_find(n); if (!d || d->kind != ID_ENUMC) return 0; *v = d->val; return 1; }
 
 static Type *struct_decl(int is_union);
 static Type *enum_decl(void);
@@ -95,8 +116,8 @@ static void sig_set_pcs(const char *name, int pcs);
 static Attr decl_attr;
 static long eval_const(Node *n); static Node *assign(void);
 /* Names declared weak on a PROTOTYPE (`void f(void) __weak;`): the later definition is weak too (GCC). */
-static char weak_names[256][64]; static int nweak;
-int name_is_weak(const char *name) { for (int i = 0; i < nweak; i++) if (!strcmp(weak_names[i], name)) return 1; return 0; }
+static StrMap weak_names;
+int name_is_weak(const char *name) { return strmap_get(&weak_names, name) != NULL; }
 static Gvar *add_global(void);
 static void topasm(const char *fmt, const char *a, const char *b) {   /* a file-scope directive, emitted verbatim */
 	Gvar *g = add_global(); g->is_topasm = 1; snprintf(g->str, sizeof g->str, fmt, a, b);
@@ -104,7 +125,7 @@ static void topasm(const char *fmt, const char *a, const char *b) {   /* a file-
 /* A declaration with no storage of its own (a prototype, an extern): weak -> `.weak name`; alias -> the symbol
  * `name` is defined as `alias` (`.set`), global unless static. */
 static void decl_symbol_attrs(const char *name, const Attr *a, int is_static) {
-	if (a->weak) { if (nweak >= 256) die("parse: too many weak declarations"); strncpy(weak_names[nweak++], name, 63); topasm("\t.weak %s%s", name, ""); }
+	if (a->weak) { strmap_put(&weak_names, strdup(name), (void *)1); topasm("\t.weak %s%s", name, ""); }
 	if (a->alias[0]) { if (!is_static && !a->weak) topasm("\t.global %s%s", name, ""); topasm("\t.set %s, %s", name, a->alias); }
 }
 static void attr_merge(Attr *to, const Attr *a) {
@@ -302,12 +323,12 @@ static Type *declarator(Type *base, char *name) {
 /* struct-spec = "struct" tag? ( "{" (declspec declarator ("," declarator)* ";")* "}" )?  — a named
  * definition registers the tag; a bare "struct tag" looks it up. Member offsets are assigned with each
  * member aligned to its own alignment, and the struct's size rounded up to its max member alignment. */
-#define MAXTAGS 16384   /* a preprocessed kernel TU declares thousands of struct/union tags; at 64 the table
-                         * overflowed silently -> a forward decl + its later definition bound to DIFFERENT
-                         * Type objects, so `ptr->member` saw an empty (opaque) struct. */
-static struct { char name[64]; Type *type; } struct_tags[MAXTAGS]; static int nstruct_tags;
-static Type *tag_find(const char *name) { for (int i = 0; i < nstruct_tags; i++) if (!strcmp(struct_tags[i].name, name)) return struct_tags[i].type; return NULL; }
-static void  tag_add(const char *name, Type *t) { if (!name[0]) return; if (nstruct_tags >= MAXTAGS) die("cc: too many struct/union tags (>%d) — raise MAXTAGS", MAXTAGS); strncpy(struct_tags[nstruct_tags].name, name, 63); struct_tags[nstruct_tags].type = t; nstruct_tags++; }
+static Type *tag_find(const char *name) {                /* the innermost visible tag */
+	for (Scope *sc = scope; sc; sc = sc->up) { Type *t = strmap_get(&sc->tags, name); if (t) return t; }
+	return NULL;
+}
+static Type *tag_here(const char *name) { return strmap_get(&scope->tags, name); }   /* declared in THIS scope */
+static void  tag_add(const char *name, Type *t) { if (name[0]) strmap_put(&scope->tags, strdup(name), t); }
 /* Assign every member a byte offset (and, for bitfields, a bit offset within its storage unit) and set the
  * struct's size + alignment. Little-endian bit allocation, GCC/SysV rules: a bitfield lives entirely inside
  * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed`
@@ -357,13 +378,15 @@ static Type *struct_decl(int is_union) {
 	int packed = 0, alignb = 0;
 	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct __attribute__((packed)) S */
 	char tag[64] = ""; if (tk->kind == TK_IDENT) ident(tag);
-	if (!is("{")) {                                          /* a reference — forward-declare an incomplete type if new */
-		Type *t = tag_find(tag);
+	if (!is("{")) {                                          /* a reference: the visible tag, else a new incomplete type */
+		/* `struct tag;` alone declares a NEW incomplete type in this scope, hiding an outer one (C11 6.7.2.3p7). */
+		Type *t = is(";") ? tag_here(tag) : tag_find(tag);
 		if (!t) { t = calloc(1, sizeof *t); t->kind = TY_STRUCT; tag_add(tag, t); }   /* opaque; pointers to it still work */
 		return t;
 	}
-	Type *ty = tag[0] ? tag_find(tag) : NULL;                /* a definition — fill an existing forward decl in place */
-	if (!ty) { ty = calloc(1, sizeof *ty); ty->kind = TY_STRUCT; tag_add(tag, ty); }
+	Type *ty = tag[0] ? tag_here(tag) : NULL;                /* a definition completes this scope's forward decl in place, */
+	if (ty && ty->members) die("parse: redefinition of '%s %s' (line %d)", is_union ? "union" : "struct", tag, tk->line);
+	if (!ty) { ty = calloc(1, sizeof *ty); ty->kind = TY_STRUCT; tag_add(tag, ty); }   /* ... else declares a new type here */
 	expect("{");
 	/* Collect the members first (with any bitfield widths), THEN lay them out — because `packed` may be
 	 * written after the closing brace (`struct {...} __packed;`, the common kernel form) and must repack. */
@@ -380,6 +403,7 @@ static Type *struct_decl(int is_union) {
 		do {
 			decl_attr = mbase;
 			char mname[64]; Type *mt = declarator(base, mname);
+			if (mt->vsize_off) die("parse: variable-length member '%s' in a struct (GNU extension) is not supported (line %d)", mname, tk->line);
 			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt;
 			if (consume(":")) { m->is_bitfield = 1; m->bit_width = (int)eval_const(assign()); }   /* type name : width */
 			while (consume("__attribute__")) attribute();
@@ -416,8 +440,7 @@ static Type *enum_decl(void) {
 		char nm[64]; ident(nm);
 		while (consume("__attribute__")) attribute();
 		if (consume("=")) val = eval_const(assign());   /* any const expr: another enum constant, 1<<N, … */
-		if (nenumc >= MAXENUMC) die("parse: too many enum constants (>%d) — raise MAXENUMC", MAXENUMC);
-		strncpy(enumc[nenumc].name, nm, 63); enumc[nenumc].val = val; nenumc++;
+		ident_add(nm, ID_ENUMC)->val = val;
 		if (val < lo) lo = val;
 		if (val > hi) hi = val;
 		val++;
@@ -435,8 +458,10 @@ Gvar *globals; static Gvar *gtail; static int str_id;
 /* File-scope register variables (`register T x asm("rN");`) — x aliases a hard register everywhere. */
 static struct { char name[64]; char reg[8]; } gregs[16]; static int ngregs;
 static const char *greg_find(const char *name) { for (int i = 0; i < ngregs; i++) if (!strcmp(gregs[i].name, name)) return gregs[i].reg; return NULL; }
+static StrMap global_map;                                /* name -> its Gvar (strings and file-scope asm have none) */
 static Gvar *add_global(void) { Gvar *g = calloc(1, sizeof *g); if (gtail) gtail->next = g; else globals = g; gtail = g; return g; }
-static Gvar *global_find(const char *name) { for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !strcmp(g->name, name)) return g; return NULL; }
+static Gvar *new_global(const char *name) { Gvar *g = add_global(); strncpy(g->name, name, 63); strmap_put(&global_map, g->name, g); return g; }
+static Gvar *global_find(const char *name) { return strmap_get(&global_map, name); }
 
 /* ---- node constructors --------------------------------------------------------------------------- */
 static int is_typename(void) {   /* does a declaration start at the cursor? */
@@ -819,7 +844,7 @@ static Node *unary_expr(void) {
 			char nm[32]; snprintf(nm, sizeof nm, ".Lcl%d", cl_seq++);
 			InitPlace *pl = init_places(t);                  /* first: `(T[]){...}` takes its size from the braces */
 			if (!in_func) {   /* file scope (a static initializer's `&(struct B){...}`): an anonymous static object */
-				Gvar *g = add_global(); snprintf(g->name, sizeof g->name, ".Lcl%d", cl_seq++); g->type = t; g->is_static = 1;
+				char cl[32]; snprintf(cl, sizeof cl, ".Lcl%d", cl_seq++); Gvar *g = new_global(cl); g->type = t; g->is_static = 1;
 				g->init = lower_global(pl, t->size);
 				Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = t; return postfix_ops(gv);
 			}
@@ -1084,15 +1109,16 @@ static Node *stmt(void) {
 	if (consume("while")) { Node *n = node(ND_WHILE); expect("("); n->cond = expr(); expect(")"); n->body = stmt(); return n; }
 	if (consume("do")) { Node *n = node(ND_DOWHILE); n->body = stmt(); expect("while"); expect("("); n->cond = expr(); expect(")"); expect(";"); return n; }
 	if (consume("for")) {                                    /* for (init; cond; inc) body — any part may be empty */
-		Node *n = node(ND_FOR); expect("("); int saved_nl = nlocals;   /* the init declaration's scope is the for statement */
+		Node *n = node(ND_FOR); expect("("); int saved_nl = nlocals; scope_push();   /* the init declaration's scope is the for statement */
 		if (is_typename()) n->init = stmt();       /* declaration eats its own ; */
 		else if (!consume(";")) { n->init = unary(ND_EXPRSTMT, expr()); expect(";"); }
 		if (!consume(";")) { n->cond = expr(); expect(";"); }
 		if (!is(")")) n->inc = expr();
-		expect(")"); n->body = stmt(); nlocals = saved_nl; return n;
+		expect(")"); n->body = stmt(); nlocals = saved_nl; scope_pop(); return n;
 	}
-	if (consume("{")) { int saved_ls = nlscope, saved_nl = nlocals;   /* __label__ declarations and locals end with their block */
-		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next; nlscope = saved_ls; nlocals = saved_nl; return n; }
+	if (consume("{")) { int saved_ls = nlscope, saved_nl = nlocals; scope_push();   /* a block is a scope: its declarations end at `}` */
+		Node *n = node(ND_BLOCK); Node h = {0}, *c = &h; while (!consume("}")) c = c->next = stmt(); n->body = h.next;
+		nlscope = saved_ls; nlocals = saved_nl; scope_pop(); return n; }
 	if (is("__auto_type")) {   /* GNU __auto_type: the local's type is inferred from its initializer (kernel min/max) */
 		tk = tk->next;
 		Node blk = {0}, *bc = &blk;
@@ -1127,8 +1153,8 @@ static Node *stmt(void) {
 			if (sc & (SC_STATIC | SC_EXTERN)) {   /* block-scope static/extern: a GLOBAL object, only the NAME is block-scoped */
 				Gvar *g;
 				if (sc & SC_STATIC) {             /* own file-local object `nm.N` (GCC's naming); initialized once, statically */
-					static int sseq; g = add_global(); snprintf(g->name, sizeof g->name, "%s.%d", nm, sseq++); g->is_static = 1; g->type = ty;
-				} else if (!(g = global_find(nm))) { g = add_global(); strncpy(g->name, nm, 63); g->type = ty; g->is_extern = 1; }
+					static int sseq; char sn[80]; snprintf(sn, sizeof sn, "%.60s.%d", nm, sseq++); g = new_global(sn); g->is_static = 1; g->type = ty;
+				} else if (!(g = global_find(nm))) { g = new_global(nm); g->type = ty; g->is_extern = 1; }
 				while (consume("__attribute__")) attribute();
 				attr_merge(&g->attr, &decl_attr);
 				add_local_at(nm, ty, 0); strncpy(locals[nlocals - 1].gname, g->name, 63);   /* bound BEFORE the initializer: it may name itself (&x.head) */
@@ -1206,6 +1232,7 @@ static Func *function_tail(const char *name, Type *ret) {
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret;
 	in_func = 1;
 	nlocals = 0; local_bytes = 0;
+	scope_push();                                            /* the function's scope: its parameters and body */
 	expect("(");
 	struct { char name[64]; Type *ty; } prm[MAXPARAMS]; int np = 0;   /* collect params, then assign offsets by kind */
 	Attr fattr = decl_attr;   /* parameter attributes are the params' own */
@@ -1266,13 +1293,13 @@ static Func *function_tail(const char *name, Type *ret) {
 			add_local_at(prm[i].name, prm[i].ty, vr[i] >= 0 ? 8 + 4 * vr[i] : 8 + 4 * pos[i] + (f->vfp_save ? 64 : 0));
 	}
 	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
-	if (consume(";")) { in_func = 0; return NULL; }          /* a prototype — no body to compile (bounds never evaluated) */
+	if (consume(";")) { in_func = 0; scope_pop(); return NULL; }   /* a prototype — no body to compile (bounds never evaluated) */
 	expect("{");
 	Node h = {0}, *c = &h;
 	for (Node *v = vla_prologue; v; ) { Node *nx = v->next; v->next = NULL; c = c->next = v; v = nx; }
 	while (!consume("}")) c = c->next = stmt();
 	f->body = h.next;
-	in_func = 0;
+	in_func = 0; scope_pop();
 	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
 	return f;   /* add_type runs in a final pass (parse()), once every function's return type is recorded */
 }
@@ -1763,39 +1790,30 @@ static Init *global_init(Type *ty) {
  * nodes the right width; the parameter types let a caller place/widen each argument per AAPCS (a 64-bit
  * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
  * Populated for every prototype/definition. */
-#define MAXFUNCSIG 32768   /* a preprocessed kernel TU declares thousands of functions (was 512 -> silently dropped) */
-static struct { char name[64]; Type *ret; Type **params; int nparams; int variadic, base_pcs; } func_sigs[MAXFUNCSIG]; static int nfunc_sigs;   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
+typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs; } FuncSig;   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
+static StrMap func_sigs;                                 /* name -> its FuncSig */
+static FuncSig *sig_of(const char *name) { return name && name[0] ? strmap_get(&func_sigs, name) : NULL; }
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic) {
-	int idx = -1;
-	for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) { idx = i; break; }
-	if (idx < 0) { if (nfunc_sigs >= MAXFUNCSIG) die("cc: too many function signatures (>%d) — raise MAXFUNCSIG", MAXFUNCSIG); idx = nfunc_sigs++; strncpy(func_sigs[idx].name, name, 63); }
-	func_sigs[idx].ret = ret;
-	if (variadic == 2 && func_sigs[idx].nparams) return;   /* an unknown-params redeclaration keeps a known prototype */
-	func_sigs[idx].variadic = variadic;
-	func_sigs[idx].nparams = np;
-	func_sigs[idx].params = np ? malloc(np * sizeof *params) : NULL;
-	for (int i = 0; i < np; i++) func_sigs[idx].params[i] = params[i];
+	FuncSig *f = sig_of(name);
+	if (!f) { f = calloc(1, sizeof *f); strmap_put(&func_sigs, strdup(name), f); }
+	f->ret = ret;
+	if (variadic == 2 && f->nparams) return;             /* an unknown-params redeclaration keeps a known prototype */
+	f->variadic = variadic;
+	f->nparams = np;
+	f->params = np ? malloc(np * sizeof *params) : NULL;
+	for (int i = 0; i < np; i++) f->params[i] = params[i];
 }
-Type *func_ret_type(const char *name) {
-	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return func_sigs[i].ret;
-	return NULL;
-}
-int func_declared(const char *name) {
-	if (name && name[0]) for (int i = 0; i < nfunc_sigs; i++) if (!strcmp(func_sigs[i].name, name)) return 1;
-	return 0;
-}
+Type *func_ret_type(const char *name) { FuncSig *f = sig_of(name); return f ? f->ret : NULL; }
+int func_declared(const char *name) { return sig_of(name) != NULL; }
 int func_base_pcs(const char *name) {   /* a `...` prototype or pcs("aapcs"); unknown params (2) use the normal (VFP) PCS, like GCC */
-	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name)) return func_sigs[k].variadic == 1 || func_sigs[k].base_pcs;
-	return 0;
+	FuncSig *f = sig_of(name); return f && (f->variadic == 1 || f->base_pcs);
 }
 static void sig_set_pcs(const char *name, int pcs) {   /* a declaration's pcs(...) attribute -> its calls */
-	if (!pcs) return;
-	for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name)) { func_sigs[k].base_pcs = pcs == 1; return; }
+	FuncSig *f = sig_of(name); if (pcs && f) f->base_pcs = pcs == 1;
 }
 Type *func_param_type(const char *name, int i) {
-	if (name && name[0]) for (int k = 0; k < nfunc_sigs; k++) if (!strcmp(func_sigs[k].name, name))
-		return (i < func_sigs[k].nparams) ? func_sigs[k].params[i] : NULL;   /* NULL => unknown or a vararg */
-	return NULL;
+	FuncSig *f = sig_of(name);
+	return f && i < f->nparams ? f->params[i] : NULL;   /* NULL => unknown or a vararg */
 }
 
 Func *parse(Token *tok) {
@@ -1858,7 +1876,7 @@ Func *parse(Token *tok) {
 			/* File-scope redeclarations are ONE object (C11 6.9.2): `static T x;` (tentative) then `static T x = {...};`
 			 * (kernel trace events), or `extern T x;` then `T x;`. Merge instead of emitting two definitions. */
 			Gvar *g = global_find(name);
-			if (!g) { g = add_global(); strncpy(g->name, name, 63); g->type = ty;
+			if (!g) { g = new_global(name); g->type = ty;
 				g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0; }
 			else {
 				if (!(sc & SC_EXTERN)) g->is_extern = 0;          /* any non-extern declaration makes it a definition */

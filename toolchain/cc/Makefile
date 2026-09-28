@@ -3,6 +3,8 @@
 BUILD  ?= build
 CC     ?= cc
 CFLAGS ?= -O0 -g -Wall -Wextra -std=c11
+COMMON := ../common
+CFLAGS += -I$(COMMON)
 
 OURAS := ../as/build/as
 OURLD := ../ld/build/ld
@@ -10,12 +12,15 @@ RTLIB := ../rt/build/libosrt.a   # our compiler runtime (64-bit division, int64<
 GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
-OBJS := $(BUILD)/cc.o $(BUILD)/lex.o $(BUILD)/parse.o $(BUILD)/gen.o $(BUILD)/type.o
+OBJS := $(BUILD)/cc.o $(BUILD)/lex.o $(BUILD)/parse.o $(BUILD)/gen.o $(BUILD)/type.o $(BUILD)/strmap.o
 
 $(BUILD)/cc: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
 $(BUILD)/%.o: %.c cc.h | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/strmap.o: $(COMMON)/strmap.c $(COMMON)/strmap.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD):
