@@ -7,10 +7,10 @@ COMMON := ../common
 CFLAGS += -I$(COMMON)
 
 OURAS := ../as/build/as
-GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
+GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 
-$(BUILD)/ar: ar.c $(COMMON)/elf.h | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ ar.c
+$(BUILD)/ar: ar.c $(COMMON)/elfread.c $(COMMON)/elfread.h $(COMMON)/elf.h | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ ar.c $(COMMON)/elfread.c
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -23,11 +23,17 @@ test: $(BUILD)/ar
 	@t=$$(mktemp -d); fail=0; \
 	printf '.text\n.global a_one\na_one: mov r0, #1\nbx lr\n'  > $$t/a.s; \
 	printf '.text\n.global b_two\nb_two: mov r0, #2\nbx lr\n'  > $$t/b.s; \
-	$(OURAS) -o $$t/a.o $$t/a.s; $(OURAS) -o $$t/b.o $$t/b.s; \
-	$(BUILD)/ar rc $$t/lib.a $$t/a.o $$t/b.o || { echo "FAIL: our ar errored"; exit 1; }; \
+	printf '.text\n.weak w_three\nw_three: mov r0, #3\nbx lr\n' > $$t/w.s; \
+	$(OURAS) -o $$t/a.o $$t/a.s; $(OURAS) -o $$t/b.o $$t/b.s; $(OURAS) -o $$t/w.o $$t/w.s; \
+	$(BUILD)/ar rc $$t/lib.a $$t/a.o $$t/b.o $$t/w.o || { echo "FAIL: our ar errored"; exit 1; }; \
 	$(GNU)ar t $$t/lib.a >$$t/list 2>$$t/err && echo "PASS GNU ar lists: $$(tr '\n' ' ' <$$t/list)" || { echo "FAIL GNU ar rejected: $$(cat $$t/err)"; fail=1; }; \
 	syms=$$($(GNU)nm --print-armap $$t/lib.a 2>/dev/null | grep -c 'in a\.o\|in b\.o'); \
 	[ "$$syms" -ge 2 ] && echo "PASS armap has a_one+b_two (GNU nm read our index)" || { echo "FAIL armap missing symbols ($$syms)"; fail=1; }; \
+	$(GNU)nm --print-armap $$t/lib.a 2>/dev/null | grep -q 'w_three in w\.o' \
+	  && echo "PASS armap indexes a weak definition (as GNU ar does)" || { echo "FAIL armap lacks the weak w_three"; fail=1; }; \
+	head -c 200 $$t/a.o > $$t/cut.o; $(BUILD)/ar rc $$t/bad.a $$t/cut.o 2>$$t/err; st=$$?; \
+	[ $$st = 1 ] && grep -q 'outside the file' $$t/err && echo "PASS truncated object rejected: $$(cat $$t/err)" \
+	  || { echo "FAIL truncated object: exit $$st, '$$(cat $$t/err)'"; fail=1; }; \
 	rm -rf $$t; \
 	[ $$fail -eq 0 ] && echo "----- ar OK -----" || { echo "----- FAILED -----"; exit 1; }
 

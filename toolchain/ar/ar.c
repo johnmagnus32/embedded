@@ -3,34 +3,39 @@
  * magic line then a sequence of members, each a 60-byte header + its bytes (padded to even length). We
  * write the GNU/SysV variant so BOTH our ld and GNU ld accept the result:
  *   "!<arch>\n"
- *   member "/"   — the ARMAP symbol index: for every global symbol DEFINED by a member, the file offset
+ *   member "/"   — the ARMAP symbol index: for every global/weak symbol DEFINED by a member, the file offset
  *                  of that member's header, so a linker can find "which member defines foo" in O(1).
  *   member "//"  — the extended name table (only if some member name won't fit the 16-byte name field).
  *   members ...  — the archived object files.
  * The symbol index uses BIG-ENDIAN 32-bit counts/offsets (the format is fixed big-endian, unlike ELF).
  *
  * Usage: ar <rc|cr|...> archive.a member.o ...   (key letters are accepted but we always create+replace).
- * We read each input's ELF symbol table to list its exported (global, defined) symbols for the index.
- * Shares the ELF format with the rest of the toolchain via common/elf.h. Only .o inputs are supported.
+ * We read each input's ELF symbol table (validated by common/elfread) to list the symbols it defines for the index.
+ * Only relocatable (.o) inputs are supported.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
-#include "elf.h"
+#include "elfread.h"
 
-static void die(const char *fmt, ...) {
+void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
 	fputs("ar: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
-#define MAXMEM 256
-#define MAXSYM 65536
-typedef struct { const char *path; char name[64]; u8 *data; long size;
+typedef struct { const char *path; u8 *data; long size;
                  u32 hdr_off; char field[17]; } Member;    /* field = the 16-byte name written in the header */
-static Member mem[MAXMEM]; static int nmem;
-static struct { char *name; int member; } sym[MAXSYM]; static int nsym;
+static Member *mem; static int nmem, memcap;
+static struct { const char *name; int member; } *sym; static int nsym, symcap;
+
+static void *grow(void *v, int n, int *cap, size_t esz) {
+	if (n < *cap) return v;
+	*cap = *cap ? *cap * 2 : 64;
+	if (!(v = realloc(v, (size_t)*cap * esz))) die("out of memory");
+	return v;
+}
 
 /* Read a whole file into a fresh buffer. */
 static u8 *slurp(const char *path, long *size) {
@@ -43,20 +48,15 @@ static u8 *slurp(const char *path, long *size) {
 /* basename without directory. */
 static const char *base_of(const char *p) { const char *s = strrchr(p, '/'); return s ? s + 1 : p; }
 
-/* Collect the global, DEFINED symbols of one ELF object into sym[] (owned by member `mi`). */
+/* Index the symbols one object DEFINES — global and weak, as GNU ar does (a weak definition still satisfies a
+ * linker's search) — into sym[] (owned by member `mi`). */
 static void index_object(int mi) {
-	u8 *d = mem[mi].data; long n = mem[mi].size;
-	if (n < (long)sizeof(Elf32_Ehdr) || memcmp(d, "\177ELF\1\1", 6)) die("%s: not a little-endian ELF32", mem[mi].path);
-	Elf32_Ehdr *eh = (Elf32_Ehdr *)d; Elf32_Shdr *sh = (Elf32_Shdr *)(d + eh->e_shoff);
-	for (int i = 0; i < eh->e_shnum; i++) if (sh[i].sh_type == SHT_SYMTAB) {
-		Elf32_Sym *s = (Elf32_Sym *)(d + sh[i].sh_offset);
-		int ns = sh[i].sh_size / sizeof(Elf32_Sym);
-		const char *str = (const char *)(d + sh[sh[i].sh_link].sh_offset);
-		for (int k = 0; k < ns; k++) {
-			if (ELF32_ST_BIND(s[k].st_info) != STB_GLOBAL || s[k].st_shndx == SHN_UNDEF || !s[k].st_name) continue;
-			if (nsym >= MAXSYM) die("too many symbols");
-			sym[nsym].name = strdup(str + s[k].st_name); sym[nsym].member = mi; nsym++;
-		}
+	ElfFile f; elf_open(&f, mem[mi].path, mem[mi].data, mem[mi].size, ET_REL, 0);
+	for (int k = 1; k < f.nsym; k++) {
+		int b = ELF32_ST_BIND(f.sym[k].st_info);
+		if ((b != STB_GLOBAL && b != STB_WEAK) || f.sym[k].st_shndx == SHN_UNDEF || !f.sym[k].st_name) continue;
+		sym = grow(sym, nsym, &symcap, sizeof *sym);
+		sym[nsym].name = f.strtab + f.sym[k].st_name; sym[nsym].member = mi; nsym++;
 	}
 }
 
@@ -78,16 +78,17 @@ int main(int argc, char **argv) {
 	const char *out = argv[2];
 
 	/* Load every member + build the long-name table (`//`) for names that won't fit the 16-byte field. */
-	char longtab[8192]; u32 longlen = 0;
+	char *longtab = NULL; u32 longlen = 0;
 	for (int i = 3; i < argc; i++) {
-		if (nmem >= MAXMEM) die("too many members");
+		mem = grow(mem, nmem, &memcap, sizeof *mem);
 		Member *m = &mem[nmem];
 		m->path = argv[i]; m->data = slurp(argv[i], &m->size);
-		const char *b = base_of(argv[i]); snprintf(m->name, sizeof m->name, "%s", b);
+		const char *b = base_of(argv[i]);
 		if (strlen(b) <= 15) snprintf(m->field, sizeof m->field, "%s/", b);   /* inline: "name/" */
 		else {                                                                /* long: "/offset" into // */
 			snprintf(m->field, sizeof m->field, "/%u", longlen);
-			longlen += snprintf(longtab + longlen, sizeof longtab - longlen, "%s/\n", b);
+			longtab = realloc(longtab, longlen + strlen(b) + 3);
+			longlen += (u32)sprintf(longtab + longlen, "%s/\n", b);
 		}
 		index_object(nmem); nmem++;
 	}

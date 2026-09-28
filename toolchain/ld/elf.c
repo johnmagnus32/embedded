@@ -9,27 +9,20 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "ld.h"
+#include "elfread.h"
 
 ShLib *shlibs; int nshlib; static int shlibcap;             /* -l: the shared libraries we link against */
 ShExport *shexports; int nshexport; static int shexpcap;    /* the symbols those providers export */
 
-/* Parse an in-memory ELF32 relocatable into objs[] (locating its symbol + string tables). `active`
+/* Parse an in-memory ELF32 relocatable into objs[] (validated by elf_open; the image must be 4-aligned). `active`
  * distinguishes always-linked command-line objects (1) from lazy archive members (0, pulled on demand). */
-Obj *elf_parse(const char *path, u8 *data, long size, int active) {
+static Obj *elf_parse(const char *path, u8 *data, long size, int active) {
+	ElfFile f; elf_open(&f, path, data, size, ET_REL, md_e_machine);
 	Obj *o = obj_new(); o->path = path; o->data = data; o->size = size; o->active = active;
-	o->eh = (Elf32_Ehdr *)o->data;
-	if (memcmp(o->eh->e_ident, "\177ELF\1\1", 6)) die("%s: not a little-endian ELF32", path);
-	if (o->eh->e_machine != md_e_machine) die("%s: wrong machine (e_machine=%u, want %u)", path, o->eh->e_machine, md_e_machine);
-	o->sh = (Elf32_Shdr *)(o->data + o->eh->e_shoff); o->nsh = o->eh->e_shnum;
-	o->shstr = (const char *)(o->data + o->sh[o->eh->e_shstrndx].sh_offset);
+	o->eh = f.eh; o->sh = f.sh; o->nsh = f.nsh; o->shstr = f.shstr; o->sym = f.sym; o->nsym = f.nsym; o->strtab = f.strtab;
 	o->sec_vaddr = calloc(o->nsh, sizeof(u32));
 	o->sec_lma   = calloc(o->nsh, sizeof(u32));
 	o->sec_out   = calloc(o->nsh, sizeof *o->sec_out);
-	for (int i = 0; i < o->nsh; i++) if (o->sh[i].sh_type == SHT_SYMTAB) {
-		o->sym = (Elf32_Sym *)(o->data + o->sh[i].sh_offset);
-		o->nsym = o->sh[i].sh_size / sizeof(Elf32_Sym);
-		o->strtab = (const char *)(o->data + o->sh[o->sh[i].sh_link].sh_offset);
-	}
 	return o;
 }
 
@@ -49,7 +42,7 @@ Obj *elf_load(const char *path) { long n; u8 *d = slurp(path, &n); return elf_pa
  * only when a symbol they define is needed (ar_pull), so a 1400-member libc.a costs a few pulled members, not
  * 1400 parses. "//" holds long member names ("/off" references it). An archive without an index is an error,
  * as in GNU ld ("run ranlib"). */
-typedef struct { const char *path; u8 *data; long size; const char *longtab; StrMap loaded; } Archive;
+typedef struct { const char *path; u8 *data; long size; const char *longtab; long longsz; StrMap loaded; } Archive;
 typedef struct { Archive *ar; long off; } ArSym;
 static StrMap arsyms;                                  /* symbol -> its first defining member (command-line order) */
 
@@ -66,7 +59,7 @@ void ar_load(const char *path) {
 		long msize = ar_field(h, 48, 10);
 		if (memcmp(h + 58, "`\n", 2) || msize < 0 || p + 60 + msize > size) die("%s: corrupt archive member header at %ld", path, p);
 		if (!memcmp(h, "/ ", 2)) { index = d + p + 60; index_size = msize; }
-		else if (!memcmp(h, "//", 2)) ar->longtab = (const char *)(d + p + 60);
+		else if (!memcmp(h, "//", 2)) { ar->longtab = (const char *)(d + p + 60); ar->longsz = msize; }
 		else if (!memcmp(h, "/SYM64/", 7) || !memcmp(h, "__.SYMDEF", 9)) die("%s: unsupported archive index format", path);
 		p += 60 + msize + (msize & 1);                 /* members are padded to even length */
 	}
@@ -94,12 +87,16 @@ Obj *ar_pull(const char *sym) {
 	const char *h = (const char *)(ar->data + as->off);
 	char mname[256]; int k = 0;
 	if (h[0] == '/' && h[1] >= '0' && h[1] <= '9') {   /* "/off": long name */
-		if (!ar->longtab) die("%s: long member name without a // table", ar->path);
-		const char *nm = ar->longtab + atol(h + 1); while (k < 255 && nm[k] && nm[k] != '/' && nm[k] != '\n') { mname[k] = nm[k]; k++; }
+		long at = atol(h + 1);
+		if (!ar->longtab || at < 0 || at >= ar->longsz) die("%s: member name outside the // table", ar->path);
+		const char *nm = ar->longtab + at;
+		while (k < 255 && at + k < ar->longsz && nm[k] != '/' && nm[k] != '\n') { mname[k] = nm[k]; k++; }
 	} else while (k < 16 && h[k] != '/' && h[k] != ' ') { mname[k] = h[k]; k++; }
 	mname[k] = 0;
 	char *path = malloc(strlen(ar->path) + strlen(mname) + 3); sprintf(path, "%s(%s)", ar->path, mname);
-	return elf_parse(path, ar->data + as->off + 60, ar_field(h, 48, 10), 1);
+	long size = ar_field(h, 48, 10);                   /* the header was bounds-checked by ar_load */
+	u8 *copy = malloc(size ? size : 1); memcpy(copy, ar->data + as->off + 60, size);   /* an aligned image of its own */
+	return elf_parse(path, copy, size, 1);
 }
 
 /* Read a shared library (-l) as a PROVIDER: register the symbols it EXPORTS + its soname, without laying
@@ -107,33 +104,32 @@ Obj *ar_pull(const char *sym) {
  * names, and its DT_SONAME (falling back to the file's basename) for the DT_NEEDED we'll emit if used. */
 void load_shared(const char *path) {
 	long size; u8 *d = slurp(path, &size);
-	Elf32_Ehdr *eh = (Elf32_Ehdr *)d;
-	if (memcmp(eh->e_ident, "\177ELF\1\1", 6)) die("%s: not a little-endian ELF32", path);
-	if (eh->e_type != ET_DYN) die("%s: not a shared object (e_type != ET_DYN)", path);
-	Elf32_Shdr *sh = (Elf32_Shdr *)(d + eh->e_shoff);
-	Elf32_Sym *dsym = NULL; int ndsym = 0; const char *dstr = NULL;
-	Elf32_Dyn *dyn = NULL; int ndyn = 0;
-	for (int i = 0; i < eh->e_shnum; i++) {
-		if (sh[i].sh_type == SHT_DYNSYM) {
-			dsym = (Elf32_Sym *)(d + sh[i].sh_offset); ndsym = sh[i].sh_size / sizeof(Elf32_Sym);
-			dstr = (const char *)(d + sh[sh[i].sh_link].sh_offset);
-		} else if (sh[i].sh_type == SHT_DYNAMIC) {
-			dyn = (Elf32_Dyn *)(d + sh[i].sh_offset); ndyn = sh[i].sh_size / sizeof(Elf32_Dyn);
-		}
+	ElfFile f; elf_open(&f, path, d, size, ET_DYN, md_e_machine);
+	int dynsym = 0, dynamic = 0;
+	for (int i = 1; i < f.nsh; i++) {
+		if (f.sh[i].sh_type == SHT_DYNSYM) dynsym = i;
+		else if (f.sh[i].sh_type == SHT_DYNAMIC) dynamic = i;
 	}
-	if (!dsym || !dstr) die("%s: no .dynsym (not a linkable shared object)", path);
-
+	if (!dynsym) die("%s: no .dynsym (not a linkable shared object)", path);
+	int dstr = (int)f.sh[dynsym].sh_link;               /* validated: a NUL-terminated string table */
 	const char *son = NULL;
-	for (int i = 0; i < ndyn; i++) if (dyn[i].d_tag == DT_SONAME) son = dstr + dyn[i].d_val;
+	if (dynamic) {
+		Elf32_Shdr *s = &f.sh[dynamic];
+		if (s->sh_offset & 3 || s->sh_size % sizeof(Elf32_Dyn)) die("%s: malformed .dynamic", path);
+		Elf32_Dyn *dyn = (Elf32_Dyn *)(d + s->sh_offset);
+		for (u32 i = 0; i < s->sh_size / sizeof *dyn && dyn[i].d_tag != DT_NULL; i++)
+			if (dyn[i].d_tag == DT_SONAME) son = elf_string(&f, dstr, dyn[i].d_val);
+	}
 	if (!son) { const char *b = strrchr(path, '/'); son = strdup(b ? b + 1 : path); }
 	shlibs = grow(shlibs, nshlib, &shlibcap, sizeof *shlibs);
 	int lib = nshlib; shlibs[nshlib++] = (ShLib){ son, 0 };
 
-	for (int k = 0; k < ndsym; k++) {
+	Elf32_Sym *dsym = (Elf32_Sym *)(d + f.sh[dynsym].sh_offset);
+	for (u32 k = 0; k < f.sh[dynsym].sh_size / sizeof *dsym; k++) {
 		Elf32_Sym *s = &dsym[k]; int b = ELF32_ST_BIND(s->st_info);
 		if ((b == STB_GLOBAL || b == STB_WEAK) && s->st_shndx != SHN_UNDEF && s->st_name) {
 			shexports = grow(shexports, nshexport, &shexpcap, sizeof *shexports);
-			shexports[nshexport++] = (ShExport){ dstr + s->st_name, lib, s->st_size };
+			shexports[nshexport++] = (ShExport){ elf_string(&f, dstr, s->st_name), lib, s->st_size };
 		}
 	}
 }

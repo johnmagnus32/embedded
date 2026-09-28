@@ -14,15 +14,18 @@ QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
 # backend (arm.c). A new arch swaps arm.c; a new object format swaps elf.c.
-OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o
 
 $(BUILD)/ld: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
-$(BUILD)/%.o: %.c ld.h $(COMMON)/elf.h $(COMMON)/elfutil.h $(COMMON)/strmap.h | $(BUILD)
+$(BUILD)/%.o: %.c ld.h $(COMMON)/elf.h $(COMMON)/elfutil.h $(COMMON)/elfread.h $(COMMON)/strmap.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/elfutil.o: $(COMMON)/elfutil.c $(COMMON)/elfutil.h $(COMMON)/elf.h | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/elfread.o: $(COMMON)/elfread.c $(COMMON)/elfread.h $(COMMON)/elf.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/strmap.o: $(COMMON)/strmap.c $(COMMON)/strmap.h | $(BUILD)
@@ -84,6 +87,9 @@ test-static: $(BUILD)/ld
 	$(BUILD)/ld -o $$t/D.elf $$t/crt0.o $$t/lsm.o $$t/used.o $$t/helper.o; \
 	if cmp -s $$t/C.elf $$t/D.elf; then echo "PASS archive: helper pulled, unused dropped (== direct link)"; \
 	  else echo "FAIL archive: link with lib.a differs from equivalent direct link"; fail=1; fi; \
+	head -c 300 $$t/stub.o > $$t/cut.o; $(BUILD)/ld -o $$t/X.elf $$t/crt0.o $$t/cut.o 2>$$t/err; st=$$?; \
+	[ $$st = 1 ] && grep -q 'outside the file' $$t/err && echo "PASS truncated object rejected: $$(cat $$t/err)" \
+	  || { echo "FAIL truncated object: exit $$st, '$$(cat $$t/err)'"; fail=1; }; \
 	rm -rf $$t; \
 	[ $$fail -eq 0 ] && echo "----- ld M2 OK -----" || { echo "----- FAILED -----"; exit 1; }
 
