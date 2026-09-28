@@ -18,18 +18,22 @@
 
 /* The assembler's INTERNAL tables (not the ELF on-disk structs — those are Elf32_* in elf.h): the
  * section byte buffers, symbol records, relocations, and forward-local-branch fixups the front-end owns. */
-typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shndx; u32 align, entsize; } Section;   /* align: sh_addralign (GAS: max requested; an ARM insn = 4); entsize: M sections */
-typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak; } Sym;
+typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shndx; u32 align, entsize;
+                 int mapstate, lastmap, secsym; } Section;   /* align: sh_addralign (GAS: max requested; an ARM insn = 4);
+                                                                 * entsize: M sections; mapstate/lastmap: its mapping-symbol
+                                                                 * state + latest $a/$d (-1 none); secsym: its STT_SECTION symbol */
+typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak, sized; } Sym;   /* sized: had a .size */
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
 typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
 
-#define MAXSEC 32
-#define MAXSYM 65536  /* a big preprocessed kernel .c emits tens of thousands of .L labels + symbols */
-#define MAXREL 65536
-extern Section secs[]; extern int nsec, cursec;   /* cursec = active section index into secs[] */
-extern Sym syms[]; extern int nsym;
-extern Reloc rels[]; extern int nrel;
+/* The tables grow as needed (a big preprocessed kernel .c emits tens of thousands of .L labels + symbols); names are
+ * found through a hash index, so interning stays O(1) per symbol. */
+extern Section *secs; extern int nsec, cursec;   /* cursec = active section index into secs[] */
+extern Sym *syms; extern int nsym;
+extern Reloc *rels; extern int nrel;
+int sym_add(Sym s);
+void *grow(void *v, int n, int *cap, size_t esz);   /* room for element n of a growable table (doubling) */                              /* append a symbol; a named one joins the name index (first wins) */
 
 /* ---- FRONT-END services (as.c), called by both backends ------------------------------------------ */
 void die(const char *fmt, ...);

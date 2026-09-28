@@ -21,15 +21,18 @@ TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_
 
 # Three layers, GNU-binutils-style: front-end (as.c) + machine-dependent backend (arm.c) + object
 # backend (elf.c). Swapping arm.c for another arch backend is the ONLY change a new target needs.
-OBJS := $(BUILD)/as.o $(BUILD)/arm.o $(BUILD)/elf.o $(BUILD)/elfutil.o
+OBJS := $(BUILD)/as.o $(BUILD)/arm.o $(BUILD)/elf.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
 
 $(BUILD)/as: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
-$(BUILD)/%.o: %.c as.h $(COMMON)/elf.h $(COMMON)/elfutil.h | $(BUILD)
+$(BUILD)/%.o: %.c as.h $(COMMON)/elf.h $(COMMON)/elfutil.h $(COMMON)/strmap.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/elfutil.o: $(COMMON)/elfutil.c $(COMMON)/elfutil.h $(COMMON)/elf.h | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD)/strmap.o: $(COMMON)/strmap.c $(COMMON)/strmap.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD):

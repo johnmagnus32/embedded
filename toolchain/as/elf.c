@@ -23,7 +23,7 @@ typedef struct {
 	Elf32_Sym *esym; int ne; int first_global; int *symmap;   /* .symtab image + our->ELF index map */
 	Strtab str, shstr;                                        /* .strtab (symbol names) / .shstrtab (section names) */
 	Elf32_Shdr *sh; int total;                                /* section headers + their count */
-	int relof[MAXSEC];                                        /* user section i -> its .rel header index (-1 = none) */
+	int *relof;                                               /* user section i -> its .rel header index (-1 = none) */
 	int symtab_ndx, strtab_ndx, shstrtab_ndx;                 /* trailing header indices */
 	u32 shoff;                                                /* file offset of the section header table */
 } Obj;
@@ -61,6 +61,7 @@ static void build_symtab(Obj *o) {
 /* Phase 2 — decide the section-header layout: [0]=null, user secs (1..nsec), a .rel.<sec> per section
  * with relocations, then .symtab, .strtab, .shstrtab. Records each user section's .rel header in relof[]. */
 static void plan_headers(Obj *o) {
+	o->relof = malloc((nsec + 1) * sizeof *o->relof);
 	for (int i = 0; i < nsec; i++) o->relof[i] = -1;
 	o->total = 1 + nsec;
 	for (int i = 0; i < nsec; i++) if (sec_has_rel(i)) o->relof[i] = o->total++;

@@ -33,11 +33,11 @@ const u32 md_r_rel32    = R_ARM_REL32;    /* ...and this for `.word <symbol> - .
 
 /* Pc-relative literal loads (`ldr Rd, .Llabel[+/-N]`) — the target pool label usually sits AFTER the
  * code, so we emit `ldr Rd, [pc,#0]` and fix the 12-bit offset in md_finish once all labels are known. */
-static struct { int sec; u32 off; char *sym; long addend; int kind; } ldrlit[16384]; static int nldrlit;
+static struct { int sec; u32 off; char *sym; long addend; int kind; } *ldrlit; static int nldrlit, ldrlitcap;
 static void join_toks(int from, char *out, size_t n); static void pool_ref(u32 insn, u32 val, int sym); static void pool_flush(int sec);   /* kind: 0 = ldr Rd,literal ; 1 = adr Rd,label */
 /* Named-symbol branches (b/bl <sym>): deferred to md_finish so we can RESOLVE ones defined in the same
  * section (like GNU as does for local labels) and only RELOCATE truly external/cross-section ones. */
-static struct { int sec; u32 off; char *sym; int is_bl; } brfix[65536]; static int nbrfix;
+static struct { int sec; u32 off; char *sym; int is_bl; } *brfix; static int nbrfix, brfixcap;
 
 /* The current instruction's tokens (set by md_assemble; the enc_* helpers read them, like tc-arm.c). */
 static char **toks; static int ntok;
@@ -241,11 +241,12 @@ static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
 	int n; char ldir;
 	char fbn[64];
 	if (parse_local_ref(name, &n, &ldir) == (int)strlen(name)) {   /* 1b / 1f: the fb label's hidden symbol */
-		strncpy(fbn, syms[fb_symbol(n, ldir)].name, sizeof fbn - 1); fbn[sizeof fbn - 1] = 0; name = fbn;
+		int fb = fb_symbol(n, ldir);                     /* (before indexing syms: it may grow the table) */
+		strncpy(fbn, syms[fb].name, sizeof fbn - 1); fbn[sizeof fbn - 1] = 0; name = fbn;
 	}
 	/* named symbol: defer to md_finish — resolve if defined in THIS section (local label / same-file),
 	 * else relocate. The placeholder keeps the cond/101/L opcode byte; imm24 is filled in later. */
-	if (nbrfix >= 65536) die("too many branch fixups");
+	brfix = grow(brfix, nbrfix, &brfixcap, sizeof *brfix);
 	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl;
 	brfix[nbrfix].sym = strdup(name);
 	sym_intern(name);   /* create it NOW (GAS symbol-table order = first reference), resolve in md_finish */
@@ -334,7 +335,7 @@ static void enc_ldst(u32 cond, int is_load, int is_byte) {
 	}
 	if (ntok >= 3 && toks[2][0] != '[') {   /* pc-relative ldr/str{b} Rd, <expr> (label, label+N, ., ...) */
 		u32 pcrel = 0x050f0000u | ((u32)is_byte << 22) | ((u32)is_load << 20);   /* P=1, Rn=pc; U + offset patched in */
-		if (nldrlit >= 16384) die("too many ldr literals");
+		ldrlit = grow(ldrlit, nldrlit, &ldrlitcap, sizeof *ldrlit);
 		char ex[512]; join_toks(2, ex, sizeof ex);   /* whole operand (was toks[2] only: `ldr r0, l + 4` lost the +4) */
 		long c; int sy, dt; eval_reloc_expr(ex, &c, &sy, &dt);
 		u32 off = here();
@@ -376,7 +377,7 @@ static void enc_adr(u32 cond) {   /* adr Rd, label -> add/sub Rd, pc, #(label-.-
 	long c; int sy, dt; eval_reloc_expr(ex, &c, &sy, &dt);
 	if (sy < 0 && dt == 1) { patch_adr(cursec, off, (int32_t)c - 8); return; }   /* `.`-relative */
 	if (sy < 0 || dt) die("adr: bad operand '%s'", ex);
-	if (nldrlit >= 16384) die("too many pc-relative fixups");   /* symbol (incl. 1f/1b): resolve in md_finish */
+	ldrlit = grow(ldrlit, nldrlit, &ldrlitcap, sizeof *ldrlit);   /* symbol (incl. 1f/1b): resolve in md_finish */
 	ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = off;
 	ldrlit[nldrlit].sym = strdup(syms[sy].name);
 	ldrlit[nldrlit].addend = c;
@@ -887,7 +888,7 @@ static void enc_ldc(u32 cond, int L, int N) {
 			if ((mag & 3) || mag > 1020) die("%s: pc-relative offset %d must be a multiple of 4 within 1020", toks[0], d);
 			emit32((w & ~(1u << 23)) | ((d >= 0 ? 1u : 0u) << 23) | (mag >> 2)); return; }
 		if (sy < 0 || dt) die("%s: bad address '%s'", toks[0], ex);
-		if (nldrlit >= 16384) die("too many pc-relative fixups");
+		ldrlit = grow(ldrlit, nldrlit, &ldrlitcap, sizeof *ldrlit);
 		ldrlit[nldrlit].sec = cursec; ldrlit[nldrlit].off = here(); ldrlit[nldrlit].addend = c; ldrlit[nldrlit].kind = 2;
 		ldrlit[nldrlit].sym = strdup(syms[sy].name); nldrlit++;
 		emit32(w); return;

@@ -17,23 +17,35 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include "as.h"
+#include "strmap.h"
 
 /* ------------------------------------------------------------------ tables (the shared model) ----- */
-Section secs[MAXSEC]; int nsec; int cursec = -1;
+Section *secs; int nsec, cursec = -1; static int seccap;
 /* GAS section model: `prevsec` = the section before the most recent switch (what `.previous` returns to);
  * .pushsection saves the (current, previous) PAIR and .popsection restores both. */
 static int secstack[32][2], secsp, prevsec = -1;
-Sym syms[MAXSYM]; int nsym;
-Reloc rels[MAXREL]; int nrel;
+Sym *syms; int nsym; static int symcap; static StrMap symindex;   /* name -> index + 1 (the first of that name) */
+Reloc *rels; int nrel; static int relcap;
+void *grow(void *v, int n, int *cap, size_t esz) {
+	if (n < *cap) return v;
+	*cap = *cap ? *cap * 2 : 256;
+	if (!(v = realloc(v, (size_t)*cap * esz))) die("out of memory");
+	return v;
+}
+int sym_add(Sym s) {
+	syms = grow(syms, nsym, &symcap, sizeof *syms);
+	syms[nsym] = s;
+	if (s.name && s.name[0] != '$' && !strmap_get(&symindex, s.name)) strmap_put(&symindex, s.name, (void *)(long)(nsym + 1));
+	return nsym++;                                   /* ($a/$d mapping symbols are markers, never looked up by name) */
+}
 /* Numeric local labels (GAS: ANY decimal number, e.g. the kernel's `9998:`) — GAS's design: definition k of N:
  * is a hidden local symbol `.Lfb<N>$<k>`; `Nb` names instance k (the latest), `Nf` instance k+1 (created now,
  * defined when the next N: appears). Everything else — branches, adr, ldr, data words, expressions — then uses
  * ordinary symbols, so forward refs, cross-section refs and `1f - 1b` all just work. */
-#define MAXLOCAL 4096
-static struct { int num, count; } fbtab[MAXLOCAL]; static int nfbtab;
+static struct { int num, count; } *fbtab; static int nfbtab, fbcap;
 static int fb_slot(int n) {
 	for (int i = 0; i < nfbtab; i++) if (fbtab[i].num == n) return i;
-	if (nfbtab >= MAXLOCAL) die("too many distinct numeric local labels (>%d)", MAXLOCAL);
+	fbtab = grow(fbtab, nfbtab, &fbcap, sizeof *fbtab);
 	fbtab[nfbtab].num = n; fbtab[nfbtab].count = 0; return nfbtab++;
 }
 
@@ -50,16 +62,14 @@ int sec_find(const char *name) { for (int i = 0; i < nsec; i++) if (!strcmp(secs
  * UNDEF; code-section alignment pads with NOPs ($a) after any sub-word zero bytes ($d). Two mapping symbols at
  * one address: the later wins; one at the very end of a section is dropped. objdump and ld rely on these. */
 enum { MAP_UNDEF, MAP_ARM, MAP_DATA };
-static int mapstate[MAXSEC];
 static void add_mapsym(int state, u32 value) {
-	for (int i = nsym - 1; i >= 0; i--)   /* same address as this section's latest mapping symbol: replace it */
-		if (syms[i].name && syms[i].name[0] == '$' && syms[i].sec == cursec) { if (syms[i].value == value) syms[i].name = NULL; break; }
-	if (nsym >= MAXSYM) die("too many symbols");
-	syms[nsym++] = (Sym){ state == MAP_ARM ? "$a" : "$d", cursec, value, 0, 0, STT_NOTYPE, 1, 0 };
+	int l = secs[cursec].lastmap;                    /* same address as this section's latest mapping symbol: replace it */
+	if (l >= 0 && syms[l].value == value) syms[l].name = NULL;
+	secs[cursec].lastmap = sym_add((Sym){ .name = state == MAP_ARM ? "$a" : "$d", .sec = cursec, .value = value, .type = STT_NOTYPE, .defined = 1 });
 }
 static void map_to(int state, int deferred_ok) {   /* deferred_ok: a plain data directive (UNDEF->DATA waits) */
 	if (cursec < 0) return;   /* NOBITS too: GAS marks .bss alignment/fill frags with $d */
-	int *m = &mapstate[cursec]; u32 o = (u32)secs[cursec].len;
+	int *m = &secs[cursec].mapstate; u32 o = (u32)secs[cursec].len;
 	if (*m == state) return;
 	if (*m == MAP_UNDEF && state == MAP_DATA && deferred_ok) return;
 	if (*m == MAP_UNDEF && state == MAP_ARM && o > 0) add_mapsym(MAP_DATA, 0);
@@ -67,28 +77,28 @@ static void map_to(int state, int deferred_ok) {   /* deferred_ok: a plain data 
 }
 static void sec_align_at_least(u32 a) { if (cursec >= 0 && secs[cursec].align < a) secs[cursec].align = a; }
 void map_insn(void) { map_to(MAP_ARM, 0); sec_align_at_least(4); }
-void map_pool_data(void) { mapstate[cursec] = MAP_DATA; add_mapsym(MAP_DATA, (u32)secs[cursec].len); }   /* s_ltorg: $d unconditionally */
+void map_pool_data(void) { secs[cursec].mapstate = MAP_DATA; add_mapsym(MAP_DATA, (u32)secs[cursec].len); }   /* s_ltorg: $d unconditionally */
 /* GAS writes code-alignment padding (and its $d/$a pair) after parsing, so those symbols come LAST in the table. */
-static struct { int sec; u32 d_at, a_at; } padmap[4096]; static int npadmap;
+static struct { int sec; u32 d_at, a_at; } *padmap; static int npadmap, padcap;
+static const char *mapkey(int sec, u32 at) { static char k[32]; snprintf(k, sizeof k, "%d:%u", sec, at); return k; }
 static void flush_padmaps(void) {
+	StrMap at = {0};                                 /* "sec:address" -> index + 1 of the live mapping symbol there */
+	for (int k = 0; k < nsym; k++) if (syms[k].name && syms[k].name[0] == '$') strmap_put(&at, strdup(mapkey(syms[k].sec, syms[k].value)), (void *)(long)(k + 1));
 	for (int i = 0; i < npadmap; i++) {
-		int sec = padmap[i].sec, save = cursec, have_a = 0; cursec = sec;
-		for (int k = 0; k < nsym; k++) if (syms[k].name && syms[k].name[0] == '$' && syms[k].sec == sec) {
-			if (syms[k].value == padmap[i].d_at) syms[k].name = NULL;          /* insert_data_mapping_symbol: replace */
-			else if (syms[k].value == padmap[i].a_at) have_a = 1;              /* next frag already starts with one */
-		}
-		if (nsym >= MAXSYM) die("too many symbols");
-		syms[nsym++] = (Sym){ "$d", sec, padmap[i].d_at, 0, 0, STT_NOTYPE, 1, 0 };
-		if (!have_a) { if (nsym >= MAXSYM) die("too many symbols"); syms[nsym++] = (Sym){ "$a", sec, padmap[i].a_at, 0, 0, STT_NOTYPE, 1, 0 }; }
-		cursec = save;
+		int sec = padmap[i].sec;
+		long d = (long)strmap_get(&at, mapkey(sec, padmap[i].d_at)), a = (long)strmap_get(&at, mapkey(sec, padmap[i].a_at));
+		if (d && syms[d - 1].name) syms[d - 1].name = NULL;                   /* insert_data_mapping_symbol: replace */
+		int have_a = a && syms[a - 1].name && a != d;                         /* next frag already starts with one */
+		strmap_put(&at, strdup(mapkey(sec, padmap[i].d_at)), (void *)(long)(sym_add((Sym){ .name = "$d", .sec = sec, .value = padmap[i].d_at, .type = STT_NOTYPE, .defined = 1 }) + 1));
+		if (!have_a) strmap_put(&at, strdup(mapkey(sec, padmap[i].a_at)), (void *)(long)(sym_add((Sym){ .name = "$a", .sec = sec, .value = padmap[i].a_at, .type = STT_NOTYPE, .defined = 1 }) + 1));
 	}
 }
 static void map_data(void) { map_to(MAP_DATA, 1); }
 static void map_frag_data(void) { map_to(MAP_DATA, 0); }
 static void map_data_only_code_sections(void) {   /* GAS: a code section holding only data still gets $d at 0 */
 	for (int i = 0; i < nsec; i++)
-		if (mapstate[i] == MAP_UNDEF && (secs[i].flags & SHF_EXECINSTR) && secs[i].len > 0 && secs[i].type != SHT_NOBITS) {
-			int save = cursec; cursec = i; add_mapsym(MAP_DATA, 0); mapstate[i] = MAP_DATA; cursec = save; }
+		if (secs[i].mapstate == MAP_UNDEF && (secs[i].flags & SHF_EXECINSTR) && secs[i].len > 0 && secs[i].type != SHT_NOBITS) {
+			int save = cursec; cursec = i; add_mapsym(MAP_DATA, 0); secs[i].mapstate = MAP_DATA; cursec = save; }
 }
 static void drop_end_mapsyms(void) {
 	for (int i = 0; i < nsym; i++)
@@ -98,8 +108,8 @@ static void drop_end_mapsyms(void) {
 int section_symbol(int sec);
 int sec_get(const char *name, u32 type, u32 flags) {
 	int i = sec_find(name); if (i >= 0) { cursec = i; return i; }
-	if (nsec >= MAXSEC) die("too many sections");
-	secs[nsec] = (Section){ strdup(name), type, flags, NULL, 0, 0, 0, 1, 0 };
+	secs = grow(secs, nsec, &seccap, sizeof *secs);
+	secs[nsec] = (Section){ .name = strdup(name), .type = type, .flags = flags, .align = 1, .mapstate = MAP_UNDEF, .lastmap = -1, .secsym = -1 };
 	cursec = nsec++; section_symbol(cursec);   /* GAS makes the section symbol when the section is created */
 	return cursec;
 }
@@ -113,14 +123,12 @@ void patch32(int sec, u32 off, u32 w) { u8 *d = secs[sec].data + off; d[0]=w; d[
 u32  read32(int sec, u32 off) { u8 *d = secs[sec].data + off; return d[0] | d[1]<<8 | d[2]<<16 | (u32)d[3]<<24; }
 u32  here(void) { if (cursec < 0) die("instruction/label outside any section"); return secs[cursec].len; }
 
-int sym_find(const char *name) { for (int i = 0; i < nsym; i++) if (syms[i].name && !strcmp(syms[i].name, name)) return i; return -1; }
+int sym_find(const char *name) { return (int)(long)strmap_get(&symindex, name) - 1; }
 int sym_intern(const char *name) {
 	int i = sym_find(name); if (i >= 0) return i;
-	if (nsym >= MAXSYM) die("too many symbols");
-	syms[nsym] = (Sym){ strdup(name), 0, 0, 0, 0, STT_NOTYPE, 0, 0 };   /* global=0 (local until .global'd) */
-	return nsym++;
+	return sym_add((Sym){ .name = strdup(name), .type = STT_NOTYPE });   /* global=0 (local until .global'd) */
 }
-void add_reloc(int sec, u32 off, int symidx, u32 type) { if (nrel >= MAXREL) die("too many relocations"); rels[nrel++] = (Reloc){ sec, off, symidx, type }; }
+void add_reloc(int sec, u32 off, int symidx, u32 type) { rels = grow(rels, nrel, &relcap, sizeof *rels); rels[nrel++] = (Reloc){ sec, off, symidx, type }; }
 static int fb_intern(int n, int k) { char nm[40]; snprintf(nm, sizeof nm, ".Lfb%d$%d", n, k); return sym_intern(nm); }
 int fb_symbol(int n, char dir) {
 	int i = fb_slot(n);
@@ -199,7 +207,8 @@ static void def_label(const char *name) {
 
 /* Emit the bytes of a C-string token like "\"Unknown error\000\"" (quotes included), decoding escapes
  * (\ooo octal, \xHH.. hex, \n \t \r \b \f \\ \" \0). add_nul appends a terminating NUL (.asciz), else not (.ascii). */
-static struct { int sym; char *target; } alias_of[4096]; static int nalias;   /* pending `.set name, target` */
+static struct { int sym; char *target; } *alias_of; static int nalias, aliascap;   /* pending `.set name, target` */
+static struct { int sym, target; } *alias_done; static int nalias_done, donecap;     /* resolved, in resolution order */
 static void emit_string(const char *tok, int add_nul) {
 	const char *p = tok; if (*p == '"') p++;
 	while (*p && *p != '"') {
@@ -356,8 +365,8 @@ static RVal fold_msym(RVal r) {
 	return r;
 }
 /* Data words whose value depends on symbols not yet defined (`.word 1f - 1b`): resolved after parsing. */
-static struct { int sec; u32 off; RVal r; } dword[16384]; static int ndword;
-static struct { int sym; RVal r; } dsize[4096]; static int ndsize;
+static struct { int sec; u32 off; RVal r; } *dword; static int ndword, dwordcap;
+static struct { int sym; RVal r; } *dsize; static int ndsize, dsizecap;
 static void resolve_deferred(void) {
 	for (int i = 0; i < ndword; i++) {
 		RVal r = fold_msym(dword[i].r); int sec = dword[i].sec; u32 off = dword[i].off;
@@ -400,7 +409,7 @@ static void emit_word_rval(RVal r) {
 	u32 off = secs[cursec].len;
 	r = fold_msym(r);
 	if (r.msym >= 0) {   /* defer until all labels are known */
-		if (ndword >= 16384) die("too many deferred data expressions");
+		dword = grow(dword, ndword, &dwordcap, sizeof *dword);
 		dword[ndword].sec = cursec; dword[ndword].off = off; dword[ndword].r = r; ndword++; emit32(0); return; }
 	if (r.dot != 0 && r.dot != -1) die("data expr: '.' may only appear as '- .'");
 	if (r.sym >= 0 && syms[r.sym].defined && syms[r.sym].sec == cursec && r.dot == -1) {   /* X - . in the same section: a constant */
@@ -538,8 +547,8 @@ static void do_directive(void) {
 		cursec = prevsec; prevsec = was;
 	} else if (!strcmp(d, ".text")) { sec_get(".text", SHT_PROGBITS, SHF_ALLOC | SHF_EXECINSTR); prevsec = was;
 	} else if (!strcmp(d, ".data")) { sec_get(".data", SHT_PROGBITS, SHF_ALLOC | SHF_WRITE); prevsec = was;
-	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { syms[sym_intern(toks[1])].global = 1;
-	} else if (!strcmp(d, ".weak")) { syms[sym_intern(toks[1])].weak = 1;   /* STB_WEAK binding (kernel COND_SYSCALL) */
+	} else if (!strcmp(d, ".global") || !strcmp(d, ".globl")) { int i = sym_intern(toks[1]); syms[i].global = 1;   /* (intern FIRST: it may grow syms) */
+	} else if (!strcmp(d, ".weak")) { int i = sym_intern(toks[1]); syms[i].weak = 1;   /* STB_WEAK binding (kernel COND_SYSCALL) */
 	} else if (!strcmp(d, ".type")) { int i = sym_intern(toks[1]);
 		if (toks[2] && strstr(toks[2], "function")) syms[i].type = STT_FUNC;
 		else if (toks[2] && strstr(toks[2], "object")) syms[i].type = STT_OBJECT;
@@ -548,11 +557,12 @@ static void do_directive(void) {
 		int i = sym_intern(toks[1]);
 		const char *q = strchr(cur_stmt, ','); if (!q) die(".size: expected 'sym, expr'");
 		const char *save = ep; ep = q + 1; RVal r = e_or(); ews(); if (*ep) die(".size: junk '%s'", ep); ep = save;
+		syms[i].sized = 1;
 		if (r.dot == 1 && r.msym >= 0 && r.sym < 0 && syms[r.msym].defined && syms[r.msym].sec == cursec) {   /* . - sym */
 			r.c += (long)secs[cursec].len - (long)syms[r.msym].value; r.dot = 0; r.msym = -1; }
 		r = fold_msym(r);
 		if (r.sym < 0 && r.msym < 0 && !r.dot) syms[i].size = (u32)r.c;
-		else { if (ndsize >= 4096) die("too many deferred .size"); dsize[ndsize].sym = i; dsize[ndsize].r = r; ndsize++; }
+		else { dsize = grow(dsize, ndsize, &dsizecap, sizeof *dsize); dsize[ndsize].sym = i; dsize[ndsize].r = r; ndsize++; }
 	} else if (!strcmp(d, ".align") || !strcmp(d, ".p2align") || !strcmp(d, ".balign")) {
 		if (cursec < 0) return;
 		long a = ntok >= 2 ? eval_const_expr(toks[1]) : 2;
@@ -564,7 +574,7 @@ static void do_directive(void) {
 		if (secs[cursec].flags & SHF_EXECINSTR) {   /* code: zero bytes to a word boundary ($d), then NOPs ($a) */
 			u32 z = pad & 3;
 			if (z) {   /* sub-word zero fill: its $d + the NOPs' $a are written after parsing (GAS arm_handle_align) */
-				if (npadmap >= 4096) die("too many code alignments");
+				padmap = grow(padmap, npadmap, &padcap, sizeof *padmap);
 				padmap[npadmap].sec = cursec; padmap[npadmap].d_at = (u32)secs[cursec].len; padmap[npadmap].a_at = (u32)secs[cursec].len + z; npadmap++;
 				map_insn();   /* rs_align_code: ARM state at parse time (may add $d@0 + $a here) */
 				for (u32 k = 0; k < z; k++) { u8 zb = 0; emit(&zb, 1); }
@@ -617,7 +627,7 @@ static void do_directive(void) {
 			const char *q = strchr(cur_stmt, ','); if (!q) die(".set: expected 'name, value'");
 			syms[i].sec = SEC_ABS; syms[i].value = (u32)eval_const_expr(q + 1); syms[i].defined = 1;
 		} else if (ntok >= 3) {   /* alias: copy the target's location/type — at the END (GAS: the target may come later) */
-			if (nalias >= (int)(sizeof alias_of / sizeof *alias_of)) die(".set: too many aliases");
+			alias_of = grow(alias_of, nalias, &aliascap, sizeof *alias_of);
 			alias_of[nalias].sym = i; alias_of[nalias].target = strdup(toks[2]); nalias++;
 		} else die(".set: expected 'name, . [+ N]' or 'name, target'");
 	} else if (!md_directive(toks, ntok)) {
@@ -636,10 +646,18 @@ static void resolve_aliases(void) {
 			if (j < 0 || !syms[j].defined) { left++; continue; }
 			syms[i].sec = syms[j].sec; syms[i].value = syms[j].value; syms[i].defined = 1;
 			if (!syms[i].type) syms[i].type = syms[j].type;
+			alias_done = grow(alias_done, nalias_done, &donecap, sizeof *alias_done);
+			alias_done[nalias_done].sym = i; alias_done[nalias_done].target = j; nalias_done++;
 			alias_of[k].target = NULL;
 		}
 	}
 	for (int k = 0; k < nalias; k++) if (alias_of[k].target) die(".set: alias target '%s' undefined", alias_of[k].target);
+}
+/* After every .size is known: an alias without its own .size takes its target's (GAS copies it, like the type).
+ * Resolution order puts a chain's inner links first, so a -> b -> c sees c's size through b. */
+static void alias_sizes(void) {
+	for (int k = 0; k < nalias_done; k++)
+		if (!syms[alias_done[k].sym].sized) syms[alias_done[k].sym].size = syms[alias_done[k].target].size;
 }
 
 static void parse_line(char *line) {
@@ -671,11 +689,9 @@ static void check_fb_resolved(void) {   /* every referenced `Nf` must have been 
 /* Find-or-create the STT_SECTION symbol for section `sec` — a local, value-0 marker for the section
  * itself, the reference a reduced relocation points at (see reduce_local_relocs). */
 int section_symbol(int sec) {
-	for (int i = 0; i < nsym; i++)
-		if (syms[i].type == STT_SECTION && syms[i].defined && syms[i].sec == sec) return i;
-	if (nsym >= MAXSYM) die("too many symbols");
-	syms[nsym] = (Sym){ secs[sec].name, sec, 0, 0, 0, STT_SECTION, 1, 0 };   /* local, value 0, defined here */
-	return nsym++;
+	if (secs[sec].secsym < 0)                        /* local, value 0, defined here */
+		secs[sec].secsym = sym_add((Sym){ .name = secs[sec].name, .sec = sec, .type = STT_SECTION, .defined = 1 });
+	return secs[sec].secsym;
 }
 
 /* GNU as "reduces" a relocation against a LOCAL defined symbol to the section symbol + the symbol's
@@ -949,6 +965,7 @@ int main(int argc, char **argv) {
 	check_fb_resolved();
 	resolve_aliases();      /* .set name, target — targets may be defined after the .set */
 	resolve_deferred();     /* data words / .size that referenced not-yet-defined labels */
+	alias_sizes();          /* ...then aliases take their targets' sizes */
 	md_finish();            /* let the arch backend resolve its own end-of-pass fixups (ldr literals) */
 	reduce_local_relocs();  /* fold local-symbol relocs to section-symbol + in-place value (GNU parity) */
 	map_data_only_code_sections();

@@ -937,6 +937,7 @@ static void gen_func(Func *f) {
 	if (f->vfp_save) fprintf(o, "\tadd sp, sp, #64\n");      /* discard the saved d0-d7 */
 	if (homed) fprintf(o, "\tadd sp, sp, #16\n");            /* and the homed r0..r3 */
 	fprintf(o, "\tbx lr\n");
+	fprintf(o, "\t.size %s, .-%s\n", f->name, f->name);    /* the symbol's size (debuggers, backtraces, a provider's exports) */
 }
 
 /* Section, binding and alignment of one file-scope object: `deflt` is .data/.bss; an attribute section wins
