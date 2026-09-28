@@ -41,6 +41,7 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define SHF_EXECINSTR  4
 #define SHN_UNDEF 0
 #define SHN_ABS   0xfff1
+#define SHN_COMMON 0xfff2   /* tentative definition (-fcommon): no section yet */
 
 /* --- symbol table: st_info bind/type ------------------------------------------------------------- */
 #define STB_LOCAL  0

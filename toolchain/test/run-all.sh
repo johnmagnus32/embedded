@@ -73,7 +73,14 @@ if [ -n "${STAT}" ] && [ -f "${STAT}/libc.a" ] && [ -f "${KERNEL}" ] && [ -x "${
   else no "rebuild libc.a with the new tools"; fi
 else sk "static boot (no static libc-custom stage)"; fi
 
-echo "==== 5. loader host-logic units (best-effort) ===="
+echo "==== 5. musl link: OUR ld against a real GCC-built libc.a (best-effort) ===="
+MUSL="${IMG}/libc/stage-musl-static"; GNUCC="${IMG}/toolchain-gcc/bin/arm-forge-linux-gnueabihf-"
+if [ -f "${MUSL}/usr/lib/libc.a" ] && [ -x "${GNUCC}gcc" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ]; then
+  MUSL="${MUSL}" GNU="${GNUCC}" REFKERNEL="${KERNEL}" GEN_INIT_CPIO="${GIC}" RT=ours bash "${HERE}/musl-link.sh" \
+    && ok "musl link (our ld + musl libc.a + our rt)" || no "musl link"
+else sk "musl link (no musl static stage / reference gcc)"; fi
+
+echo "==== 6. loader host-logic units (best-effort) ===="
 if [ -f "${REPO}/libc/ld/test/test_reloc.c" ]; then
   b="$(mktemp -u /tmp/ld-l2.XXXXXX)"
   if cc -std=c11 -Wall -I"${REPO}/libc/ld/src" "${REPO}/libc/ld/test/test_reloc.c" -o "${b}" 2>/dev/null && "${b}" >/dev/null 2>&1; then

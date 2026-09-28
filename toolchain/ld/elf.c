@@ -13,8 +13,7 @@
 /* Parse an in-memory ELF32 relocatable into objs[] (locating its symbol + string tables). `active`
  * distinguishes always-linked command-line objects (1) from lazy archive members (0, pulled on demand). */
 Obj *elf_parse(const char *path, u8 *data, long size, int active) {
-	if (nobj >= MAXOBJ) die("too many objects");
-	Obj *o = &objs[nobj++]; o->path = path; o->data = data; o->size = size; o->active = active;
+	Obj *o = obj_new(); o->path = path; o->data = data; o->size = size; o->active = active;
 	o->eh = (Elf32_Ehdr *)o->data;
 	if (memcmp(o->eh->e_ident, "\177ELF\1\1", 6)) die("%s: not a little-endian ELF32", path);
 	if (o->eh->e_machine != md_e_machine) die("%s: wrong machine (e_machine=%u, want %u)", path, o->eh->e_machine, md_e_machine);
@@ -40,32 +39,62 @@ static u8 *slurp(const char *path, long *size) {
 /* Parse one relocatable object FILE (always active). */
 Obj *elf_load(const char *path) { long n; u8 *d = slurp(path, &n); return elf_parse(path, d, n, 1); }
 
-/* Split a `!<arch>\n` archive into its object members, each parsed LAZY (active=0). Handles the GNU
- * variant our ar writes: skip the "/" symbol index and "//" long-name table; resolve "/off" member
- * names against "//". Every 60-byte header is followed by sh_size bytes padded to an even length. */
+/* An archive (`!<arch>\n`, GNU/SysV format) is used through its SYMBOL INDEX — the "/" member listing, for each
+ * global symbol a member defines, that member's header offset (big-endian counts/offsets). Members are parsed
+ * only when a symbol they define is needed (ar_pull), so a 1400-member libc.a costs a few pulled members, not
+ * 1400 parses. "//" holds long member names ("/off" references it). An archive without an index is an error,
+ * as in GNU ld ("run ranlib"). */
+typedef struct { const char *path; u8 *data; long size; const char *longtab; StrMap loaded; } Archive;
+typedef struct { Archive *ar; long off; } ArSym;
+static StrMap arsyms;                                  /* symbol -> its first defining member (command-line order) */
+
+static long ar_field(const char *h, int at, int len) { char b[16]; memcpy(b, h + at, len); b[len] = 0; return strtol(b, NULL, 10); }
+static u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3]; }
+
 void ar_load(const char *path) {
 	long size; u8 *d = slurp(path, &size);
 	if (size < 8 || memcmp(d, "!<arch>\n", 8)) die("%s: not an archive", path);
-	const char *longtab = NULL;
-	long p = 8;
-	while (p + 60 <= size) {
-		char *h = (char *)(d + p);                    /* 60-byte header: name[16] .. size[48..58] fmag[58..60] */
-		char namef[17]; memcpy(namef, h, 16); namef[16] = 0;
-		char szf[11];   memcpy(szf, h + 48, 10); szf[10] = 0;
-		long msize = strtol(szf, NULL, 10);
-		u8 *mdata = d + p + 60;
-		if (!memcmp(namef, "//", 2) && (namef[2] == ' ' || namef[2] == 0)) {
-			longtab = (const char *)mdata;            /* extended long-name table */
-		} else if (namef[0] != '/') {                 /* short name "name/": copy up to the / or space */
-			char name[64]; int k = 0; while (k < 15 && namef[k] && namef[k] != '/' && namef[k] != ' ') { name[k] = namef[k]; k++; } name[k] = 0;
-			elf_parse(strdup(name), mdata, msize, 0);
-		} else if (namef[1] >= '0' && namef[1] <= '9') {   /* "/off": long name referencing // */
-			const char *nm = longtab ? longtab + atoi(namef + 1) : "member";
-			char name[64]; int k = 0; while (k < 63 && nm[k] && nm[k] != '/' && nm[k] != '\n') { name[k] = nm[k]; k++; } name[k] = 0;
-			elf_parse(strdup(name), mdata, msize, 0);
-		}   /* else namef == "/" : the symbol index — skip (we scan member symtabs directly) */
-		p += 60 + msize + (msize & 1);                /* members are padded to even length */
+	Archive *ar = calloc(1, sizeof *ar); ar->path = path; ar->data = d; ar->size = size;
+	const u8 *index = NULL; long index_size = 0;
+	for (long p = 8; p + 60 <= size; ) {
+		const char *h = (const char *)(d + p);
+		long msize = ar_field(h, 48, 10);
+		if (memcmp(h + 58, "`\n", 2) || msize < 0 || p + 60 + msize > size) die("%s: corrupt archive member header at %ld", path, p);
+		if (!memcmp(h, "/ ", 2)) { index = d + p + 60; index_size = msize; }
+		else if (!memcmp(h, "//", 2)) ar->longtab = (const char *)(d + p + 60);
+		else if (!memcmp(h, "/SYM64/", 7) || !memcmp(h, "__.SYMDEF", 9)) die("%s: unsupported archive index format", path);
+		p += 60 + msize + (msize & 1);                 /* members are padded to even length */
 	}
+	if (!index) die("%s: archive has no index; run ranlib (or ar s) to add one", path);
+	if (index_size < 4) die("%s: corrupt archive index", path);
+	u32 n = be32(index);
+	if (4 + 4 * (long)n > index_size) die("%s: corrupt archive index", path);
+	const char *names = (const char *)index + 4 + 4 * n, *end = (const char *)index + index_size;
+	for (u32 i = 0; i < n; i++) {
+		if (names >= end) die("%s: corrupt archive index names", path);
+		ArSym *as = malloc(sizeof *as); as->ar = ar; as->off = (long)be32(index + 4 + 4 * i);
+		if (as->off < 8 || as->off + 60 > size) die("%s: archive index points outside the file", path);
+		if (!strmap_get(&arsyms, names)) strmap_put(&arsyms, names, as);   /* the first archive defining it wins */
+		names += strlen(names) + 1;
+	}
+}
+
+Obj *ar_pull(const char *sym) {
+	ArSym *as = strmap_get(&arsyms, sym);
+	if (!as) return NULL;
+	Archive *ar = as->ar;
+	char key[24]; snprintf(key, sizeof key, "%ld", as->off);
+	if (strmap_get(&ar->loaded, key)) return NULL;     /* that member is already in (its definition didn't take) */
+	strmap_put(&ar->loaded, strdup(key), (void *)1);
+	const char *h = (const char *)(ar->data + as->off);
+	char mname[256]; int k = 0;
+	if (h[0] == '/' && h[1] >= '0' && h[1] <= '9') {   /* "/off": long name */
+		if (!ar->longtab) die("%s: long member name without a // table", ar->path);
+		const char *nm = ar->longtab + atol(h + 1); while (k < 255 && nm[k] && nm[k] != '/' && nm[k] != '\n') { mname[k] = nm[k]; k++; }
+	} else while (k < 16 && h[k] != '/' && h[k] != ' ') { mname[k] = h[k]; k++; }
+	mname[k] = 0;
+	char *path = malloc(strlen(ar->path) + strlen(mname) + 3); sprintf(path, "%s(%s)", ar->path, mname);
+	return elf_parse(path, ar->data + as->off + 60, ar_field(h, 48, 10), 1);
 }
 
 /* Read a shared library (-l) as a PROVIDER: register the symbols it EXPORTS + its soname, without laying
@@ -108,12 +137,12 @@ void load_shared(const char *path) {
  * vaddr - LOAD_BASE, zero-padding the gap first. Iterating RO then writable reproduces layout()'s order,
  * so the zero fill absorbs both per-section alignment and the page gap before the R-W segment. */
 static void write_image(FILE *f, int want_write) {
-	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
-		Elf32_Shdr *s = &objs[i].sh[j];
+	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
+		Elf32_Shdr *s = &objs[i]->sh[j];
 		if (!(s->sh_flags & SHF_ALLOC) || s->sh_type == SHT_NOBITS || !s->sh_size) continue;
 		if (!!(s->sh_flags & SHF_WRITE) != want_write) continue;
-		for (long p = ftell(f); p < (long)(objs[i].sec_vaddr[j] - load_base); p++) fputc(0, f);
-		fwrite(objs[i].data + s->sh_offset, 1, s->sh_size, f);
+		for (long p = ftell(f); p < (long)(objs[i]->sec_vaddr[j] - load_base); p++) fputc(0, f);
+		fwrite(objs[i]->data + s->sh_offset, 1, s->sh_size, f);
 	} }
 }
 
@@ -288,14 +317,14 @@ static void write_dynamic(FILE *f, const Layout *L) {
 void elf_write_script(const char *out, u32 entry) {
 	struct { u32 vaddr, lma, sz; int nobits; Obj *o; int j; } P[1024]; int np = 0;
 	u32 minlma = 0xffffffffu, maxlma = 0;
-	for (int i = 0; i < nobj; i++) { if (!objs[i].active) continue; for (int j = 0; j < objs[i].nsh; j++) {
-		Elf32_Shdr *s = &objs[i].sh[j];
-		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || !objs[i].sec_vaddr[j]) continue;
+	for (int i = 0; i < nobj; i++) { if (!objs[i]->active) continue; for (int j = 0; j < objs[i]->nsh; j++) {
+		Elf32_Shdr *s = &objs[i]->sh[j];
+		if (!(s->sh_flags & SHF_ALLOC) || !s->sh_size || !objs[i]->sec_vaddr[j]) continue;
 		if (np >= 1024) die("too many placed sections (>1024)");
-		P[np].o=&objs[i]; P[np].j=j; P[np].vaddr=objs[i].sec_vaddr[j]; P[np].lma=objs[i].sec_lma[j];
+		P[np].o=objs[i]; P[np].j=j; P[np].vaddr=objs[i]->sec_vaddr[j]; P[np].lma=objs[i]->sec_lma[j];
 		P[np].sz=s->sh_size; P[np].nobits=(s->sh_type==SHT_NOBITS); np++;
-		if (s->sh_type != SHT_NOBITS) { if (objs[i].sec_lma[j] < minlma) minlma = objs[i].sec_lma[j];
-		                                if (objs[i].sec_lma[j] + s->sh_size > maxlma) maxlma = objs[i].sec_lma[j] + s->sh_size; }
+		if (s->sh_type != SHT_NOBITS) { if (objs[i]->sec_lma[j] < minlma) minlma = objs[i]->sec_lma[j];
+		                                if (objs[i]->sec_lma[j] + s->sh_size > maxlma) maxlma = objs[i]->sec_lma[j] + s->sh_size; }
 	} }
 	if (!np) die("linker script placed no sections");
 	for (int a = 1; a < np; a++) for (int b = a; b > 0 && P[b-1].vaddr > P[b].vaddr; b--) {   /* sort by VMA */

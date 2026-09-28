@@ -16,6 +16,7 @@
 #define LD_H
 #include "elf.h"        /* shared ELF32 format: structs + constants (toolchain/common) */
 #include "elfutil.h"    /* shared helpers: rd32/wr32, alignup, Strtab */
+#include "strmap.h"     /* shared string-keyed hash map */
 
 extern u32 load_base;           /* where the image maps: default 0x10000 (hosted), override with -Ttext <addr> */
 extern int pie;                 /* -pie: emit ET_DYN with self-relocation metadata (base 0, load-bias fixups) */
@@ -38,8 +39,14 @@ typedef struct {
 	u32 *sec_lma;                                /* [nsh] assigned load address (== sec_vaddr unless AT> in the script) */
 	int active;                                  /* 1 = contributes to output; archive members start 0 (lazy) */
 } Obj;
-#define MAXOBJ 32
-extern Obj objs[]; extern int nobj;
+extern Obj **objs; extern int nobj;           /* every loaded object (grows); archive members join when pulled */
+Obj *obj_new(void);
+
+/* The global symbol table (hashed): a DEFINED symbol records where (obj/symidx) until layout gives it an address;
+ * a linker/script-defined one has obj == NULL and its vaddr set directly. */
+typedef struct { const char *name; u32 vaddr; int defined, weak, strong_ref; Obj *obj; int symidx; } GSym;
+GSym *gsym_find(const char *name);
+void  gsym_define(const char *name, u32 vaddr, int weak);   /* a linker/script-defined symbol */
 
 /* -shared exports: the global/weak DEFINED symbols this .so publishes into .dynsym/.hash, so other
  * objects (and our runtime loader's dso_lookup) can resolve against it. Collected before layout (names
@@ -99,6 +106,9 @@ int  script_run(const char *path);                                 /* parse + la
 void elf_write_script(const char *out, u32 entry);                 /* write the ET_EXEC from the script layout */
 
 void die(const char *fmt, ...);                                    /* front-end (ld.c) */
+Obj *elf_load(const char *path);                                    /* elf.c: an always-linked object file */
+void ar_load(const char *path);                                     /* elf.c: register an archive's symbol index */
+Obj *ar_pull(const char *sym);                                      /* elf.c: load the member defining sym, or NULL */
 u32  pick_nbucket(u32 nsyms);                                      /* .hash bucket count (ld.c; used by elf.c) */
 
 /* The result of layout(): two loadable segments (W^X). Segment 0 is R-X (headers + .text + .rodata);
