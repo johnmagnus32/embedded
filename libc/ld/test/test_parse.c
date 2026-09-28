@@ -108,11 +108,11 @@ int main(int argc, char **argv)
 	printf("== resolve real exported symbols ==\n");
 	const char *known[] = { "printf", "malloc", "write", "open", "fork" };
 	for (unsigned i = 0; i < sizeof known/sizeof known[0]; i++) {
-		Elf32_Addr a = dso_lookup(&d, known[i]);
+		Elf32_Addr a = dso_lookup(&d, known[i], LOOKUP_DATA);
 		char msg[64]; snprintf(msg, sizeof msg, "lookup %s -> %s", known[i], a ? "found" : "MISSING");
 		CHECK(a != 0, msg);
 	}
-	CHECK(dso_lookup(&d, "this_symbol_does_not_exist") == 0, "missing symbol -> 0");
+	CHECK(dso_lookup(&d, "this_symbol_does_not_exist", LOOKUP_DATA) == 0, "missing symbol -> 0");
 
 	munmap(img, span); free(filebuf); close(fd);
 	printf("\n%s (%d failure%s)\n", failures ? "TESTS FAILED" : "ALL TESTS PASSED",

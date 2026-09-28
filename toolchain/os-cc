@@ -35,6 +35,7 @@ floatabi=""          # -mfloat-abi=soft|hard -> forwarded to cc1 (the kernel is 
 shared=""            # -shared -> build a .so (ld -shared; no -Ttext/-e)
 soname=""            # -soname NAME -> ld -soname
 libargs=()           # -l<name> / -L<dir> -> forwarded to ld (dynamic link against a .so)
+ldextra=()           # -Wl,a,b,... -> forwarded to ld as its arguments a b ... (ld rejects what it doesn't know)
 
 die() { echo "os-cc: $*" >&2; exit 1; }
 
@@ -62,11 +63,12 @@ while [ $# -gt 0 ]; do
     # Flags our tools neither need nor understand — accept and ignore, like a lenient driver:
     # optimization, warnings, dialect, arch/ABI tuning, and freestanding/link toggles handled
     # implicitly by our tools (static ELF, no host libc, no PIC unless -pie is passed to ld).
+    -Wl,*) IFS=, read -r -a wl <<< "${1#-Wl,}"; ldextra+=("${wl[@]}") ;;   # linker options, as gcc passes them
+    -Wa,*|-Wp,*) ;;                          # assembler/preprocessor passthrough we don't forward
     -fPIC|-fpic) picflag="-fPIC" ;;          # position-independent codegen -> forwarded to cc1
     -mfloat-abi=*) floatabi="$1" ;;          # float ABI -> forwarded to cc1
     -O*|-g*|-W*|-f*|-m*|-std=*|-pipe|-pedantic|-ansi) ;;
     -static|-nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
-    -Wl,*|-Wa,*|-Wp,*) ;;                    # toolchain-passthrough we don't forward (unsupported opts)
     -pie|--pie) linkpie=1 ;;
     -*.o|-*.a) die "unexpected option '$1'" ;;
     *.c|*.i) inputs+=("$1") ;;
@@ -145,4 +147,4 @@ else
   [ -n "${entry}" ] && ldflags+=(-e "${entry}")
 fi
 [ -f "${RTLIB}" ] || die "compiler runtime ${RTLIB} missing (build toolchain/rt and install it beside bin/)"
-"${LD}" "${ldflags[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${RTLIB}"
+"${LD}" "${ldflags[@]}" "${ldextra[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${RTLIB}"

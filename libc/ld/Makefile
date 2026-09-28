@@ -41,7 +41,7 @@ $(BUILD)/ld/%.o: $(SRC)/%.c | $(BUILD)/ld
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/ld.so.1: $(OBJS)
-	$(CC) $(CFLAGS) -shared -nostdlib -Wl,-e,_start \
+	$(CC) $(CFLAGS) -shared -nostdlib -Wl,-e,_start -Wl,-Bsymbolic \
 	  -Wl,--build-id=none -Wl,-soname,ld.so.1 \
 	  $(OBJS) -o $@
 	@echo "  LD  $@ ($$($(CROSS_COMPILE)size $@ | tail -1 | awk '{print $$4}') bytes)"

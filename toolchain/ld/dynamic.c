@@ -18,7 +18,6 @@
 #include <string.h>
 #include "ld.h"
 
-#define INTERP_PATH "/lib/ld.so.1"   /* the runtime loader a dynamic program names in PT_INTERP */
 
 Obj *linker_obj;
 static const struct { const char *name; u32 type, flags, align, entsize; int link, info; } L_def[L_NSEC] = {
@@ -35,23 +34,26 @@ static const struct { const char *name; u32 type, flags, align, entsize; int lin
 	[L_DYNBSS]  = { ".dynbss",  SHT_NOBITS,   SHF_ALLOC|SHF_WRITE,     4, 0,                 0,        0 },
 };
 
-/* An IMPORT: an undefined symbol a provider (or, for a .so, the run time) resolves. plt >= 0: called, gets a PLT
- * stub + GOT slot + JUMP_SLOT. is_data: an executable addresses it absolutely — it gets a .dynbss copy + COPY. */
-typedef struct { const char *name; int lib, plt, dynsym, is_data; u32 copy_off, copy_size, stroff; } Import;
-/* A GOT slot: a local definition (obj/symidx), a global one (by name), or an import (its GLOB_DAT fills it). */
-typedef struct { const char *name; Obj *obj; int symidx, import; } Got;
-/* A dynamic relocation at (obj's section shndx + off); sym = its .dynsym index (0 for RELATIVE). */
-typedef struct { Obj *obj; int shndx; u32 off, type; int sym; } DynRel;
+/* An IMPORT: an undefined symbol a provider (or, for a .so, the run time) resolves. In a PROGRAM an absolute
+ * reference to one needs a fixed address: a variable gets a copy in the program's .dynbss (is_data: R_ARM_COPY, and
+ * the program exports the copy so every object binds to it), a function gets its PLT entry as its canonical address
+ * (canon: exported as undefined with that value, so function pointers compare equal everywhere). */
+typedef struct { const char *name; int lib, is_data, canon; u32 copy_off, copy_size, stroff; } Import;
+/* A GOT slot: a local definition (obj/symidx), a global one (by name); dyn = the loader fills it (GLOB_DAT). */
+typedef struct { const char *name; Obj *obj; int symidx, dyn; } Got;
+/* A dynamic relocation at (obj's section shndx + off) against symbol `sym` (NULL: none, e.g. RELATIVE). */
+typedef struct { Obj *obj; int shndx; u32 off, type; const char *sym; } DynRel;
 typedef struct { Obj *obj; int symidx; u32 stroff; } Export;
 typedef struct { u32 tag; int what, sec; u32 val; } DynEnt;   /* what: 0 = val, 1 = sec's address, 2 = sec's size */
 
 static Import *imports; static int nimport, impcap; static StrMap import_map;
 static Got *got;        static int ngot, gotcap;      static StrMap got_map;
 static DynRel *relative, *symrel, *relplt; static int nrelative, relcap, nsymrel, symcap, nrelplt, pltcap;
+static const char **pltsym; static int nplt, pltsymcap; static StrMap plt_map;   /* PLT entry k calls pltsym[k] */
 static Export *exports; static int nexport, expcap;
+static StrMap dynsym_map;                                /* name -> its .dynsym index (after dyn_size) */
 static DynEnt *dyn;     static int ndyn, dyncap;
 static Strtab dynstr; static u32 *needed_off, soname_off;
-static int nplt;
 static u32 dynbss_size;
 
 static int dynamic_image(void) { return pie || shared; }   /* loaded at a bias: its absolute words need fixups */
@@ -83,18 +85,18 @@ static int import_of(const char *name, int lib) {
 	long hit = (long)strmap_get(&import_map, name);
 	if (hit) return (int)hit - 1;
 	imports = grow(imports, nimport, &impcap, sizeof *imports);
-	imports[nimport] = (Import){ .name = name, .lib = lib, .plt = -1, .dynsym = 1 + nimport };
+	imports[nimport] = (Import){ .name = name, .lib = lib };
 	strmap_put(&import_map, name, (void *)(long)(nimport + 1));
 	if (lib >= 0) shlibs[lib].used = 1;                  /* a provider we use -> DT_NEEDED */
 	return nimport++;
 }
-static void add_rel(DynRel **v, int *n, int *cap, Obj *o, int shndx, u32 off, u32 type, int sym) {
+static void add_rel(DynRel **v, int *n, int *cap, Obj *o, int shndx, u32 off, u32 type, const char *sym) {
 	*v = grow(*v, *n, cap, sizeof **v);
 	(*v)[(*n)++] = (DynRel){ o, shndx, off, type, sym };
 }
 /* A runtime fixup of a word inside an input section: that section must be writable. We emit no DT_TEXTREL (and
  * our loader maps code read-only), so a fixup in code is a link error, not a crash at load time — as in lld. */
-static void runtime_fixup(DynRel **v, int *n, int *cap, Obj *o, int t, u32 off, u32 type, int sym, const char *what) {
+static void runtime_fixup(DynRel **v, int *n, int *cap, Obj *o, int t, u32 off, u32 type, const char *sym, const char *what) {
 	if (!(o->sh[t].sh_flags & SHF_WRITE))
 		die("%s: absolute reference to '%s' in read-only section %s needs a runtime fixup (a text relocation) — "
 		    "make it position-independent (-fPIC / PC-relative)", o->path, what, sec_name(o, t));
@@ -106,6 +108,24 @@ static int import_if_external(const char *name) {        /* -1: not an import (d
 	if (!e && !shared) return -1;                        /* a .so may import with no known provider; a program may not */
 	return import_of(name, e ? e->lib : -1);
 }
+/* PREEMPTIBLE: a definition in a .so that a program or an earlier library may interpose on — global/weak, default
+ * visibility, defined by an object (not the script), and no -Bsymbolic. The .so's own references to it therefore
+ * go through the dynamic tables (GLOB_DAT, symbolic ABS32, the PLT) and bind to whatever the loader finds first. */
+static int preemptible(Obj *o, int symidx) {
+	Elf32_Sym *s = &o->sym[symidx];
+	if (!shared || bsymbolic || ELF32_ST_BIND(s->st_info) == STB_LOCAL || !s->st_name) return 0;
+	if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT) return 0;
+	GSym *g = gsym_find(o->strtab + s->st_name);
+	return g && g->defined && g->obj && !g->hidden && g->obj->sym[g->symidx].st_shndx != SHN_ABS;
+}
+static int plt_slot(const char *name) {                  /* the PLT entry calling `name` (a JUMP_SLOT fills its GOT word) */
+	long hit = (long)strmap_get(&plt_map, name);
+	if (hit) return (int)hit - 1;
+	pltsym = grow(pltsym, nplt, &pltsymcap, sizeof *pltsym);
+	pltsym[nplt] = name; strmap_put(&plt_map, name, (void *)(long)(nplt + 1));
+	add_rel(&relplt, &nrelplt, &pltcap, linker_obj, L_GOTPLT, 4u * (u32)nplt, md_r_jump_slot, name);
+	return nplt++;
+}
 
 /* A GOT slot for (o, symidx): a LOCAL symbol keyed by object+index (same-named statics differ), others by name. */
 static void got_slot(Obj *o, int symidx) {
@@ -115,54 +135,64 @@ static void got_slot(Obj *o, int symidx) {
 	char key[48]; if (local) snprintf(key, sizeof key, "@%p:%d", (void *)o, symidx);
 	if (strmap_get(&got_map, local ? key : nm)) return;
 	got = grow(got, ngot, &gotcap, sizeof *got);
-	Got *g = &got[ngot]; *g = (Got){ .name = nm, .obj = local ? o : NULL, .symidx = symidx, .import = -1 };
+	Got *g = &got[ngot]; *g = (Got){ .name = nm, .obj = local ? o : NULL, .symidx = symidx };
 	strmap_put(&got_map, local ? strdup(key) : nm, (void *)(long)(ngot + 1));
 	u32 off = 4u * (u32)ngot++;
-	if (!local && (g->import = import_if_external(nm)) >= 0)          /* the loader writes the import's address */
-		add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_GOT, off, md_r_glob_dat, imports[g->import].dynsym);
-	else if (!local && !defined_locally(nm)) {
+	if (!local && (import_if_external(nm) >= 0 || preemptible(o, symidx))) {   /* the loader writes the address */
+		g->dyn = 1;
+		add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_GOT, off, md_r_glob_dat, nm);
+	} else if (!local && !defined_locally(nm)) {
 		if (ELF32_ST_BIND(s->st_info) != STB_WEAK) die("undefined symbol '%s' (GOT reference in %s)", nm, o->path);
 	} else if (dynamic_image() && !sym_is_abs(o, symidx))            /* holds a link-time address: add the bias */
-		add_rel(&relative, &nrelative, &relcap, linker_obj, L_GOT, off, md_r_relative, 0);
+		add_rel(&relative, &nrelative, &relcap, linker_obj, L_GOT, off, md_r_relative, NULL);
+}
+
+/* A reference to an IMPORT (undefined here). */
+static void import_ref(Obj *o, int t, u32 off, u32 type, Import *im) {
+	if (md_is_marker(type)) return;
+	if (md_is_call_reloc(type)) { plt_slot(im->name); return; }   /* a call -> through a PLT stub */
+	if (shared) {                                        /* a .so: the loader stores S + A into the word itself */
+		if (!md_needs_dynamic_reloc(type))
+			die("%s: relocation type %u against imported '%s' can't be resolved at run time", o->path, type, im->name);
+		runtime_fixup(&symrel, &nsymrel, &symcap, o, t, off, md_r_abs32, im->name, im->name);
+		return;
+	}
+	ShExport *e = shexport_of(im->name);                 /* a program's absolute reference: a fixed address */
+	if (e && e->type == STT_FUNC) { im->canon = 1; plt_slot(im->name); return; }   /* a function: its PLT entry */
+	if (im->is_data) return;                             /* a variable: one copy in our .dynbss */
+	if (!e || !e->size) die("data import '%s': provider records no size (st_size=0), cannot size its copy relocation", im->name);
+	im->is_data = 1; im->copy_size = e->size;
+	dynbss_size = alignup(dynbss_size, 4); im->copy_off = dynbss_size; dynbss_size += e->size;
+	add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_DYNBSS, im->copy_off, md_r_copy, im->name);
+}
+/* A .so's reference to its own PREEMPTIBLE definition: through the dynamic tables, like an import's. */
+static void preemptible_ref(Obj *o, int t, u32 off, u32 type, const char *nm) {
+	if (md_is_marker(type)) return;
+	if (md_is_call_reloc(type)) { plt_slot(nm); return; }
+	if (md_needs_dynamic_reloc(type)) { runtime_fixup(&symrel, &nsymrel, &symcap, o, t, off, md_r_abs32, nm, nm); return; }
+	die("%s: relocation type %u against '%s' in a shared object: another object may interpose on it, so it can't be "
+	    "bound here — make it hidden or static, reach it through the GOT (-fPIC), or link -Bsymbolic", o->path, type, nm);
 }
 
 static void scan_one(Obj *o, int t, u32 off, u32 type, int symidx) {
 	if (md_is_got_reloc(type)) { got_slot(o, symidx); return; }
 	Elf32_Sym *s = &o->sym[symidx];
-	if (s->st_shndx == SHN_UNDEF && s->st_name) {
-		const char *nm = o->strtab + s->st_name;
+	const char *nm = s->st_name ? o->strtab + s->st_name : NULL;
+	if (s->st_shndx == SHN_UNDEF && nm) {
 		int imp = import_if_external(nm);
-		if (imp >= 0) {
-			Import *im = &imports[imp];
-			if (md_is_call_reloc(type)) {                /* a call -> through a PLT stub */
-				if (im->plt < 0) {
-					im->plt = nplt++;
-					add_rel(&relplt, &nrelplt, &pltcap, linker_obj, L_GOTPLT, 4u * (u32)im->plt, md_r_jump_slot, im->dynsym);
-				}
-			} else if (shared) {                         /* a .so: the loader stores S + A into the word itself */
-				if (!md_needs_dynamic_reloc(type))
-					die("%s: relocation type %u against imported '%s' can't be resolved at run time", o->path, type, nm);
-				runtime_fixup(&symrel, &nsymrel, &symcap, o, t, off, md_r_abs32, im->dynsym, nm);
-			} else if (!im->is_data) {                   /* a program: a copy of the variable in its own .dynbss */
-				ShExport *e = shexport_of(nm);
-				if (!e || !e->size) die("data import '%s': provider records no size (st_size=0), cannot size its copy relocation", nm);
-				im->is_data = 1; im->copy_size = e->size;
-				dynbss_size = alignup(dynbss_size, 4); im->copy_off = dynbss_size; dynbss_size += e->size;
-				add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_DYNBSS, im->copy_off, md_r_copy, im->dynsym);
-			}
-			return;
-		}
+		if (imp >= 0) { import_ref(o, t, off, type, &imports[imp]); return; }
 		if (!defined_locally(nm)) {
 			if (ELF32_ST_BIND(s->st_info) != STB_WEAK) die("undefined symbol '%s' (referenced in %s)", nm, o->path);
 			return;                                      /* an undefined weak reference is 0 — at any load address */
 		}
 	}
+	if (preemptible(o, symidx)) { preemptible_ref(o, t, off, type, nm); return; }
 	if (!dynamic_image() || sym_is_abs(o, symidx)) return;
 	if (md_is_abs_nonword(type))                         /* GNU ld: the same error */
 		die("%s: absolute movw/movt reference to '%s' can't be position-independent — recompile with -fPIC",
-		    o->path, s->st_name ? o->strtab + s->st_name : "(section)");
+		    o->path, nm ? nm : "(section)");
 	if (md_needs_dynamic_reloc(type))
-		runtime_fixup(&relative, &nrelative, &relcap, o, t, off, md_r_relative, 0, s->st_name ? o->strtab + s->st_name : sec_name(o, s->st_shndx));
+		runtime_fixup(&relative, &nrelative, &relcap, o, t, off, md_r_relative, NULL, nm ? nm : sec_name(o, s->st_shndx));
 }
 
 void dyn_scan(void) {
@@ -181,9 +211,10 @@ void dyn_scan(void) {
 	}
 }
 
-/* A relocation whose target is a linker-made table entry: a GOT reference -> the symbol's GOT slot; a call to an
- * import -> its PLT stub; an executable's absolute reference to a data import -> its .dynbss copy; a .so's absolute
- * reference to an import -> 0 (the word keeps its addend; the loader adds S). Returns 0 for an ordinary target. */
+/* A relocation whose target the dynamic tables decide: a GOT reference -> the symbol's GOT slot; a call to an import
+ * or a preemptible definition -> its PLT stub; a program's absolute reference to an import -> its .dynbss copy or its
+ * canonical PLT stub; a .so's absolute reference to an import or preemptible symbol -> 0 (the word keeps its addend;
+ * the loader adds S). Returns 0 for an ordinary target (resolved statically). */
 int dyn_target(Obj *o, int symidx, u32 type, u32 *S) {
 	Elf32_Sym *s = &o->sym[symidx];
 	if (md_is_got_reloc(type)) {
@@ -194,13 +225,14 @@ int dyn_target(Obj *o, int symidx, u32 type, u32 *S) {
 		*S = linker_obj->sec_vaddr[L_GOT] + 4u * (u32)(i - 1);
 		return 1;
 	}
-	if (s->st_shndx != SHN_UNDEF || !s->st_name) return 0;
-	long i = (long)strmap_get(&import_map, o->strtab + s->st_name);
-	if (!i) return 0;
-	Import *im = &imports[i - 1];
-	if (md_is_call_reloc(type)) *S = linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)im->plt;
-	else if (im->is_data)       *S = linker_obj->sec_vaddr[L_DYNBSS] + im->copy_off;
-	else                        *S = 0;
+	if (!s->st_name || md_is_marker(type)) return 0;
+	const char *nm = o->strtab + s->st_name;
+	long i = s->st_shndx == SHN_UNDEF ? (long)strmap_get(&import_map, nm) : 0;
+	if (!i && !preemptible(o, symidx)) return 0;
+	long k = (long)strmap_get(&plt_map, nm);
+	if (md_is_call_reloc(type) || (i && imports[i - 1].canon)) *S = linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)(k - 1);
+	else if (i && imports[i - 1].is_data) *S = linker_obj->sec_vaddr[L_DYNBSS] + imports[i - 1].copy_off;
+	else *S = 0;
 	return 1;
 }
 
@@ -247,6 +279,9 @@ void dyn_size(void) {
 	}
 	if (shared && !soname) die("internal: -shared without a soname");
 	if (has_dynsym) collect_exports();
+	for (int i = 0; i < nimport; i++) strmap_put(&dynsym_map, imports[i].name, (void *)(long)(1 + i));   /* [0] = STN_UNDEF */
+	for (int i = 0; i < nexport; i++)
+		strmap_put(&dynsym_map, exports[i].obj->strtab + exports[i].obj->sym[exports[i].symidx].st_name, (void *)(long)(1 + nimport + i));
 
 	str_add(&dynstr, "");
 	for (int i = 0; i < nimport; i++) imports[i].stroff = str_add(&dynstr, imports[i].name);
@@ -257,6 +292,7 @@ void dyn_size(void) {
 
 	for (int i = 0; i < nshlib; i++) if (shlibs[i].used) dyn_add(DT_NEEDED, 0, 0, needed_off[i]);
 	if (shared) dyn_add(DT_SONAME, 0, 0, soname_off);
+	if (shared && bsymbolic) dyn_add(DT_SYMBOLIC, 0, 0, 0);   /* its own definitions bind locally (resolved at link time) */
 	if (has_dynsym) {
 		dyn_add(DT_HASH, 1, L_HASH, 0);     dyn_add(DT_STRTAB, 1, L_DYNSTR, 0); dyn_add(DT_SYMTAB, 1, L_DYNSYM, 0);
 		dyn_add(DT_STRSZ, 2, L_DYNSTR, 0);  dyn_add(DT_SYMENT, 0, 0, sizeof(Elf32_Sym));
@@ -271,7 +307,7 @@ void dyn_size(void) {
 	}
 	dyn_add(DT_NULL, 0, 0, 0);
 
-	if (nimport && !shared) set_size(L_INTERP, sizeof INTERP_PATH);
+	if (nimport && !shared) set_size(L_INTERP, (u32)strlen(interp_path) + 1);
 	if (has_dynsym) {
 		set_size(L_HASH, (2 + hash_nbucket() + dynsym_count()) * 4);   /* [nbucket, nchain, bucket[], chain[]] */
 		set_size(L_DYNSYM, dynsym_count() * sizeof(Elf32_Sym));
@@ -296,8 +332,13 @@ void dyn_size(void) {
 /* ---- contents (after layout) ------------------------------------------------------------------------- */
 static u8 *sec_bytes(int sec) { return linker_obj->data + linker_obj->sh[sec].sh_offset; }
 static u32 at(const DynRel *r) { return r->obj->sec_vaddr[r->shndx] + r->off; }
+static u32 dynsym_of(const char *name) {
+	long i = name ? (long)strmap_get(&dynsym_map, name) : 0;
+	if (name && !i) die("internal: '%s' has no .dynsym entry", name);
+	return (u32)i;
+}
 static void put_rels(u8 *p, const DynRel *v, int n) {
-	for (int i = 0; i < n; i++, p += 8) { wr32(p, at(&v[i])); wr32(p + 4, ELF32_R_INFO((u32)v[i].sym, v[i].type)); }
+	for (int i = 0; i < n; i++, p += 8) { wr32(p, at(&v[i])); wr32(p + 4, ELF32_R_INFO(dynsym_of(v[i].sym), v[i].type)); }
 }
 /* SysV ELF hash (System V gABI) — MUST match the runtime loader's elf_hash (libc/ld/src/reloc.h). */
 static u32 elf_hash(const char *s) {
@@ -313,14 +354,14 @@ void dyn_fill(void) {
 		if (linker_obj->sh[L_DYNAMIC].sh_size) { d->defined = 1; d->vaddr = linker_obj->sec_vaddr[L_DYNAMIC]; d->os = linker_obj->sec_out[L_DYNAMIC]; }
 		else d->linker = 0;                              /* no .dynamic: a weak reference is 0, a strong one undefined */
 	}
-	if (linker_obj->sh[L_INTERP].sh_size) memcpy(sec_bytes(L_INTERP), INTERP_PATH, sizeof INTERP_PATH);
+	if (linker_obj->sh[L_INTERP].sh_size) memcpy(sec_bytes(L_INTERP), interp_path, strlen(interp_path) + 1);
 	for (int k = 0; k < nplt; k++)
 		md_plt_entry(sec_bytes(L_PLT) + md_plt_entsize * k, linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)k,
 		             linker_obj->sec_vaddr[L_GOTPLT] + 4u * (u32)k);
-	for (int i = 0; i < ngot; i++) {                     /* a definition's address (loader adds the bias); an import 0 */
+	for (int i = 0; i < ngot; i++) {                     /* a definition's address (loader adds the bias); a GLOB_DAT's 0 */
 		Got *g = &got[i]; u32 v = 0;
 		if (g->obj) v = sym_addr(g->obj, g->symidx);
-		else if (g->import < 0) { GSym *s = gsym_find(g->name); v = s && s->defined ? s->vaddr : 0; }
+		else if (!g->dyn) { GSym *s = gsym_find(g->name); v = s && s->defined ? s->vaddr : 0; }
 		wr32(sec_bytes(L_GOT) + 4 * i, v);
 	}
 	put_rels(sec_bytes(L_RELDYN), relative, nrelative);
@@ -329,9 +370,14 @@ void dyn_fill(void) {
 	if (linker_obj->sh[L_DYNSYM].sh_size) {
 		memcpy(sec_bytes(L_DYNSTR), dynstr.b, dynstr.len);
 		u8 *p = sec_bytes(L_DYNSYM) + sizeof(Elf32_Sym);   /* [0] = STN_UNDEF */
-		for (int i = 0; i < nimport; i++, p += sizeof(Elf32_Sym)) {   /* a data import carries its size (the COPY length) */
-			Elf32_Sym d = { .st_name = imports[i].stroff, .st_size = imports[i].is_data ? imports[i].copy_size : 0,
-			    .st_info = ELF32_ST_INFO(STB_GLOBAL, imports[i].is_data ? STT_OBJECT : STT_FUNC), .st_shndx = SHN_UNDEF };
+		for (int i = 0; i < nimport; i++, p += sizeof(Elf32_Sym)) {
+			Import *im = &imports[i];
+			Elf32_Sym d = { .st_name = im->stroff, .st_info = ELF32_ST_INFO(STB_GLOBAL, im->is_data ? STT_OBJECT : STT_FUNC), .st_shndx = SHN_UNDEF };
+			if (im->is_data) {                           /* DEFINED at our copy (the COPY's length is its size): every object binds here */
+				d.st_value = linker_obj->sec_vaddr[L_DYNBSS] + im->copy_off; d.st_size = im->copy_size;
+				d.st_shndx = (u16)out_index(linker_obj, L_DYNBSS);
+			} else if (im->canon)                        /* undefined, but its address is our PLT entry (pointer equality) */
+				d.st_value = linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)((long)strmap_get(&plt_map, im->name) - 1);
 			memcpy(p, &d, sizeof d);
 		}
 		for (int i = 0; i < nexport; i++, p += sizeof(Elf32_Sym)) {

@@ -54,6 +54,7 @@ int md_is_abs_nonword(u32 type) { return type == R_ARM_MOVW_ABS_NC || type == R_
 int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP24; }
 /* Is this a PIC GOT-entry reference? The front-end resolves it to (GOT_slot - P) — S is the slot addr. */
 int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL; }
+int md_is_marker(u32 type) { return type == R_ARM_NONE; }
 
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	u32 w = rd32(loc);

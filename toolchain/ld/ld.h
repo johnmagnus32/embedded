@@ -28,6 +28,9 @@ extern int pie;                 /* -pie: ET_DYN at base 0; absolute refs become 
 extern int shared;              /* -shared: an ET_DYN LIBRARY (exports .dynsym/.hash; no required entry) */
 extern const char *soname;      /* -soname NAME (default: output basename) -> DT_SONAME */
 extern const char *entry_sym;   /* entry symbol: -e wins over the script's ENTRY() */
+extern int bsymbolic;           /* -Bsymbolic: a .so's own definitions bind locally (not preemptible) */
+extern const char *interp_path; /* --dynamic-linker (default /lib/ld.so.1) */
+extern int stack_override;      /* -z [no]execstack: PT_GNU_STACK flags (0 = decide from the inputs' .note.GNU-stack) */
 #define PAGE 0x1000u            /* segment alignment: each PT_LOAD maps on its own pages => W^X enforceable */
 
 void  die(const char *fmt, ...) __attribute__((noreturn));
@@ -55,7 +58,7 @@ void load_shared(const char *path);              /* elf.c: read a .so's exports 
 
 /* -l: a shared library we link AGAINST (a provider): its exports + soname; its sections are not laid out. */
 typedef struct { const char *soname; int used; } ShLib;           /* used -> a DT_NEEDED */
-typedef struct { const char *name; int lib; u32 size; } ShExport; /* a provider's exported symbol (+ its size) */
+typedef struct { const char *name; int lib; u32 size; int type; } ShExport;   /* a provider's exported symbol: size, STT_* */
 extern ShLib *shlibs; extern int nshlib;
 extern ShExport *shexports; extern int nshexport;
 
@@ -118,4 +121,5 @@ int  md_needs_dynamic_reloc(u32 type);           /* an absolute word: a runtime 
 int  md_is_abs_nonword(u32 type);                /* movw/movt absolute halves: not position-independent */
 int  md_is_call_reloc(u32 type);                 /* a call (routed via the PLT when imported)          */
 int  md_is_got_reloc(u32 type);                  /* a PIC GOT-entry reference (S = the symbol's GOT slot) */
+int  md_is_marker(u32 type);                     /* a dependency marker only (R_ARM_NONE): patches nothing */
 #endif

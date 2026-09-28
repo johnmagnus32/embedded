@@ -53,6 +53,7 @@ static dso_t build_fixture(void)
 		{ "malloc", 0x2000, 0 },
 		{ "write",  0x3000, 0 },
 		{ "extern_undef", 0, 1 },
+		{ "canon_fn", 0x4000, 1 },     /* a program's canonical PLT address: undefined FUNC with a value */
 	};
 	int n = 1;
 	for (unsigned i = 0; i < sizeof defs / sizeof defs[0]; i++, n++) {
@@ -95,11 +96,13 @@ int main(void)
 	dso_t lib = build_fixture();
 
 	printf("== symbol lookup ==\n");
-	CHECK(dso_lookup(&lib, "printf") == 0x1000, "lookup printf -> 0x1000");
-	CHECK(dso_lookup(&lib, "malloc") == 0x2000, "lookup malloc -> 0x2000");
-	CHECK(dso_lookup(&lib, "write")  == 0x3000, "lookup write  -> 0x3000");
-	CHECK(dso_lookup(&lib, "nope")   == 0,      "lookup missing -> 0");
-	CHECK(dso_lookup(&lib, "extern_undef") == 0, "undef symbol not treated as a definition");
+	CHECK(dso_lookup(&lib, "printf", LOOKUP_DATA) == 0x1000, "lookup printf -> 0x1000");
+	CHECK(dso_lookup(&lib, "malloc", LOOKUP_DATA) == 0x2000, "lookup malloc -> 0x2000");
+	CHECK(dso_lookup(&lib, "write", LOOKUP_DATA)  == 0x3000, "lookup write  -> 0x3000");
+	CHECK(dso_lookup(&lib, "nope", LOOKUP_DATA)   == 0,      "lookup missing -> 0");
+	CHECK(dso_lookup(&lib, "extern_undef", LOOKUP_DATA) == 0, "undef symbol not treated as a definition");
+	CHECK(dso_lookup(&lib, "canon_fn", LOOKUP_DATA) == 0x4000, "canonical PLT address: the function's address for data refs");
+	CHECK(dso_lookup(&lib, "canon_fn", LOOKUP_PLT) == 0, "...but not for a PLT slot (it must reach the real function)");
 
 	/* Reloc VALUE math is pure arithmetic over (type, base, S, addend) — test it
 	 * with plain integers (no fake pointers, so it's clean on a 64-bit host). The
@@ -107,14 +110,14 @@ int main(void)
 	 * boot harness; here we lock down the formulas. */
 	printf("== R_ARM_JUMP_SLOT (value = S, addend ignored) ==\n");
 	{
-		Elf32_Addr S = dso_lookup(&lib, "printf");   /* 0x1000 */
+		Elf32_Addr S = dso_lookup(&lib, "printf", LOOKUP_DATA);   /* 0x1000 */
 		reloc_value_t rv = reloc_value(R_ARM_JUMP_SLOT, /*base*/0, S, /*A*/0xdeadbeef);
 		CHECK(rv.ok && rv.value == 0x1000, "JUMP_SLOT printf -> 0x1000 (addend ignored)");
 	}
 
 	printf("== R_ARM_GLOB_DAT (value = S + A) ==\n");
 	{
-		Elf32_Addr S = dso_lookup(&lib, "malloc");    /* 0x2000 */
+		Elf32_Addr S = dso_lookup(&lib, "malloc", LOOKUP_DATA);    /* 0x2000 */
 		reloc_value_t rv = reloc_value(R_ARM_GLOB_DAT, 0, S, 0x10);
 		CHECK(rv.ok && rv.value == 0x2000 + 0x10, "GLOB_DAT malloc + addend 0x10");
 	}
@@ -127,7 +130,7 @@ int main(void)
 
 	printf("== R_ARM_ABS32 (value = S + A) ==\n");
 	{
-		Elf32_Addr S = dso_lookup(&lib, "write");     /* 0x3000 */
+		Elf32_Addr S = dso_lookup(&lib, "write", LOOKUP_DATA);     /* 0x3000 */
 		reloc_value_t rv = reloc_value(R_ARM_ABS32, 0, S, 0x4);
 		CHECK(rv.ok && rv.value == 0x3000 + 0x4, "ABS32 write + addend 0x4");
 	}

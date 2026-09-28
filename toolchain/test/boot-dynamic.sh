@@ -30,9 +30,10 @@ set -u
 QEMU="${QEMU:-qemu-system-arm}"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="${HERE}/boot/init.c"                 # reuse the static test's init: printf + a computed marker
+SRC="${SRC:-${HERE}/boot/init.c}"          # default: the static test's init (printf + a computed marker)
 BUILD="${BUILD:-${HERE}/.bootbed-dyn}"
-MARKER="add(2, 3) = 5"
+MARKER="${MARKER:-add(2, 3) = 5}"
+PIC="${PIC:-1}"                            # 1: -fPIC (GOT addressing); 0: absolute addressing (copy relocs, canonical PLT)
 
 red(){ printf '\033[31m%s\033[0m\n' "$*"; }
 grn(){ printf '\033[32m%s\033[0m\n' "$*"; }
@@ -48,8 +49,8 @@ command -v "${QEMU}" >/dev/null 2>&1 || die "${QEMU} not on PATH"
 
 rm -rf "${BUILD}"; mkdir -p "${BUILD}"
 
-echo "  cc + as : ${SRC##*/} -> init.o (-fPIC)"
-"${CC}" -fPIC -I"${LIBC_INCLUDE}" -I"${UAPI_INCLUDE}" -c "${SRC}" -o "${BUILD}/init.o" || die "compile failed"
+echo "  cc + as : ${SRC##*/} -> init.o ($([ "${PIC}" = 1 ] && echo -fPIC || echo non-PIC))"
+"${CC}" $([ "${PIC}" = 1 ] && echo -fPIC) -I"${LIBC_INCLUDE}" -I"${UAPI_INCLUDE}" -c "${SRC}" -o "${BUILD}/init.o" || die "compile failed"
 echo "  ld      : crt0 + init.o -lc -L stage -> init (dynamic ARM ELF, PT_INTERP=/lib/ld.so.1)"
 "${CC}" -Ttext 0x40000000 -lc -L"${LIBC_DYN_STAGE}" "${LIBC_DYN_STAGE}/crt0.S.o" "${BUILD}/init.o" \
   -o "${BUILD}/init" || die "dynamic link failed"

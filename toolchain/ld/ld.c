@@ -32,6 +32,9 @@ int pie = 0;                               /* -pie: ET_DYN, base 0, absolute ref
 int shared = 0;                            /* -shared: emit a .so — exported .dynsym/.hash, no required entry */
 const char *soname = NULL;                 /* -soname NAME -> DT_SONAME (default: the output basename) */
 const char *entry_sym = NULL;              /* -e; else the script's ENTRY(); else _start */
+int bsymbolic = 0;                         /* -Bsymbolic */
+const char *interp_path = "/lib/ld.so.1";  /* --dynamic-linker: the PT_INTERP a dynamic program names */
+int stack_override;                        /* -z noexecstack / execstack: PT_GNU_STACK's flags, else from the inputs */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
 void die(const char *fmt, ...) {
@@ -165,6 +168,14 @@ static int is_archive(const char *path) {
 	return n == 8 && !memcmp(m, "!<arch>\n", 8);
 }
 static int file_exists(const char *p) { FILE *f = fopen(p, "rb"); if (f) { fclose(f); return 1; } return 0; }
+/* -z KEYWORD: the ones with a meaning here; any other is an error (never silently ignored). */
+static void z_option(const char *k) {
+	if (!strcmp(k, "noexecstack")) stack_override = PF_R | PF_W;
+	else if (!strcmp(k, "execstack")) stack_override = PF_R | PF_W | PF_X;
+	else if (!strncmp(k, "max-page-size=", 14) || !strncmp(k, "common-page-size=", 17)) {
+		if (strtoul(strchr(k, '=') + 1, NULL, 0) != PAGE) die("-z %s: this linker lays out %#x-byte pages only", k, PAGE);
+	} else die("unsupported -z %s", k);
+}
 
 int main(int argc, char **argv) {
 	const char *out = "a.out", *script_path = NULL;
@@ -179,6 +190,13 @@ int main(int argc, char **argv) {
 		else if ((!strcmp(a, "-e") || !strcmp(a, "--entry")) && i + 1 < argc) entry_sym = argv[++i];
 		else if (!strcmp(a, "-pie") || !strcmp(a, "--pie")) { pie = 1; load_base = 0; }
 		else if (!strcmp(a, "-shared") || !strcmp(a, "--shared")) { shared = 1; load_base = 0; }
+		else if (!strcmp(a, "-Bsymbolic")) bsymbolic = 1;
+		else if (!strcmp(a, "--build-id=none") || !strcmp(a, "--start-group") || !strcmp(a, "--end-group")) ;   /* we emit no build-id;
+		                                                     * archives already resolve as one group (see resolve_symbols) */
+		else if (!strncmp(a, "--dynamic-linker=", 17)) interp_path = a + 17;
+		else if (!strcmp(a, "--dynamic-linker") && i + 1 < argc) interp_path = argv[++i];
+		else if (!strcmp(a, "-z") && i + 1 < argc) z_option(argv[++i]);
+		else if (!strncmp(a, "-z", 2) && a[2]) z_option(a + 2);
 		else if (!strcmp(a, "-soname") && i + 1 < argc) soname = argv[++i];
 		else if (!strncmp(a, "-soname=", 8)) soname = a + 8;
 		else if (!strncmp(a, "-l", 2)) {
@@ -192,7 +210,7 @@ int main(int argc, char **argv) {
 		else if (is_archive(a)) ar_load(a);                  /* lazy members, pulled on demand */
 		else elf_load(a);                                     /* always-linked object */
 	}
-	if (!nobj) die("usage: ld [-o out] [-T script | -Ttext addr] [-e sym] [-pie | -shared [-soname name]] [-L dir] [-l name] obj.o|lib.a ...");
+	if (!nobj) die("usage: ld [-o out] [-T script | -Ttext addr] [-e sym] [-pie | -shared [-soname name] [-Bsymbolic]] [-z kw] [--dynamic-linker path] [-L dir] [-l name] obj.o|lib.a ...");
 	if (script_path && ttext) die("-Ttext and -T both place the image: use one");
 
 	for (int i = 0; i < nlibname; i++) {                 /* -l<name>: lib<name>.so under a -L dir (a provider) */

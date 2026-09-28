@@ -654,7 +654,7 @@ static void decide_stack(void) {
 		for (int j = 1; j < o->nsh; j++) if (!strcmp(sec_name(o, j), ".note.GNU-stack")) { has = 1; exec |= (o->sh[j].sh_flags & SHF_EXECINSTR) != 0; }
 		notes |= has; exec |= !has;
 	}
-	gnu_stack = notes ? PF_R | PF_W | (exec ? PF_X : 0) : 0;
+	gnu_stack = stack_override ? stack_override : notes ? PF_R | PF_W | (exec ? PF_X : 0) : 0;
 }
 
 void layout_run(void) {

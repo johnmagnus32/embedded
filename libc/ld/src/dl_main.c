@@ -180,6 +180,16 @@ static Elf32_Addr dl_map_so(const char *path, dso_t *d)
  * the PLT — so we don't need a resolved GOT entry to call ourselves. This
  * eliminates the one JUMP_SLOT self-reference the linker would otherwise have. */
 __attribute__((noreturn, used, visibility("hidden")))
+/* Apply one object's relocation table (REL or JMPREL) against the lookup scope; any unresolved entry is fatal. */
+static void relocate_table(const dso_t *d, const Elf32_Rel *rel, Elf32_Word sz, const dso_t *const *scope, const char *what)
+{
+	if (!rel) return;
+	int nrel = (int)(sz / sizeof(Elf32_Rel));
+	for (int i = 0; i < nrel; i++)
+		if (!reloc_apply(d, scope, 2, &rel[i]))
+			dl_die(what);
+}
+
 void _dl_main(long *sp)
 {
 	/* 1. Parse the initial stack to get argc/argv/envp/auxv. */
@@ -264,49 +274,16 @@ void _dl_main(long *sp)
 	dl_map_so(lib_path, &libc);
 	dl_puts("ld.so: mapped "); dl_puts(lib_path); dl_puts("\n");
 
-	/* 4. Resolve libc.so's own REL (GLOB_DAT for errno/environ — against the
-	 * program, which provides them as global BSS symbols from crt/libc_start). */
-	if (libc.rel && libc.relsz) {
-		int nrel = (int)(libc.relsz / sizeof(Elf32_Rel));
-		for (int i = 0; i < nrel; i++) {
-			/* For GLOB_DAT in libc resolving against the program (errno/environ):
-			 * look up in the PROGRAM's symtab, then fall back to libc itself. */
-			if (!reloc_apply(&libc, &prog, &libc.rel[i]))
-				if (!reloc_apply(&libc, &libc, &libc.rel[i]))
-					dl_die("unresolved libc REL");
-		}
-	}
-
-	/* 5. Resolve libc.so's PLT (JUMP_SLOT). Most resolve against libc itself
-	 * (internal calls: malloc→sbrk, printf→write…), but `main` is defined in
-	 * the PROGRAM — so try libc first, then fall back to the program. */
-	if (libc.jmprel && libc.pltrelsz) {
-		int nrel = (int)(libc.pltrelsz / sizeof(Elf32_Rel));
-		for (int i = 0; i < nrel; i++) {
-			/* Try the PROGRAM first (libc's imports like `main`/`errno` are provided by the exe), then
-			 * libc itself. This also avoids a same-object (self==provider) resolve of an unresolved
-			 * symbol, which our cc-compiled reloc_apply currently mishandles. */
-			if (!reloc_apply(&libc, &prog, &libc.jmprel[i]))
-				if (!reloc_apply(&libc, &libc, &libc.jmprel[i]))
-					dl_die("unresolved libc JUMP_SLOT");
-		}
-	}
-
-	/* 6. Resolve the PROGRAM's PLT (JUMP_SLOT — calls into libc like printf). */
-	if (prog.jmprel && prog.pltrelsz) {
-		int nrel = (int)(prog.pltrelsz / sizeof(Elf32_Rel));
-		for (int i = 0; i < nrel; i++)
-			if (!reloc_apply(&prog, &libc, &prog.jmprel[i]))
-				dl_die("unresolved program JUMP_SLOT");
-	}
-
-	/* 7. Resolve the program's REL (GLOB_DAT — typically none for our simple
-	 * programs, but handle if present). */
-	if (prog.rel && prog.relsz) {
-		int nrel = (int)(prog.relsz / sizeof(Elf32_Rel));
-		for (int i = 0; i < nrel; i++)
-			reloc_apply(&prog, &libc, &prog.rel[i]);
-	}
+	/* 4-7. Relocate every object against ONE lookup scope — the program, then libc — so a name binds to the same
+	 * definition everywhere: libc's references to `environ` reach the program's copy of it (R_ARM_COPY), a function
+	 * pointer the program formed is its PLT entry wherever it's compared, and a program definition interposes on
+	 * libc's own (`main`, errno). libc's relocations run first, so its data is final before the program's COPYs
+	 * read it. */
+	const dso_t *scope[2] = { &prog, &libc };
+	relocate_table(&libc, libc.rel, libc.relsz, scope, "unresolved libc REL");
+	relocate_table(&libc, libc.jmprel, libc.pltrelsz, scope, "unresolved libc JUMP_SLOT");
+	relocate_table(&prog, prog.jmprel, prog.pltrelsz, scope, "unresolved program JUMP_SLOT");
+	relocate_table(&prog, prog.rel, prog.relsz, scope, "unresolved program REL");
 
 	dl_puts("ld.so: relocations done, jumping to program\n");
 

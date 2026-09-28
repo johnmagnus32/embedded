@@ -51,14 +51,20 @@ static inline uint32_t elf_hash(const char *name)
 
 /*
  * Look up `name` in `d`'s dynamic symbol table via the SysV hash. Returns the
- * DEFINED symbol's absolute address (st_value + base), or 0 if not found or the
- * symbol is undefined (SHN_UNDEF) in this object. Only GLOBAL/WEAK defined
- * symbols are considered (the export set of a .so).
+ * symbol's absolute address (st_value + base), or 0 if `d` doesn't provide it.
+ * Only GLOBAL/WEAK symbols are considered (the export set). Two lookup classes:
+ *   LOOKUP_DATA — a definition, or a PROGRAM's undefined FUNC entry with a value:
+ *                 that value is the function's canonical address (its PLT entry in
+ *                 a non-PIC program), which every object must use as the
+ *                 function's address so pointers compare equal;
+ *   LOOKUP_PLT  — a definition only: a PLT slot (JUMP_SLOT) or a COPY source must
+ *                 reach the real function/variable, not the program's stub.
  */
+enum { LOOKUP_DATA, LOOKUP_PLT };
 /* Symbol fields are read with natural struct access: our cc now has a 2-byte type (short/uint16_t), so it
  * lays Elf32_Sym out exactly as the ABI does — st_shndx@14, sizeof 16 — and symtab[i] strides correctly.
  * (DT_SYMENT is 16 for every ELF32; d->syment carries it but the layout is the same either way.) */
-static inline Elf32_Addr dso_lookup(const dso_t *d, const char *name)
+static inline Elf32_Addr dso_lookup(const dso_t *d, const char *name, int cls)
 {
 	if (!d->hash || !d->symtab || !d->strtab)
 		return 0;
@@ -70,8 +76,11 @@ static inline Elf32_Addr dso_lookup(const dso_t *d, const char *name)
 	uint32_t h = elf_hash(name);
 	for (uint32_t i = bucket[h % nbucket]; i != 0 /*STN_UNDEF*/; i = chain[i]) {
 		const Elf32_Sym *sym = &d->symtab[i];
-		if (sym->st_shndx == SHN_UNDEF)        /* imported here, not a definition */
-			continue;
+		if (sym->st_shndx == SHN_UNDEF) {      /* imported here: only a canonical address counts, for data refs */
+			int type = ELF32_ST_TYPE(sym->st_info);
+			if (cls == LOOKUP_PLT || sym->st_value == 0 || type != STT_FUNC)
+				continue;
+		}
 		int bind = ELF32_ST_BIND(sym->st_info);
 		if (bind != STB_GLOBAL && bind != STB_WEAK)
 			continue;
@@ -124,14 +133,16 @@ static inline reloc_value_t reloc_value(uint32_t type, Elf32_Addr base,
 }
 
 /*
- * Apply one relocation to a mapped object: read the addend from the slot,
- * resolve any symbol (imports against `provider`, then a local fallback in
- * `self`), compute the value, and store it. Returns 1 on success, 0 if an
- * import was unresolved or the type is unsupported (caller should error out).
+ * Apply one relocation to a mapped object: read the addend from the slot, resolve
+ * any symbol through the global lookup SCOPE (the program first, then the
+ * libraries in load order — the same scope for every object, so all of them bind a
+ * name to ONE definition), compute the value, and store it. A COPY's source is
+ * looked up past `self` (the program holding the copy). Returns 1 on success, 0 if
+ * a symbol was unresolved or the type is unsupported (caller should error out).
  * This is the ARM-side glue that DOES touch memory; the arithmetic it defers to
  * reloc_value(). (On a 32-bit target the pointer math is exact.)
  */
-static inline int reloc_apply(const dso_t *self, const dso_t *provider,
+static inline int reloc_apply(const dso_t *self, const dso_t *const *scope, int nscope,
                               const Elf32_Rel *r)
 {
 	Elf32_Addr *where = (Elf32_Addr *)(uintptr_t)(r->r_offset + self->base);
@@ -143,9 +154,10 @@ static inline int reloc_apply(const dso_t *self, const dso_t *provider,
 	int is_weak = 0;
 	if (type != R_ARM_RELATIVE) {
 		const char *name = self->strtab + self->symtab[symidx].st_name;
-		S = dso_lookup(provider, name);
-		if (S == 0)
-			S = dso_lookup(self, name);   /* local definition fallback */
+		int cls = (type == R_ARM_JUMP_SLOT || type == R_ARM_COPY) ? LOOKUP_PLT : LOOKUP_DATA;
+		for (int i = 0; i < nscope && S == 0; i++)
+			if (!(type == R_ARM_COPY && scope[i] == self))
+				S = dso_lookup(scope[i], name, cls);
 		if (S == 0) {
 			int bind = ELF32_ST_BIND(self->symtab[symidx].st_info);   /* bind on its own line (cc shift-compare) */
 			if (bind == STB_WEAK) is_weak = 1;

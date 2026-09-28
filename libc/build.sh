@@ -50,11 +50,12 @@ if [ "${PKG_LINK}" = dynamic ]; then
   if [ "${PROVIDER_cross_cc}" = toolchain-custom ]; then
     # OUR from-scratch PIC toolchain: os-cc-native flags (it drops -Wl,/-nostdlib; PKG_CFLAGS carries -fPIC;
     # no libgcc). libc.so is W^X-clean (globals/strings via the GOT). ld.so.1 built inline: dl_entry.S (self-
-    # relocating _start) + dl_main.c, -e _start. Both are ET_DYN, position-independent.
+    # relocating _start) + dl_main.c, -e _start. Both are ET_DYN, position-independent. ld.so.1 is -Bsymbolic: its
+    # own references bind at link time, since its bootstrap applies only R_ARM_RELATIVE before any C runs.
     "${PKG_CC}" ${PKG_CFLAGS} -shared -soname libc.so.1 "${OBJS[@]}" -o "${LIBC_STAGE_DIR}/libc.so"
     "${PKG_CC}" ${PKG_CFLAGS} -I"${LIBC_PROVIDER_DIR}/ld/src" -c "${LIBC_PROVIDER_DIR}/ld/src/dl_main.c" -o "${LIBC_STAGE_DIR}/dl_main.o"
     "${PKG_CC}" -c "${LIBC_PROVIDER_DIR}/ld/src/dl_entry.S" -o "${LIBC_STAGE_DIR}/dl_entry.o"
-    "${PKG_CC}" -shared -e _start -soname ld.so.1 "${LIBC_STAGE_DIR}/dl_entry.o" "${LIBC_STAGE_DIR}/dl_main.o" -o "${LIBC_STAGE_DIR}/ld.so.1"
+    "${PKG_CC}" -shared -e _start -soname ld.so.1 -Wl,-Bsymbolic "${LIBC_STAGE_DIR}/dl_entry.o" "${LIBC_STAGE_DIR}/dl_main.o" -o "${LIBC_STAGE_DIR}/ld.so.1"
   else
     "${PKG_CC}" ${PKG_CFLAGS} -fPIC -shared -nostdlib -Wl,--build-id=none \
       -Wl,-soname,libc.so "${OBJS[@]}" ${LIBGCC} -o "${LIBC_STAGE_DIR}/libc.so"

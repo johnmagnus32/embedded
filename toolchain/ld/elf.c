@@ -129,7 +129,7 @@ void load_shared(const char *path) {
 		Elf32_Sym *s = &dsym[k]; int b = ELF32_ST_BIND(s->st_info);
 		if ((b == STB_GLOBAL || b == STB_WEAK) && s->st_shndx != SHN_UNDEF && s->st_name) {
 			shexports = grow(shexports, nshexport, &shexpcap, sizeof *shexports);
-			shexports[nshexport++] = (ShExport){ elf_string(&f, dstr, s->st_name), lib, s->st_size };
+			shexports[nshexport++] = (ShExport){ elf_string(&f, dstr, s->st_name), lib, s->st_size, ELF32_ST_TYPE(s->st_info) };
 		}
 	}
 }

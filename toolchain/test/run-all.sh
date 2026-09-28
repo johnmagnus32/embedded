@@ -48,10 +48,14 @@ if [ -d "${BIN}" ] && [ -d "${DYN}" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ] &
   "${CC}" -fPIC -shared -soname libc.so.1 -o "${DYN}/libc.so" "${DYN}"/*.c.o 2>/dev/null || reb=0
   "${CC}" -fPIC -I"${REPO}/libc/include" -I"${REPO}/libc/ld/src" -c "${REPO}/libc/ld/src/dl_main.c" -o "${DYN}/dl_main.o" 2>/dev/null || reb=0
   "${CC}" -c "${REPO}/libc/ld/src/dl_entry.S" -o "${DYN}/dl_entry.o" 2>/dev/null || reb=0
-  "${CC}" -shared -e _start -soname ld.so.1 "${DYN}/dl_entry.o" "${DYN}/dl_main.o" -o "${DYN}/ld.so.1" 2>/dev/null || reb=0
+  "${CC}" -shared -e _start -soname ld.so.1 -Wl,-Bsymbolic "${DYN}/dl_entry.o" "${DYN}/dl_main.o" -o "${DYN}/ld.so.1" 2>/dev/null || reb=0
   if [ "${reb}" = 1 ]; then
     CC="${CC}" LIBC_DYN_STAGE="${DYN}" LIBC_INCLUDE="${REPO}/libc/include" UAPI_INCLUDE="${UAPI}" \
       GEN_INIT_CPIO="${GIC}" REFKERNEL="${KERNEL}" bash "${HERE}/boot-dynamic.sh" && ok "dynamic boot" || no "dynamic boot"
+    CC="${CC}" LIBC_DYN_STAGE="${DYN}" LIBC_INCLUDE="${REPO}/libc/include" UAPI_INCLUDE="${UAPI}" \
+      GEN_INIT_CPIO="${GIC}" REFKERNEL="${KERNEL}" PIC=0 SRC="${HERE}/boot/nopic.c" BUILD="${HERE}/.bootbed-nopic" \
+      MARKER="nopic: environ shared; libc function pointers work" bash "${HERE}/boot-dynamic.sh" \
+      && ok "dynamic boot, non-PIC program (copy relocs + canonical PLT)" || no "dynamic boot, non-PIC program"
   else no "rebuild libc.so/ld.so.1 with the new tools"; fi
 else
   sk "dynamic boot (engine QEMU build not staged)"
