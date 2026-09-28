@@ -116,20 +116,25 @@ u32 sym_addr(const Obj *o, int symidx) {
 }
 int sym_is_abs(const Obj *o, int symidx) {
 	const Elf32_Sym *s = &o->sym[symidx];
-	if (s->st_shndx != SHN_UNDEF) return s->st_shndx == SHN_ABS;
+	int b = ELF32_ST_BIND(s->st_info);
+	if (s->st_shndx != SHN_UNDEF && (b == STB_LOCAL || !s->st_name)) return s->st_shndx == SHN_ABS;   /* global: the winner's */
 	GSym *g = gsym_find(o->strtab + s->st_name);
 	if (!g || !(g->defined || g->linker)) return 1;      /* undefined weak: 0 at any load address */
 	return g->obj ? g->obj->sym[g->symidx].st_shndx == SHN_ABS : g->abs;
 }
 
-/* A relocation's symbol, resolved to its final address. */
+/* A relocation's symbol, resolved to its final address. A GLOBAL or WEAK name — even one this object defines —
+ * means the link's winning definition (a weak one here may have lost to a strong one elsewhere: musl's
+ * weak_alias(dummy, __stdout_used) is overridden by stdout.o's), so it's looked up by name; only a LOCAL symbol is
+ * this object's own. */
 static u32 resolve(Obj *o, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
-	if (s->st_shndx == SHN_UNDEF) {
+	int b = ELF32_ST_BIND(s->st_info);
+	if (s->st_shndx == SHN_UNDEF || (s->st_name && (b == STB_GLOBAL || b == STB_WEAK))) {
 		const char *nm = o->strtab + s->st_name;
 		GSym *g = gsym_find(nm);
 		if (g && g->defined) return g->vaddr;
-		if (ELF32_ST_BIND(s->st_info) == STB_WEAK) return 0;   /* an undefined weak reference is 0 */
+		if (s->st_shndx == SHN_UNDEF && b == STB_WEAK) return 0;   /* an undefined weak reference is 0 */
 		if (g && g->obj) die("'%s' (referenced in %s) is defined in a discarded section of %s", nm, o->path, g->obj->path);
 		die("undefined symbol '%s' (referenced in %s)", nm, o->path);
 	}
