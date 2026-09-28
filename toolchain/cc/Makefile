@@ -81,4 +81,10 @@ abi-interop: $(BUILD)/cc
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null
 	@GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/abi.sh
 
-.PHONY: clean test torture abi-interop
+# The parser-lowered builtins (overflow arithmetic over every type combination, FP classification, abs, isdigit)
+# against exact arithmetic computed in Python (torture/builtin_diff.py).
+builtin-diff: $(BUILD)/cc
+	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
+	@python3 torture/builtin_diff.py
+
+.PHONY: clean test torture abi-interop builtin-diff

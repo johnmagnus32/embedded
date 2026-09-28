@@ -505,32 +505,89 @@ static Node *rmw(Node *lv, NodeKind op, Node *rhs, int post);   /* op= / ++ / --
 	}
 	static int types_match(Type *a, Type *b) { return types_match_q(a, b, 1); }
 /* ---- builtins lowered in the parser ----------------------------------------------------------------
- * Bind each already-parsed operand to a fresh local (evaluated ONCE), then parse a small C statement-expression
- * over those locals in place of the call — the lowering is ordinary C our pipeline already compiles. */
-static int bi_seq;
-static Node *bind_tmp(char *nm, const char *tag, Node *e) {
-	snprintf(nm, 64, "__bi%d_%s", bi_seq, tag); add_type(e);
-	Type *t = e->type; if (t->kind == TY_ARRAY) t = pointer_to(t->base);
-	int off = add_local(nm, t);
-	Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = t;
-	return unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, e));
-}
-static Node *parse_snippet(const char *src) {   /* '@x' -> a per-lowering unique local (never shadows user names like __x) */
-	char buf[2048]; size_t k = 0;
-	for (const char *q = src; *q; q++) {
-		if (*q == '@') { k += (size_t)snprintf(buf + k, sizeof buf - k, "__bi%d_", bi_seq); continue; }
-		if (k + 1 >= sizeof buf) die("cc: internal: builtin snippet too long");
-		buf[k++] = *q;
-	}
-	buf[k] = 0;
-	Token *save = tk; tk = lex(buf); Node *e = expr();
-	if (tk->kind != TK_EOF) die("cc: internal: builtin lowering snippet has trailing tokens");
-	tk = save; return e;
+ * Each already-parsed operand is bound ONCE to a fresh temporary; the lowering is then built directly as an
+ * expression tree over those temporaries — the same node kinds the parser makes for the equivalent C. */
+static Node *tnum(long long v, Type *t) { Node *n = num((long)v); n->type = t; return n; }
+static Node *cast_to(Type *t, Node *e) { Node *n = node(ND_CAST); n->lhs = e; n->type = t; return n; }
+static Node *ref(Node *v) { Node *n = node(ND_VAR); *n = *v; n->next = NULL; return n; }   /* another read of a temporary */
+static Node *cond_of(Node *c, Node *a, Node *b) { Node *n = node(ND_COND); n->cond = c; n->then = a; n->els = b; return n; }
+static Node *is_zero_cmp(NodeKind k, Node *e) { return binary(k, e, tnum(0, ty_int)); }   /* e < 0, e != 0, … */
+/* A fresh temporary of type t (arrays decay) initialized with e: appends `tmp = e;` to the statement list at
+ * *tail and returns the variable (read it again with ref()). */
+static Node *bind(Node ***tail, Type *t, Node *e) {
+	add_type(e);
+	if (!t) t = e->type->kind == TY_ARRAY ? pointer_to(e->type->base) : e->type;
+	Node *v = node(ND_VAR); strcpy(v->name, "__builtin_tmp"); v->offset = add_local("", t); v->type = t;
+	**tail = unary(ND_EXPRSTMT, binary(ND_ASSIGN, ref(v), e)); *tail = &(**tail)->next;
+	return v;
 }
 static Node *stmtexpr_of(Node *binds, Node *val) {   /* ({ binds...; val; }) */
 	Node *se = node(ND_STMTEXPR), **pp = &se->body;
 	for (Node *b = binds; b; ) { Node *nx = b->next; b->next = NULL; *pp = b; pp = &b->next; b = nx; }
 	*pp = unary(ND_EXPRSTMT, val); add_type(val); se->type = val->type; return se;
+}
+/* __builtin_{add,sub,mul}_overflow(a, b, r): *r = a OP b wrapped to r's type T; the value is whether the EXACT
+ * result doesn't fit T (any operand and result types). <=32-bit operands are exact in 64 bits. Otherwise the exact
+ * result is carried as its low 64 bits W plus the part above them: for +/- the high word k of the 65-bit value
+ * (S = k*2^64 + W, k from the operands' sign extensions and the carry), for * a 128-bit magnitude hi:lo (32-bit
+ * halves: no 64-bit divide, the kernel provides none) and a sign. Then S is range-checked against T. */
+static Node *overflow_lower(int op, Node *a, Node *b, Node *r, const char *name) {
+	add_type(a); add_type(b); add_type(r);
+	if (!r->type || !is_ptr(r->type) || !r->type->base) die("cc: %s: third argument must be a pointer", name);
+	Type *T = r->type->base, *LL = ty_llong, *ULL = ty_ullong, *U = ty_uint, *I = ty_int;
+	NodeKind k = op == '+' ? ND_ADD : op == '-' ? ND_SUB : ND_MUL;
+	Node h = {0}, **t = &h.next;
+	Node *x = bind(&t, NULL, a), *y = bind(&t, NULL, b), *p = bind(&t, NULL, r);
+	#define STORE(v) (*t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, unary(ND_DEREF, ref(p)), (v))), t = &(*t)->next)
+	if (x->type->size <= 4 && y->type->size <= 4) {     /* exact in 64 bits (u32*u32 in u64) */
+		Type *W = op == '*' && x->type->is_unsigned && y->type->is_unsigned ? ULL : LL;
+		Node *w = bind(&t, W, binary(k, cast_to(W, ref(x)), cast_to(W, ref(y))));
+		STORE(ref(w));
+		Node *res = T->size <= 4 ? binary(ND_NE, cast_to(LL, unary(ND_DEREF, ref(p))), cast_to(LL, ref(w)))   /* the narrowed value differs */
+		          : W == ULL ? (T->is_unsigned ? tnum(0, I) : binary(ND_GT, ref(w), tnum(0x7fffffffffffffffLL, ULL)))
+		          : (T->is_unsigned ? is_zero_cmp(ND_LT, ref(w)) : tnum(0, I));
+		return stmtexpr_of(h.next, res);
+	}
+	int bits = 8 * T->size;                              /* T's range, as unsigned 64-bit bounds */
+	unsigned long long tmax = T->is_unsigned ? (bits == 64 ? ~0ULL : (1ULL << bits) - 1) : (1ULL << (bits - 1)) - 1;
+	Node *fits;
+	if (op != '*') {
+		Node *xa = bind(&t, ULL, ref(x)), *ya = bind(&t, ULL, ref(y));   /* low 64 bits (sign- or zero-extended) */
+		Node *hx = x->type->is_unsigned ? tnum(0, I) : unary(ND_NEG, is_zero_cmp(ND_LT, ref(x)));   /* 0 or -1 */
+		Node *hy = y->type->is_unsigned ? tnum(0, I) : unary(ND_NEG, is_zero_cmp(ND_LT, ref(y)));
+		Node *w = bind(&t, ULL, binary(k, ref(xa), ref(ya)));
+		Node *carry = op == '+' ? binary(ND_LT, ref(w), ref(xa)) : binary(ND_LT, ref(xa), ref(ya));
+		Node *hk = bind(&t, I, op == '+' ? binary(ND_ADD, binary(ND_ADD, hx, hy), carry) : binary(ND_SUB, binary(ND_SUB, hx, hy), carry));
+		STORE(ref(w));
+		if (T->is_unsigned) fits = binary(ND_AND, is_zero_cmp(ND_EQ, ref(hk)), binary(ND_LE, ref(w), tnum((long long)tmax, ULL)));
+		else {                                           /* k must be W's own sign extension, and W within T */
+			Node *sw = bind(&t, LL, ref(w));
+			fits = binary(ND_EQ, ref(hk), unary(ND_NEG, is_zero_cmp(ND_LT, ref(sw))));
+			if (bits < 64) fits = binary(ND_AND, fits, binary(ND_AND, binary(ND_GE, ref(sw), tnum(-(long long)tmax - 1, LL)),
+			                                                         binary(ND_LE, ref(sw), tnum((long long)tmax, LL))));
+		}
+	} else {
+		Node *nx = x->type->is_unsigned ? tnum(0, I) : is_zero_cmp(ND_LT, ref(x));
+		Node *ny = y->type->is_unsigned ? tnum(0, I) : is_zero_cmp(ND_LT, ref(y));
+		Node *neg = bind(&t, I, binary(ND_NE, nx, ny));
+		Node *mx = bind(&t, ULL, x->type->is_unsigned ? ref(x) : cond_of(is_zero_cmp(ND_LT, ref(x)), unary(ND_NEG, cast_to(ULL, ref(x))), cast_to(ULL, ref(x))));
+		Node *my = bind(&t, ULL, y->type->is_unsigned ? ref(y) : cond_of(is_zero_cmp(ND_LT, ref(y)), unary(ND_NEG, cast_to(ULL, ref(y))), cast_to(ULL, ref(y))));
+		Node *xh = bind(&t, U, binary(ND_SHR, ref(mx), tnum(32, I))), *xl = bind(&t, U, ref(mx));
+		Node *yh = bind(&t, U, binary(ND_SHR, ref(my), tnum(32, I))), *yl = bind(&t, U, ref(my));
+		Node *p0 = bind(&t, ULL, binary(ND_MUL, cast_to(ULL, ref(xl)), ref(yl))), *p1 = bind(&t, ULL, binary(ND_MUL, cast_to(ULL, ref(xl)), ref(yh)));
+		Node *p2 = bind(&t, ULL, binary(ND_MUL, cast_to(ULL, ref(xh)), ref(yl))), *p3 = bind(&t, ULL, binary(ND_MUL, cast_to(ULL, ref(xh)), ref(yh)));
+		Node *mid = bind(&t, ULL, binary(ND_ADD, binary(ND_ADD, binary(ND_SHR, ref(p0), tnum(32, I)), cast_to(ULL, cast_to(U, ref(p1)))), cast_to(ULL, cast_to(U, ref(p2)))));
+		Node *lo = bind(&t, ULL, binary(ND_ADD, binary(ND_SHL, ref(mid), tnum(32, I)), cast_to(ULL, cast_to(U, ref(p0)))));
+		Node *hi = bind(&t, ULL, binary(ND_ADD, binary(ND_ADD, ref(p3), binary(ND_SHR, ref(p1), tnum(32, I))),
+		                                        binary(ND_ADD, binary(ND_SHR, ref(p2), tnum(32, I)), binary(ND_SHR, ref(mid), tnum(32, I)))));
+		STORE(cond_of(ref(neg), unary(ND_NEG, ref(lo)), ref(lo)));
+		Node *mag = T->is_unsigned ? binary(ND_OR, unary(ND_NOT, ref(neg)), is_zero_cmp(ND_EQ, ref(lo)))   /* a negative product fits only as 0 */
+		                           : tnum(1, I);
+		Node *lim = T->is_unsigned ? tnum((long long)tmax, ULL) : cond_of(ref(neg), tnum((long long)(tmax + 1), ULL), tnum((long long)tmax, ULL));
+		fits = binary(ND_AND, binary(ND_AND, is_zero_cmp(ND_EQ, ref(hi)), mag), binary(ND_LE, ref(lo), lim));
+	}
+	#undef STORE
+	return stmtexpr_of(h.next, unary(ND_NOT, fits));
 }
 static const char *const libc_alias[] = { "memcpy", "memmove", "memset", "memcmp", "memchr", "strlen", "strnlen", "strcpy", "strncpy",
 	"strcmp", "strncmp", "strchr", "strrchr", "strcat", "strstr", "abort", "puts", "printf", "sprintf", "snprintf",
@@ -559,83 +616,48 @@ static Node *builtin_lower(char *name) {
 		      : t->kind == TY_STRUCT ? (t->members && t->members->next && t->members->offset == t->members->next->offset ? 13 : 12) : 1;
 		return num(c);
 	}
-	{   /* type-generic classification / quiet comparisons, as C over a temporary (a NaN is the one x != x) */
-		static const struct { const char *n; const char *src; int two; } tg[] = {
-			{"isnan", "(@x != @x)", 0}, {"isinf", "(@x == 1.0/0.0 || @x == -1.0/0.0)", 0}, {"isinff", "(@x == 1.0/0.0 || @x == -1.0/0.0)", 0},
-			{"isinfl", "(@x == 1.0/0.0 || @x == -1.0/0.0)", 0}, {"isfinite", "(@x == @x && @x != 1.0/0.0 && @x != -1.0/0.0)", 0},
-			{"isgreater", "(!(@x != @x || @y != @y) && @x > @y)", 1}, {"isgreaterequal", "(!(@x != @x || @y != @y) && @x >= @y)", 1},
-			{"isless", "(!(@x != @x || @y != @y) && @x < @y)", 1}, {"islessequal", "(!(@x != @x || @y != @y) && @x <= @y)", 1},
-			{"islessgreater", "(!(@x != @x || @y != @y) && @x != @y)", 1}, {"isunordered", "(@x != @x || @y != @y)", 1} };
-		for (unsigned i = 0; i < sizeof tg / sizeof *tg; i++) if (!strcmp(b, tg[i].n)) {
-			expect("("); Node *x = assign(), *y = NULL; if (tg[i].two) { expect(","); y = assign(); } expect(")");
-			bi_seq++; char nx[64], ny[64]; Node *bx = bind_tmp(nx, "x", x);
-			if (y) bx->next = bind_tmp(ny, "y", y);
-			char src[512]; size_t k = 0;
-			for (const char *q = tg[i].src; *q && k < sizeof src - 64; q++)
-				if (q[0] == '@' && (q[1] == 'x' || q[1] == 'y')) { k += (size_t)snprintf(src + k, sizeof src - k, "%s", q[1] == 'x' ? nx : ny); q++; }
-				else src[k++] = *q;
-			src[k] = 0;
-			return stmtexpr_of(bx, parse_snippet(src));
+	{   /* type-generic classification / quiet comparisons over temporaries (a NaN is the one x != x) */
+		static const char *const tg[] = { "isnan", "isinf", "isinff", "isinfl", "isfinite", "isgreater", "isgreaterequal",
+			"isless", "islessequal", "islessgreater", "isunordered", NULL };
+		int w = 0; while (tg[w] && strcmp(b, tg[w])) w++;
+		if (tg[w]) {
+			int two = w >= 5;
+			expect("("); Node *x0 = assign(), *y0 = NULL; if (two) { expect(","); y0 = assign(); } expect(")");
+			Node h = {0}, **t = &h.next, *x = bind(&t, NULL, x0), *y = two ? bind(&t, NULL, y0) : NULL;
+			Node *inf = fnum(strtod("inf", NULL), ty_double), *ninf = fnum(-strtod("inf", NULL), ty_double);
+			Node *xnan = binary(ND_NE, ref(x), ref(x)), *nan2 = two ? binary(ND_OR, binary(ND_NE, ref(x), ref(x)), binary(ND_NE, ref(y), ref(y))) : NULL;
+			Node *v;
+			if (w == 0) v = xnan;
+			else if (w <= 3) v = binary(ND_OR, binary(ND_EQ, ref(x), inf), binary(ND_EQ, ref(x), ninf));
+			else if (w == 4) v = binary(ND_AND, binary(ND_AND, binary(ND_EQ, ref(x), ref(x)), binary(ND_NE, ref(x), inf)), binary(ND_NE, ref(x), ninf));
+			else if (w == 10) v = nan2;
+			else {
+				static const NodeKind rel[] = { ND_GT, ND_GE, ND_LT, ND_LE, ND_NE };   /* isgreater … islessgreater */
+				v = binary(ND_AND, unary(ND_NOT, nan2), binary(rel[w - 5], ref(x), ref(y)));
+			}
+			return stmtexpr_of(h.next, v);
 		}
 	}
 	if (!strcmp(b, "abs") || !strcmp(b, "labs") || !strcmp(b, "llabs") || !strcmp(b, "imaxabs")) {   /* GCC expands these inline */
-		expect("("); Node *x = assign(); expect(")"); bi_seq++; char nx[64];
-		Node *cx = node(ND_CAST); cx->lhs = x; cx->type = (b[0] == 'l' && b[1] == 'l') || b[0] == 'i' ? ty_llong : ty_int;
-		Node *bx = bind_tmp(nx, "a", cx);
-		char src[256]; snprintf(src, sizeof src, "(%s < 0 ? -%s : %s)", nx, nx, nx); return stmtexpr_of(bx, parse_snippet(src));
+		expect("("); Node *x0 = assign(); expect(")");
+		Node h = {0}, **t = &h.next, *x = bind(&t, (b[0] == 'l' && b[1] == 'l') || b[0] == 'i' ? ty_llong : ty_int, x0);
+		return stmtexpr_of(h.next, cond_of(is_zero_cmp(ND_LT, ref(x)), unary(ND_NEG, ref(x)), ref(x)));
 	}
-	if (!strcmp(b, "isdigit")) {
-		expect("("); Node *c = assign(); expect(")"); bi_seq++; char nc[64]; Node *bc = bind_tmp(nc, "c", c);
-		char src[256]; snprintf(src, sizeof src, "((unsigned)%s - 48u < 10u)", nc); return stmtexpr_of(bc, parse_snippet(src));
+	if (!strcmp(b, "isdigit")) {                         /* (unsigned)c - '0' < 10u */
+		expect("("); Node *c0 = assign(); expect(")");
+		Node h = {0}, **t = &h.next, *c = bind(&t, NULL, c0);
+		return stmtexpr_of(h.next, binary(ND_LT, binary(ND_SUB, cast_to(ty_uint, ref(c)), tnum(48, ty_uint)), tnum(10, ty_uint)));
 	}
 	if (!strcmp(b, "add_overflow_p") || !strcmp(b, "sub_overflow_p") || !strcmp(b, "mul_overflow_p")) {
 		/* (a, b, (T)c): would a OP b overflow T? — the storing form into a T temporary (c only gives the type) */
 		expect("("); Node *a = assign(); expect(","); Node *bb = assign(); expect(","); Node *c = assign(); expect(")");
-		bi_seq++; char na[64], nb[64], nc[64]; Node *ba = bind_tmp(na, "a", a), *bbn = bind_tmp(nb, "b", bb), *bc = bind_tmp(nc, "c", c);
-		ba->next = bbn; bbn->next = bc;
-		char src[256]; snprintf(src, sizeof src, "__builtin_%.3s_overflow(%s, %s, &%s)", b, na, nb, nc);
-		return stmtexpr_of(ba, parse_snippet(src));
+		Node h = {0}, **t = &h.next, *tmp = bind(&t, NULL, c);
+		return stmtexpr_of(h.next, overflow_lower(b[0] == 'a' ? '+' : b[0] == 's' ? '-' : '*', a, bb, unary(ND_ADDR, ref(tmp)), name));
 	}
 	int op = !strcmp(b, "add_overflow") ? '+' : !strcmp(b, "sub_overflow") ? '-' : !strcmp(b, "mul_overflow") ? '*' : 0;
-	if (op) {   /* __builtin_OP_overflow(a, b, &res): *res = a OP b (wrapped to res's type); value = did it overflow */
+	if (op) {   /* __builtin_OP_overflow(a, b, &res) */
 		expect("("); Node *a = assign(); expect(","); Node *bb = assign(); expect(","); Node *r = assign(); expect(")");
-		add_type(r); if (!r->type || !is_ptr(r->type) || !r->type->base) die("cc: %s: third argument must be a pointer", name);
-		Type *T = r->type->base; bi_seq++;
-		char na[64], nb[64], np[64]; Node *ba = bind_tmp(na, "a", a), *bbn = bind_tmp(nb, "b", bb), *bp = bind_tmp(np, "p", r);
-		ba->next = bbn; bbn->next = bp;
-		char src[1024];
-		add_type(a); add_type(bb);
-		int narrow = a->type->size <= 4 && bb->type->size <= 4, uu = a->type->is_unsigned && bb->type->is_unsigned;
-		if (T->size <= 4)   /* exact in 64 bits for any <=32-bit operands; overflow iff the stored (narrowed) value differs */
-			snprintf(src, sizeof src, "({ long long @t = (long long)%s %c (long long)%s; *%s = @t; (long long)*%s != @t; })", na, op, nb, np, np);
-		else if (narrow && op == '*' && uu)   /* u32*u32 is exact in u64 */
-			snprintf(src, sizeof src, "({ unsigned long long @t = (unsigned long long)%s * (unsigned long long)%s; *%s = @t; %s; })", na, nb, np, T->is_unsigned ? "0" : "@t > 9223372036854775807ULL");
-		else if (narrow)   /* any other <=32-bit op is exact in s64: overflow iff it doesn't fit the 64-bit result type */
-			snprintf(src, sizeof src, "({ long long @t = (long long)%s %c (long long)%s; *%s = @t; %s; })", na, op, nb, np, T->is_unsigned ? "@t < 0" : "0");
-		else if (T->is_unsigned) {
-			if (op == '+') snprintf(src, sizeof src, "({ unsigned long long @x = %s, @y = %s, @s = @x + @y; *%s = @s; @s < @x; })", na, nb, np);
-			else if (op == '-') snprintf(src, sizeof src, "({ unsigned long long @x = %s, @y = %s; *%s = @x - @y; @x < @y; })", na, nb, np);
-			else snprintf(src, sizeof src,   /* 64x64 via 32-bit halves (no 64-bit divide: the kernel provides none) */
-				"({ unsigned long long @x = %s, @y = %s; unsigned @xh = @x >> 32, @xl = @x, @yh = @y >> 32, @yl = @y;"
-				" unsigned long long @c = (unsigned long long)@xh * @yl + (unsigned long long)@xl * @yh;"
-				" unsigned long long @l = (unsigned long long)@xl * @yl, @m = @l + (@c << 32);"
-				" *%s = @m; (@xh != 0 && @yh != 0) || (@c >> 32) != 0 || @m < @l; })", na, nb, np);
-		} else {
-			if (op == '+') snprintf(src, sizeof src, "({ long long @x = %s, @y = %s; long long @s = (long long)((unsigned long long)@x + (unsigned long long)@y);"
-				" *%s = @s; ((@x ^ @s) & (@y ^ @s)) < 0; })", na, nb, np);
-			else if (op == '-') snprintf(src, sizeof src, "({ long long @x = %s, @y = %s; long long @s = (long long)((unsigned long long)@x - (unsigned long long)@y);"
-				" *%s = @s; ((@x ^ @y) & (@x ^ @s)) < 0; })", na, nb, np);
-			else snprintf(src, sizeof src,   /* signed 64x64: multiply magnitudes (halves, as above); range-check by sign */
-				"({ long long @x = %s, @y = %s; int @n = (@x < 0) != (@y < 0);"
-				" unsigned long long @ax = @x < 0 ? -(unsigned long long)@x : (unsigned long long)@x, @ay = @y < 0 ? -(unsigned long long)@y : (unsigned long long)@y;"
-				" unsigned @xh = @ax >> 32, @xl = @ax, @yh = @ay >> 32, @yl = @ay;"
-				" unsigned long long @c = (unsigned long long)@xh * @yl + (unsigned long long)@xl * @yh;"
-				" unsigned long long @l = (unsigned long long)@xl * @yl, @m = @l + (@c << 32);"
-				" int @o = (@xh != 0 && @yh != 0) || (@c >> 32) != 0 || @m < @l;"
-				" *%s = (long long)(@n ? -@m : @m);"
-				" @o || (@n ? @m > 0x8000000000000000ull : @m > 0x7fffffffffffffffull); })", na, nb, np);
-		}
-		return stmtexpr_of(ba, parse_snippet(src));
+		return overflow_lower(op, a, bb, r, name);
 	}
 	return NULL;   /* bit/frame builtins: gen_builtin expands them (it fails loud on anything else) */
 }
@@ -711,8 +733,8 @@ static Node *builtin_lower(char *name) {
 		if (!strcmp(name, "__builtin_expect"))    {   /* value is the 1st arg; the hint is still EVALUATED (side effects: expect(c, z++)) */
 			expect("("); Node *e = assign(); expect(","); Node *h = assign(); expect(")");
 			int ok = 1; eval_try(h, &ok); if (ok) return e;   /* constant hint (the usual case): nothing to evaluate */
-			bi_seq++; char ne[64]; Node *be = bind_tmp(ne, "e", e); be->next = unary(ND_EXPRSTMT, h);
-			return stmtexpr_of(be, parse_snippet(ne));
+			Node hd = {0}, **t = &hd.next, *v = bind(&t, NULL, e); *t = unary(ND_EXPRSTMT, h);
+			return stmtexpr_of(hd.next, ref(v));
 		}
 		if (!strcmp(name, "__builtin_constant_p")) {   /* 1 iff the arg folds to an integer constant, or is a string literal (GCC) */
 			expect("("); Node *e = assign(); expect(")");
