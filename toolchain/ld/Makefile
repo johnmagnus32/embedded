@@ -87,6 +87,13 @@ test-static: $(BUILD)/ld
 	$(BUILD)/ld -o $$t/D.elf $$t/crt0.o $$t/lsm.o $$t/used.o $$t/helper.o; \
 	if cmp -s $$t/C.elf $$t/D.elf; then echo "PASS archive: helper pulled, unused dropped (== direct link)"; \
 	  else echo "FAIL archive: link with lib.a differs from equivalent direct link"; fail=1; fi; \
+	printf '.section .tiny,"aw"\n.word used\n' > $$t/tiny.s; $(OURAS) -o $$t/tiny.o $$t/tiny.s; \
+	python3 tests/corrupt.py shrink $$t/tiny.o .tiny 1 $$t/tiny1.o; python3 tests/corrupt.py armap $$t/lib.a $$t/badmap.a; \
+	$(BUILD)/ld -o $$t/X.elf $$t/crt0.o $$t/lsm.o $$t/used.o $$t/helper.o $$t/tiny1.o 2>$$t/e1; s1=$$?; \
+	$(BUILD)/ld -o $$t/X.elf $$t/crt0.o $$t/lsm.o $$t/badmap.a 2>$$t/e2; s2=$$?; \
+	[ $$s1 = 1 ] && grep -q 'outside .tiny' $$t/e1 && [ $$s2 = 1 ] && grep -q 'corrupt archive index' $$t/e2 \
+	  && echo "PASS rejected: reloc past a 1-byte section; unterminated archive-index name" \
+	  || { echo "FAIL malformed input: '$$(cat $$t/e1)' / '$$(cat $$t/e2)'"; fail=1; }; \
 	head -c 300 $$t/stub.o > $$t/cut.o; $(BUILD)/ld -o $$t/X.elf $$t/crt0.o $$t/cut.o 2>$$t/err; st=$$?; \
 	[ $$st = 1 ] && grep -q 'outside the file' $$t/err && echo "PASS truncated object rejected: $$(cat $$t/err)" \
 	  || { echo "FAIL truncated object: exit $$st, '$$(cat $$t/err)'"; fail=1; }; \

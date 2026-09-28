@@ -69,11 +69,12 @@ void ar_load(const char *path) {
 	if (4 + 4 * (long)n > index_size) die("%s: corrupt archive index", path);
 	const char *names = (const char *)index + 4 + 4 * n, *end = (const char *)index + index_size;
 	for (u32 i = 0; i < n; i++) {
-		if (names >= end) die("%s: corrupt archive index names", path);
+		const char *nul = names < end ? memchr(names, 0, (size_t)(end - names)) : NULL;   /* each name ends inside the index */
+		if (!nul) die("%s: corrupt archive index names", path);
 		ArSym *as = malloc(sizeof *as); as->ar = ar; as->off = (long)be32(index + 4 + 4 * i);
 		if (as->off < 8 || as->off + 60 > size) die("%s: archive index points outside the file", path);
 		if (!strmap_get(&arsyms, names)) strmap_put(&arsyms, names, as);   /* the first archive defining it wins */
-		names += strlen(names) + 1;
+		names = nul + 1;
 	}
 }
 
