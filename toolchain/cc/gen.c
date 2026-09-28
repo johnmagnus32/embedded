@@ -940,6 +940,15 @@ static void gen_func(Func *f) {
 	fprintf(o, "\t.size %s, .-%s\n", f->name, f->name);    /* the symbol's size (debuggers, backtraces, a provider's exports) */
 }
 
+/* An initialized object's section, as GCC chooses it: a const (not volatile) object is read-only — .rodata, or
+ * under -fPIC .data.rel.ro when its initializer holds addresses (the loader fixes those up; then the linker can
+ * write-protect it); anything else .data. */
+static const char *data_section(Gvar *g) {
+	Type *t = g->type; while (t->kind == TY_ARRAY) t = t->base;
+	if (!(t->quals & 1) || (t->quals & 2)) return ".data";
+	if (pic) for (Init *it = g->init; it; it = it->next) if (it->kind == INIT_SYM) return ".section .data.rel.ro,\"aw\",%progbits";
+	return ".section .rodata";
+}
 /* Section, binding and alignment of one file-scope object: `deflt` is .data/.bss; an attribute section wins
  * (`.bss*` names are NOBITS). The alignment is the type's, raised by aligned(N). */
 static void gvar_head(Gvar *g, const char *deflt) {
@@ -963,7 +972,7 @@ static void gen_data(void) {
 		free(w);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
-		gvar_head(g, ".data");
+		gvar_head(g, data_section(g));
 		fprintf(o, "%s:\n", g->name);
 		for (Init *it = g->init; it; it = it->next) {
 			if (it->kind == INIT_CONST) {

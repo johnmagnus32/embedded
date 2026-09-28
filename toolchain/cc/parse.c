@@ -302,15 +302,20 @@ static Type *declarator(Type *base, char *name) {
 	while (consume("*")) { base = pointer_to(base); for (;;) { if (consume("const")) base = qualify(base, 1); else if (consume("volatile")) base = qualify(base, 2); else if (!consume("restrict")) break; } }   /* `char * const` */
 	while (consume("__attribute__")) attribute();       /* e.g. `void * __attribute__((...)) name` */
 	if (consume("(")) {                                      /* grouped declarator: (*name)... = pointer ; (name)... = plain grouping (e.g. function-type typedef `T (name)(params)`) */
-		int ptr = 0;
-		while (consume("*")) { ptr++; while (consume("const") || consume("volatile") || consume("restrict")) ; }   /* (quals on a grouped pointer: not tracked) */
+		int ptr = 0, pq[16];                                            /* each grouped `*`'s qualifiers: `(*const fns[])(...)` */
+		while (consume("*")) {
+			if (ptr == 16) die("parse: too many pointer levels in one declarator (line %d)", tk->line);
+			pq[ptr] = 0;
+			for (;;) { if (consume("const")) pq[ptr] |= 1; else if (consume("volatile")) pq[ptr] |= 2; else if (!consume("restrict")) break; }
+			ptr++;
+		}
 		name[0] = 0; if (tk->kind == TK_IDENT) ident(name);
 		int arrlen = -1;                                                /* array-of-pointers: `void (*fns[N])(args)` */
 		if (consume("[")) { arrlen = is("]") ? 0 : (int)eval_const(assign()); expect("]"); }
 		expect(")");
 		if (is("(")) { if (ptr) base = func_proto(base); else skip_parens(); } else base = type_suffix(base);   /* a function param list, or an array suffix */
 		while (consume("__attribute__")) attribute();              /* trailing: `void (*f)(args) __attribute__((noreturn))` */
-		base = ptr ? pointer_to(base) : base;
+		for (int k = 0; k < ptr; k++) base = qualify(pointer_to(base), pq[k]);   /* innermost `*` first */
 		return arrlen >= 0 ? array_of(base, arrlen) : base;
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */

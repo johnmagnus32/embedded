@@ -275,6 +275,7 @@ static const char default_script[] =
 	"  .rel.dyn  : { *(.rel.dyn) }\n"
 	"  .dynamic  : { *(.dynamic) }\n"
 	"  . = ALIGN(0x1000);\n"                               /* the writable segment starts on a fresh page: W^X */
+	"  .data.rel.ro : { *(.data.rel.ro .data.rel.ro.*) }\n"   /* read-only once relocated (with the GOT: RELRO) */
 	"  .got      : { *(.got.plt) *(.got) }\n"
 	"  .preinit_array : { PROVIDE_HIDDEN(__preinit_array_start = .); KEEP(*(.preinit_array)) PROVIDE_HIDDEN(__preinit_array_end = .); }\n"
 	"  .init_array : { PROVIDE_HIDDEN(__init_array_start = .); KEEP(*(SORT_BY_NAME(.init_array.*))) KEEP(*(.init_array))\n"

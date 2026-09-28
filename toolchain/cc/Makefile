@@ -45,6 +45,11 @@ test: $(BUILD)/cc
 	  if [ "$$got" = "$$want" ]; then echo "PASS $$(basename $$c): main() == $$got"; pass=$$((pass+1)); \
 	  else echo "FAIL $$(basename $$c): got $$got, want $$want"; fail=$$((fail+1)); fi; \
 	done; \
+	$(BUILD)/cc -fPIC -o $$t/cd.s tests/const_data.c; \
+	secs=$$(awk '/\.section|^\t\.data$$/{s=$$1 == ".data" ? ".data" : $$2} /^(k|tab|fns|cv|w):/{printf "%s=%s ", $$1, s}' $$t/cd.s); \
+	case "$$secs" in "k:=.rodata tab:=.data.rel.ro,\"aw\",%progbits fns:=.data.rel.ro,\"aw\",%progbits cv:=.data w:=.data ") \
+	  echo "PASS const data: .rodata / .data.rel.ro (-fPIC, addresses) / .data (volatile, non-const)"; pass=$$((pass+1));; \
+	  *) echo "FAIL const data placement: $$secs"; fail=$$((fail+1));; esac; \
 	$(BUILD)/cc -o $$t/u.s tests/uart.c && $(OURAS) -o $$t/u.o $$t/u.s && $(OURLD) -Ttext 0x40000000 -o $$t/u.elf $$t/crt.o $$t/u.o $(RTLIB); \
 	out=$$(timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/u.elf 2>/dev/null); \
 	case "$$out" in *"cc UART works"*) echo "PASS uart: cc program printed via PL011 (real I/O)"; pass=$$((pass+1));; \
