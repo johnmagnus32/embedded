@@ -39,8 +39,11 @@ static const struct { const char *name; u32 type, flags, align, entsize; int lin
  * the program exports the copy so every object binds to it), a function gets its PLT entry as its canonical address
  * (canon: exported as undefined with that value, so function pointers compare equal everywhere). */
 typedef struct { const char *name; int lib, is_data, canon; u32 copy_off, copy_size, stroff; } Import;
-/* A GOT slot: a local definition (obj/symidx), a global one (by name); dyn = the loader fills it (GLOB_DAT). */
-typedef struct { const char *name; Obj *obj; int symidx, dyn; } Got;
+/* A GOT slot: for a local definition (obj/symidx) or a global one (by name). what: the address (G_ADDR), or TLS —
+ * the thread-pointer offset (G_TLS_IE), a (module, offset) pair for __tls_get_addr (G_TLS_GD, part 0/1), this
+ * module's (module, 0) pair (G_TLS_LDM). dyn = the loader fills it; ext = through the symbol (another module's). */
+enum { G_ADDR, G_TLS_IE, G_TLS_GD, G_TLS_LDM };
+typedef struct { const char *name; Obj *obj; int symidx, dyn, what, part, ext; } Got;
 /* A dynamic relocation at (obj's section shndx + off) against symbol `sym` (NULL: none, e.g. RELATIVE). */
 typedef struct { Obj *obj; int shndx; u32 off, type; const char *sym; } DynRel;
 typedef struct { Obj *obj; int symidx; u32 stroff; } Export;
@@ -81,6 +84,10 @@ static ShExport *shexport_of(const char *name) {
 }
 
 /* ---- the relocation scan ---------------------------------------------------------------------------- */
+u32 tls_tpoff(u32 addr) {
+	if (!tls_align) die("a TLS reference, but the link has no thread-local section");
+	return alignup(md_tcb_size, tls_align) + (addr - tls_vaddr);
+}
 static int import_of(const char *name, int lib) {
 	long hit = (long)strmap_get(&import_map, name);
 	if (hit) return (int)hit - 1;
@@ -128,6 +135,61 @@ static int plt_slot(const char *name) {                  /* the PLT entry callin
 }
 
 /* A GOT slot for (o, symidx): a LOCAL symbol keyed by object+index (same-named statics differ), others by name. */
+/* The TLS GOT key of (o, symidx, what): per symbol and model; one LDM pair serves the whole module. */
+static char *tls_key(Obj *o, int symidx, int what) {
+	Elf32_Sym *s = &o->sym[symidx];
+	if (what == G_TLS_LDM) return strdup("tls:ldm");
+	const char *nm = o->strtab + s->st_name;
+	char *k = malloc(strlen(nm) + 48);
+	if (s->st_shndx != SHN_UNDEF && ELF32_ST_BIND(s->st_info) == STB_LOCAL) sprintf(k, "tls:%d@%p:%d", what, (void *)o, symidx);
+	else sprintf(k, "tls:%d:%s", what, nm);
+	return k;
+}
+static void tls_got(Obj *o, int symidx, int what) {
+	char *key = tls_key(o, symidx, what);
+	if (strmap_get(&got_map, key)) { free(key); return; }
+	Elf32_Sym *s = &o->sym[symidx];
+	const char *nm = o->strtab + s->st_name;
+	int local = s->st_shndx != SHN_UNDEF && ELF32_ST_BIND(s->st_info) == STB_LOCAL;
+	int ext = what != G_TLS_LDM && !local && (import_if_external(nm) >= 0 || preemptible(o, symidx));
+	int first = ngot, n = what == G_TLS_IE ? 1 : 2;
+	strmap_put(&got_map, key, (void *)(long)(first + 1));
+	for (int k = 0; k < n; k++) {
+		got = grow(got, ngot, &gotcap, sizeof *got);
+		got[ngot++] = (Got){ .name = nm, .obj = local ? o : NULL, .symidx = symidx, .what = what, .part = k, .ext = ext };
+	}
+	u32 off = 4u * (u32)first;
+	const char *sym = ext ? nm : NULL;                   /* NULL: dynsym 0 = this module */
+	if (what == G_TLS_IE && (ext || shared))             /* the offset is known only once modules are placed */
+		{ add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_GOT, off, md_r_tls_tpoff32, sym); got[first].dyn = 1; }
+	if (what != G_TLS_IE && (ext || shared))             /* the module id (an executable's own is 1) */
+		{ add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_GOT, off, md_r_tls_dtpmod32, sym); got[first].dyn = 1; }
+	if (what == G_TLS_GD && ext)                         /* another module's offset */
+		{ add_rel(&symrel, &nsymrel, &symcap, linker_obj, L_GOT, off + 4, md_r_tls_dtpoff32, sym); got[first + 1].dyn = 1; }
+}
+/* Is (o, symidx) a thread-local symbol (its definition's type, or its provider's)? */
+static int sym_is_tls(Obj *o, int symidx) {
+	Elf32_Sym *s = &o->sym[symidx];
+	if (s->st_shndx != SHN_UNDEF) return ELF32_ST_TYPE(s->st_info) == STT_TLS;
+	GSym *g = s->st_name ? gsym_find(o->strtab + s->st_name) : NULL;
+	if (g && g->defined && g->obj) return ELF32_ST_TYPE(g->obj->sym[g->symidx].st_info) == STT_TLS;
+	ShExport *e = s->st_name ? shexport_of(o->strtab + s->st_name) : NULL;
+	return e ? e->type == STT_TLS : ELF32_ST_TYPE(s->st_info) == STT_TLS;
+}
+static void tls_ref(Obj *o, u32 type, int tk, int symidx) {
+	Elf32_Sym *s = &o->sym[symidx];
+	const char *nm = s->st_name ? o->strtab + s->st_name : sec_name(o, s->st_shndx);
+	if (tk != TLS_LDM && !sym_is_tls(o, symidx)) die("%s: TLS relocation type %u against '%s', which isn't thread-local", o->path, type, nm);
+	if (tk == TLS_LE) {                                  /* local-exec: a fixed offset from the thread pointer */
+		if (shared) die("%s: local-exec TLS reference to '%s' in a shared object — recompile with -fPIC", o->path, nm);
+		if (s->st_shndx == SHN_UNDEF && s->st_name && import_if_external(nm) >= 0)
+			die("%s: local-exec TLS reference to '%s', which another module defines", o->path, nm);
+		return;
+	}
+	if (tk == TLS_LDO) return;                           /* an offset inside this module's block: static */
+	tls_got(o, symidx, tk == TLS_IE ? G_TLS_IE : tk == TLS_GD ? G_TLS_GD : G_TLS_LDM);
+}
+
 static void got_slot(Obj *o, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
 	const char *nm = o->strtab + s->st_name;
@@ -175,8 +237,13 @@ static void preemptible_ref(Obj *o, int t, u32 off, u32 type, const char *nm) {
 }
 
 static void scan_one(Obj *o, int t, u32 off, u32 type, int symidx) {
+	int tk = md_tls_kind(type);
+	if (tk != TLS_NONE) { tls_ref(o, type, tk, symidx); return; }
 	if (md_is_got_reloc(type)) { got_slot(o, symidx); return; }
 	Elf32_Sym *s = &o->sym[symidx];
+	if (!md_is_marker(type) && sym_is_tls(o, symidx))
+		die("%s: relocation type %u against thread-local '%s' (only TLS relocations can address it)", o->path, type,
+		    s->st_name ? o->strtab + s->st_name : sec_name(o, s->st_shndx));
 	const char *nm = s->st_name ? o->strtab + s->st_name : NULL;
 	if (s->st_shndx == SHN_UNDEF && nm) {
 		if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT && !defined_locally(nm) && ELF32_ST_BIND(s->st_info) != STB_WEAK)
@@ -219,6 +286,15 @@ void dyn_scan(void) {
  * the loader adds S). Returns 0 for an ordinary target (resolved statically). */
 int dyn_target(Obj *o, int symidx, u32 type, u32 *S) {
 	Elf32_Sym *s = &o->sym[symidx];
+	int tk = md_tls_kind(type);
+	if (tk == TLS_LE || tk == TLS_LDO) return 0;         /* the front-end computes those offsets */
+	if (tk != TLS_NONE) {                                /* IE / GD / LDM: the symbol's TLS GOT entry */
+		char *key = tls_key(o, symidx, tk == TLS_IE ? G_TLS_IE : tk == TLS_GD ? G_TLS_GD : G_TLS_LDM);
+		long i = (long)strmap_get(&got_map, key); free(key);
+		if (!i) die("internal: no TLS GOT entry for '%s'", o->strtab + s->st_name);
+		*S = linker_obj->sec_vaddr[L_GOT] + 4u * (u32)(i - 1);
+		return 1;
+	}
 	if (md_is_got_reloc(type)) {
 		int local = s->st_shndx != SHN_UNDEF && ELF32_ST_BIND(s->st_info) == STB_LOCAL;
 		char key[48]; if (local) snprintf(key, sizeof key, "@%p:%d", (void *)o, symidx);
@@ -361,8 +437,16 @@ void dyn_fill(void) {
 		md_plt_entry(sec_bytes(L_PLT) + md_plt_entsize * k, linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)k,
 		             linker_obj->sec_vaddr[L_GOTPLT] + 4u * (u32)k);
 	for (int i = 0; i < ngot; i++) {                     /* a definition's address (loader adds the bias); a GLOB_DAT's 0 */
-		Got *g = &got[i]; u32 v = 0;
-		if (g->obj) v = sym_addr(g->obj, g->symidx);
+		Got *g = &got[i]; u32 v = 0, a = 0;
+		if (g->what != G_ADDR && !g->ext && g->what != G_TLS_LDM) {   /* a TLS symbol this module defines: its template address */
+			GSym *s = g->obj ? NULL : gsym_find(g->name);
+			a = g->obj ? sym_addr(g->obj, g->symidx) : s && s->defined ? s->vaddr : 0;
+		}
+		if (g->what == G_TLS_IE) v = g->ext ? 0 : shared ? a - tls_vaddr : tls_tpoff(a);   /* a .so: TPOFF32 adds its block */
+		else if (g->what == G_TLS_GD || g->what == G_TLS_LDM)
+			v = g->part == 0 ? (g->dyn ? 0 : 1)              /* module id: an executable's own block is module 1 */
+			  : g->what == G_TLS_GD && !g->ext ? a - tls_vaddr : 0;
+		else if (g->obj) v = sym_addr(g->obj, g->symidx);
 		else if (!g->dyn) { GSym *s = gsym_find(g->name); v = s && s->defined ? s->vaddr : 0; }
 		wr32(sec_bytes(L_GOT) + 4 * i, v);
 	}
@@ -374,7 +458,9 @@ void dyn_fill(void) {
 		u8 *p = sec_bytes(L_DYNSYM) + sizeof(Elf32_Sym);   /* [0] = STN_UNDEF */
 		for (int i = 0; i < nimport; i++, p += sizeof(Elf32_Sym)) {
 			Import *im = &imports[i];
-			Elf32_Sym d = { .st_name = im->stroff, .st_info = ELF32_ST_INFO(STB_GLOBAL, im->is_data ? STT_OBJECT : STT_FUNC), .st_shndx = SHN_UNDEF };
+			ShExport *e = shexport_of(im->name);
+			int ty = e && e->type == STT_TLS ? STT_TLS : im->is_data ? STT_OBJECT : STT_FUNC;
+			Elf32_Sym d = { .st_name = im->stroff, .st_info = ELF32_ST_INFO(STB_GLOBAL, ty), .st_shndx = SHN_UNDEF };
 			if (im->is_data) {                           /* DEFINED at our copy (the COPY's length is its size): every object binds here */
 				d.st_value = linker_obj->sec_vaddr[L_DYNBSS] + im->copy_off; d.st_size = im->copy_size;
 				d.st_shndx = (u16)out_index(linker_obj, L_DYNBSS);
@@ -384,7 +470,9 @@ void dyn_fill(void) {
 		}
 		for (int i = 0; i < nexport; i++, p += sizeof(Elf32_Sym)) {
 			Elf32_Sym *s = &exports[i].obj->sym[exports[i].symidx];
-			Elf32_Sym d = { .st_name = exports[i].stroff, .st_value = sym_addr(exports[i].obj, exports[i].symidx),
+			u32 val = sym_addr(exports[i].obj, exports[i].symidx);
+			if (ELF32_ST_TYPE(s->st_info) == STT_TLS) val -= tls_vaddr;   /* a TLS symbol's value: its offset in the template */
+			Elf32_Sym d = { .st_name = exports[i].stroff, .st_value = val,
 			    .st_size = s->st_size, .st_info = s->st_info, .st_other = s->st_other,
 			    .st_shndx = (u16)out_index(exports[i].obj, s->st_shndx) };
 			memcpy(p, &d, sizeof d);

@@ -40,6 +40,10 @@ static void build_symtab(Obj *o) {
 	 * still refers to one (a reloc it couldn't reduce to section-symbol + offset, e.g. movw/movt vs .LSTR). */
 	char *used = calloc(nsym ? nsym : 1, 1);
 	for (int r = 0; r < nrel; r++) used[rels[r].symidx] = 1;
+	/* GAS: a symbol in a thread-local section, or one a TLS relocation names, is STT_TLS (whatever its .type). */
+	for (int i = 0; i < nsym; i++)
+		if (syms[i].defined && syms[i].sec >= 0 && (secs[syms[i].sec].flags & SHF_TLS) && syms[i].type != STT_SECTION) syms[i].type = STT_TLS;
+	for (int r = 0; r < nrel; r++) if (md_is_tls_reloc(rels[r].type)) syms[rels[r].symidx].type = STT_TLS;
 	for (int pass = 0; pass < 2; pass++) {                    /* pass 0 = locals, pass 1 = globals */
 		if (pass == 1) o->first_global = o->ne;
 		for (int i = 0; i < nsym; i++) {

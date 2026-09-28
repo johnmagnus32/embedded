@@ -176,7 +176,8 @@ static void add_syms(int locals) {
 			if (b == STB_LOCAL ? !locals : (!winner(o, k) || hidden != locals)) continue;
 			if (t == STT_FILE) { add_sym(o->strtab + s->st_name, 0, 0, s->st_info, 0, SHN_ABS); continue; }
 			if (s->st_shndx != SHN_ABS && (!o->sec_out[s->st_shndx] || o->sec_out[s->st_shndx] == &os_discard)) continue;
-			add_sym(o->strtab + s->st_name, sym_addr(o, k), s->st_size, locals ? ELF32_ST_INFO(STB_LOCAL, t) : s->st_info,
+			add_sym(o->strtab + s->st_name, sym_addr(o, k) - (t == STT_TLS ? tls_vaddr : 0), s->st_size,   /* TLS: template offset */
+			        locals ? ELF32_ST_INFO(STB_LOCAL, t) : s->st_info,
 			        s->st_other, out_shndx(o, s->st_shndx));
 		}
 	}

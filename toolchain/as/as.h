@@ -71,6 +71,7 @@ extern const u32 md_r_abs32;                /* the arch's 32-bit absolute reloc 
 extern const u32 md_r_rel32;                /* the arch's 32-bit PC-relative reloc (for `.word <symbol> - .`) */
 int  md_reloc_operator(const char *op, u32 *type);    /* `sym(OP)` in a data word: arch reloc type, 0 if unknown */
 u32  md_data_reloc_for(const char *sym, u32 dflt); /* e.g. `.word _GLOBAL_OFFSET_TABLE_` -> GOTPC */
+int  md_is_tls_reloc(u32 type);                  /* a thread-local relocation: its symbol is STT_TLS */
 void md_req(const char *alias, const char *regname); void md_unreq(const char *alias);
 
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */

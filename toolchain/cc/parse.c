@@ -60,11 +60,13 @@ static Node *binary(NodeKind k, Node *l, Node *r);
 static Node *unary(NodeKind k, Node *l);
 static Node *num(long v);
 static Init *global_init(Type *ty);
+static Gvar *global_find(const char *name);
+static void tls_mark(Node *n, Gvar *g) { if (g && g->is_tls) { n->tls = 1; n->tls_local = !g->is_extern; } }
 static Node *local_ref(const char *name) {   /* the node for a block-scope name: its frame slot, or its global */
 	int i = local_index(name);
 	if (i < 0) die("parse: internal: no local '%s'", name);
 	Node *n = node(locals[i].gname[0] ? ND_GVAR : ND_VAR); n->type = locals[i].type;
-	if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); return n; }
+	if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); tls_mark(n, global_find(locals[i].gname)); return n; }
 	strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla; return n;
 }
 static int add_local(const char *name, Type *ty) {
@@ -212,7 +214,8 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("typedef")) { if (td) *td = 1; continue; }
 		if (consume("extern")) { if (sc) *sc |= SC_EXTERN; continue; }   /* file-scope: a reference, not a definition */
 		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
-		if (consume("register")) { if (sc) *sc |= SC_REGISTER; continue; }   /* tracked: file-scope `register T x asm("rN")` */
+		if (consume("register")) { if (sc) *sc |= SC_REGISTER; continue; }
+		if (consume("_Thread_local")) { if (!sc) die("parse: _Thread_local here (line %d)", tk->line); *sc |= SC_TLS; continue; }   /* tracked: file-scope `register T x asm("rN")` */
 		if (consume("const")) { quals |= 1; continue; }
 		if (consume("volatile")) { quals |= 2; continue; }
 		if (consume("restrict") || consume("inline")) continue;
@@ -481,7 +484,7 @@ static Gvar *global_find(const char *name) { return strmap_get(&global_map, name
 static int is_typename(void) {   /* does a declaration start at the cursor? */
 	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool") || is("float") || is("double")
 	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof")
-	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__")
+	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__") || is("_Thread_local")
 	    || is("__extension__") || is("__auto_type")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
@@ -815,7 +818,7 @@ static Node *builtin_lower(char *name) {
 		}
 		if (local_exists(name)) return local_ref(name);
 		Gvar *g = global_find(name);                         /* locals shadow globals */
-		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; return n; }
+		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; tls_mark(n, g); return n; }
 		long ev; if (enum_find(name, &ev)) return num(ev);   /* enum constant -> integer literal */
 		/* Otherwise-unresolved identifier = an external symbol (usually a function). Treat it as a function
 		 * designator (its address); the linker resolves it. Valid code only reaches here for externals. */
@@ -1186,6 +1189,7 @@ static Node *stmt(void) {
 				sig_set_pcs(nm, decl_attr.pcs);
 				continue;
 			}
+			if ((sc & SC_TLS) && !(sc & (SC_STATIC | SC_EXTERN))) die("parse: block-scope _Thread_local '%s' must be static or extern (line %d)", nm, tk->line);
 			if (sc & (SC_STATIC | SC_EXTERN)) {   /* block-scope static/extern: a GLOBAL object, only the NAME is block-scoped */
 				Gvar *g;
 				if (sc & SC_STATIC) {             /* own file-local object `nm.N` (GCC's naming); initialized once, statically */
@@ -1193,6 +1197,7 @@ static Node *stmt(void) {
 				} else if (!(g = global_find(nm))) { g = new_global(nm); g->type = ty; g->is_extern = 1; }
 				while (consume("__attribute__")) attribute();
 				attr_merge(&g->attr, &decl_attr);
+				if (sc & SC_TLS) g->is_tls = 1;
 				add_local_at(nm, ty, 0); strncpy(locals[nlocals - 1].gname, g->name, 63);   /* bound BEFORE the initializer: it may name itself (&x.head) */
 				if ((sc & SC_STATIC) && consume("=")) g->init = global_init(ty);   /* sizes an unsized array in place */
 				continue;
@@ -1914,6 +1919,8 @@ Func *parse(Token *tok) {
 			Gvar *g = global_find(name);
 			if (!g) { g = new_global(name); g->type = ty;
 				g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0; }
+			if (sc & SC_TLS) g->is_tls = 1;
+			else if (g->is_tls && !(sc & SC_EXTERN)) die("parse: '%s' redeclared without _Thread_local (line %d)", name, tk->line);
 			else {
 				if (!(sc & SC_EXTERN)) g->is_extern = 0;          /* any non-extern declaration makes it a definition */
 				if (sc & SC_STATIC) g->is_static = 1;

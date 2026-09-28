@@ -25,10 +25,23 @@ const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported va
 #define R_ARM_MOVT_ABS    44
 #define R_ARM_CALL     28
 #define R_ARM_JUMP24   29
+#define R_ARM_TLS_GD32  104   /* GOT(S) + A - P: a (module, offset) GOT pair for __tls_get_addr */
+#define R_ARM_TLS_LDM32 105   /* GOT(module) + A - P: this module's (module, 0) pair                 */
+#define R_ARM_TLS_LDO32 106   /* S + A - TLS: the offset inside the module's TLS block               */
+#define R_ARM_TLS_IE32  107   /* GOT(S) + A - P: a GOT slot holding S's offset from the thread pointer */
+#define R_ARM_TLS_LE32  108   /* S + A - TP: S's offset from the thread pointer (executables only)    */
 #define R_ARM_TARGET1  38
 #define R_ARM_PREL31   42
 #define R_ARM_GOT_PREL 96
 
+const u32 md_r_tls_dtpmod32 = 17, md_r_tls_dtpoff32 = 18, md_r_tls_tpoff32 = 19;   /* dynamic TLS relocations */
+const u32 md_tcb_size = 8;      /* ARM (TLS variant I): the thread pointer addresses an 8-byte TCB; the program's block follows */
+int md_tls_kind(u32 type) {
+	switch (type) {
+	case R_ARM_TLS_GD32: return TLS_GD; case R_ARM_TLS_LDM32: return TLS_LDM; case R_ARM_TLS_LDO32: return TLS_LDO;
+	case R_ARM_TLS_IE32: return TLS_IE; case R_ARM_TLS_LE32: return TLS_LE; default: return TLS_NONE;
+	}
+}
 const u32 md_r_abs32    = R_ARM_ABS32;    /* a symbolic word: the loader stores S + A (an import's address in a .so) */
 const u32 md_r_glob_dat = 21;               /* R_ARM_GLOB_DAT: loader writes an imported symbol's addr into its GOT slot */
 
@@ -77,6 +90,15 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	}
 	case R_ARM_MOVW_ABS_NC: { u32 v = S & 0xffffu;         wr32(loc, (w & ~0x000f0fffu) | ((v >> 12) << 16) | (v & 0xfff)); break; }   /* imm16 = lower16(S) */
 	case R_ARM_MOVT_ABS:    { u32 v = (S >> 16) & 0xffffu; wr32(loc, (w & ~0x000f0fffu) | ((v >> 12) << 16) | (v & 0xfff)); break; }   /* imm16 = upper16(S) */
+	case R_ARM_TLS_LE32:    /* S = the thread-pointer offset / the module offset (the front-end computes it) */
+	case R_ARM_TLS_LDO32:
+		wr32(loc, S + w);
+		break;
+	case R_ARM_TLS_GD32:    /* S = the GOT slot (pair); PC-relative like R_ARM_GOT_PREL */
+	case R_ARM_TLS_LDM32:
+	case R_ARM_TLS_IE32:
+		wr32(loc, S + w - P);
+		break;
 	case R_ARM_PREL31: {
 		s32 A = (s32)(w << 1) >> 1;              /* sign-extend the 31-bit field */
 		wr32(loc, (w & 0x80000000u) | ((S + (u32)A - P) & 0x7fffffffu));

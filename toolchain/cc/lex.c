@@ -47,11 +47,13 @@ static const char *const GNU_SPELLING[][2] = {
 	{ "__const", "const" }, { "__const__", "const" }, { "__volatile", "volatile" }, { "__volatile__", "volatile" },
 	{ "__restrict", "restrict" }, { "__restrict__", "restrict" }, { "__inline", "inline" }, { "__inline__", "inline" },
 	{ "__asm", "asm" }, { "__asm__", "asm" }, { "__typeof", "typeof" }, { "__typeof__", "typeof" },
-	{ "__alignof", "_Alignof" }, { "__alignof__", "_Alignof" }, { "alignof", "_Alignof" }, { "", "" } };
+	{ "__alignof", "_Alignof" }, { "__alignof__", "_Alignof" }, { "alignof", "_Alignof" },
+	{ "__thread", "_Thread_local" }, { "thread_local", "_Thread_local" }, { "", "" } };
 static const char *KEYWORDS[] = {
 	"int", "char", "void", "short", "long", "signed", "unsigned", "float", "double",   /* base arithmetic types */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
+	"_Thread_local",                                                        /* C11 thread storage duration (GNU __thread) */
 	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
 	"_Alignof", "typeof", "asm",                                            /* alignof operator; GNU typeof; inline assembly */
 	"__label__",                                                            /* GNU local-label declaration */

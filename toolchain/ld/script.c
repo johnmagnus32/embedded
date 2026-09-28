@@ -35,7 +35,9 @@ Elf32_Phdr *phdrs; int nphdr; static int phcap;
 u32 hdrsz;
 static int headers_mapped, gnu_stack;
 static int relro;                                         /* the default layout's RELRO region is on */
-static const char *const relro_secs[] = { ".preinit_array", ".init_array", ".fini_array", ".data.rel.ro", ".got", 0 };
+static const char *const relro_secs[] = { ".tdata", ".tbss", ".preinit_array", ".init_array", ".fini_array", ".data.rel.ro", ".got", 0 };
+u32 tls_vaddr, tls_align;                                 /* the TLS template (PT_TLS): its address + alignment (align 0: none) */
+static int tls_bss(const OutSec *os) { return (os->flags & SHF_TLS) && os->type == SHT_NOBITS; }   /* .tbss */
 static const char *script_name;
 
 /* ---- tokens -------------------------------------------------------------------------------------------- */
@@ -277,8 +279,10 @@ static const char default_script[] =
 	"  .rel.dyn  : { *(.rel.dyn) }\n"
 	"  .dynamic  : { *(.dynamic) }\n"
 	"  . = ALIGN(0x1000);\n"                               /* the writable segment starts on a fresh page: W^X */
-	/* RELRO: written only while relocating, then write-protected — .init/.fini arrays, .data.rel.ro, the GOT
-	 * (.got.plt too: our loader binds eagerly, as GNU ld's -z now); a dynamic output ends it on a page boundary */
+	/* RELRO: written only while relocating, then write-protected — the TLS template, .init/.fini arrays, .data.rel.ro,
+	 * the GOT (.got.plt too: our loader binds eagerly, as GNU ld's -z now); a dynamic output ends it on a page */
+	"  .tdata    : { *(.tdata .tdata.*) }\n"               /* the TLS template: initialized, then (.tbss) zeroed */
+	"  .tbss     : { *(.tbss .tbss.*) }\n"                 /* (takes no address space: what follows overlaps it) */
 	"  .preinit_array : { PROVIDE_HIDDEN(__preinit_array_start = .); KEEP(*(.preinit_array)) PROVIDE_HIDDEN(__preinit_array_end = .); }\n"
 	"  .init_array : { PROVIDE_HIDDEN(__init_array_start = .); KEEP(*(SORT_BY_NAME(.init_array.*))) KEEP(*(.init_array))\n"
 	"                  PROVIDE_HIDDEN(__init_array_end = .); }\n"
@@ -357,7 +361,6 @@ static int placeable(Obj *o, int j) {
 	Elf32_Shdr *s = &o->sh[j];
 	if (!(s->sh_flags & SHF_ALLOC) || o->sec_out[j]) return 0;
 	if (o == linker_obj && !s->sh_size) return 0;       /* a linker table this link doesn't need */
-	if (s->sh_flags & SHF_TLS) die("%s: thread-local section %s is not supported", o->path, sec_name(o, j));
 	return 1;
 }
 void layout_match(Obj *o) {
@@ -528,7 +531,7 @@ static void lay_out(Stmt *s, u32 *dot) {
 		if (a > align) align = a;
 	}
 	if (s->align.lo >= 0) { u32 a = eval(s->align, *dot); if (a > align) align = a; }
-	u32 *vc = s->vregion >= 0 ? &regions[s->vregion].cur : dot;
+	u32 *vc = s->vregion >= 0 ? &regions[s->vregion].cur : dot, before = *vc;
 	if (s->addr.lo >= 0) *vc = eval(s->addr, *dot);
 	*vc = align_to(*vc, align);
 	os->vaddr = *vc;
@@ -567,6 +570,7 @@ static void lay_out(Stmt *s, u32 *dot) {
 		if (reg >= 0 && regions[reg].length && end > regions[reg].origin + regions[reg].length)
 			die("section %s overflows MEMORY region %s by %u bytes", os->name, regions[reg].name, end - regions[reg].origin - regions[reg].length);
 	}
+	if (tls_bss(os)) *vc = before;                      /* .tbss is a template's zero tail: the next section reuses its addresses */
 	*dot = *vc;
 	os->done = 1; last_os = os;
 }
@@ -599,6 +603,12 @@ static void build_segments(void) {
 	for (int i = 0; i < nst; i++) {
 		if (st[i].kind != S_OUTSEC || st[i].discard || !st[i].os->size) continue;
 		OutSec *os = st[i].os;
+		if (tls_bss(os)) {                               /* in no PT_LOAD (only in PT_TLS); a header all the same */
+			os->seg = nseg ? nseg - 1 : 0;
+			outsecs = grow(outsecs, noutsec, &outcap, sizeof *outsecs);
+			outsecs[noutsec++] = os; os->index = noutsec;
+			continue;
+		}
 		int prog = os->type != SHT_NOBITS;
 		Seg *g = nseg ? &segs[nseg - 1] : NULL;
 		u32 end = g ? g->vaddr + g->memsz : 0;
@@ -630,7 +640,7 @@ static void build_segments(void) {
 		segs[i].off = (i == 0 && headers_mapped) ? 0 : fend + ((segs[i].vaddr - fend) & (PAGE - 1));
 		if (segs[i].filesz) fend = segs[i].off + segs[i].filesz;
 	}
-	for (int i = 0; i < noutsec; i++) outsecs[i]->off = segs[outsecs[i]->seg].off + (outsecs[i]->vaddr - segs[outsecs[i]->seg].vaddr);
+	for (int i = 0; i < noutsec; i++) outsecs[i]->off = nseg ? segs[outsecs[i]->seg].off + (outsecs[i]->vaddr - segs[outsecs[i]->seg].vaddr) : hdrsz;
 
 	nphdr = 0;                                          /* the program header table: the ONE list the writer emits */
 	Elf32_Phdr ph;
@@ -643,6 +653,18 @@ static void build_segments(void) {
 	for (int i = 0; i < nseg; i++)
 		add_phdr((Elf32_Phdr){ PT_LOAD, segs[i].off, segs[i].vaddr, segs[i].lma, segs[i].filesz, segs[i].memsz, segs[i].flags, PAGE });
 	if (piece(L_DYNAMIC, &ph, PT_DYNAMIC)) add_phdr(ph);
+	OutSec *t0 = NULL, *t1 = NULL, *td = NULL;           /* PT_TLS: the template, .tdata (file bytes) then .tbss */
+	tls_vaddr = tls_align = 0;
+	for (int i = 0; i < noutsec; i++) if (outsecs[i]->flags & SHF_TLS) { if (!t0) t0 = outsecs[i]; t1 = outsecs[i]; if (!tls_bss(outsecs[i])) td = outsecs[i]; }
+	if (t0) {
+		for (int i = 0; i < nobj; i++) for (int j = 1; j < objs[i]->nsh; j++)
+			if (objs[i]->sec_out && objs[i]->sec_out[j] && (objs[i]->sec_out[j]->flags & SHF_TLS) && objs[i]->sh[j].sh_addralign > tls_align)
+				tls_align = objs[i]->sh[j].sh_addralign;
+		if (!tls_align) tls_align = 1;
+		tls_vaddr = t0->vaddr;
+		u32 filesz = td ? td->vaddr + td->size - t0->vaddr : 0, memsz = t1->vaddr + t1->size - t0->vaddr;
+		add_phdr((Elf32_Phdr){ PT_TLS, t0->off, t0->vaddr, t0->lma, filesz, memsz, PF_R, tls_align });
+	}
 	OutSec *ex = outsec_named(".ARM.exidx");
 	if (ex) add_phdr((Elf32_Phdr){ PT_ARM_EXIDX, ex->off, ex->vaddr, ex->lma, ex->size, ex->size, PF_R, 4 });
 	if (gnu_stack) add_phdr((Elf32_Phdr){ PT_GNU_STACK, 0, 0, 0, 0, 0, (u32)gnu_stack, 16 });
@@ -681,7 +703,7 @@ void layout_run(void) {
 		OutSec *os = st[i].os; int first = 1, nobits = 1;
 		for (int k = 0; k < st[i].nitem; k++) for (int n = 0; n < st[i].items[k].nin; n++) {
 			Elf32_Shdr *h = &st[i].items[k].in[n].obj->sh[st[i].items[k].in[n].shndx];
-			os->flags |= h->sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR);
+			os->flags |= h->sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR | SHF_TLS);
 			nobits &= h->sh_type == SHT_NOBITS;
 			if (first) { os->type = h->sh_type; os->entsize = h->sh_entsize; first = 0; }
 			else { if (os->type != h->sh_type) os->type = SHT_PROGBITS; if (os->entsize != h->sh_entsize) os->entsize = 0; }
@@ -708,6 +730,7 @@ void layout_run(void) {
 			        segs[i].vaddr, script_name);
 	for (int i = 0; i < noutsec; i++) for (int k = i + 1; k < noutsec; k++) {   /* sections may not share addresses */
 		OutSec *a = outsecs[i], *b = outsecs[k];
+		if (tls_bss(a) || tls_bss(b)) continue;         /* .tbss overlaps what follows it, by design */
 		if (a->vaddr < b->vaddr + b->size && b->vaddr < a->vaddr + a->size)
 			die("sections %s [%#x,%#x) and %s [%#x,%#x) overlap", a->name, a->vaddr, a->vaddr + a->size, b->name, b->vaddr, b->vaddr + b->size);
 		if (a->type != SHT_NOBITS && b->type != SHT_NOBITS && a->lma < b->lma + b->size && b->lma < a->lma + a->size)

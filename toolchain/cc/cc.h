@@ -121,6 +121,8 @@ typedef struct Node {
 	int is_post;                 /* ND_RMW: x++ / x-- — the result is the OLD value               */
 	int vla_obj;                 /* ND_VAR: a VLA object — its slot holds the (alloca'd) address, not the array */
 	struct Node *target;         /* ND_CUR: the ND_RMW whose old value it reads (a back-link, not a child) */
+	int tls;                     /* ND_GVAR: a thread-local object (its address comes from the thread pointer) */
+	int tls_local;               /* ...defined in this translation unit (a non-PIC access can use local-exec) */
 } Node;
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
@@ -163,6 +165,7 @@ typedef struct Init { int kind; long val; char sym[SYMEXPR_MAX]; int size; struc
 #define SC_EXTERN 1   /* `extern` — a reference; emit no definition */
 #define SC_STATIC 2   /* `static` — file-local symbol (no .global)  */
 #define SC_REGISTER 4 /* `register` — for a file-scope `register T x asm("rN")` global register variable */
+#define SC_TLS 8      /* `_Thread_local` / `__thread` — one object per thread (.tdata/.tbss) */
 typedef struct Gvar {
 	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
 	Type *type;
@@ -170,6 +173,7 @@ typedef struct Gvar {
 	int is_extern;               /* 1 = `extern` decl -> reference only, emit no storage           */
 	int is_static;               /* 1 = `static` -> file-local symbol, emit no .global             */
 	int is_topasm;               /* 1 = file-scope `asm("...")` -> emit `str` verbatim (e.g. .weak/.set aliases) */
+	int is_tls;                  /* 1 = thread-local: .tdata/.tbss, addressed through the thread pointer */
 	int wide;                    /* is_str: element width of a wide literal (4 = L/U, 2 = u); 0 = char */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
 	Attr attr;

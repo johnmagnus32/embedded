@@ -243,6 +243,27 @@ static void gen_addr(Node *n) {
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
 	case ND_MEMBER: gen_addr(n->lhs); emit_addimm("r0", "r0", n->offset); return;
 	case ND_GVAR: {
+		if (n->tls) {
+			/* A thread-local object: its address is the thread pointer (TPIDRURO) plus an offset. Each literal sits
+			 * 8 bytes after its `add` so pc there is the literal's own address (P), as for the GOT below.
+			 *   -fPIC:        general-dynamic — r0 = &GOT pair (module, offset); __tls_get_addr(r0) = &sym
+			 *   local def:    local-exec      — the offset itself, fixed at link time (an executable)
+			 *   extern:       initial-exec    — the offset from a GOT slot (another module may define it) */
+			int g = ngot++;
+			if (pic) {
+				fprintf(o, "\tldr r0, .LTLS%d_%d\n\tadd r0, pc, r0\n\tb .LTA%d_%d\n.LTLS%d_%d:\n\t.word %s(tlsgd)\n.LTA%d_%d:\n",
+				        cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+				emit_libcall("__tls_get_addr");
+			} else if (n->tls_local)
+				fprintf(o, "\tldr ip, .LTLS%d_%d\n\tb .LTA%d_%d\n.LTLS%d_%d:\n\t.word %s(tpoff)\n.LTA%d_%d:\n"
+				           "\tmrc p15, 0, r0, c13, c0, 3\n\tadd r0, r0, ip\n",
+				        cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+			else
+				fprintf(o, "\tldr ip, .LTLS%d_%d\n\tadd ip, pc, ip\n\tb .LTA%d_%d\n.LTLS%d_%d:\n\t.word %s(gottpoff)\n.LTA%d_%d:\n"
+				           "\tldr ip, [ip]\n\tmrc p15, 0, r0, c13, c0, 3\n\tadd r0, r0, ip\n",
+				        cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+			return;
+		}
 		if (pic) {
 			/* PIC: r0 = &sym via the GOT. The `add` sits exactly 8 bytes before the inline literal so
 			 * its pc equals the literal's address (P) — the R_ARM_GOT_PREL is then just GOT(sym)-P.
@@ -946,6 +967,7 @@ static void gen_func(Func *f) {
  * under -fPIC .data.rel.ro when its initializer holds addresses (the loader fixes those up; then the linker can
  * write-protect it); anything else .data. */
 static const char *data_section(Gvar *g) {
+	if (g->is_tls) return ".section .tdata,\"awT\",%progbits";   /* a thread-local object's initial image */
 	Type *t = g->type; while (t->kind == TY_ARRAY) t = t->base;
 	if (!(t->quals & 1) || (t->quals & 2)) return ".data";
 	if (pic) for (Init *it = g->init; it; it = it->next) if (it->kind == INIT_SYM) return ".section .data.rel.ro,\"aw\",%progbits";
@@ -992,7 +1014,7 @@ static void gen_data(void) {
 		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->is_topasm && !g->init && !g->is_extern && !g->attr.alias[0]) {
-		gvar_head(g, ".bss");
+		gvar_head(g, g->is_tls ? ".section .tbss,\"awT\",%nobits" : ".bss");
 		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
 		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
 	}

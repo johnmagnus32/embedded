@@ -94,6 +94,7 @@ typedef struct { u32 vaddr, lma, off, filesz, memsz, flags; } Seg;   /* one PT_L
 extern Seg *segs; extern int nseg;
 extern Elf32_Phdr *phdrs; extern int nphdr;      /* the program header table (PT_LOADs + PHDR/INTERP/DYNAMIC/…) */
 extern u32 hdrsz;                                /* ELF header + program header table bytes            */
+extern u32 tls_vaddr, tls_align;                 /* PT_TLS: the TLS template's address + alignment (0: no TLS) */
 
 void script_read(const char *path);              /* -T script (NULL = the built-in default script)    */
 extern GSym **declared; extern int ndeclared;    /* the symbols the script defines, in script order     */
@@ -124,4 +125,8 @@ int  md_is_abs_nonword(u32 type);                /* movw/movt absolute halves: n
 int  md_is_call_reloc(u32 type);                 /* a call (routed via the PLT when imported)          */
 int  md_is_got_reloc(u32 type);                  /* a PIC GOT-entry reference (S = the symbol's GOT slot) */
 int  md_is_marker(u32 type);                     /* a dependency marker only (R_ARM_NONE): patches nothing */
+enum { TLS_NONE, TLS_GD, TLS_LDM, TLS_LDO, TLS_IE, TLS_LE };   /* thread-local access models, by relocation */
+int  md_tls_kind(u32 type);
+extern const u32 md_r_tls_dtpmod32, md_r_tls_dtpoff32, md_r_tls_tpoff32, md_tcb_size;
+u32  tls_tpoff(u32 addr);                        /* a TLS address -> its offset from the thread pointer (executable) */
 #endif

@@ -54,6 +54,7 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define STT_FUNC    2
 #define STT_SECTION 3
 #define STT_FILE    4
+#define STT_TLS     6
 #define STV_DEFAULT   0
 #define STV_INTERNAL  1
 #define STV_HIDDEN    2
@@ -71,6 +72,7 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define PT_DYNAMIC 2     /* points the loader/self-relocator at the .dynamic array */
 #define PT_INTERP  3     /* names the runtime loader (ld.so) for a dynamically-linked consumer */
 #define PT_PHDR    6     /* the program header table itself (lets a loader find the load bias) */
+#define PT_TLS     7     /* the thread-local storage template (.tdata + .tbss) */
 #define PT_GNU_STACK 0x6474e551u   /* p_flags = the stack's permissions (no PF_X: non-executable stack) */
 #define PT_GNU_RELRO 0x6474e552u   /* read-only after relocation: the loader write-protects it once it's done */
 #define PT_ARM_EXIDX 0x70000001u   /* the .ARM.exidx unwind index */

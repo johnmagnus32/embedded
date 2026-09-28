@@ -161,8 +161,10 @@ static void relocate(void) {
 				u32 type = ELF32_R_TYPE(rel[r].r_info); int sidx = (int)ELF32_R_SYM(rel[r].r_info);
 				if (!md_is_marker(type) && (rel[r].r_offset > ts->sh_size || ts->sh_size - rel[r].r_offset < 4))   /* a 4-byte field (no underflow) */
 					die("%s: relocation offset %#x outside %s", o->path, rel[r].r_offset, sec_name(o, t));
-				u32 S;
-				if (!dyn_target(o, sidx, type, &S)) S = resolve(o, sidx);   /* GOT slot / PLT stub / copy, else the symbol */
+				u32 S; int tk = md_tls_kind(type);
+				if (tk == TLS_LE) S = tls_tpoff(resolve(o, sidx));                 /* from the thread pointer */
+				else if (tk == TLS_LDO) S = resolve(o, sidx) - tls_vaddr;          /* inside this module's block */
+				else if (!dyn_target(o, sidx, type, &S)) S = resolve(o, sidx);   /* GOT slot / PLT stub / copy, else the symbol */
 				md_apply_reloc(o, type, o->data + ts->sh_offset + rel[r].r_offset, S, o->sec_vaddr[t] + rel[r].r_offset);
 			}
 		}

@@ -76,9 +76,10 @@ int md_reloc_operator(const char *op, u32 *type) {
 	 * R_ARM_ABS32, and the IE/LE TLS spellings are GOTTPOFF/TPOFF (was: TLSIE/TLSLE, which GAS rejects; PLT -> PLT32) */
 	static const struct { const char *n; u32 t; } ops[] = { {"GOT",26},{"GOTOFF",24},{"GOT_PREL",96},{"TARGET1",38},{"TARGET2",41},
 		{"SBREL",9},{"PLT",2},{"TLSGD",104},{"TLSLDM",105},{"TLSLDO",106},{"GOTTPOFF",107},{"TPOFF",108},{"TLSDESC",90},{"TLSCALL",91} };
-	for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++) if (!strcmp(op, ops[i].n)) { *type = ops[i].t; return 1; }
+	for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++) if (!strcasecmp(op, ops[i].n)) { *type = ops[i].t; return 1; }   /* GAS: any case */
 	return 0;
 }
+int md_is_tls_reloc(u32 type) { return (type >= 104 && type <= 108) || type == 90 || type == 91; }   /* GD/LDM/LDO/IE/LE, descriptors */
 u32 md_data_reloc_for(const char *sym, u32 dflt) { return !strcmp(sym, "_GLOBAL_OFFSET_TABLE_") ? 25 /* R_ARM_GOTPC */ : dflt; }
 static u32 imm(const char *t) {   /* #<num> immediate (dec / 0x hex / negative) */
 	if (!t || t[0] != '#') die("expected #immediate, got '%s'", t ? t : "(nil)");
