@@ -10,7 +10,10 @@
  *
  * Supported: #include (<...> and "..."), #define (object- and function-like, incl. # stringize and ##
  * paste and __VA_ARGS__), #undef, #if/#ifdef/#ifndef/#elif/#else/#endif with defined() and integer
- * constant expressions, #error, #pragma once (others ignored), #line (ignored). A few predefined macros.
+ * constant expressions, #error, #warning, #line (ignored), and #pragma: `once`; `GCC error`/`GCC warning`; the
+ * advisory ones (diagnostic, system_header, optimize, STDC, …) are ignored, and the ones that would change the
+ * program (pack, weak, visibility, push_macro, …) are rejected rather than dropped. An unknown directive in an
+ * active region is an error, as in GCC. A few predefined macros.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -18,6 +21,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 
 static void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
@@ -385,6 +389,18 @@ static long eval_if(Tok *line) {
 
 /* ------------------------------------------------------------------ include search ---------------- */
 static char cur_dir[512];
+/* #pragma once: the files that asked, by identity (device + inode: `a.h` and `../inc/a.h` are one file). */
+static struct stat cur_file;                           /* the file being driven */
+static struct stat *once; static int nonce, oncecap;
+static int is_once(const struct stat *st) {
+	for (int i = 0; i < nonce; i++) if (once[i].st_dev == st->st_dev && once[i].st_ino == st->st_ino) return 1;
+	return 0;
+}
+static void mark_once(void) {
+	if (is_once(&cur_file)) return;
+	if (nonce == oncecap) { oncecap = oncecap ? 2 * oncecap : 32; once = realloc(once, oncecap * sizeof *once); if (!once) die("out of memory"); }
+	once[nonce++] = cur_file;
+}
 static char *find_include(const char *name, int angle) {
 	static char path[1024]; FILE *f;
 	if (!angle && cur_dir[0]) { snprintf(path, sizeof path, "%s/%s", cur_dir, name); if ((f = fopen(path, "rb"))) { fclose(f); return path; } }
@@ -405,6 +421,26 @@ static void push_cond(int parent, int cond_true) {   /* open a new #if frame */
 
 /* ------------------------------------------------------------------ the driver -------------------- */
 static void drive(Tok *tok, const char *dir);
+
+/* #pragma: `once`, and GCC's error/warning. Pragmas that only advise the compiler are ignored; those that would
+ * change the program's meaning (struct layout, symbol binding, macro state) are rejected, never silently dropped. */
+static void do_pragma(Tok *line) {
+	const char *p0 = line && line->kind != TEOF ? line->text : "", *p1 = line && line->next ? line->next->text : "";
+	if (!strcmp(p0, "once")) { mark_once(); return; }
+	if (!strcmp(p0, "GCC") && (!strcmp(p1, "error") || !strcmp(p1, "warning"))) {
+		char msg[512] = "";
+		for (Tok *t = line->next->next; t && t->kind != TEOF; t = t->next) strncat(msg, t->text, sizeof msg - strlen(msg) - 1);
+		if (!strcmp(p1, "error")) die("#pragma GCC error %s", msg);
+		fprintf(stderr, "cpp: warning: %s\n", msg);
+		return;
+	}
+	static const char *const advisory[] = { "diagnostic", "system_header", "optimize", "target", "push_options", "pop_options",
+		"reset_options", "unroll", "ivdep", "novector", "poison", "dependency", 0 };
+	if (!strcmp(p0, "GCC")) for (int i = 0; advisory[i]; i++) if (!strcmp(p1, advisory[i])) return;
+	if (!strcmp(p0, "STDC") || !strcmp(p0, "message") || !strcmp(p0, "clang")) return;
+	int gcc = !strcmp(p0, "GCC");
+	die("#pragma %s%s%s is not supported (it would change the program; we don't silently drop it)", p0, gcc ? " " : "", gcc ? p1 : "");
+}
 
 /* Parse a #define directive whose tokens (after "define") start at `t`. */
 static void do_define(Tok *t) {
@@ -478,6 +514,9 @@ static Tok *directive(Tok *hash) {
 			}
 			char *path = find_include(fn, angle);
 			if (!path) die("#include: cannot find '%s'", fn);
+			struct stat st;
+			if (stat(path, &st)) die("#include: cannot stat '%s'", path);
+			if (is_once(&st)) return end;                  /* #pragma once: already included */
 			/* the included file's directory becomes cur_dir for its own "" includes; restore after */
 			char full[512]; strcpy(full, path);
 			char saved[512]; strcpy(saved, cur_dir);
@@ -485,7 +524,9 @@ static Tok *directive(Tok *hash) {
 			if (slash) { size_t k = slash - full; memcpy(ndir, full, k); ndir[k] = 0; } else strcpy(ndir, ".");
 			Tok *sub = slurp_tokens(full);
 			if (!sub) die("#include: cannot open '%s'", full);
+			struct stat outer = cur_file; cur_file = st;
 			drive(sub, ndir);
+			cur_file = outer;
 			strcpy(cur_dir, saved);
 		} else if (!strcmp(d, "error")) {
 			char msg[512] = "";
@@ -494,8 +535,15 @@ static Tok *directive(Tok *hash) {
 				strncat(msg, t->text, sizeof msg - strlen(msg) - 1);
 			}
 			die("#error:%s", msg);
+		} else if (!strcmp(d, "warning")) {
+			fputs("cpp: warning:", stderr);
+			for (Tok *t = line; t && t->kind != TEOF; t = t->next) fprintf(stderr, " %s", t->text);
+			fputc('\n', stderr);
+		} else if (!strcmp(d, "pragma")) {
+			do_pragma(line);
+		} else if (strcmp(d, "line") && strcmp(d, "ident") && strcmp(d, "sccs") && d[0]) {   /* `#` alone is the null directive */
+			die("invalid preprocessing directive #%s", d);
 		}
-		/* #pragma, #line, #warning, #ident, unknown: ignored (our headers guard with #ifndef, not #pragma once) */
 	}
 	return end;
 }
@@ -558,6 +606,7 @@ int main(int argc, char **argv) {
 	out = outpath ? fopen(outpath, "w") : stdout; if (!out) die("cannot open %s", outpath);
 	char dir[512]; strcpy(dir, in); char *slash = strrchr(dir, '/'); if (slash) *slash = 0; else strcpy(dir, ".");
 	Tok *toks = slurp_tokens(in); if (!toks) die("cannot open %s", in);
+	if (stat(in, &cur_file)) die("cannot stat %s", in);
 	drive(toks, dir);
 	return 0;
 }

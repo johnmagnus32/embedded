@@ -40,6 +40,16 @@ test: $(BUILD)/cpp
 	po=$$($(BUILD)/cpp $$t/paste.c | tr -s ' \n' ' '); \
 	case "$$po" in *"foobar AFTER SECOND"*) echo "PASS paste: ## keeps trailing tokens (no truncation)"; ok=$$((ok+1));; \
 	               *) echo "FAIL paste: '$$po' (## truncated the stream)"; fail=$$((fail+1));; esac; \
+	mkdir -p $$t/inc; printf '#pragma once\nint once_x;\n' > $$t/inc/o.h; \
+	printf '#include "inc/o.h"\n#include "inc/../inc/o.h"\n#pragma GCC diagnostic ignored "-Wall"\nint after;\n' > $$t/once.c; \
+	n=$$($(BUILD)/cpp $$t/once.c | grep -c once_x); a=$$($(BUILD)/cpp $$t/once.c | grep -c after); \
+	[ "$$n" = 1 ] && [ "$$a" = 1 ] && { echo "PASS pragma once: one copy through two spellings; GCC diagnostic ignored"; ok=$$((ok+1)); } \
+	  || { echo "FAIL pragma once: $$n copies (want 1), after=$$a"; fail=$$((fail+1)); }; \
+	printf '#pragma pack(1)\nstruct s { char c; int i; };\n' > $$t/pack.c; \
+	printf '#inlcude "x.h"\n' > $$t/typo.c; \
+	if ! $(BUILD)/cpp $$t/pack.c >/dev/null 2>$$t/e1 && grep -q 'pack' $$t/e1 && ! $(BUILD)/cpp $$t/typo.c >/dev/null 2>$$t/e2 && grep -q 'inlcude' $$t/e2; \
+	  then echo "PASS rejected: $$(cat $$t/e1) / $$(cat $$t/e2)"; ok=$$((ok+1)); \
+	  else echo "FAIL #pragma pack / unknown directive not rejected"; fail=$$((fail+1)); fi; \
 	rm -rf $$t; echo "----- $$ok passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
 clean:
