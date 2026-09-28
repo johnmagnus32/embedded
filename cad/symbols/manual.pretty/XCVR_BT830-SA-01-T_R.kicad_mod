@@ -73,7 +73,7 @@
   (zone (net 0) (net_name "") (layers *.Cu) (hatch full 0.508)
     (connect_pads (clearance 0))
     (min_thickness 0.01)
-    (keepout (tracks allowed) (vias not_allowed) (pads allowed ) (copperpour allowed) (footprints allowed))
+    (keepout (tracks not_allowed) (vias not_allowed) (pads not_allowed ) (copperpour not_allowed) (footprints allowed))
     (fill (thermal_gap 0.508) (thermal_bridge_width 0.508))
     (polygon
       (pts
@@ -91,6 +91,6 @@
   (fp_line (start -0.595 0.595) (end 13.1 0.595) (layer F.CrtYd) (width 0.05))
   (fp_line (start 13.1 0.595) (end 13.1 -9.105) (layer F.CrtYd) (width 0.05))
   (fp_line (start 13.1 -9.105) (end -0.595 -9.105) (layer F.CrtYd) (width 0.05))
-  (fp_circle (center 13.6 -6.63) (end 13.7 -6.63) (layer F.SilkS) (width 0.2))
-  (fp_circle (center 13.6 -6.63) (end 13.7 -6.63) (layer F.Fab) (width 0.2))
+  (fp_circle (center -1.2 -6.63) (end -1.05 -6.63) (layer F.SilkS) (width 0.3))
+  (fp_circle (center -1.2 -6.63) (end -1.05 -6.63) (layer F.Fab) (width 0.3))
 )
