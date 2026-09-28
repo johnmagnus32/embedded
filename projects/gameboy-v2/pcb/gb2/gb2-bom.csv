@@ -29,6 +29,7 @@ C17,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCCIO_2 decoupling · CC06
 C18,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VPP_2V5 decoupling · CC0603KRX7R9BB104 · #6
 C19,fpga,C14663,easyeda2kicad:CC0603KRX7R9BB104,iCE40 VCCPLL decoupling · CC0603KRX7R9BB104 · #6
 C20,fpga,C109456,easyeda2kicad:CC0603KRX5R6BB475,iCE40 VCCPLL bulk · CC0603KRX5R6BB475 · #7
+R29,fpga,C23140,easyeda2kicad:0603WAF330JT5E,LCD_WR series R 33 Ω (source termination — place within a few mm of iCE40 pin 38) · 0603WAF330JT5E · #79
 FB2,fpga,C1002,easyeda2kicad:GZ1608D601TF,iCE40 1.2 V→VCCPLL ferrite · GZ1608D601TF · #5
 R4,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,CRESET_B pull-up · RC0603JR-0710KL · #10
 R5,fpga,C99198,easyeda2kicad:RC0603JR-0710KL,CDONE pull-up · RC0603JR-0710KL · #10
@@ -79,7 +80,7 @@ C37,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger OUT cap · CL21A106KOQNN
 C38,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger BAT cap · CL21A106KOQNNNE · #40
 R18,charger,C22975,easyeda2kicad:0603WAF2001T5E,ISET 2.0k (~445 mA charge) · 0603WAF2001T5E · #41
 R19,charger,C22978,easyeda2kicad:0603WAF3301T5E,ILIM 3.3k (~462 mA input) · 0603WAF3301T5E · #42
-R20,charger,C99198,easyeda2kicad:RC0603JR-0710KL,TS NTC-defeat · RC0603JR-0710KL · #43
+R20,charger,C2892547,easyeda2kicad:KNTC0603_10KF3950,"TS battery-temperature NTC 10k B3950 (charge window ~3–47 °C; place under the cell, away from the charger) · KNTC0603/10KF3950 · #43"
 R21,charger,C23231,easyeda2kicad:0603WAF6802T5E,TMR safety-timer 68k · 0603WAF6802T5E · #76
 R22,charger,C99198,easyeda2kicad:RC0603JR-0710KL,/CHG pull-up · RC0603JR-0710KL · #10
 R23,charger,C99198,easyeda2kicad:RC0603JR-0710KL,/PGOOD pull-up · RC0603JR-0710KL · #10
