@@ -42,7 +42,7 @@ Type *vector_of(Type *elem, long size) {
 	return t;
 }
 int   is_vec(Type *t) { return t && t->kind == TY_VECTOR; }
-int   is_aggr(Type *t) { return t && (t->kind == TY_STRUCT || t->kind == TY_VECTOR); }
+int   is_aggr(Type *t) { return t && (t->kind == TY_STRUCT || t->kind == TY_VECTOR || t->kind == TY_COMPLEX); }
 /* GCC (without -flax-vector-conversions): the same element type and lane count — or an opaque comparison result of
  * the same size. */
 int   vec_convertible(Type *to, Type *from) {
@@ -50,6 +50,15 @@ int   vec_convertible(Type *to, Type *from) {
 	if (to->opaque || from->opaque) return 1;
 	Type *a = to->base, *b = from->base;
 	return to->len == from->len && a->kind == b->kind && a->is_unsigned == b->is_unsigned;
+}
+Type *complex_of(Type *elem) {
+	if (elem->kind >= TY_PTR || elem->is_bool || elem->prec) die("parse: _Complex of a type that is not integer or floating");
+	Type *t = calloc(1, sizeof *t); t->kind = TY_COMPLEX; t->base = elem; t->len = 2; t->size = 2 * elem->size; t->align = align_of(elem);
+	return t;
+}
+int   is_cplx(Type *t) { return t && t->kind == TY_COMPLEX; }
+int   same_cplx(Type *a, Type *b) {
+	return is_cplx(a) && is_cplx(b) && a->base->kind == b->base->kind && a->base->size == b->base->size && a->base->is_unsigned == b->base->is_unsigned;
 }
 int   is_ptr(Type *t) { return t && t->kind == TY_PTR; }
 int   is_ptr_like(Type *t) { return t && (t->kind == TY_PTR || t->kind == TY_ARRAY); }

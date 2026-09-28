@@ -15,7 +15,7 @@ LD    := $(TC)/ld/build/ld
 GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
-CSRCS := divide.c int64.c bits.c fpconv.c half.c
+CSRCS := divide.c int64.c bits.c fpconv.c half.c complex.c
 SSRCS := aeabi.s
 OBJS  := $(CSRCS:%.c=$(BUILD)/%.o) $(SSRCS:%.s=$(BUILD)/%.o)
 

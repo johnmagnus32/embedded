@@ -48,13 +48,15 @@ static const char *const GNU_SPELLING[][2] = {
 	{ "__restrict", "restrict" }, { "__restrict__", "restrict" }, { "__inline", "inline" }, { "__inline__", "inline" },
 	{ "__asm", "asm" }, { "__asm__", "asm" }, { "__typeof", "typeof" }, { "__typeof__", "typeof" },
 	{ "__alignof", "_Alignof" }, { "__alignof__", "_Alignof" }, { "alignof", "_Alignof" },
-	{ "__thread", "_Thread_local" }, { "thread_local", "_Thread_local" }, { "", "" } };
+	{ "__thread", "_Thread_local" }, { "thread_local", "_Thread_local" },
+	{ "__complex__", "_Complex" }, { "__complex", "_Complex" }, { "__real", "__real__" }, { "__imag", "__imag__" }, { "", "" } };
 static const char *KEYWORDS[] = {
 	"int", "char", "void", "short", "long", "signed", "unsigned", "float", "double",   /* base arithmetic types */
 	"struct", "union", "enum", "typedef",                                   /* aggregate + alias       */
 	"const", "volatile", "restrict", "static", "extern", "register", "inline", "sizeof", "__attribute__",  /* qualifiers/storage/op */
 	"_Thread_local",                                                        /* C11 thread storage duration (GNU __thread) */
 	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
+	"_Complex", "__real__", "__imag__",                                     /* C99 complex; GNU part operators */
 	"_Alignof", "typeof", "asm",                                            /* alignof operator; GNU typeof; inline assembly */
 	"__label__",                                                            /* GNU local-label declaration */
 	"__auto_type",                                                          /* GNU type inference (kernel min/max) */
@@ -122,12 +124,17 @@ Token *lex(const char *src) {
 			double fv = strtod(p, &fend);
 			if (fend > end || *p == '.') {   /* floating: a '.', an exponent (1e5), or a hex float (0x1p3) goes past the integer */
 				t->fval = fv; t->fp = 2; end = fend;
-				if (*end == 'f' || *end == 'F') { t->fp = 1; end++; } else if (*end == 'l' || *end == 'L') end++;   /* long double == double */
+				for (;; end++) {   /* f / l (long double == double), and GNU i / j (imaginary), in either order */
+					if (*end == 'f' || *end == 'F') t->fp = 1;
+					else if (*end == 'i' || *end == 'I' || *end == 'j' || *end == 'J') t->imag = 1;
+					else if (*end != 'l' && *end != 'L') break;
+				}
 				size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
 				memcpy(t->text, p, n); t->text[n] = 0; p = end;
 				cur = cur->next = t; continue;
 			}
-			while (*end == 'u' || *end == 'U' || *end == 'l' || *end == 'L') end++;      /* skip int suffixes (UL, LL, …) */
+			for (; *end == 'u' || *end == 'U' || *end == 'l' || *end == 'L' || *end == 'i' || *end == 'I' || *end == 'j' || *end == 'J'; end++)   /* UL, LL, …; GNU i / j */
+				if (*end == 'i' || *end == 'I' || *end == 'j' || *end == 'J') t->imag = 1;
 			size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, p, n); t->text[n] = 0; p = end;
 			cur = cur->next = t; continue;

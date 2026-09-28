@@ -113,6 +113,7 @@ struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset, sso
                                                                                                              * reverse-storage-order struct */
 static int init_sso;                                     /* parse_init: the struct whose members are being placed is reversed */
 static int   parse_init(Type *ty, int base, InitPlace **tail);
+static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo);
 static Init *lower_global(InitPlace *places, int total);
 static Node *lower_local(Node *dest, InitPlace *places, int total);
 static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
@@ -307,7 +308,7 @@ static Type *declspec(int *td, int *sc) {
 	if (td) *td = 0;
 	if (sc) *sc = 0;
 	enum { B_NONE, B_VOID, B_CHAR, B_SHORT, B_INT, B_LONG, B_LLONG, B_BOOL, B_FLOAT, B_DOUBLE } base = B_NONE;
-	int is_uns = 0, saw_signed = 0, seen = 0, saw_long = 0, quals = 0, mode = 0, tunion = 0; long vsize = 0;   /* + the type attributes */
+	int is_uns = 0, saw_signed = 0, seen = 0, saw_long = 0, quals = 0, mode = 0, tunion = 0, cplx = 0; long vsize = 0;   /* + the type attributes */
 	Type *tagty = NULL;                                              /* struct/union/enum/typedef: a complete type */
 	for (;;) {
 		if (consume("typedef")) { if (td) *td = 1; continue; }
@@ -325,6 +326,7 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("unsigned")) { is_uns = 1;     seen = 1; continue; }
 		if (consume("void"))     { base = B_VOID;  seen = 1; continue; }
 		if (consume("_Bool"))    { base = B_BOOL;  seen = 1; continue; }
+		if (consume("_Complex")) { cplx = 1; continue; }   /* not `seen`: a typedef name may still follow (`_Complex T`) */
 		if (consume("char"))     { base = B_CHAR;  seen = 1; continue; }
 		if (consume("short"))    { base = B_SHORT; seen = 1; continue; }
 		if (consume("int"))      { if (base != B_SHORT && base != B_LONG && base != B_LLONG) base = B_INT; seen = 1; continue; }
@@ -355,6 +357,7 @@ static Type *declspec(int *td, int *sc) {
 	case B_LLONG: r = is_uns ? ty_ullong : ty_llong; break;             /* long long = 64-bit (register pair) */
 	default:      r = is_uns ? ty_uint : ty_int; break;                 /* int / long (32-bit on ARM32) */
 	}
+	if (cplx) r = complex_of(tagty || base != B_NONE ? r : ty_double);   /* `_Complex` alone: _Complex double */
 	if (tunion) make_transparent(r);
 	return qualify(with_type_attrs(r, vsize, mode), quals);
 }
@@ -606,7 +609,7 @@ static Gvar *global_find(const char *name) { return strmap_get(&global_map, name
 
 /* ---- node constructors --------------------------------------------------------------------------- */
 static int is_typename(void) {   /* does a declaration start at the cursor? */
-	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool") || is("float") || is("double")
+	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool") || is("float") || is("double") || is("_Complex")
 	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__") || is("_Thread_local")
 	    || is("__extension__") || is("__auto_type")
@@ -640,6 +643,7 @@ static Node *rmw(Node *lv, NodeKind op, Node *rhs, int post);   /* op= / ++ / --
 		if (a->tag != b->tag || a->is_bool != b->is_bool) return 0;          /* enums / long double are distinct */
 		if (a->kind == TY_STRUCT) return a->members == b->members && a->size == b->size;   /* the same declaration */
 		if (a->kind == TY_VECTOR) return a->len == b->len && types_match_q(a->base, b->base, 1);
+		if (a->kind == TY_COMPLEX) return types_match_q(a->base, b->base, 1);
 		if (a->kind == TY_PTR) return types_match_q(a->base, b->base, 0);
 		if (a->kind == TY_ARRAY) return (!a->len || !b->len || a->len == b->len) && types_match_q(a->base, b->base, 0);
 		if (a->fn_ret || b->fn_ret) return a->fn_ret && b->fn_ret && types_match_q(a->fn_ret, b->fn_ret, 1);
@@ -657,6 +661,7 @@ static Node *is_zero_cmp(NodeKind k, Node *e) { return binary(k, e, tnum(0, ty_i
 /* A fresh temporary of type t (arrays decay) initialized with e: appends `tmp = e;` to the statement list at
  * *tail and returns the variable (read it again with ref()). */
 static Node *bind(Node ***tail, Type *t, Node *e) {
+	if (!in_func) die("parse: an expression that needs a temporary outside a function (line %d)", tk->line);
 	add_type(e);
 	if (!t) t = e->type->kind == TY_ARRAY ? pointer_to(e->type->base) : e->type;
 	Node *v = node(ND_VAR); strcpy(v->name, "__builtin_tmp"); v->offset = add_local("", t); v->type = t;
@@ -797,9 +802,158 @@ static Node *vec_shuffle(Node *a, Node *b, Node *mask) {
 	}
 	return stmtexpr_of(h, ref(r));
 }
-static Node *un_op(NodeKind k, Node *e) { return is_vec(type_of(e)) ? vec_unary(k, e) : unary(k, e); }
+/* ---- _Complex ------------------------------------------------------------------------------------------
+ * A complex value is held by value like a struct — its real then imaginary part, of the element type — and its
+ * operators are lowered here to scalar code on the parts; ND_CPAIR makes a complex from two scalar expressions
+ * (codegen gives it a frame temporary). The rules are GCC's (C99 Annex G): a real operand of + - * / is not widened
+ * (x + (a+bi) is (x+a) + bi, x * (a+bi) is xa + xbi); floating complex * and / call the runtime's __mul?c3 /
+ * __div?c3 (inf/NaN recovery, scaled division) as GCC does, integer ones use the textbook formulas; complex
+ * integer types keep their element type (_Complex char + _Complex char is _Complex char). The parts of constant
+ * operands fold, so `1.0 + 2.0i` is a constant (static initializers). */
+static int is_const(Node *e) { int ok = 1; add_type(e); if (is_fp(e->type)) eval_fp(e, &ok); else eval_try(e, &ok); return ok; }
+static Node *clone(Node *e) {   /* a copy of a constant expression, to use it again */
+	if (!e) return NULL;
+	Node *c = node(e->kind); *c = *e; c->next = NULL;
+	c->lhs = clone(e->lhs); c->rhs = clone(e->rhs); c->cond = clone(e->cond); c->then = clone(e->then); c->els = clone(e->els);
+	Node h = {0}, *t = &h; for (Node *a = e->args; a; a = a->next) t = t->next = clone(a); c->args = h.next;
+	return c;
+}
+static Node *cpair(Type *t, Node *re, Node *im) { Node *n = node(ND_CPAIR); n->lhs = re; n->rhs = im; n->type = t; return n; }
+static Node *zero_of(Type *t) { return is_fp(t) ? fnum(0.0, t) : tnum(0, t); }
+static int const_cpair(Node *e) { return e->kind == ND_CPAIR && is_const(e->lhs) && is_const(e->rhs); }
+/* An operand held for reading more than once: a plain variable or a constant as it is, else a temporary. */
+static Node *hold(Node ***tail, Node *e) {
+	type_of(e);
+	if ((e->kind == ND_VAR && !e->vla_obj) || e->kind == ND_GVAR || const_cpair(e) || (!is_cplx(e->type) && is_const(e))) return e;
+	return bind(tail, NULL, e);
+}
+static Node *use(Node *h) { return h->kind == ND_VAR || h->kind == ND_GVAR ? ref(h) : clone(h); }
+static Node *part(Node *h, int i) {   /* part i of a held complex; of a held real, i = 0 is itself (1: absent) */
+	if (!is_cplx(h->type)) return i ? NULL : use(h);
+	return h->kind == ND_CPAIR ? clone(i ? h->rhs : h->lhs) : lane(h, i);
+}
+static Type *cplx_elem(Type *a, Type *b) {   /* GCC's common element type: an equal type stays, else the wider (the unsigned one) */
+	if (a->kind == b->kind && a->size == b->size && a->is_unsigned == b->is_unsigned) return a;
+	if (is_fp(a) || is_fp(b)) return usual_arith(a, b);
+	return a->size != b->size ? (a->size > b->size ? a : b) : a->is_unsigned ? a : b;
+}
+static void arith_operand(Type *t) { if (!is_cplx(t) && (t->kind >= TY_PTR || t->is_bool)) die("parse: invalid operand with a complex value (line %d)", tk->line); }
+/* e converted to type `to` (either may be complex): complex -> complex converts both parts; a real becomes the real
+ * part (imaginary 0); complex -> real takes the real part, -> _Bool is true when either part is nonzero. */
+static Node *cplx_convert(Type *to, Node *e) {
+	Type *f = type_of(e);
+	if (same_cplx(to, f)) return e;
+	if (!is_cplx(to) && !is_cplx(f)) return cast_to(to, e);
+	if (to->is_bool) return unary(ND_NOT, unary(ND_NOT, e));   /* codegen tests both parts */
+	if (to->kind >= TY_PTR && !is_cplx(to)) die("parse: a complex value converted to a non-arithmetic type (line %d)", tk->line);
+	arith_operand(f);
+	if (!is_cplx(to)) {   /* the real part; the imaginary one is still evaluated */
+		if (e->kind == ND_CPAIR) return cast_to(to, binary(ND_COMMA, e->rhs, e->lhs));
+		Node *h = NULL, **t = &h, *x = is_lval(e) ? e : bind(&t, NULL, e);
+		return h ? stmtexpr_of(h, cast_to(to, lane(x, 0))) : cast_to(to, lane(x, 0));
+	}
+	if (!is_cplx(f)) return cpair(to, cast_to(to->base, e), zero_of(to->base));
+	Node *h = NULL, **t = &h, *x = hold(&t, e);
+	Node *r = cpair(to, cast_to(to->base, part(x, 0)), cast_to(to->base, part(x, 1)));
+	return h ? stmtexpr_of(h, r) : r;
+}
+static Node *cplx_libcall(const char *fn, Type *rt, Node *a, Node *b, Node *c, Node *d) {   /* __mulsc3(a, b, c, d) ... */
+	Type *e = rt->base, *pts[4] = { e, e, e, e };
+	if (!func_declared(fn)) record_func_sig(fn, rt, pts, 4, 0);
+	Node *n = node(ND_CALL); strcpy(n->name, fn); n->type = rt;
+	n->args = cast_to(e, a); n->args->next = cast_to(e, b); n->args->next->next = cast_to(e, c); n->args->next->next->next = cast_to(e, d);
+	return n;
+}
+static Node *cplx_binary(NodeKind k, Node *a, Node *b) {
+	Type *ta = type_of(a), *tb = type_of(b); int ca = is_cplx(ta), cb = is_cplx(tb);
+	arith_operand(ta); arith_operand(tb);
+	if (k != ND_ADD && k != ND_SUB && k != ND_MUL && k != ND_DIV && k != ND_EQ && k != ND_NE) die("parse: invalid operator on a complex value (line %d)", tk->line);
+	Type *e = cplx_elem(ca ? ta->base : ta, cb ? tb->base : tb), *rt = complex_of(e);
+	Node *h = NULL, **t = &h, *x = hold(&t, a), *y = hold(&t, b), *re, *im;
+	#define P(v, i) cast_to(e, part(v, i))
+	switch (k) {
+	case ND_ADD: case ND_SUB:   /* a missing (real operand's) imaginary part is not a zero: -(bi) for x - (a+bi) */
+		re = binary(k, P(x, 0), P(y, 0));
+		im = ca && cb ? binary(k, P(x, 1), P(y, 1)) : ca ? P(x, 1) : k == ND_SUB ? unary(ND_NEG, P(y, 1)) : P(y, 1);
+		break;
+	case ND_MUL:
+		if (ca && cb && is_fp(e)) { Node *c = cplx_libcall(e->kind == TY_FLOAT ? "__mulsc3" : "__muldc3", rt, P(x, 0), P(x, 1), P(y, 0), P(y, 1)); return h ? stmtexpr_of(h, c) : c; }
+		if (ca && cb) { re = binary(ND_SUB, binary(ND_MUL, P(x, 0), P(y, 0)), binary(ND_MUL, P(x, 1), P(y, 1)));
+		                im = binary(ND_ADD, binary(ND_MUL, P(x, 0), P(y, 1)), binary(ND_MUL, P(x, 1), P(y, 0))); }
+		else if (ca) { re = binary(ND_MUL, P(x, 0), P(y, 0)); im = binary(ND_MUL, P(x, 1), P(y, 0)); }   /* scaled by a real */
+		else { re = binary(ND_MUL, P(x, 0), P(y, 0)); im = binary(ND_MUL, P(x, 0), P(y, 1)); }
+		break;
+	case ND_DIV:
+		if (!cb) { re = binary(ND_DIV, P(x, 0), P(y, 0)); im = binary(ND_DIV, P(x, 1), P(y, 0)); break; }
+		if (is_fp(e)) { Node *c = cplx_libcall(e->kind == TY_FLOAT ? "__divsc3" : "__divdc3", rt, P(x, 0), ca ? P(x, 1) : zero_of(e), P(y, 0), P(y, 1)); return h ? stmtexpr_of(h, c) : c; }
+		{   /* ((ar*br + ai*bi) + (ai*br - ar*bi)i) / (br*br + bi*bi) */
+			Node *ai = ca ? P(x, 1) : zero_of(e), *ai2 = ca ? P(x, 1) : zero_of(e);
+			Node *den = binary(ND_ADD, binary(ND_MUL, P(y, 0), P(y, 0)), binary(ND_MUL, P(y, 1), P(y, 1)));
+			Node *dv = in_func ? bind(&t, e, den) : NULL;
+			re = binary(ND_DIV, binary(ND_ADD, binary(ND_MUL, P(x, 0), P(y, 0)), binary(ND_MUL, ai, P(y, 1))), dv ? ref(dv) : den);
+			im = binary(ND_DIV, binary(ND_SUB, binary(ND_MUL, ai2, P(y, 0)), binary(ND_MUL, P(x, 0), P(y, 1))), dv ? ref(dv) : clone(den));
+		}
+		break;
+	default: {   /* == / != : both parts (a missing one is 0) */
+		NodeKind j = k == ND_EQ ? ND_BITAND : ND_BITOR;
+		Node *c = binary(j, binary(k, P(x, 0), P(y, 0)), binary(k, ca ? P(x, 1) : zero_of(e), cb ? P(y, 1) : zero_of(e)));
+		return h ? stmtexpr_of(h, c) : c;
+	}
+	}
+	#undef P
+	Node *r = cpair(rt, re, im);
+	return h ? stmtexpr_of(h, r) : r;
+}
+static Node *cplx_unary(NodeKind k, Node *a) {   /* -z, ~z (the conjugate); !z tests both parts in codegen */
+	if (k == ND_NOT) return unary(ND_NOT, a);
+	Node *h = NULL, **t = &h, *x = hold(&t, a); Type *vt = x->type;
+	Node *r = cpair(vt, k == ND_NEG ? unary(ND_NEG, part(x, 0)) : part(x, 0), unary(ND_NEG, part(x, 1)));
+	return h ? stmtexpr_of(h, r) : r;
+}
+/* lv OP= e, ++/--: the lvalue's address once, the operand, then the old value; the result converts back to lv's type. */
+static Node *cplx_rmw(Node *lv, NodeKind op, Node *e, int post) {
+	Type *lt = lv->type; Node *h = NULL, **t = &h;
+	Node *p = bind(&t, pointer_to(lt), unary(ND_ADDR, lv)), *opd = bind(&t, NULL, e), *old = bind(&t, lt, unary(ND_DEREF, ref(p)));
+	*t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, unary(ND_DEREF, ref(p)), cplx_convert(lt, cplx_binary(op, ref(old), ref(opd))))); t = &(*t)->next;
+	return stmtexpr_of(h, post ? ref(old) : unary(ND_DEREF, ref(p)));
+}
+static Node *cplx_part_of(Node *e, int i) {   /* __real__ / __imag__ e: an lvalue of an lvalue; of a real e, e / 0 */
+	Type *t = type_of(e);
+	if (!is_cplx(t)) { arith_operand(t); return i ? binary(ND_COMMA, e, zero_of(t)) : e; }
+	if (is_lval(e)) { Node *n = node(ND_MEMBER); n->lhs = e; n->offset = i * t->base->size; n->type = t->base; return n; }
+	if (e->kind == ND_CPAIR) return binary(ND_COMMA, i ? e->lhs : e->rhs, i ? e->rhs : e->lhs);
+	Node *h = NULL, **tl = &h, *x = bind(&tl, NULL, e);
+	return stmtexpr_of(h, lane(x, i));
+}
+static Node *cplx_cond(Node *n) {   /* c ? a : b with a complex arm: both arms in the common complex type */
+	Type *a = type_of(n->then), *b = type_of(n->els);
+	arith_operand(a); arith_operand(b);
+	Type *t = complex_of(cplx_elem(is_cplx(a) ? a->base : a, is_cplx(b) ? b->base : b));
+	n->then = cplx_convert(t, n->then); n->els = cplx_convert(t, n->els); n->type = t;
+	return n;
+}
+static Node *conv_args(Node *call) {   /* a prototyped call: complex arguments converted to their parameters' types */
+	Type *ft = call->lhs ? call->lhs->type : NULL; if (ft && is_ptr(ft)) ft = ft->base; if (ft && !ft->fn_ret) ft = NULL;
+	int i = 0;
+	for (Node **ap = &call->args; *ap; ap = &(*ap)->next, i++) {
+		Type *pt = call->lhs ? (ft && i < ft->nparams ? ft->params[i] : NULL) : func_param_type(call->name, i);
+		if (!pt || !(is_cplx(pt) || is_cplx(type_of(*ap))) || same_cplx(pt, (*ap)->type)) continue;
+		Node *nx = (*ap)->next; (*ap)->next = NULL; *ap = cplx_convert(pt, *ap); (*ap)->next = nx;
+	}
+	return call;
+}
+static void init_leaf(InitPlace **tail, int base, Type *ty, Node *e) {   /* a whole-value initializer (a complex one converted, and
+	                                                                            * split into its parts when they're separate: a constant folds) */
+	if (is_cplx(ty) || is_cplx(type_of(e))) {
+		e = cplx_convert(ty, e);
+		if (is_cplx(ty) && e->kind == ND_CPAIR) { pi_append(tail, base, ty->base, e->lhs, 0, 0); pi_append(tail, base + ty->base->size, ty->base, e->rhs, 0, 0); return; }
+	}
+	pi_append(tail, base, ty, e, 0, 0);
+}
+static Node *un_op(NodeKind k, Node *e) { Type *t = type_of(e); return is_vec(t) ? vec_unary(k, e) : is_cplx(t) ? cplx_unary(k, e) : unary(k, e); }
 static Node *arith(NodeKind k, Node *l, Node *r) {   /* a binary operator (typed now, so a chain is typed once) */
 	if (is_vec(type_of(l)) || is_vec(type_of(r))) return vec_binary(k, l, r);
+	if (is_cplx(l->type) || is_cplx(r->type)) return cplx_binary(k, l, r);
 	Node *n = binary(k, l, r); type_node(n); return n;
 }
 
@@ -878,6 +1032,18 @@ static Node *builtin_lower(char *name) {
 		expect("("); assign(); expect(","); long t = eval_const(assign()); expect(")");
 		Node *n = num((t & 2) ? 0 : 0xffffffffL); n->type = ty_uint; return n;   /* types 0/1 -> (size_t)-1, 2/3 -> 0 (GCC semantics) */
 	}
+	if (!strncmp(b, "conj", 4) || !strncmp(b, "creal", 5) || !strncmp(b, "cimag", 5)) {   /* conj / creal / cimag, + f / l */
+		const char *sfx = b + (b[1] == 'o' ? 4 : 5);
+		if (!*sfx || !strcmp(sfx, "f") || !strcmp(sfx, "l")) {
+			expect("("); Node *z = cplx_convert(complex_of(*sfx == 'f' ? ty_float : ty_double), assign()); expect(")");
+			return b[1] == 'o' ? cplx_unary(ND_BITNOT, z) : cplx_part_of(z, b[1] == 'i');
+		}
+	}
+	if (!strcmp(b, "complex")) {   /* __builtin_complex(re, im): both of one floating type */
+		expect("("); Node *re = assign(); expect(","); Node *im = assign(); expect(")");
+		Type *t = type_of(re); if (!is_fp(t) || type_of(im)->kind != t->kind) die("parse: __builtin_complex needs two operands of one floating type (line %d)", tk->line);
+		return cpair(complex_of(t), re, im);
+	}
 	if (!strcmp(b, "shuffle")) {   /* (a, mask) or (a, b, mask) */
 		expect("("); Node *x = assign(), *y = NULL; expect(","); Node *m = assign();
 		if (consume(",")) { y = m; m = assign(); }
@@ -894,7 +1060,7 @@ static Node *builtin_lower(char *name) {
 	}
 	if (!strcmp(b, "classify_type")) {   /* GCC's type classes, of the (decayed) argument's type */
 		expect("("); Node *e = assign(); expect(")"); add_type(e); Type *t = e->type;
-		int c = !t ? 1 : is_vec(t) ? -1 : t->is_bool ? 4 : is_fp(t) ? 8 : (t->kind == TY_PTR || t->kind == TY_ARRAY) ? 5
+		int c = !t ? 1 : is_vec(t) ? -1 : is_cplx(t) ? 9 : t->is_bool ? 4 : is_fp(t) ? 8 : (t->kind == TY_PTR || t->kind == TY_ARRAY) ? 5
 		      : t->kind == TY_STRUCT ? (t->members && t->members->next && t->members->offset == t->members->next->offset ? 13 : 12) : 1;
 		return num(c);
 	}
@@ -962,7 +1128,10 @@ static Node *builtin_lower(char *name) {
 		}
 		Node *n = expr(); expect(")"); return n;
 	}
-	if (tk->kind == TK_NUM && tk->fp) { Node *n = fnum(tk->fval, tk->fp == 1 ? ty_float : ty_double); tk = tk->next; return n; }
+	if (tk->kind == TK_NUM && tk->fp) {
+		Type *t = tk->fp == 1 ? ty_float : ty_double; Node *n = fnum(tk->fval, t); int im = tk->imag; tk = tk->next;
+		return im ? cpair(complex_of(t), zero_of(t), n) : n;   /* GNU 2.0i: 0 + 2.0i */
+	}
 	if (tk->kind == TK_NUM) {   /* C11 6.4.4.1: the type follows the SUFFIX + radix + magnitude (ARM32: long == int) */
 		Node *n = num(tk->val); const char *t = tk->text;
 		int u = strchr(t, 'u') || strchr(t, 'U'), ll = strstr(t, "ll") || strstr(t, "LL");
@@ -974,7 +1143,8 @@ static Node *builtin_lower(char *name) {
 		else if (!dec && v <= 0xffffffffULL) n->type = ty_uint;
 		else if (dec || v <= 0x7fffffffffffffffULL) n->type = ty_llong;
 		else n->type = ty_ullong;
-		tk = tk->next; return n;
+		int im = tk->imag; tk = tk->next;
+		return im ? cpair(complex_of(n->type), zero_of(n->type), n) : n;   /* GNU 3i: _Complex int */
 	}
 	if (tk->kind == TK_STR) {                                /* string literal -> anonymous .rodata array */
 		Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
@@ -1079,7 +1249,7 @@ static Node *builtin_lower(char *name) {
 			}
 			Node argh = {0}, *ac = &argh;
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
-			expect(")"); n->args = argh.next; return n;
+			expect(")"); n->args = argh.next; return conv_args(n);
 		}
 		if (local_exists(name)) return local_ref(name);
 		Gvar *g = global_find(name);                         /* locals shadow globals */
@@ -1134,7 +1304,7 @@ static Node *postfix_ops(Node *n) {
 			Node *c = node(ND_CALL); c->lhs = n;
 			Node argh = {0}, *ac = &argh;
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }
-			expect(")"); c->args = argh.next; n = c;
+			expect(")"); c->args = argh.next; n = conv_args(c);
 		}
 		else return n;
 	}
@@ -1180,6 +1350,7 @@ static Node *unary_expr(void) {
 			Node *se = node(ND_STMTEXPR); se->body = st; se->type = t; return se;
 		}
 		if (is_vec(t) || is_vec(e->type)) return to_void ? binary(ND_COMMA, e, num(0)) : vec_cast(t, e);   /* (void)v: evaluated, discarded */
+		if (is_cplx(t) || is_cplx(e->type)) return to_void ? binary(ND_COMMA, e, num(0)) : cplx_convert(t, e);
 		Node *n = node(ND_CAST); n->lhs = e; n->type = t; return with_vla_pending(n);
 	}
 	if (consume("sizeof")) {                                 /* sizeof(type) or sizeof expr -> a constant */
@@ -1200,6 +1371,8 @@ static Node *unary_expr(void) {
 		return unary(ND_ADDR, e);
 	}
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
+	if (consume("__real__")) return cplx_part_of(unary_expr(), 0);
+	if (consume("__imag__")) return cplx_part_of(unary_expr(), 1);
 	if (consume("-")) return un_op(ND_NEG, unary_expr());
 	if (consume("!")) return un_op(ND_NOT, unary_expr());
 	if (consume("~")) return un_op(ND_BITNOT, unary_expr());
@@ -1212,6 +1385,7 @@ static Node *unary_expr(void) {
 static Node *new_add(Node *l, Node *r) {
 	add_type(l); add_type(r);
 	if (is_vec(l->type) || is_vec(r->type)) return vec_binary(ND_ADD, l, r);
+	if (is_cplx(l->type) || is_cplx(r->type)) return cplx_binary(ND_ADD, l, r);
 	if (is_ptr_like(l->type) && is_ptr_like(r->type)) die("parse: cannot add two pointers");
 	if (!is_ptr_like(l->type) && is_ptr_like(r->type)) { Node *t = l; l = r; r = t; }
 	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, vsize_node(l->type->base));   /* scale by element size (a VLA row: runtime) */
@@ -1220,6 +1394,7 @@ static Node *new_add(Node *l, Node *r) {
 static Node *new_sub(Node *l, Node *r) {
 	add_type(l); add_type(r);
 	if (is_vec(l->type) || is_vec(r->type)) return vec_binary(ND_SUB, l, r);
+	if (is_cplx(l->type) || is_cplx(r->type)) return cplx_binary(ND_SUB, l, r);
 	if (is_ptr_like(l->type) && is_ptr_like(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), vsize_node(l->type->base));
 	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, vsize_node(l->type->base));
 	return binary(ND_SUB, l, r);
@@ -1238,7 +1413,9 @@ static Node *conditional(void){ Node *c = logor(); if (!consume("?")) return c; 
 	Node *n = node(ND_COND); n->cond = c;
 	if (is(":")) n->then = c;                    /* GNU `a ?: b` == `a ? a : b` (a re-evaluated; fine for side-effect-free) */
 	else n->then = expr();
-	expect(":"); n->els = conditional(); return n; }
+	expect(":"); n->els = conditional();
+	if (is_cplx(type_of(n->then)) || is_cplx(type_of(n->els))) return cplx_cond(n);
+	return n; }
 /* Read-modify-write `lv OP= e` (and ++/--, post=1 yields the old value). ND_RMW evaluates lv's address ONCE
  * (a[i++] += 1 bumps i once), then the operand e (init) — BEFORE reading lv, GCC's order (x |= f() sees f's
  * store to x) — then the old value. rhs = OP(ND_CUR old, ND_CUR operand), so the usual typing and pointer
@@ -1248,6 +1425,7 @@ static Node *rmw(Node *lv, NodeKind op, Node *e, int post) {
 	if (!is_lval(lv)) die("parse: assignment to non-lvalue (line %d)", tk->line);
 	if (is_vec(lv->type)) return vec_rmw(lv, op, e, post);
 	if (is_vec(e->type)) die("parse: a vector operand updating a scalar (line %d)", tk->line);
+	if (is_cplx(lv->type) || is_cplx(e->type)) return cplx_rmw(lv, op, e, post);
 	Node *r = node(ND_RMW), *cur = node(ND_CUR), *opd = node(ND_CUR);
 	cur->type = lv->type; cur->target = r; opd->type = e->type; opd->target = r; opd->val = 1;
 	r->lhs = lv; r->init = e; r->is_post = post;
@@ -1263,6 +1441,7 @@ static Node *assign(void) {
 	if (!is_lval(n)) die("parse: assignment to non-lvalue (line %d)", tk->line);
 	Node *r = assign();
 	if (is_vec(type_of(n))) vec_assign_ok(n->type, type_of(r), "an assignment");   /* (a vector into a scalar: codegen's check) */
+	if (is_cplx(n->type) || is_cplx(type_of(r))) r = cplx_convert(n->type, r);
 	return binary(ND_ASSIGN, n, r);
 }
 static Node *expr(void)  { Node *n = assign(); while (consume(",")) n = binary(ND_COMMA, n, assign()); return n; }   /* comma operator */
@@ -1473,6 +1652,7 @@ static Node *stmt(void) {
 	if (consume("return")) {   /* `return;` allowed */
 		Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";");
 		if (n->lhs && is_vec(cur_fn_ret)) vec_assign_ok(cur_fn_ret, type_of(n->lhs), "a return");
+		if (n->lhs && (is_cplx(cur_fn_ret) || is_cplx(type_of(n->lhs)))) n->lhs = cplx_convert(cur_fn_ret, n->lhs);
 		if (!cleanups) return n;
 		Node *h = NULL, **t = &h;                            /* the value first, then the cleanups, then the return */
 		if (n->lhs) n->lhs = ref(bind(&t, cur_fn_ret, n->lhs));
@@ -1589,7 +1769,8 @@ static Node *stmt(void) {
 			if (consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{") || ty->kind == TY_ARRAY) bc = bc->next = init_of(v, ty);   /* aggregate initializer (incl. char a[N] = "str") */
-				else { Node *r = assign(); if (is_vec(ty)) vec_assign_ok(ty, type_of(r), "an initializer"); bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, r)); } }
+				else { Node *r = assign(); if (is_vec(ty)) vec_assign_ok(ty, type_of(r), "an initializer"); if (is_cplx(ty) || is_cplx(type_of(r))) r = cplx_convert(ty, r);
+					bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, r)); } }
 			{ Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; push_cleanup(v); }   /* once initialized */
 		} while (consume(","));
 		expect(";");
@@ -1636,6 +1817,15 @@ static int proto_params(Type **pts, int *np) {
 
 /* ---- functions ----------------------------------------------------------------------------------- */
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
+/* `register T x asm("rN")` at file scope (the `asm` consumed): a global register variable. On an ordinary global an
+ * asm label renames its symbol — not supported (it would silently keep the C name). */
+static int global_asm_label(const char *name, int sc) {
+	expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind == TK_STR) tk = tk->next; expect(")");
+	if (!(sc & SC_REGISTER)) die("parse: an asm label renaming global '%s' is not supported (line %d)", name, tk->line);
+	if (ngregs == 16) die("parse: too many global register variables (line %d)", tk->line);
+	strncpy(gregs[ngregs].name, name, 63); strncpy(gregs[ngregs].reg, s, 7); ngregs++;
+	return 1;
+}
 static Func *function_tail(const char *name, Type *ret) {
 	strncpy(cur_func_name, name, sizeof cur_func_name - 1);   /* for `__func__` inside the body */
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret; cur_fn_ret = ret;
@@ -1706,7 +1896,7 @@ static Func *function_tail(const char *name, Type *ret) {
 	}
 	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
 	f->attr.align = sig_align(name, 0);                      /* ...its alignment: the largest any declaration asked for */
-	if (consume(";")) { in_func = 0; scope_pop(); return NULL; }   /* a prototype — no body to compile (bounds never evaluated) */
+	if (is(";") || is(",")) { in_func = 0; scope_pop(); return NULL; }   /* a prototype (the declaration may go on) — no body to compile */
 	expect("{");
 	Node h = {0}, *c = &h;
 	for (Node *v = vla_prologue; v; ) { Node *nx = v->next; v->next = NULL; c = c->next = v; v = nx; }
@@ -1942,7 +2132,7 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 		return;
 	}
 	Node *e = *pending ? *pending : assign(); *pending = NULL;   /* scalar leaf */
-	pi_append(tail, base, ty, e, 0, 0);
+	init_leaf(tail, base, ty, e);
 }
 static int init_nest;                                   /* braces around the object being initialized (0: a whole declarator's) */
 static int parse_init1(Type *ty, int base, InitPlace **tail);
@@ -2001,7 +2191,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 			if (ty->len == 0) { ty->len = maxidx + 1; ty->size = (maxidx + 1) * esz; }
 			return ty->size;
 		}
-		Node *e = assign(); pi_append(tail, base, ty, e, 0, 0);   /* scalar in braces: { e } */
+		Node *e = assign(); init_leaf(tail, base, ty, e);   /* scalar in braces: { e } */
 		while (consume(",")) { if (is("}")) break; assign(); }
 		expect("}"); return ty->size;
 	}
@@ -2076,7 +2266,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		elide_init(ty, base, tail, &e);   /* brace elision: this scalar starts the aggregate's flattened member list */
 		return ty->size;
 	}
-	pi_append(tail, base, ty, e, 0, 0);   /* scalar (or whole-aggregate copy) leaf */
+	init_leaf(tail, base, ty, e);   /* scalar (or whole-aggregate copy) leaf */
 	return ty->size;
 }
 
@@ -2287,6 +2477,8 @@ Func *parse(Token *tok) {
 			{"__builtin_signbit",ty_int,NULL}, {"__builtin_signbitf",ty_int,ty_float}, {"__builtin_signbitl",ty_int,ty_double},
 		};
 		for (unsigned i = 0; i < sizeof bt / sizeof *bt; i++) { Type *pt[1] = { bt[i].p }; record_func_sig(bt[i].n, bt[i].r, pt, bt[i].p ? 1 : 0, 0); }
+		Type *f3[3] = { ty_float, ty_float, ty_float }, *d3[3] = { ty_double, ty_double, ty_double };   /* fused multiply-add */
+		record_func_sig("__builtin_fma", ty_double, d3, 3, 0); record_func_sig("__builtin_fmaf", ty_float, f3, 3, 0); record_func_sig("__builtin_fmal", ty_double, d3, 3, 0);
 	}
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
@@ -2309,47 +2501,44 @@ Func *parse(Token *tok) {
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { typedef_decl(base, battr); continue; }   /* (file scope: type_suffix rejects a VLA) */
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
-		if (ty->fn_ret) {   /* `fn_t f, g;` via a function typedef: function PROTOTYPES, no storage (kernel fs_param_type) */
-			for (;;) { record_func_sig(name, ty->fn_ret, ty->params, ty->nparams, ty->variadic); decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC); if (!consume(",")) break; decl_attr = battr; ty = declarator(base, name);
-				if (!ty->fn_ret) die("parse: mixed function/object declarators with a function typedef ('%s')", name); }
-			expect(";"); continue;
-		}
-		if (is("(")) {   /* records its own signature; NULL = prototype */
-			Func *fn = function_tail(name, ty);
-			if (fn) { fn->is_static = (sc & SC_STATIC) != 0; if (fn->attr.alias[0]) die("parse: alias on a function definition '%s'", name); cur = cur->next = fn; }
-			else decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
-			continue;
-		}
-		if (consume("asm")) {          /* `register T x asm("rN")` (global reg var) or an asm rename */
-			expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind == TK_STR) tk = tk->next; expect(")");
-			if ((sc & SC_REGISTER) && ngregs < 16) { strncpy(gregs[ngregs].name, name, 63); strncpy(gregs[ngregs].reg, s, 7); ngregs++; expect(";"); continue; }
-			/* else: an asm symbol rename on a normal global — ignore the name, fall through as an ordinary global */
-		}
-		for (;;) {                                           /* global variable(s), comma-separated */
-			/* File-scope redeclarations are ONE object (C11 6.9.2): `static T x;` (tentative) then `static T x = {...};`
-			 * (kernel trace events), or `extern T x;` then `T x;`. Merge instead of emitting two definitions. */
-			Gvar *g = global_find(name);
-			if (!g) { g = new_global(name); g->type = ty;
-				g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0; }
-			if (sc & SC_TLS) g->is_tls = 1;
-			else if (g->is_tls && !(sc & SC_EXTERN)) die("parse: '%s' redeclared without _Thread_local (line %d)", name, tk->line);
-			else {
-				if (!(sc & SC_EXTERN)) g->is_extern = 0;          /* any non-extern declaration makes it a definition */
-				if (sc & SC_STATIC) g->is_static = 1;
-				if (ty->size > 0 && g->type->size == 0) g->type = ty;   /* a later declaration completes the type */
-			}
-			while (consume("__attribute__")) attribute();
-			no_type_attrs(); no_cleanup("a global");
-			attr_merge(&g->attr, &decl_attr);
-			if (decl_attr.alias[0]) decl_symbol_attrs(name, &decl_attr, g->is_static);
-			if (consume("=")) {
-				if (g->init) die("parse: redefinition of '%s' (line %d)", name, tk->line);
-				g->init = global_init(ty); g->type = ty;           /* the defining declaration's (possibly now-sized) type */
+		int defined = 0;
+		for (;;) {   /* each declarator of `T a, *f(void), b[2], g();`: a function or an object */
+			if (ty->fn_ret) {   /* via a function typedef (`fn_t f;`): a function PROTOTYPE, no storage (kernel fs_param_type) */
+				record_func_sig(name, ty->fn_ret, ty->params, ty->nparams, ty->variadic); decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
+			} else if (is("(")) {   /* records its own signature; NULL = a prototype */
+				Func *fn = function_tail(name, ty);
+				if (fn) {   /* a definition ends the declaration */
+					fn->is_static = (sc & SC_STATIC) != 0; if (fn->attr.alias[0]) die("parse: alias on a function definition '%s'", name);
+					cur = cur->next = fn; defined = 1; break;
+				}
+				decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
+			} else if (consume("asm") && global_asm_label(name, sc)) {   /* `register T x asm("rN")`: a global register variable */
+			} else {
+				/* File-scope redeclarations are ONE object (C11 6.9.2): `static T x;` (tentative) then `static T x = {...};`
+				 * (kernel trace events), or `extern T x;` then `T x;`. Merge instead of emitting two definitions. */
+				Gvar *g = global_find(name);
+				if (!g) { g = new_global(name); g->type = ty;
+					g->is_extern = (sc & SC_EXTERN) != 0; g->is_static = (sc & SC_STATIC) != 0; }
+				if (sc & SC_TLS) g->is_tls = 1;
+				else if (g->is_tls && !(sc & SC_EXTERN)) die("parse: '%s' redeclared without _Thread_local (line %d)", name, tk->line);
+				else {
+					if (!(sc & SC_EXTERN)) g->is_extern = 0;          /* any non-extern declaration makes it a definition */
+					if (sc & SC_STATIC) g->is_static = 1;
+					if (ty->size > 0 && g->type->size == 0) g->type = ty;   /* a later declaration completes the type */
+				}
+				while (consume("__attribute__")) attribute();
+				no_type_attrs(); no_cleanup("a global");
+				attr_merge(&g->attr, &decl_attr);
+				if (decl_attr.alias[0]) decl_symbol_attrs(name, &decl_attr, g->is_static);
+				if (consume("=")) {
+					if (g->init) die("parse: redefinition of '%s' (line %d)", name, tk->line);
+					g->init = global_init(ty); g->type = ty;           /* the defining declaration's (possibly now-sized) type */
+				}
 			}
 			if (!consume(",")) break;
 			decl_attr = battr; ty = declarator(base, name);
 		}
-		expect(";");
+		if (!defined) expect(";");
 	}
 	for (Func *f = head.next; f; f = f->next)                /* type every body now that all signatures are known */
 		for (Node *s = f->body; s; s = s->next) add_type(s);

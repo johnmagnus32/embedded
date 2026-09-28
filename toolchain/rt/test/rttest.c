@@ -22,6 +22,8 @@ BASE double __floatdidf(i64); BASE double __floatundidf(u64); BASE float __float
 BASE i64 __fixdfdi(double); BASE u64 __fixunsdfdi(double); BASE i64 __fixsfdi(float); BASE u64 __fixunssfdi(float);
 BASE unsigned short __gnu_f2h_ieee(float); BASE float __gnu_h2f_ieee(unsigned short); BASE unsigned short __gnu_d2h_ieee(double);   /* GCC: base-PCS libcalls */
 double __powidf2(double, int); float __powisf2(float, int);
+_Complex float __mulsc3(float, float, float, float); _Complex double __muldc3(double, double, double, double);
+_Complex float __divsc3(float, float, float, float); _Complex double __divdc3(double, double, double, double);
 int __aeabi_idiv(int, int); unsigned __aeabi_uidiv(unsigned, unsigned);
 int __divsi3(int, int); int __modsi3(int, int); unsigned __udivsi3(unsigned, unsigned); unsigned __umodsi3(unsigned, unsigned);
 i64 __divdi3(i64, i64); i64 __moddi3(i64, i64); u64 __udivdi3(u64, u64); u64 __umoddi3(u64, u64);
@@ -42,6 +44,8 @@ static u64 dbits(double d) { union { double d; u64 u; } v; v.d = d; return v.u; 
 static u32 fbits(float f) { union { float f; u32 u; } v; v.f = f; return v.u; }
 static double bitsd(u64 u) { union { double d; u64 u; } v; v.u = u; return v.d; }
 static float bitsf(u32 u) { union { float f; u32 u; } v; v.u = u; return v.f; }
+static u64 cdbits(double d) { return d != d ? 0x7ff8000000000000ULL : dbits(d); }   /* NaN sign/payload: unspecified (C, IEEE) — libgcc's */
+static u64 cfbits(float f) { return f != f ? 0x7fc00000u : fbits(f); }                  /* depend on its compiler's fused-op choices */
 static u64 h = 1469598103934665603ULL;
 static const char *grp = "";
 #ifdef VERBOSE   /* -DVERBOSE='"fpconv"': print every value of that group (to diff the three builds) */
@@ -148,6 +152,32 @@ int main(void)
 		mix(__gnu_d2h_ieee(d));
 	}
 	out("d2h", h);
+
+	/* complex multiply / divide: every combination of the special values (zeros, infinities, NaN, the range
+	 * limits, subnormals), then random operands across the whole exponent range */
+	static const u64 sd[] = { 0, 0x8000000000000000ULL, 0x3ff0000000000000ULL, 0xbff8000000000000ULL, 0x7ff0000000000000ULL,
+		0xfff0000000000000ULL, 0x7ff8000000000000ULL, 0x7fefffffffffffffULL, 0x0010000000000000ULL, 0x0000000000000003ULL,
+		0x3cb0000000000000ULL, 0x7fe1234567890abcULL, 0x0123456789abcdefULL };
+	int ns = sizeof sd / sizeof *sd;
+	h = 1469598103934665603ULL; grp = "complex-edge";
+	for (int i = 0; i < ns; i++) for (int j = 0; j < ns; j++) for (int k = 0; k < ns; k++) for (int l = 0; l < ns; l++) {
+		double a = bitsd(sd[i]), b = bitsd(sd[j]), c = bitsd(sd[k]), d = bitsd(sd[l]);
+		_Complex double m = __muldc3(a, b, c, d), q = __divdc3(a, b, c, d);
+		_Complex float mf = __mulsc3((float)a, (float)b, (float)c, (float)d), qf = __divsc3((float)a, (float)b, (float)c, (float)d);
+		mix(cdbits(__real__ m)); mix(cdbits(__imag__ m)); mix(cdbits(__real__ q)); mix(cdbits(__imag__ q));
+		mix(cfbits(__real__ mf)); mix(cfbits(__imag__ mf)); mix(cfbits(__real__ qf)); mix(cfbits(__imag__ qf));
+	}
+	out("complex-edge", h);
+	h = 1469598103934665603ULL; grp = "complex-rand";
+	for (int k = 0; k < 20000; k++) {
+		double v[4]; float w[4];
+		for (int n = 0; n < 4; n++) { v[n] = bitsd(rnd()); w[n] = bitsf((u32)rnd()); if (k & 1) v[n] = bitsd((rnd() & 0x800fffffffffffffULL) | ((u64)(1023 - 20 + (int)(rnd() % 40)) << 52)); }
+		_Complex double m = __muldc3(v[0], v[1], v[2], v[3]), q = __divdc3(v[0], v[1], v[2], v[3]);
+		_Complex float mf = __mulsc3(w[0], w[1], w[2], w[3]), qf = __divsc3(w[0], w[1], w[2], w[3]);
+		mix(cdbits(__real__ m)); mix(cdbits(__imag__ m)); mix(cdbits(__real__ q)); mix(cdbits(__imag__ q));
+		mix(cfbits(__real__ mf)); mix(cfbits(__imag__ mf)); mix(cfbits(__real__ qf)); mix(cfbits(__imag__ qf));
+	}
+	out("complex-rand", h);
 
 	return 0;
 }

@@ -26,13 +26,14 @@ typedef struct Token {
 	char *sval;            /* TK_STR: the full (untruncated) raw string contents — asm templates/format strings exceed text[64] */
 	int line;              /* source line, for diagnostics                       */
 	int wide;              /* TK_STR / char TK_NUM: element width of an L"" / U"" (4) or u"" (2) literal; 0 = plain */
+	int imag;              /* TK_NUM: an imaginary constant (GNU `2.0i`, `3if`, `1i`) */
 } Token;
 
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
 int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal text -> code points (escapes + UTF-8) */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
-typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT, TY_VECTOR } TypeKind;   /* arithmetic kinds precede TY_PTR */
+typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT, TY_VECTOR, TY_COMPLEX } TypeKind;   /* arithmetic kinds precede TY_PTR */
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
 typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int packed; int promoted; struct Member *next; } Member;   /* align: aligned(N) on the member; packed: packed on the member (alignment 1); promoted: a lookup alias of an anonymous member's member (no storage of its own) */
@@ -45,7 +46,8 @@ typedef struct Member { char name[64]; struct Type *type; int offset; int is_bit
  * was (size is then 0 and unused); 0 = a normal fixed-size type. */
 /* A function type (fn_ret set) also carries its prototype: params[nparams], variadic (1 = `...`, 2 = unknown). */
 /* TY_VECTOR (GCC vector_size): `len` lanes of the integer/floating element `base`, `size` bytes; held and copied by
- * value like a struct (codegen: a vector-valued expression yields its address). */
+ * value like a struct (codegen: a vector-valued expression yields its address). TY_COMPLEX (_Complex, and GCC's
+ * integer complex types): the real then the imaginary part, both of type `base`, held the same way. */
 typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off;
                       struct Type **params; int nparams; int variadic;
                       int quals;      /* 1 = const, 2 = volatile (only __builtin_types_compatible_p looks) */
@@ -86,6 +88,9 @@ Type *vector_of(Type *elem, long size);      /* GCC vector_size(size) of elem (a
 int   is_vec(Type *t);
 int   is_aggr(Type *t);                      /* held by value in memory, its value its address: a struct/union or a vector */
 int   vec_convertible(Type *to, Type *from); /* an implicit vector conversion (assignment, argument, return) is valid */
+Type *complex_of(Type *elem);                /* _Complex elem */
+int   is_cplx(Type *t);
+int   same_cplx(Type *a, Type *b);           /* two complex types of the same element type */
 /* add_type is declared after the Node typedef below */
 
 #define MAXPARAMS 128   /* function parameters (C11 5.2.4.1 requires >= 127) */
@@ -103,6 +108,7 @@ typedef enum {
 	ND_VA_START, ND_VA_ARG,                                      /* __builtin_va_start / __builtin_va_arg */
 	ND_RMW, ND_CUR,                                              /* lhs op= rhs / ++ / -- (lvalue evaluated ONCE) ; its old value */
 	ND_VLAMARK,                                                  /* a VLA declaration's stack mark (re-execution frees its last instance) */
+	ND_CPAIR,                                                    /* a complex value from its parts: lhs real, rhs imaginary */
 	ND_RETURN, ND_IF, ND_WHILE, ND_DOWHILE, ND_FOR, ND_BREAK, ND_CONTINUE,  /* statements             */
 	ND_SWITCH, ND_CASE, ND_GOTO, ND_LABEL, ND_LABELADDR, ND_ASM, ND_BLOCK, ND_EXPRSTMT /* +goto/label, &&label, inline asm, block */
 } NodeKind;

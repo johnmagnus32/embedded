@@ -30,6 +30,8 @@ static void gen_expr(Node *n);
 static void gen_stmt(Node *n);
 static void gen_addr(Node *n);
 static void gen_binary64(Node *n);
+static void load(Type *ty);
+static void emit_addimm(const char *dst, const char *src, int imm);
 
 /* Call a runtime helper (memcpy, __divdi3, ...) with its args already in r0-r3: realign sp to 8 (AAPCS) around
  * the call — the stack machine's one-word pushes may leave it 4-aligned — and restore it from a saved slot. */
@@ -71,7 +73,7 @@ static int vfp_regs(int k) { return k == 1 ? 1 : k == 4 ? 4 : 2; }
 static int hfa_scan(Type *t, int *kind, int *nel) {
 	int k = t->kind == TY_FLOAT ? 1 : t->kind == TY_DOUBLE ? 2 : is_vec(t) && t->size == 8 ? 3 : is_vec(t) && t->size == 16 ? 4 : 0;
 	if (k) { if (*kind && *kind != k) return 0; *kind = k; (*nel)++; return 1; }
-	if (t->kind == TY_ARRAY) { for (int i = 0; i < t->len; i++) if (!hfa_scan(t->base, kind, nel)) return 0; return t->len > 0; }
+	if (t->kind == TY_ARRAY || (is_cplx(t) && is_fp(t->base))) { for (int i = 0; i < t->len; i++) if (!hfa_scan(t->base, kind, nel)) return 0; return t->len > 0; }   /* a complex float/double: 2 elements */
 	if (t->kind == TY_STRUCT) { int any = 0; for (Member *m = t->members; m; m = m->next) { if (m->promoted) continue; if (m->is_bitfield || !hfa_scan(m->type, kind, nel)) return 0; any = 1; } return any; }
 	return 0;
 }
@@ -81,12 +83,12 @@ int vfp_class(Type *t, int *nel) {
 	if (!hfa_scan(t, &kind, &n) || n > 4 || t->size != n * 4 * vfp_regs(kind)) return 0;
 	*nel = n; return kind;
 }
-/* Returned through a caller-supplied buffer: a struct > 4 bytes (unless a VFP candidate), a vector > 16 bytes — a
- * smaller vector comes back in registers (GCC): d0/q0 under VFP (64/128-bit), else r0-r3. */
+/* Returned through a caller-supplied buffer: a struct or complex > 4 bytes (unless a VFP candidate), a vector > 16
+ * bytes — a smaller vector comes back in registers (GCC): d0/q0 under VFP (64/128-bit), else r0-r3. */
 int is_sret(Type *t, int vfp) {
 	int n;
 	if (is_vec(t)) return t->size > 16;
-	return t && t->kind == TY_STRUCT && t->size > 4 && !(vfp && vfp_class(t, &n));
+	return t && (t->kind == TY_STRUCT || is_cplx(t)) && t->size > 4 && !(vfp && vfp_class(t, &n));   /* a complex: as a struct of its parts */
 }
 /* A class-k VFP candidate of nel elements moved between memory at [base] and s0.. (float elements) / d0.. */
 static void vfp_block(const char *op, const char *base, int k, int nel) {
@@ -94,9 +96,11 @@ static void vfp_block(const char *op, const char *base, int k, int nel) {
 	if (k == 1) fprintf(o, "\t%s %s, {s0-s%d}\n", op, base, ns - 1);
 	else fprintf(o, "\t%s %s, {d0-d%d}\n", op, base, ns / 2 - 1);
 }
-/* GCC's implicit vector conversions (see vec_convertible); the parser reports them with a line, this is the net. */
+/* Values of vector and complex types move as their bytes: a conversion between different ones is the parser's to
+ * lower (GCC's vector rules, see vec_convertible; complex part conversion). This is the net for any it missed. */
 static void vec_check(Type *to, Type *from, const char *what) {
 	if ((is_vec(to) || is_vec(from)) && !vec_convertible(to, from)) die("cc: incompatible vector types in %s in %s", what, cur_gen_func);
+	if ((is_cplx(to) || is_cplx(from)) && !same_cplx(to, from)) die("cc: a complex conversion in %s not lowered in %s", what, cur_gen_func);
 }
 /* AAPCS argument placement (rules C.1-C.5; C.1.vfp-C.2.vfp when vfp), shared by caller and callee. Core words are
  * numbered in one space: word w < 4 is register rw, w >= 4 is stack word w-4 (pos[i]). NCRN and NSAA advance
@@ -149,7 +153,7 @@ static void emit_libcall(const char *fn);
  * (assignment, op=, arguments, return, ?: arms, casts). Integer narrowing is left to the store / gen_cast. */
 static void conv(Type *from, Type *to) {
 	if (!from || !to) return;
-	if (is_vec(from) || is_vec(to)) { vec_check(to, from, "a conversion"); return; }   /* the same bytes */
+	if (is_vec(from) || is_vec(to) || is_cplx(from) || is_cplx(to)) { vec_check(to, from, "a conversion"); return; }   /* the same bytes */
 	int ff = is_fp(from), tf = is_fp(to), fd = from->kind == TY_DOUBLE, td = to->kind == TY_DOUBLE;
 	if (!ff && !tf) { if (is64(to) && to->kind == TY_LLONG && !is64(from)) extend64(from); to_bool(to, from); return; }
 	need_fp();
@@ -192,6 +196,18 @@ static void gen_fp_binary(Node *n) {
 }
 /* Evaluate a condition and set Z from its truth: a 64-bit value is true if EITHER word is nonzero. */
 static void gen_test(Node *n) {
+	if (is_cplx(n->type)) {   /* a complex is true when either part is nonzero (a NaN part counts as nonzero) */
+		Type *e = n->type->base; int w = e->size, t = uniq();
+		gen_expr(n); fprintf(o, "\tmov r2, r0\n");
+		for (int k = 0; k < 2; k++) {
+			fprintf(o, "\tmov r0, r2\n"); if (k) emit_addimm("r0", "r0", w);
+			load(e);
+			if (is_fp(e)) fp_test_zero(e->kind == TY_DOUBLE); else fprintf(o, w == 8 ? "\torrs r0, r0, r1\n" : "\tcmp r0, #0\n");
+			if (!k) fprintf(o, "\tbne .L%d\n", t);
+		}
+		fprintf(o, ".L%d:\n", t);   /* Z clear iff a part is nonzero */
+		return;
+	}
 	if (is_aggr(n->type)) die("cc: a %s used where a scalar is required in %s", is_vec(n->type) ? "vector" : "struct", cur_gen_func);
 	gen_expr(n);
 	if (is_fp(n->type)) { fp_test_zero(n->type->kind == TY_DOUBLE); return; }
@@ -511,6 +527,16 @@ static void gen_builtin(Node *n) {
 		if (!is_fp(T)) die("cc: %s needs a floating argument", n->name);
 		gen_as(n->args, T); fprintf(o, "\tlsr r0, %s, #31\n", T->kind == TY_DOUBLE ? "r1" : "r0"); return;
 	}
+	if (!strncmp(b, "fma", 3) && (!b[3] || !strcmp(b + 3, "f") || !strcmp(b + 3, "l"))) {   /* x*y + z, rounded once (VFPv4 vfma) */
+		int dbl = b[3] != 'f'; Type *T = dbl ? ty_double : ty_float; char k = dbl ? 'd' : 's';
+		if (!n->args || !n->args->next || !n->args->next->next || n->args->next->next->next) die("cc: %s needs three arguments", n->name);
+		const char *pr = dbl ? "{r0, r1}" : "{r0}";
+		gen_as(n->args, T); fprintf(o, "\tpush %s\n", pr); gen_as(n->args->next, T); fprintf(o, "\tpush %s\n", pr);
+		gen_as(n->args->next->next, T); to_vfp(dbl, 2);
+		fprintf(o, "\tpop %s\n", pr); to_vfp(dbl, 1); fprintf(o, "\tpop %s\n", pr); to_vfp(dbl, 0);
+		fprintf(o, "\tvfma.f%d %c2, %c0, %c1\n", dbl ? 64 : 32, k, k, k); from_vfp(dbl, 2);
+		return;
+	}
 	if (!strcmp(b, "trap")) { fprintf(o, "\t.inst 0xe7f000f0\n"); return; }   /* GCC's ARM trap: a permanently-undefined insn */
 	if (!strcmp(b, "prefetch")) {   /* (addr[, rw[, locality]]): evaluate every argument, prefetch addr */
 		if (!n->args) die("cc: __builtin_prefetch needs an address");
@@ -601,6 +627,15 @@ static void gen_expr1(Node *n) {
 	case ND_STMTEXPR:                                            /* ({...}): run the block; the last expr leaves its value in r0(:r1) */
 		for (Node *s = n->body; s; s = s->next) gen_stmt(s);
 		return;
+	case ND_CPAIR: {   /* a complex from its parts, built in its frame temp: the value is the temp's address */
+		Type *e = n->type->base;
+		for (int k = 0; k < 2; k++) {
+			gen_as(k ? n->rhs : n->lhs, e);
+			emit_addimm(is64(e) ? "r2" : "r1", "r11", n->offset + k * e->size); store(e);
+		}
+		emit_addimm("r0", "r11", n->offset);
+		return;
+	}
 	case ND_CUR: {                                               /* the ND_RMW's saved old value (val 0) / operand (val 1) */
 		int at = n->target->offset + (n->val ? 12 : 4);
 		fp_mem("ldr", "r0", at); if (is64(n->type)) fp_mem("ldr", "r1", at + 4);
@@ -992,6 +1027,7 @@ static void gen_stmt(Node *n) {
 static void alloc_temps(Node *n, int *frame) {
 	if (!n) return;
 	if (n->kind == ND_RMW) { *frame += 24; n->offset = -*frame; }   /* &lvalue + old value + operand */
+	if (n->kind == ND_CPAIR) { *frame += (n->type->size + 3) & ~3; n->offset = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_alloca") && !cur_alloca_slot) { *frame += 4; cur_alloca_slot = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_setjmp") && !cur_setjmp_save) { *frame += 28; cur_setjmp_save = -*frame; }
 	if (n->kind == ND_ASM && n->val) { *frame += 4 * n->val; n->offset = -*frame; }   /* one address per output */
