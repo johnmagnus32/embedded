@@ -32,7 +32,7 @@ Token *lex(const char *src);                 /* tokenize the whole source into a
 int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal text -> code points (escapes + UTF-8) */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
-typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT } TypeKind;   /* arithmetic kinds precede TY_PTR */
+typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT, TY_VECTOR } TypeKind;   /* arithmetic kinds precede TY_PTR */
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
 typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int promoted; struct Member *next; } Member;   /* align: aligned(N) on the member; promoted: a lookup alias of an anonymous member's member (no storage of its own) */
@@ -44,14 +44,19 @@ typedef struct Member { char name[64]; struct Type *type; int offset; int is_bit
 /* vsize_off: a VARIABLY-modified array (VLA): the frame slot holding its byte size, computed where its declarator
  * was (size is then 0 and unused); 0 = a normal fixed-size type. */
 /* A function type (fn_ret set) also carries its prototype: params[nparams], variadic (1 = `...`, 2 = unknown). */
+/* TY_VECTOR (GCC vector_size): `len` lanes of the integer/floating element `base`, `size` bytes; held and copied by
+ * value like a struct (codegen: a vector-valued expression yields its address). */
 typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off;
                       struct Type **params; int nparams; int variadic;
                       int quals;      /* 1 = const, 2 = volatile (only __builtin_types_compatible_p looks) */
                       int tag;        /* a distinct type of an otherwise-equal representation: each enum, long double (-1) */
-                      int prec;       /* a wide bit-field's type (see above) */
-                      int sso; } Type; /* a struct with scalar_storage_order("big-endian"): its scalars are stored
-                                        * byte-reversed (bit-fields in big-endian bit order) */ /* a wide bit-field's type (GCC: `unsigned long long b:40` is a 40-bit type): its
-                                         * value bits (0 = all); arithmetic on it wraps at that width */
+                      int prec;       /* a wide bit-field's type (GCC: `unsigned long long b:40` is a 40-bit type): its
+                                       * value bits (0 = all); arithmetic on it wraps at that width */
+                      int sso;        /* a struct with scalar_storage_order("big-endian"): its scalars are stored
+                                       * byte-reversed (bit-fields in big-endian bit order) */
+                      int opaque;     /* a vector comparison's result: converts implicitly to any vector of its size */
+                      int transparent; } Type;   /* a transparent_union: a parameter of it takes any member's type, passed as
+                                                  * its first member */
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
@@ -68,15 +73,19 @@ int   func_base_pcs(const char *name);      /* calls use the base PCS: declared 
 /* vfp = the AAPCS-VFP variant (hard float, non-variadic callee): float/double/HFA args go to s0-s15 instead,
  * vreg[i] = their first s-register (-1 = core/stack; a VFP arg that overflowed to the stack has a pos). */
 int  aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg);
-int  vfp_class(Type *t, int *nel);           /* 0; 1 = float elements; 2 = double elements (a float/double/HFA) */
+int  vfp_class(Type *t, int *nel);           /* 0; 1 = float elements; 2 = double; 3/4 = 64/128-bit vectors (a scalar/vector/HFA/HVA) */
 extern int soft_float;                       /* -mfloat-abi=soft: no floating code, base PCS attributes */
 int  arg_words(Type *t);                     /* words an argument of type t occupies (struct = ceil(size/4)) */
-int  is_sret(Type *t, int vfp);              /* returned via a caller-supplied buffer (struct > 4 bytes, not an HFA under VFP) */
+int  is_sret(Type *t, int vfp);              /* returned via a caller-supplied buffer (struct > 4 bytes, not an HFA under VFP; vector > 16) */
 Type *pointer_to(Type *base);                /* a fresh `base *` type */
 Type *array_of(Type *base, int len);         /* a fresh `base [len]` type (size = len*base->size) */
 int   is_ptr(Type *t);
 int   is_ptr_like(Type *t);                  /* pointer OR array (both index/decay the same way) */
 int   align_of(Type *t);                     /* byte alignment (int/ptr=4, char=1, array=elem, struct=max) */
+Type *vector_of(Type *elem, long size);      /* GCC vector_size(size) of elem (an invalid one is an error) */
+int   is_vec(Type *t);
+int   is_aggr(Type *t);                      /* held by value in memory, its value its address: a struct/union or a vector */
+int   vec_convertible(Type *to, Type *from); /* an implicit vector conversion (assignment, argument, return) is valid */
 /* add_type is declared after the Node typedef below */
 
 #define MAXPARAMS 128   /* function parameters (C11 5.2.4.1 requires >= 127) */
@@ -159,6 +168,7 @@ typedef struct Func {
 } Func;
 
 void  add_type(Node *n);         /* recursively annotate a subtree with result types (type.c) */
+void  type_node(Node *n);        /* ...just n, from its (already typed) operands */
 
 /* A global's initializer, as a flat list of emitted items (constant word/byte, a symbol's address, or
  * a run of zero bytes for padding / uninitialized tail). NULL init => the whole object goes in .bss. */

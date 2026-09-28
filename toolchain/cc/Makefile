@@ -30,6 +30,7 @@ $(BUILD):
 # semihosting crt (tests/crt.s) that calls main() and reports its return value as the qemu exit code.
 # The expected value is the number in the .c's first-line comment: `// expect: N`. OUR ld does the
 # bare-metal link (-Ttext 0x40000000, virt RAM); qemu-system-arm runs it and we check the exit status.
+# Each tests/reject/*.c is invalid C that cc must refuse, with the message in its `// error: TEXT` line.
 test: $(BUILD)/cc
 	@if [ ! -x "$$(command -v $(QEMU))" ]; then echo "SKIP: $(QEMU) not found"; exit 0; fi
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
@@ -44,6 +45,12 @@ test: $(BUILD)/cc
 	  timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/p.elf >/dev/null 2>&1; got=$$?; \
 	  if [ "$$got" = "$$want" ]; then echo "PASS $$(basename $$c): main() == $$got"; pass=$$((pass+1)); \
 	  else echo "FAIL $$(basename $$c): got $$got, want $$want"; fail=$$((fail+1)); fi; \
+	done; \
+	for c in tests/reject/*.c; do \
+	  want=$$(sed -n 's|^//[[:space:]]*error:[[:space:]]*||p' $$c | head -1); \
+	  if $(BUILD)/cc -o $$t/r.s $$c 2>$$t/rerr; then echo "FAIL $$c: accepted (want an error: $$want)"; fail=$$((fail+1)); \
+	  elif grep -qF "$$want" $$t/rerr; then echo "PASS $$(basename $$c): rejected ($$want)"; pass=$$((pass+1)); \
+	  else echo "FAIL $$c: rejected, but not with '$$want': $$(cat $$t/rerr)"; fail=$$((fail+1)); fi; \
 	done; \
 	$(BUILD)/cc -fPIC -o $$t/cd.s tests/const_data.c; \
 	secs=$$(awk '/\.section|^\t\.data$$/{s=$$1 == ".data" ? ".data" : $$2} /^(k|tab|fns|cv|w):/{printf "%s=%s ", $$1, s}' $$t/cd.s); \

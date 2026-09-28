@@ -30,6 +30,27 @@ Type *ty_llong = &llong_ty; Type *ty_ullong = &ullong_ty;
 
 Type *pointer_to(Type *base) { Type *t = calloc(1, sizeof *t); t->kind = TY_PTR; t->base = base; t->size = 4; return t; }
 Type *array_of(Type *base, int len) { Type *t = calloc(1, sizeof *t); t->kind = TY_ARRAY; t->base = base; t->len = len; t->size = base->size * len; return t; }
+/* A GCC generic vector: an integer or floating element, a whole power-of-two number of lanes. AAPCS (as GCC lays it
+ * out on ARM): aligned to its size, at most 8. */
+Type *vector_of(Type *elem, long size) {
+	if (elem->kind >= TY_PTR || elem->is_bool || elem->fn_ret || elem->prec) die("parse: vector_size on a type that is not integer or floating");
+	if (size <= 0 || size % elem->size) die("parse: vector_size(%ld) is not a whole number of %d-byte elements", size, elem->size);
+	long len = size / elem->size;
+	if (len & (len - 1)) die("parse: vector_size(%ld): %ld elements is not a power of two", size, len);
+	Type *t = calloc(1, sizeof *t); t->kind = TY_VECTOR; t->base = elem; t->len = (int)len; t->size = (int)size;
+	t->align = size < 8 ? (int)size : 8;
+	return t;
+}
+int   is_vec(Type *t) { return t && t->kind == TY_VECTOR; }
+int   is_aggr(Type *t) { return t && (t->kind == TY_STRUCT || t->kind == TY_VECTOR); }
+/* GCC (without -flax-vector-conversions): the same element type and lane count — or an opaque comparison result of
+ * the same size. */
+int   vec_convertible(Type *to, Type *from) {
+	if (!is_vec(to) || !is_vec(from) || to->size != from->size) return 0;
+	if (to->opaque || from->opaque) return 1;
+	Type *a = to->base, *b = from->base;
+	return to->len == from->len && a->kind == b->kind && a->is_unsigned == b->is_unsigned;
+}
 int   is_ptr(Type *t) { return t && t->kind == TY_PTR; }
 int   is_ptr_like(Type *t) { return t && (t->kind == TY_PTR || t->kind == TY_ARRAY); }
 int   align_of(Type *t) {
@@ -46,7 +67,7 @@ int   align_of(Type *t) {
  * value always fits; int/long stays 32-bit, long long stays 64-bit; sign is preserved for the 32/64 types.
  * Pointers/arrays/structs pass through unchanged. */
 static Type *promote(Type *t) {
-	if (t->kind == TY_PTR || t->kind == TY_ARRAY || t->kind == TY_STRUCT || is_fp(t)) return t;
+	if (t->kind >= TY_PTR || is_fp(t)) return t;
 	if (t->size == 8) return t->prec ? t : t->is_unsigned ? ty_ullong : ty_llong;   /* a wide bit-field keeps its width */
 	return (t->is_unsigned && t->size >= 4) ? ty_uint : ty_int;
 }
@@ -78,7 +99,9 @@ void add_type(Node *n) {
 	for (Node *c = n->body; c; c = c->next) add_type(c);
 	for (Node *a = n->args; a; a = a->next) add_type(a);
 	if (n->type) return;                 /* leaf/cast/member set by the parser — keep it (children now typed) */
-
+	type_node(n);
+}
+void type_node(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:   /* type by magnitude (suffixes were stripped by the lexer): int -> uint -> long long */
 		if (n->val < -2147483648LL || n->val > 4294967295LL) n->type = ty_llong;

@@ -60,13 +60,17 @@ static int is64(Type *t) { return t && t->size == 8; }
 
 int arg_words(Type *t) {
 	if (!t) return 1;
-	if (t->kind == TY_STRUCT) return (t->size + 3) / 4;
+	if (is_aggr(t)) return (t->size + 3) / 4;
 	return (t->kind != TY_ARRAY && t->size == 8) ? 2 : 1;   /* an array argument decays to a pointer */
 }
-/* A VFP "co-processor register candidate": float / double, or a homogeneous aggregate of 1-4 of one of them
- * (nested structs/arrays allowed, no bitfields, no padding). Returns 1 (float elements) / 2 (double) / 0. */
+/* A VFP "co-processor register candidate": float / double / a 64- or 128-bit vector, or a homogeneous aggregate of
+ * 1-4 of one of them (nested structs/arrays allowed, no bitfields, no padding). Its class: 1 (float elements) /
+ * 2 (double) / 3 (64-bit vectors, any lanes) / 4 (128-bit vectors) / 0. An element takes vfp_regs(class)
+ * consecutive s-registers, aligned to that count (a double an even pair, a 128-bit vector a q register). */
+static int vfp_regs(int k) { return k == 1 ? 1 : k == 4 ? 4 : 2; }
 static int hfa_scan(Type *t, int *kind, int *nel) {
-	if (t->kind == TY_FLOAT || t->kind == TY_DOUBLE) { int k = t->kind == TY_FLOAT ? 1 : 2; if (*kind && *kind != k) return 0; *kind = k; (*nel)++; return 1; }
+	int k = t->kind == TY_FLOAT ? 1 : t->kind == TY_DOUBLE ? 2 : is_vec(t) && t->size == 8 ? 3 : is_vec(t) && t->size == 16 ? 4 : 0;
+	if (k) { if (*kind && *kind != k) return 0; *kind = k; (*nel)++; return 1; }
 	if (t->kind == TY_ARRAY) { for (int i = 0; i < t->len; i++) if (!hfa_scan(t->base, kind, nel)) return 0; return t->len > 0; }
 	if (t->kind == TY_STRUCT) { int any = 0; for (Member *m = t->members; m; m = m->next) { if (m->promoted) continue; if (m->is_bitfield || !hfa_scan(m->type, kind, nel)) return 0; any = 1; } return any; }
 	return 0;
@@ -74,10 +78,26 @@ static int hfa_scan(Type *t, int *kind, int *nel) {
 int vfp_class(Type *t, int *nel) {
 	int kind = 0, n = 0;
 	if (!t || t->kind == TY_ARRAY) return 0;   /* an array argument is a pointer */
-	if (!hfa_scan(t, &kind, &n) || n > 4 || t->size != n * (kind == 2 ? 8 : 4)) return 0;
+	if (!hfa_scan(t, &kind, &n) || n > 4 || t->size != n * 4 * vfp_regs(kind)) return 0;
 	*nel = n; return kind;
 }
-int is_sret(Type *t, int vfp) { int n; return t && t->kind == TY_STRUCT && t->size > 4 && !(vfp && vfp_class(t, &n)); }
+/* Returned through a caller-supplied buffer: a struct > 4 bytes (unless a VFP candidate), a vector > 16 bytes — a
+ * smaller vector comes back in registers (GCC): d0/q0 under VFP (64/128-bit), else r0-r3. */
+int is_sret(Type *t, int vfp) {
+	int n;
+	if (is_vec(t)) return t->size > 16;
+	return t && t->kind == TY_STRUCT && t->size > 4 && !(vfp && vfp_class(t, &n));
+}
+/* A class-k VFP candidate of nel elements moved between memory at [base] and s0.. (float elements) / d0.. */
+static void vfp_block(const char *op, const char *base, int k, int nel) {
+	int ns = nel * vfp_regs(k);
+	if (k == 1) fprintf(o, "\t%s %s, {s0-s%d}\n", op, base, ns - 1);
+	else fprintf(o, "\t%s %s, {d0-d%d}\n", op, base, ns / 2 - 1);
+}
+/* GCC's implicit vector conversions (see vec_convertible); the parser reports them with a line, this is the net. */
+static void vec_check(Type *to, Type *from, const char *what) {
+	if ((is_vec(to) || is_vec(from)) && !vec_convertible(to, from)) die("cc: incompatible vector types in %s in %s", what, cur_gen_func);
+}
 /* AAPCS argument placement (rules C.1-C.5; C.1.vfp-C.2.vfp when vfp), shared by caller and callee. Core words are
  * numbered in one space: word w < 4 is register rw, w >= 4 is stack word w-4 (pos[i]). NCRN and NSAA advance
  * separately: 8-byte-aligned args start at an even register / stack word; a 64-bit scalar that doesn't fit the
@@ -91,14 +111,14 @@ int aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg) {
 		int nel, k = vfp ? vfp_class(ty[i], &nel) : 0, al8 = ty[i] && ty[i]->kind != TY_ARRAY && align_of(ty[i]) >= 8;
 		if (vreg) vreg[i] = -1;
 		if (k) {
-			int w = k == 2 ? 2 : 1, need = nel * w, got = -1;
+			int w = vfp_regs(k), need = nel * w, got = -1;
 			for (int s = 0; !vclosed && s + need <= 16 && got < 0; s += w) if (!((sused >> s) & ((1u << need) - 1))) got = s;
 			if (got >= 0) { sused |= ((1u << need) - 1) << got; vreg[i] = got; pos[i] = -1; continue; }
 			vclosed = 1; sused = 0xffff;
 			if (al8) nsaa = (nsaa + 1) & ~1;
 			pos[i] = 4 + nsaa; nsaa += arg_words(ty[i]); continue;
 		}
-		int nw = arg_words(ty[i]), comp = ty[i] && ty[i]->kind == TY_STRUCT;
+		int nw = arg_words(ty[i]), comp = is_aggr(ty[i]);
 		if (nw && al8) ncrn = (ncrn + 1) & ~1;
 		if (ncrn + nw <= 4) { pos[i] = ncrn; ncrn += nw; continue; }
 		if (comp && ncrn < 4 && nsaa == 0) { pos[i] = ncrn; nsaa = nw - (4 - ncrn); ncrn = 4; continue; }   /* split r3 | stack */
@@ -129,6 +149,7 @@ static void emit_libcall(const char *fn);
  * (assignment, op=, arguments, return, ?: arms, casts). Integer narrowing is left to the store / gen_cast. */
 static void conv(Type *from, Type *to) {
 	if (!from || !to) return;
+	if (is_vec(from) || is_vec(to)) { vec_check(to, from, "a conversion"); return; }   /* the same bytes */
 	int ff = is_fp(from), tf = is_fp(to), fd = from->kind == TY_DOUBLE, td = to->kind == TY_DOUBLE;
 	if (!ff && !tf) { if (is64(to) && to->kind == TY_LLONG && !is64(from)) extend64(from); to_bool(to, from); return; }
 	need_fp();
@@ -171,6 +192,7 @@ static void gen_fp_binary(Node *n) {
 }
 /* Evaluate a condition and set Z from its truth: a 64-bit value is true if EITHER word is nonzero. */
 static void gen_test(Node *n) {
+	if (is_aggr(n->type)) die("cc: a %s used where a scalar is required in %s", is_vec(n->type) ? "vector" : "struct", cur_gen_func);
 	gen_expr(n);
 	if (is_fp(n->type)) { fp_test_zero(n->type->kind == TY_DOUBLE); return; }
 	fprintf(o, is64(n->type) ? "\torrs r0, r0, r1\n" : "\tcmp r0, #0\n");
@@ -220,7 +242,7 @@ static void to_bool(Type *dst, Type *src) {
 /* (type) cast on the value in r0: narrowing to char/short truncates + re-extends per the target's sign;
  * widening to int/pointer is a no-op (a narrow load already extended). Non-scalar targets: nothing to do. */
 static void gen_cast(Type *ty) {
-	if (ty->kind == TY_PTR || ty->kind == TY_ARRAY || ty->kind == TY_STRUCT) return;
+	if (ty->kind >= TY_PTR) return;
 	if      (ty->size == 1) fprintf(o, ty->is_unsigned ? "\tuxtb r0, r0\n" : "\tsxtb r0, r0\n");
 	else if (ty->size == 2) fprintf(o, ty->is_unsigned ? "\tuxth r0, r0\n" : "\tsxth r0, r0\n");
 }
@@ -309,7 +331,7 @@ static void gen_addr(Node *n) {
 		}
 		die("cc: statement-expression has no lvalue result");
 		return;
-	case ND_CALL: if (n->type->kind != TY_STRUCT) break; gen_expr(n); return;   /* f().m: the call's result temp */
+	case ND_CALL: if (!is_aggr(n->type)) break; gen_expr(n); return;   /* f().m: the call's result temp */
 	case ND_ADDR: gen_addr(n->lhs); return;                                  /* &(addr-expr): a function designator is ND_ADDR(GVAR), so `&func` == `func` (and `&*p` == p) */
 	default: break;
 	}
@@ -540,10 +562,10 @@ static void gen_expr1(Node *n) {
 	case ND_MEMBER:
 		gen_addr(n);
 		if (n->bit_width) { gen_bitfield_load(n); return; }              /* bitfield: extract from its unit */
-		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load_lv(n, n->type);   /* struct member that is itself an aggregate decays to its address */
+		if (n->type->kind != TY_ARRAY && !is_aggr(n->type)) load_lv(n, n->type);   /* struct member that is itself an aggregate decays to its address */
 		return;
 	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load; arrays/structs decay to their address */
-		gen_addr(n); if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type); return;
+		gen_addr(n); if (n->type->kind != TY_ARRAY && !is_aggr(n->type)) load(n->type); return;
 	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_LABELADDR: {                                    /* &&label -> the label's code address (movw/movt) */
@@ -551,12 +573,14 @@ static void gen_expr1(Node *n) {
 		return;
 	}
 	case ND_DEREF: gen_expr(n->lhs);                        /* pointer -> r0, then load the pointee by width */
-		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT && !n->type->fn_ret) load_lv(n, n->type);   /* an aggregate *p IS its address; *fp is the function */
+		if (n->type->kind != TY_ARRAY && !is_aggr(n->type) && !n->type->fn_ret) load_lv(n, n->type);   /* an aggregate *p IS its address; *fp is the function */
 		return;
 	case ND_ASSIGN:
 		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */
 		if (n->lhs->kind == ND_MEMBER && n->lhs->bit_width) { gen_bitfield_store(n); return; }   /* bitfield RMW */
-		if (n->lhs->type && n->lhs->type->kind == TY_STRUCT) {   /* whole struct/union copy — memcpy, not a scalar store */
+		if (is_aggr(n->lhs->type)) {   /* whole struct/union/vector copy — memcpy, not a scalar store */
+			vec_check(n->lhs->type, n->rhs->type, "an assignment");
+			if (!is_aggr(n->rhs->type)) die("cc: assigning a scalar to a struct in %s", cur_gen_func);
 			gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");   /* dest addr */
 			gen_expr(n->rhs);                                /* a struct-typed rhs leaves its ADDRESS in r0 */
 			fprintf(o, "\tpop {r1}\n");                      /* r1 = dest, r0 = src */
@@ -601,7 +625,7 @@ static void gen_expr1(Node *n) {
 		return;
 	case ND_VA_ARG:                                              /* fetch *ap, advance ap by the arg width */
 		gen_addr(n->lhs);
-		if (n->type->kind == TY_STRUCT) {   /* by-value composite: its words ARE at ap; the result is that address */
+		if (is_aggr(n->type)) {   /* by-value composite: its words ARE at ap; the result is that address */
 			fprintf(o, "\tldr r1, [r0]\n");
 			if (align_of(n->type) >= 8) fprintf(o, "\tadd r1, r1, #7\n\tbic r1, r1, #7\n");
 			emit_addimm("r2", "r1", 4 * arg_words(n->type)); fprintf(o, "\tstr r2, [r0]\n\tmov r0, r1\n");
@@ -612,12 +636,14 @@ static void gen_expr1(Node *n) {
 			fprintf(o, "\tldr r1, [r0]\n\tadd r2, r1, #4\n\tstr r2, [r0]\n\tldr r0, [r1]\n");
 		return;
 	case ND_NEG:
+		if (is_aggr(n->lhs->type)) die("cc: '-' on a struct or vector operand in %s", cur_gen_func);
 		if (is_fp(n->type)) { need_fp(); gen_as(n->lhs, n->type); fprintf(o, n->type->kind == TY_DOUBLE ? "\teor r1, r1, #0x80000000\n" : "\teor r0, r0, #0x80000000\n"); return; }   /* flip the sign bit */
 		gen_expr_w(n->lhs, is64(n->type));
 		if (is64(n->type)) fprintf(o, "\trsbs r0, r0, #0\n\trsc r1, r1, #0\n");   /* 0 - value (64-bit) */
 		else               fprintf(o, "\trsb r0, r0, #0\n");
 		return;
-	case ND_BITNOT: gen_expr_w(n->lhs, is64(n->type));
+	case ND_BITNOT: if (is_aggr(n->lhs->type)) die("cc: '~' on a struct or vector operand in %s", cur_gen_func);
+		gen_expr_w(n->lhs, is64(n->type));
 		if (is64(n->type)) fprintf(o, "\tmvn r0, r0\n\tmvn r1, r1\n");
 		else               fprintf(o, "\tmvn r0, r0\n");
 		return;
@@ -651,12 +677,13 @@ static void gen_expr1(Node *n) {
 		Type *ft = n->lhs ? n->lhs->type : NULL; if (ft && is_ptr(ft)) ft = ft->base; if (ft && !ft->fn_ret) ft = NULL;
 		for (int i = 0; i < nargs; i++) {                          /* a declared param type decides the slot (a 64-bit param takes a narrower arg widened) */
 			Type *pt = callee ? func_param_type(callee, i) : ft && i < ft->nparams ? ft->params[i] : 0;
+			if (pt && pt->transparent && !is_aggr(av[i]->type)) pt = pt->members->type;   /* a member's value: passed as the first member */
 			at[i] = pt ? pt : av[i]->type->kind == TY_FLOAT ? ty_double : av[i]->type;   /* no prototype / a vararg: float promotes to double */
 		}
 		int vfp = !soft_float && !(callee ? func_base_pcs(callee) : ft && ft->variadic == 1);   /* AAPCS-VFP unless the callee is variadic / pcs("aapcs") */
 		int sret = is_sret(n->type, vfp), total = aapcs_layout(at, nargs, sret, vfp, pos, vreg);
 		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs ? 1 : 0, regw = total ? 4 : 0, vs = 0;   /* vs: s-registers used */
-		for (int i = 0; i < nargs; i++) if (vreg[i] >= 0) { int nel, k = vfp_class(at[i], &nel), e = vreg[i] + nel * (k == 2 ? 2 : 1); if (e > vs) vs = e; }
+		for (int i = 0; i < nargs; i++) if (vreg[i] >= 0) { int nel, k = vfp_class(at[i], &nel), e = vreg[i] + nel * vfp_regs(k); if (e > vs) vs = e; }
 		vs = (vs + 1) & ~1;   /* staged and loaded as d registers */
 		/* One area from sp, laid out in argument-word order: [0,16) = r0..r3 staging, then the outgoing stack
 		 * words, then the callee-pointer slot, then the caller's sp. Addressed off sp, so nested calls (which
@@ -669,7 +696,9 @@ static void gen_expr1(Node *n) {
 		fprintf(o, "\tmov r3, sp\n"); emit_addimm("sp", "sp", -4 * area); fprintf(o, "\tbic sp, sp, #7\n\tsub r3, r3, sp\n"); mem_op("str", "r3", "sp", spslot);
 		for (int i = 0; i < nargs; i++) {
 			int at_off = vreg[i] >= 0 ? vslot + 4 * vreg[i] : 4 * pos[i];   /* its s-register's staging slot, or its core/stack word */
-			if (at[i]->kind == TY_STRUCT) {                        /* by value: copy its bytes into its words / s-registers */
+			if (is_aggr(at[i])) {                                  /* by value: copy its bytes into its words / s-registers */
+				vec_check(at[i], av[i]->type, "an argument");
+				if (!is_aggr(av[i]->type)) die("cc: a scalar argument for a struct parameter in %s", cur_gen_func);
 				gen_expr(av[i]); emit_copy("sp", at_off, "r0", 0, at[i]->size);
 				continue;
 			}
@@ -687,8 +716,9 @@ static void gen_expr1(Node *n) {
 		mem_op("ldr", "ip", "sp", spslot - 4 * regw); fprintf(o, "\tadd sp, sp, ip\n");   /* back to the caller's (possibly 4-aligned) sp */
 		if (regw) fprintf(o, "\tsub sp, sp, #16\n");   /* the distance was measured from the area base, below the popped r0-r3 */
 		int rnel, rk = vfp ? vfp_class(n->type, &rnel) : 0;   /* a float/double/HFA result comes back in s0../d0.. */
-		if (n->type->kind == TY_STRUCT) {                          /* a struct call yields its temp's ADDRESS */
-			if (rk) { emit_addimm("r0", "r11", n->offset); fprintf(o, rk == 2 ? "\tvstmia r0, {d0-d%d}\n" : "\tvstmia r0, {s0-s%d}\n", rnel - 1); }
+		if (is_aggr(n->type)) {                                    /* a struct/vector call yields its temp's ADDRESS */
+			if (rk) { emit_addimm("r0", "r11", n->offset); vfp_block("vstmia", "r0", rk, rnel); }
+			else if (!sret && n->type->size > 4) { emit_addimm("ip", "r11", n->offset); fprintf(o, n->type->size == 8 ? "\tstm ip, {r0, r1}\n" : "\tstm ip, {r0, r1, r2, r3}\n"); }   /* a vector: r0-r3 */
 			else if (!sret && n->type->size) { emit_addimm("r1", "r11", n->offset); fprintf(o, "\tstr r0, [r1]\n"); }   /* <= 4 bytes came back in r0 */
 			emit_addimm("r0", "r11", n->offset);
 		}
@@ -701,6 +731,7 @@ static void gen_expr1(Node *n) {
 	/* 64-bit operand(s) -> the register-pair path. A comparison yields a 32-bit bool but reads 64-bit
 	 * operands, so decide by the operands; every other op's result width is exactly n->type (add_type set
 	 * shifts to promote(lhs), arithmetic to usual_arith), so decide by that. */
+	if (is_aggr(n->lhs->type) || (n->rhs && is_aggr(n->rhs->type))) die("cc: operator (node %d) on a struct or vector operand in %s", n->kind, cur_gen_func);
 	int is_cmp = n->kind==ND_EQ||n->kind==ND_NE||n->kind==ND_LT||n->kind==ND_LE||n->kind==ND_GT||n->kind==ND_GE;
 	if (is_cmp ? (is_fp(n->lhs->type) || is_fp(n->rhs->type)) : is_fp(n->type)) { gen_fp_binary(n); return; }
 	if (is_cmp ? (is64(n->lhs->type) || is64(n->rhs->type)) : is64(n->type)) { gen_binary64(n); return; }
@@ -851,11 +882,13 @@ static void gen_stmt(Node *n) {
 	switch (n->kind) {
 	case ND_RETURN: {   /* widen to the return type; lhs NULL for `return;` */
 		int rnel, rk = cur_vfp ? vfp_class(cur_ret, &rnel) : 0;
-		if (n->lhs && rk && cur_ret->kind == TY_STRUCT) { gen_expr(n->lhs); fprintf(o, rk == 2 ? "\tvldmia r0, {d0-d%d}\n" : "\tvldmia r0, {s0-s%d}\n", rnel - 1); }   /* HFA: s0../d0.. */
+		if (n->lhs && is_aggr(cur_ret)) { vec_check(cur_ret, n->lhs->type, "a return"); if (!is_aggr(n->lhs->type)) die("cc: returning a scalar from a struct function %s", cur_gen_func); }
+		if (n->lhs && rk && is_aggr(cur_ret)) { gen_expr(n->lhs); vfp_block("vldmia", "r0", rk, rnel); }   /* HFA / vector: s0../d0.. */
 		else if (n->lhs && rk) { gen_as(n->lhs, cur_ret); to_vfp(rk == 2, 0); }   /* float/double: s0 / d0 */
-		else if (n->lhs && cur_ret && cur_ret->kind == TY_STRUCT) {   /* gen_expr leaves the struct's address */
+		else if (n->lhs && is_aggr(cur_ret)) {   /* gen_expr leaves the struct's address */
 			int sz = cur_ret->size; gen_expr(n->lhs);
 			if (is_sret(cur_ret, cur_vfp)) { fp_mem("ldr", "r1", cur_core_home); emit_copy("r1", 0, "r0", 0, sz); fp_mem("ldr", "r0", cur_core_home); }   /* into the caller's buffer; r0 = it */
+			else if (sz > 4) fprintf(o, sz == 8 ? "\tldm r0, {r0, r1}\n" : "\tldm r0, {r0, r1, r2, r3}\n");   /* a vector in the base PCS: r0-r3 */
 			else if (sz == 4) fprintf(o, "\tldr r0, [r0]\n");   /* <= 4 bytes: the bytes themselves in r0 */
 			else if (sz == 3) fprintf(o, "\tldrb r1, [r0, #2]\n\tldrh r0, [r0]\n\torr r0, r0, r1, lsl #16\n");
 			else if (sz) fprintf(o, sz == 2 ? "\tldrh r0, [r0]\n" : "\tldrb r0, [r0]\n");
@@ -963,7 +996,7 @@ static void alloc_temps(Node *n, int *frame) {
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_setjmp") && !cur_setjmp_save) { *frame += 28; cur_setjmp_save = -*frame; }
 	if (n->kind == ND_ASM && n->val) { *frame += 4 * n->val; n->offset = -*frame; }   /* one address per output */
 	if (n->kind == ND_VLAMARK) { if (nvla_marks >= 256) die("cc: too many VLA declarations in one function"); *frame += 4; n->offset = -*frame; vla_marks[nvla_marks++] = n; }
-	if (n->kind == ND_CALL && n->type && n->type->kind == TY_STRUCT && strncmp(n->name, "__builtin_", 10)) {
+	if (n->kind == ND_CALL && is_aggr(n->type) && strncmp(n->name, "__builtin_", 10)) {
 		*frame += n->type->size < 4 ? 4 : (n->type->size + 3) & ~3; n->offset = -*frame;   /* >= 4: an r0 return is stored as a word */
 	}
 	alloc_temps(n->lhs, frame); alloc_temps(n->rhs, frame); alloc_temps(n->cond, frame);

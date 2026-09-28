@@ -15,6 +15,7 @@
 static Token *tk;                                  /* the parse cursor */
 static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
 static char cur_func_name[64];                     /* name of the function being parsed, for `__func__` */
+static Type *cur_fn_ret;                           /* ...and its return type */
 static struct { char from[64], to[64]; } lscope[512]; static int nlscope, lscope_seq;   /* __label__ renames, innermost last */
 static void map_label(char *name) { for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return; } }
 
@@ -114,6 +115,7 @@ static int   parse_init(Type *ty, int base, InitPlace **tail);
 static Init *lower_global(InitPlace *places, int total);
 static Node *lower_local(Node *dest, InitPlace *places, int total);
 static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
+static double eval_fp(Node *n, int *ok);
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
 static void sig_set_pcs(const char *name, int pcs);
 static int  sig_align(const char *name, int align);
@@ -141,8 +143,20 @@ static void attr_merge(Attr *to, const Attr *a) {
 	if (a->section[0]) strcpy(to->section, a->section);
 	if (a->alias[0]) strcpy(to->alias, a->alias);
 }
+/* TYPE attributes, parsed by attribute() and applied by whoever parsed the type they follow (declspec, declarator):
+ * vector_size(N) makes a GCC vector; mode(M) resizes an integer (or picks a floating type); transparent_union marks
+ * a union (a typedef's: `typedef union {...} T __attribute__((transparent_union))`). */
+static long pend_vsize; static int pend_mode, pend_tunion;
+static int mode_of(const char *m) {   /* an integer mode's byte size; a floating one's, negated */
+	static const struct { const char *n; int v; } md[] = { {"QI", 1}, {"HI", 2}, {"SI", 4}, {"DI", 8}, {"byte", 1}, {"word", 4}, {"pointer", 4}, {"SF", -4}, {"DF", -8} };
+	char b[64]; size_t L = strlen(m);
+	if (L > 4 && !strncmp(m, "__", 2) && !strcmp(m + L - 2, "__")) snprintf(b, sizeof b, "%.*s", (int)(L - 4), m + 2); else snprintf(b, sizeof b, "%s", m);
+	for (unsigned i = 0; i < sizeof md / sizeof *md; i++) if (!strcmp(b, md[i].n)) return md[i].v;
+	die("parse: unsupported mode(%s) (line %d)", m, tk->line); return 0;
+}
 /* `__attribute__((a, b(x), ...))` (the keyword already consumed): record the declaration attributes we honor
- * into decl_attr; anything else (noreturn, format, unused, ...) is skipped with its payload. */
+ * into decl_attr (the type attributes into pend_*); anything else (noreturn, format, unused, ...) is skipped with
+ * its payload. */
 static void attribute(void) {
 	expect("("); expect("(");
 	while (!is(")") && tk->kind != TK_EOF) {
@@ -157,6 +171,12 @@ static void attribute(void) {
 			tk = tk->next; expect(")");
 		}
 		else if (!strcmp(nm, "used")) decl_attr.used = 1;
+		else if (!strcmp(nm, "vector_size") && consume("(")) {
+			pend_vsize = eval_const(assign()); expect(")");
+			if (pend_vsize <= 0) die("parse: vector_size(%ld) (line %d)", pend_vsize, tk->line);
+		}
+		else if (!strcmp(nm, "mode") && consume("(")) { char m[64]; ident(m); expect(")"); pend_mode = mode_of(m); }
+		else if (!strcmp(nm, "transparent_union")) pend_tunion = 1;
 		else if (!strcmp(nm, "visibility") && consume("(")) {   /* the symbol's ELF visibility (st_other) */
 			if (tk->kind != TK_STR) die("parse: __attribute__((visibility)) needs a string (line %d)", tk->line);
 			const char *v = tk->sval;
@@ -186,10 +206,11 @@ static void skip_parens(void) { expect("("); int d = 1; while (d && tk->kind != 
 /* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
  * `packed` -> *packed=1, `aligned(N)` -> *alignb=N. Unknown attributes (with any (...) payload) are skipped.
  * A name may be spelled bare or double-underscored (packed / __packed__). */
-static void parse_attribute(int *packed, int *alignb, int *sso) {
+static void parse_attribute(int *packed, int *alignb, int *sso, int *tunion) {
 	expect("("); expect("(");
 	while (!is(")") && tk->kind != TK_EOF) {   /* attribute names are plain identifiers, so match on text */
 		if (!strcmp(tk->text, "packed") || !strcmp(tk->text, "__packed__")) { if (packed) *packed = 1; tk = tk->next; }
+		else if (!strcmp(tk->text, "transparent_union") || !strcmp(tk->text, "__transparent_union__")) { *tunion = 1; tk = tk->next; }
 		else if (!strcmp(tk->text, "scalar_storage_order") || !strcmp(tk->text, "__scalar_storage_order__")) {   /* GCC: byte order of the scalars */
 			tk = tk->next; expect("(");
 			if (tk->kind != TK_STR || (strcmp(tk->sval, "big-endian") && strcmp(tk->sval, "little-endian")))
@@ -204,22 +225,60 @@ static void parse_attribute(int *packed, int *alignb, int *sso) {
 	expect(")"); expect(")");
 }
 
+static Type *qualify(Type *t, int q) {   /* a const/volatile-qualified copy (identical otherwise) */
+	if (!q || (t->quals & q) == q) return t;
+	if (t->kind == TY_STRUCT) return t;   /* a struct keeps its identity: it may still be incomplete (completed in place later) */
+	Type *c = calloc(1, sizeof *c); *c = *t; c->quals |= q; return c;
+}
+/* A type in mode m: an integer keeps its signedness (and enum identity) at m's width; SF/DF name float/double. */
+static Type *mode_type(Type *t, int m) {
+	if (m < 0) { if (!is_fp(t)) die("parse: a floating mode on a non-floating type (line %d)", tk->line); return qualify(m == -4 ? ty_float : ty_double, t->quals); }
+	if (t->kind >= TY_PTR || is_fp(t) || t->is_bool) die("parse: an integer mode on a type that is not an integer (line %d)", tk->line);
+	int u = t->is_unsigned;
+	Type *r = m == 1 ? (u ? ty_char : ty_schar) : m == 2 ? (u ? ty_ushort : ty_short) : m == 4 ? (u ? ty_uint : ty_int) : (u ? ty_ullong : ty_llong);
+	if (t->tag) { Type *c = calloc(1, sizeof *c); *c = *r; c->tag = t->tag; r = c; }
+	return qualify(r, t->quals);
+}
+/* vector_size applies, as in GCC, through pointers and arrays to the innermost type: `int *p
+ * __attribute__((vector_size(16)))` is a pointer to a vector. */
+static Type *vector_innermost(Type *t, long vsize) {
+	if (t->kind == TY_PTR || t->kind == TY_ARRAY) {
+		if (t->vsize_off) die("parse: vector_size on a variable-length array (line %d)", tk->line);
+		Type *c = calloc(1, sizeof *c); *c = *t; c->base = vector_innermost(t->base, vsize);
+		if (t->kind == TY_ARRAY) c->size = c->base->size * c->len;
+		return c;
+	}
+	if (t->fn_ret) die("parse: vector_size on a function declarator is not supported (line %d)", tk->line);
+	return qualify(vector_of(t, vsize), t->quals);
+}
+static Type *with_type_attrs(Type *t, long vsize, int mode) {
+	if (mode) t = mode_type(t, mode);
+	return vsize ? vector_innermost(t, vsize) : t;
+}
+/* GCC: a transparent union's members all have its size; a call passes it (any member's type) as its first member. */
+static void make_transparent(Type *t) {
+	if (t->kind != TY_STRUCT || !t->members) die("parse: transparent_union on a type that is not a (complete) union (line %d)", tk->line);
+	for (Member *m = t->members; m; m = m->next)
+		if (m->offset || m->is_bitfield || m->type->size != t->size) die("parse: transparent_union: a member differs from the union in size or place (line %d)", tk->line);
+	t->transparent = 1;
+}
+static Type *take_type_attrs(Type *t) {
+	long v = pend_vsize; int m = pend_mode, tu = pend_tunion; pend_vsize = pend_mode = pend_tunion = 0;
+	if (tu) make_transparent(t);
+	return with_type_attrs(t, v, m);
+}
+static void no_type_attrs(void) { if (pend_vsize || pend_mode || pend_tunion) die("parse: a vector_size/mode/transparent_union attribute in this position is not supported (line %d)", tk->line); }
 /* declaration-specifiers: fold type keywords, qualifiers, and storage classes. Width comes from the
  * base keyword (char=1, short=2, int/long=4 — `long` is 32-bit on ARM32; `long long`/64-bit is TODO),
  * SIGN from signed/unsigned (plain char defaults to unsigned, ARM's default); void ~ unsigned char (so
  * void* scales like char*). const/volatile/register/inline and __attribute__ are consumed and ignored.
  * `td` is set iff `typedef` appears; `sc` collects the storage-class bits (SC_EXTERN/SC_STATIC). Both are
  * out-params (may be NULL), NOT globals — a recursive declspec (struct members) would clobber a global. */
-static Type *qualify(Type *t, int q) {   /* a const/volatile-qualified copy (identical otherwise) */
-	if (!q || (t->quals & q) == q) return t;
-	if (t->kind == TY_STRUCT) return t;   /* a struct keeps its identity: it may still be incomplete (completed in place later) */
-	Type *c = calloc(1, sizeof *c); *c = *t; c->quals |= q; return c;
-}
 static Type *declspec(int *td, int *sc) {
 	if (td) *td = 0;
 	if (sc) *sc = 0;
 	enum { B_NONE, B_VOID, B_CHAR, B_SHORT, B_INT, B_LONG, B_LLONG, B_BOOL, B_FLOAT, B_DOUBLE } base = B_NONE;
-	int is_uns = 0, saw_signed = 0, seen = 0, saw_long = 0, quals = 0;
+	int is_uns = 0, saw_signed = 0, seen = 0, saw_long = 0, quals = 0, mode = 0, tunion = 0; long vsize = 0;   /* + the type attributes */
 	Type *tagty = NULL;                                              /* struct/union/enum/typedef: a complete type */
 	for (;;) {
 		if (consume("typedef")) { if (td) *td = 1; continue; }
@@ -231,7 +290,8 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("volatile")) { quals |= 2; continue; }
 		if (consume("restrict") || consume("inline")) continue;
 		if (consume("__extension__")) continue;   /* GNU no-op prefix */
-		if (consume("__attribute__")) { attribute(); continue; }
+		if (consume("__attribute__")) {   /* a type attribute here applies to the whole specifier's type, wherever it stands */
+			attribute(); if (pend_vsize) vsize = pend_vsize; if (pend_mode) mode = pend_mode; tunion |= pend_tunion; pend_vsize = pend_mode = pend_tunion = 0; continue; }
 		if (consume("signed")) { saw_signed = 1; seen = 1; continue; }
 		if (consume("unsigned")) { is_uns = 1;     seen = 1; continue; }
 		if (consume("void"))     { base = B_VOID;  seen = 1; continue; }
@@ -266,7 +326,8 @@ static Type *declspec(int *td, int *sc) {
 	case B_LLONG: r = is_uns ? ty_ullong : ty_llong; break;             /* long long = 64-bit (register pair) */
 	default:      r = is_uns ? ty_uint : ty_int; break;                 /* int / long (32-bit on ARM32) */
 	}
-	return qualify(r, quals);
+	if (tunion) make_transparent(r);
+	return qualify(with_type_attrs(r, vsize, mode), quals);
 }
 static Node *assign(void);        /* fwd: array bounds may be a constant expression, e.g. [52 + 8*32] */
 static long eval_const(Node *n);
@@ -324,6 +385,7 @@ static Type *func_proto(Type *ret) {
 static Type *declarator(Type *base, char *name) {
 	while (consume("*")) { base = pointer_to(base); for (;;) { if (consume("const")) base = qualify(base, 1); else if (consume("volatile")) base = qualify(base, 2); else if (!consume("restrict")) break; } }   /* `char * const` */
 	while (consume("__attribute__")) attribute();       /* e.g. `void * __attribute__((...)) name` */
+	base = take_type_attrs(base);
 	if (consume("(")) {                                      /* grouped declarator: (*name)... = pointer ; (name)... = plain grouping (e.g. function-type typedef `T (name)(params)`) */
 		int ptr = 0, pq[16];                                            /* each grouped `*`'s qualifiers: `(*const fns[])(...)` */
 		while (consume("*")) {
@@ -338,14 +400,15 @@ static Type *declarator(Type *base, char *name) {
 		expect(")");
 		if (is("(")) { if (ptr) base = func_proto(base); else skip_parens(); } else base = type_suffix(base);   /* a function param list, or an array suffix */
 		while (consume("__attribute__")) attribute();              /* trailing: `void (*f)(args) __attribute__((noreturn))` */
+		base = take_type_attrs(base);
 		for (int k = 0; k < ptr; k++) base = qualify(pointer_to(base), pq[k]);   /* innermost `*` first */
 		return arrlen >= 0 ? array_of(base, arrlen) : base;
 	}
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
 	while (consume("__attribute__")) attribute();       /* trailing attr before the suffix: `int __attribute__((x)) v` */
-	base = type_suffix(base);
+	base = type_suffix(take_type_attrs(base));
 	while (consume("__attribute__")) attribute();       /* trailing attr after the suffix: `int v[N] __attribute__((aligned(64)))` */
-	return base;
+	return take_type_attrs(base);
 }
 
 /* struct-spec = "struct" tag? ( "{" (declspec declarator ("," declarator)* ";")* "}" )?  — a named
@@ -404,8 +467,8 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 
 static Type *struct_decl(int is_union) {
 	int packed = 0, alignb = 0;
-	int sso = 0;
-	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso);   /* struct __attribute__((packed)) S */
+	int sso = 0, tunion = 0;
+	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso, &tunion);   /* struct __attribute__((packed)) S */
 	char tag[64] = ""; if (tk->kind == TK_IDENT) ident(tag);
 	if (!is("{")) {                                          /* a reference: the visible tag, else a new incomplete type */
 		/* `struct tag;` alone declares a NEW incomplete type in this scope, hiding an outer one (C11 6.7.2.3p7). */
@@ -436,18 +499,20 @@ static Type *struct_decl(int is_union) {
 			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt;
 			if (consume(":")) { m->is_bitfield = 1; m->bit_width = (int)eval_const(assign()); }   /* type name : width */
 			while (consume("__attribute__")) attribute();
+			no_type_attrs();
 			m->align = decl_attr.align;
 			mc = mc->next = m;
 		} while (consume(","));
 		expect(";");
 	}
 	decl_attr = outer;
-	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso);   /* struct {...} __attribute__((packed)) */
+	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso, &tunion);   /* struct {...} __attribute__((packed)) */
 	ty->members = mh.next;
 	layout_struct(ty, packed, alignb, is_union);
+	if (tunion) make_transparent(ty);
 	if ((ty->sso = sso))                                 /* scalars and arrays of scalars reverse; nested aggregates aren't modelled */
 		for (Member *m = ty->members; m; m = m->next)
-			if (m->type->kind == TY_STRUCT || (m->type->kind == TY_ARRAY && (m->type->base->kind == TY_ARRAY || m->type->base->kind == TY_STRUCT)))
+			if (is_aggr(m->type) || (m->type->kind == TY_ARRAY && (m->type->base->kind == TY_ARRAY || is_aggr(m->type->base))))
 				die("parse: scalar_storage_order struct '%s': member '%s' is a nested aggregate (not supported)", tag, m->name);
 	/* Promote members of anonymous struct/union members into this type (accessible directly), at the
 	 * anonymous block's offset + the sub-member's own offset. */
@@ -472,6 +537,7 @@ static Type *enum_decl(void) {
 	while (!is("}")) {
 		char nm[64]; ident(nm);
 		while (consume("__attribute__")) attribute();
+		no_type_attrs();
 		if (consume("=")) val = eval_const(assign());   /* any const expr: another enum constant, 1<<N, … */
 		ident_add(nm, ID_ENUMC)->val = val;
 		if (val < lo) lo = val;
@@ -531,6 +597,7 @@ static Node *rmw(Node *lv, NodeKind op, Node *rhs, int post);   /* op= / ++ / --
 		if (!top && a->quals != b->quals) return 0;
 		if (a->tag != b->tag || a->is_bool != b->is_bool) return 0;          /* enums / long double are distinct */
 		if (a->kind == TY_STRUCT) return a->members == b->members && a->size == b->size;   /* the same declaration */
+		if (a->kind == TY_VECTOR) return a->len == b->len && types_match_q(a->base, b->base, 1);
 		if (a->kind == TY_PTR) return types_match_q(a->base, b->base, 0);
 		if (a->kind == TY_ARRAY) return (!a->len || !b->len || a->len == b->len) && types_match_q(a->base, b->base, 0);
 		if (a->fn_ret || b->fn_ret) return a->fn_ret && b->fn_ret && types_match_q(a->fn_ret, b->fn_ret, 1);
@@ -559,6 +626,141 @@ static Node *stmtexpr_of(Node *binds, Node *val) {   /* ({ binds...; val; }) */
 	for (Node *b = binds; b; ) { Node *nx = b->next; b->next = NULL; *pp = b; pp = &b->next; b = nx; }
 	*pp = unary(ND_EXPRSTMT, val); add_type(val); se->type = val->type; return se;
 }
+/* ---- GCC vector extension -------------------------------------------------------------------------------
+ * A vector (vector_size) is held and copied by value like a struct, and codegen has no vector instructions: every
+ * operator is lowered here, lane by lane, to the scalar code for each lane over temporaries.
+ *   a OP b     + - * / % & | ^ << >> per lane. A scalar operand is converted to the element type and used for every
+ *              lane (a vector's scalar shift count as it is). The result has the left vector operand's type.
+ *   a CMP b    lanes of the same-width signed integer: -1 where true, 0 where false — an opaque vector (it converts
+ *              implicitly to any vector of its size)
+ *   -a ~a      per lane; OP= / ++ / -- update the lvalue (evaluated once) through a pointer
+ *   v[i]       lane i, an lvalue when v is one
+ *   (T)v       the same bytes as another vector, or an integer, of the same size
+ *   __builtin_shuffle(a[, b], mask)   lane i = lane mask[i] of a (of a then b), modulo the lane count
+ * GCC's rules are errors here too: two vector operands have the same lane count and element kind and width
+ * (signedness may differ); a scalar operand must convert to the element type without truncation. */
+static Type *type_of(Node *n) { if (!n->type) add_type(n); return n->type; }
+static int is_lval(Node *n) { return n->kind == ND_VAR || n->kind == ND_GVAR || n->kind == ND_DEREF || n->kind == ND_MEMBER; }
+static Node *vec_temp(Type *t) {   /* a fresh uninitialized temporary */
+	if (!in_func) die("parse: a vector operation outside a function (line %d)", tk->line);
+	Node *v = node(ND_VAR); strcpy(v->name, "__vec_tmp"); v->offset = add_local("", t); v->type = t; return v;
+}
+static Node *lane(Node *v, int i) {   /* lane i of vector variable v */
+	Node *n = node(ND_MEMBER); n->lhs = ref(v); n->offset = i * v->type->base->size; n->type = v->type->base; return n;
+}
+static Node *vec_var(Node ***tail, Node *e) {   /* e if a plain variable (its lanes read in place), else a temporary holding it */
+	return (e->kind == ND_VAR && !e->vla_obj) || e->kind == ND_GVAR ? e : bind(tail, e->type, e);
+}
+static void vec_assign_ok(Type *to, Type *from, const char *what) {
+	if ((is_vec(to) || is_vec(from)) && !vec_convertible(to, from)) die("parse: incompatible vector types in %s (line %d)", what, tk->line);
+}
+static void vec_scalar_type(Type *st) {   /* an arithmetic scalar — not a pointer, _Bool or enum-typed value (GCC) */
+	if (st->kind >= TY_PTR || st->is_bool || st->tag > 0) die("parse: invalid scalar operand with a vector (line %d)", tk->line);
+}
+/* GCC: the scalar s converts to vector vt's element type without truncation. An integer constant must fit (a sign
+ * change alone is allowed); a floating one must be exact, and only into floating lanes; a variable's type must not
+ * be wider (for floating lanes: no more value bits than the significand). */
+static void vec_scalar_ok(Type *vt, Node *s) {
+	Type *e = vt->base, *st = type_of(s); int ok = 1, mant = e->kind == TY_FLOAT ? 24 : 53;
+	vec_scalar_type(st);
+	if (is_fp(st)) {
+		double d = eval_fp(s, &ok);
+		if (is_fp(e) && (ok ? e->kind == TY_DOUBLE || d != d || (double)(float)d == d : st->size <= e->size)) return;
+		die("parse: converting the floating scalar to the vector's elements truncates it (line %d)", tk->line);
+	}
+	long v = eval_try(s, &ok); int fits;
+	if (!ok) fits = is_fp(e) ? 8 * st->size - !st->is_unsigned <= mant : st->size <= e->size;
+	else if (is_fp(e)) {   /* exact: the magnitude's significant bits fit the significand */
+		unsigned long long m = st->is_unsigned || v >= 0 ? (unsigned long long)v : -(unsigned long long)v;
+		while (m && !(m & 1)) m >>= 1;
+		fits = !(m >> mant);
+	} else {
+		int bits = 8 * e->size; unsigned long long lim = bits == 64 ? ~0ULL : (1ULL << (bits - !e->is_unsigned)) - 1;   /* the largest lane value */
+		fits = st->is_unsigned ? !e->is_unsigned || (unsigned long long)v <= lim
+		     : v < 0 ? e->is_unsigned || bits == 64 || v >= -(long)(1ULL << (bits - 1)) : (unsigned long long)v <= lim;
+	}
+	if (!fits) die("parse: converting the scalar to the vector's elements truncates it (line %d)", tk->line);
+}
+static Node *vec_binary(NodeKind k, Node *a, Node *b) {
+	Type *ta = type_of(a), *tb = type_of(b), *vt = is_vec(ta) ? ta : tb;
+	int cmp = k == ND_EQ || k == ND_NE || k == ND_LT || k == ND_LE || k == ND_GT || k == ND_GE, shift = k == ND_SHL || k == ND_SHR;
+	if (is_vec(ta) && is_vec(tb) && (ta->len != tb->len || ta->size != tb->size || is_fp(ta->base) != is_fp(tb->base)))
+		die("parse: invalid vector operands: different lane counts or element types (line %d)", tk->line);
+	if (is_fp(vt->base) && (shift || k == ND_MOD || k == ND_BITAND || k == ND_BITOR || k == ND_BITXOR))
+		die("parse: invalid operator on a floating vector (line %d)", tk->line);
+	Node *h = NULL, **t = &h, *x, *y;
+	if (is_vec(ta)) x = vec_var(&t, a); else { vec_scalar_ok(vt, a); x = bind(&t, vt->base, a); }
+	if (is_vec(tb)) y = vec_var(&t, b);
+	else if (shift && is_vec(ta)) { vec_scalar_type(tb); if (is_fp(tb)) die("parse: a floating shift count (line %d)", tk->line); y = bind(&t, NULL, b); }
+	else { vec_scalar_ok(vt, b); y = bind(&t, vt->base, b); }
+	Type *rt = vt;
+	if (cmp) {
+		int w = vt->base->size;
+		rt = vector_of(w == 1 ? ty_schar : w == 2 ? ty_short : w == 4 ? ty_int : ty_llong, vt->size); rt->opaque = 1;
+	}
+	Node *r = vec_temp(rt);
+	for (int i = 0; i < vt->len; i++) {
+		Node *v = binary(k, is_vec(ta) ? lane(x, i) : ref(x), is_vec(tb) ? lane(y, i) : ref(y));
+		*t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lane(r, i), cmp ? unary(ND_NEG, v) : v)); t = &(*t)->next;
+	}
+	return stmtexpr_of(h, ref(r));
+}
+static Node *vec_unary(NodeKind k, Node *a) {
+	Type *vt = type_of(a);
+	if (k == ND_NOT) die("parse: '!' on a vector (line %d)", tk->line);
+	if (k == ND_BITNOT && is_fp(vt->base)) die("parse: '~' on a floating vector (line %d)", tk->line);
+	Node *h = NULL, **t = &h, *x = vec_var(&t, a), *r = vec_temp(vt);
+	for (int i = 0; i < vt->len; i++) { *t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lane(r, i), unary(k, lane(x, i)))); t = &(*t)->next; }
+	return stmtexpr_of(h, ref(r));
+}
+/* lv OP= e, ++/--: the lvalue's address once, then the operand (GCC's order), then the old value. */
+static Node *vec_rmw(Node *lv, NodeKind op, Node *e, int post) {
+	Type *vt = lv->type, *et = type_of(e); Node *h = NULL, **t = &h, *opd;
+	Node *p = bind(&t, pointer_to(vt), unary(ND_ADDR, lv));
+	if (is_vec(et) || op == ND_SHL || op == ND_SHR) opd = bind(&t, NULL, e);   /* vec_binary checks it */
+	else { vec_scalar_ok(vt, e); opd = bind(&t, vt->base, e); }
+	Node *old = bind(&t, vt, unary(ND_DEREF, ref(p)));
+	*t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, unary(ND_DEREF, ref(p)), vec_binary(op, ref(old), ref(opd)))); t = &(*t)->next;
+	return stmtexpr_of(h, post ? ref(old) : unary(ND_DEREF, ref(p)));
+}
+static Node *vec_index(Node *v, Node *idx) {
+	Type *vt = type_of(v); Node *h = NULL, **t = &h;
+	Node *at = is_lval(v) ? v : bind(&t, vt, v);   /* an rvalue's lanes: from a temporary */
+	Node *el = unary(ND_DEREF, new_add(cast_to(pointer_to(vt->base), unary(ND_ADDR, at)), idx));
+	return h ? stmtexpr_of(h, el) : el;
+}
+static Node *vec_cast(Type *to, Node *e) {
+	Type *f = type_of(e);
+	if (!(is_vec(f) || (f->kind < TY_PTR && !is_fp(f))) || !(is_vec(to) || (to->kind < TY_PTR && !is_fp(to))))
+		die("parse: a vector converts only to/from a vector or an integer (line %d)", tk->line);
+	if (to->size != f->size) die("parse: cannot convert between a %d-byte and a %d-byte type involving a vector (line %d)", f->size, to->size, tk->line);
+	Node *h = NULL, **t = &h, *v = bind(&t, f, e);
+	return stmtexpr_of(h, unary(ND_DEREF, cast_to(pointer_to(to), unary(ND_ADDR, v))));
+}
+static Node *vec_shuffle(Node *a, Node *b, Node *mask) {
+	Type *va = type_of(a), *vm = type_of(mask);
+	if (!is_vec(va) || (b && !(is_vec(type_of(b)) && types_match(b->type, va))))
+		die("parse: __builtin_shuffle: the operands must be vectors of one type (line %d)", tk->line);
+	if (!is_vec(vm) || is_fp(vm->base) || vm->len != va->len || vm->base->size != va->base->size)
+		die("parse: __builtin_shuffle: the mask must be an integer vector of the operands' lane count and width (line %d)", tk->line);
+	int n = b ? 2 * va->len : va->len;
+	Node *h = NULL, **t = &h, *m = vec_var(&t, mask), *src = vec_temp(array_of(va->base, n)), *r = vec_temp(va);
+	for (int k = 0; k < (b ? 2 : 1); k++) {   /* the lanes to pick from, in one array: a then b */
+		Node *dst = node(ND_MEMBER); dst->lhs = ref(src); dst->offset = k * va->size; dst->type = va;
+		*t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dst, k ? b : a)); t = &(*t)->next;
+	}
+	for (int i = 0; i < va->len; i++) {
+		Node *ix = cast_to(ty_int, binary(ND_BITAND, lane(m, i), num(n - 1)));
+		*t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lane(r, i), unary(ND_DEREF, new_add(ref(src), ix)))); t = &(*t)->next;
+	}
+	return stmtexpr_of(h, ref(r));
+}
+static Node *un_op(NodeKind k, Node *e) { return is_vec(type_of(e)) ? vec_unary(k, e) : unary(k, e); }
+static Node *arith(NodeKind k, Node *l, Node *r) {   /* a binary operator (typed now, so a chain is typed once) */
+	if (is_vec(type_of(l)) || is_vec(type_of(r))) return vec_binary(k, l, r);
+	Node *n = binary(k, l, r); type_node(n); return n;
+}
+
 /* __builtin_{add,sub,mul}_overflow(a, b, r): *r = a OP b wrapped to r's type T; the value is whether the EXACT
  * result doesn't fit T (any operand and result types). <=32-bit operands are exact in 64 bits. Otherwise the exact
  * result is carried as its low 64 bits W plus the part above them: for +/- the high word k of the 65-bit value
@@ -634,6 +836,11 @@ static Node *builtin_lower(char *name) {
 		expect("("); assign(); expect(","); long t = eval_const(assign()); expect(")");
 		Node *n = num((t & 2) ? 0 : 0xffffffffL); n->type = ty_uint; return n;   /* types 0/1 -> (size_t)-1, 2/3 -> 0 (GCC semantics) */
 	}
+	if (!strcmp(b, "shuffle")) {   /* (a, mask) or (a, b, mask) */
+		expect("("); Node *x = assign(), *y = NULL; expect(","); Node *m = assign();
+		if (consume(",")) { y = m; m = assign(); }
+		expect(")"); return vec_shuffle(x, y, m);
+	}
 	if (!strcmp(b, "va_copy")) { expect("("); Node *d = assign(); expect(","); Node *sv = assign(); expect(")"); return binary(ND_ASSIGN, d, sv); }
 	{   /* floating constants: inf / huge_val / nan("") (payload ignored) — folded like literals */
 		static const struct { const char *n; int nan; char t; } fc[] = { {"inf",0,'d'}, {"inff",0,'f'}, {"infl",0,'d'}, {"huge_val",0,'d'},
@@ -645,7 +852,7 @@ static Node *builtin_lower(char *name) {
 	}
 	if (!strcmp(b, "classify_type")) {   /* GCC's type classes, of the (decayed) argument's type */
 		expect("("); Node *e = assign(); expect(")"); add_type(e); Type *t = e->type;
-		int c = !t ? 1 : t->is_bool ? 4 : is_fp(t) ? 8 : (t->kind == TY_PTR || t->kind == TY_ARRAY) ? 5
+		int c = !t ? 1 : is_vec(t) ? -1 : t->is_bool ? 4 : is_fp(t) ? 8 : (t->kind == TY_PTR || t->kind == TY_ARRAY) ? 5
 		      : t->kind == TY_STRUCT ? (t->members && t->members->next && t->members->offset == t->members->next->offset ? 13 : 12) : 1;
 		return num(c);
 	}
@@ -873,6 +1080,7 @@ static Node *postfix_ops(Node *n) {
 	for (;;) {
 		if (consume("[")) {
 			Node *idx = expr(); expect("]");
+			if (is_vec(type_of(n))) { n = vec_index(n, idx); continue; }
 			int rev = (n->kind == ND_MEMBER && n->sso) || (idx->kind == ND_MEMBER && idx->sso);   /* an element of a reversed array */
 			n = unary(ND_DEREF, new_add(n, idx)); n->sso = rev;
 		}
@@ -898,7 +1106,9 @@ static int cast_ahead(void) {
 
 static Node *unary_expr(void) {
 	if (cast_ahead()) {                                      /* (type) expr — re-types the operand */
-		char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
+		char d[64]; expect("(");
+		int to_void = is("void") && !strcmp(tk->next->text, ")");   /* (void) — `void` is char in our types */
+		Type *t = declarator(declspec(NULL, NULL), d); expect(")");
 		if (is("{")) {   /* compound literal (type){init}: an anonymous initialized object, yields its lvalue */
 			static int cl_seq;
 			char nm[32]; snprintf(nm, sizeof nm, ".Lcl%d", cl_seq++);
@@ -927,6 +1137,7 @@ static Node *unary_expr(void) {
 			Node *st = unary(ND_EXPRSTMT, binary(ND_ASSIGN, mv, e)); st->next = unary(ND_EXPRSTMT, y);
 			Node *se = node(ND_STMTEXPR); se->body = st; se->type = t; return se;
 		}
+		if (is_vec(t) || is_vec(e->type)) return to_void ? binary(ND_COMMA, e, num(0)) : vec_cast(t, e);   /* (void)v: evaluated, discarded */
 		Node *n = node(ND_CAST); n->lhs = e; n->type = t; return with_vla_pending(n);
 	}
 	if (consume("sizeof")) {                                 /* sizeof(type) or sizeof expr -> a constant */
@@ -947,9 +1158,9 @@ static Node *unary_expr(void) {
 		return unary(ND_ADDR, e);
 	}
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
-	if (consume("-")) return unary(ND_NEG, unary_expr());
-	if (consume("!")) return unary(ND_NOT, unary_expr());
-	if (consume("~")) return unary(ND_BITNOT, unary_expr());
+	if (consume("-")) return un_op(ND_NEG, unary_expr());
+	if (consume("!")) return un_op(ND_NOT, unary_expr());
+	if (consume("~")) return un_op(ND_BITNOT, unary_expr());
 	if (consume("+")) return unary_expr();                   /* unary plus is a no-op */
 	return postfix();
 }
@@ -958,6 +1169,7 @@ static Node *unary_expr(void) {
  * commuted to `ptr + int`; `ptr - ptr` is the element distance (difference / pointee size). */
 static Node *new_add(Node *l, Node *r) {
 	add_type(l); add_type(r);
+	if (is_vec(l->type) || is_vec(r->type)) return vec_binary(ND_ADD, l, r);
 	if (is_ptr_like(l->type) && is_ptr_like(r->type)) die("parse: cannot add two pointers");
 	if (!is_ptr_like(l->type) && is_ptr_like(r->type)) { Node *t = l; l = r; r = t; }
 	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, vsize_node(l->type->base));   /* scale by element size (a VLA row: runtime) */
@@ -965,18 +1177,19 @@ static Node *new_add(Node *l, Node *r) {
 }
 static Node *new_sub(Node *l, Node *r) {
 	add_type(l); add_type(r);
+	if (is_vec(l->type) || is_vec(r->type)) return vec_binary(ND_SUB, l, r);
 	if (is_ptr_like(l->type) && is_ptr_like(r->type)) return binary(ND_DIV, binary(ND_SUB, l, r), vsize_node(l->type->base));
 	if (is_ptr_like(l->type)) r = binary(ND_MUL, r, vsize_node(l->type->base));
 	return binary(ND_SUB, l, r);
 }
-static Node *mul(void)   { Node *n = unary_expr(); for (;;) { if (consume("*")) n = binary(ND_MUL, n, unary_expr()); else if (consume("/")) n = binary(ND_DIV, n, unary_expr()); else if (consume("%")) n = binary(ND_MOD, n, unary_expr()); else return n; } }
+static Node *mul(void)   { Node *n = unary_expr(); for (;;) { if (consume("*")) n = arith(ND_MUL, n, unary_expr()); else if (consume("/")) n = arith(ND_DIV, n, unary_expr()); else if (consume("%")) n = arith(ND_MOD, n, unary_expr()); else return n; } }
 static Node *add(void)   { Node *n = mul();         for (;;) { if (consume("+")) n = new_add(n, mul()); else if (consume("-")) n = new_sub(n, mul()); else return n; } }
-static Node *shift(void) { Node *n = add();         for (;;) { if (consume("<<")) n = binary(ND_SHL, n, add()); else if (consume(">>")) n = binary(ND_SHR, n, add()); else return n; } }
-static Node *rel(void)   { Node *n = shift();       for (;;) { if (consume("<")) n = binary(ND_LT, n, shift()); else if (consume("<=")) n = binary(ND_LE, n, shift()); else if (consume(">")) n = binary(ND_GT, n, shift()); else if (consume(">=")) n = binary(ND_GE, n, shift()); else return n; } }
-static Node *eq(void)    { Node *n = rel();         for (;;) { if (consume("==")) n = binary(ND_EQ, n, rel()); else if (consume("!=")) n = binary(ND_NE, n, rel()); else return n; } }
-static Node *bitand(void){ Node *n = eq();          while (consume("&")) n = binary(ND_BITAND, n, eq()); return n; }
-static Node *bitxor(void){ Node *n = bitand();      while (consume("^")) n = binary(ND_BITXOR, n, bitand()); return n; }
-static Node *bitor(void) { Node *n = bitxor();      while (consume("|")) n = binary(ND_BITOR, n, bitxor()); return n; }
+static Node *shift(void) { Node *n = add();         for (;;) { if (consume("<<")) n = arith(ND_SHL, n, add()); else if (consume(">>")) n = arith(ND_SHR, n, add()); else return n; } }
+static Node *rel(void)   { Node *n = shift();       for (;;) { if (consume("<")) n = arith(ND_LT, n, shift()); else if (consume("<=")) n = arith(ND_LE, n, shift()); else if (consume(">")) n = arith(ND_GT, n, shift()); else if (consume(">=")) n = arith(ND_GE, n, shift()); else return n; } }
+static Node *eq(void)    { Node *n = rel();         for (;;) { if (consume("==")) n = arith(ND_EQ, n, rel()); else if (consume("!=")) n = arith(ND_NE, n, rel()); else return n; } }
+static Node *bitand(void){ Node *n = eq();          while (consume("&")) n = arith(ND_BITAND, n, eq()); return n; }
+static Node *bitxor(void){ Node *n = bitand();      while (consume("^")) n = arith(ND_BITXOR, n, bitand()); return n; }
+static Node *bitor(void) { Node *n = bitxor();      while (consume("|")) n = arith(ND_BITOR, n, bitxor()); return n; }
 static Node *logand(void){ Node *n = bitor();       while (consume("&&")) n = binary(ND_AND, n, bitor()); return n; }
 static Node *logor(void) { Node *n = logand();      while (consume("||")) n = binary(ND_OR, n, logand()); return n; }
 static Node *conditional(void){ Node *c = logor(); if (!consume("?")) return c;   /* c ? then : els */
@@ -990,7 +1203,9 @@ static Node *conditional(void){ Node *c = logor(); if (!consume("?")) return c; 
  * scaling (new_add/new_sub) apply unchanged. */
 static Node *rmw(Node *lv, NodeKind op, Node *e, int post) {
 	add_type(lv); add_type(e);
-	if (lv->kind != ND_VAR && lv->kind != ND_GVAR && lv->kind != ND_DEREF && lv->kind != ND_MEMBER) die("parse: assignment to non-lvalue (line %d)", tk->line);
+	if (!is_lval(lv)) die("parse: assignment to non-lvalue (line %d)", tk->line);
+	if (is_vec(lv->type)) return vec_rmw(lv, op, e, post);
+	if (is_vec(e->type)) die("parse: a vector operand updating a scalar (line %d)", tk->line);
 	Node *r = node(ND_RMW), *cur = node(ND_CUR), *opd = node(ND_CUR);
 	cur->type = lv->type; cur->target = r; opd->type = e->type; opd->target = r; opd->val = 1;
 	r->lhs = lv; r->init = e; r->is_post = post;
@@ -1003,8 +1218,10 @@ static Node *assign(void) {
 		{"&=", ND_BITAND}, {"|=", ND_BITOR}, {"^=", ND_BITXOR}, {"<<=", ND_SHL}, {">>=", ND_SHR} };
 	for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++) if (consume(ops[i].s)) return rmw(n, ops[i].k, assign(), 0);
 	if (!consume("=")) return n;
-	if (n->kind != ND_VAR && n->kind != ND_GVAR && n->kind != ND_DEREF && n->kind != ND_MEMBER) die("parse: assignment to non-lvalue (line %d)", tk->line);
-	return binary(ND_ASSIGN, n, assign());
+	if (!is_lval(n)) die("parse: assignment to non-lvalue (line %d)", tk->line);
+	Node *r = assign();
+	if (is_vec(type_of(n))) vec_assign_ok(n->type, type_of(r), "an assignment");   /* (a vector into a scalar: codegen's check) */
+	return binary(ND_ASSIGN, n, r);
 }
 static Node *expr(void)  { Node *n = assign(); while (consume(",")) n = binary(ND_COMMA, n, assign()); return n; }   /* comma operator */
 
@@ -1157,7 +1374,11 @@ static Node *stmt(void) {
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
 		Node *n = node(ND_LABEL); ident(n->name); map_label(n->name); expect(":"); return n;
 	}
-	if (consume("return")) { Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";"); return n; }   /* `return;` allowed */
+	if (consume("return")) {   /* `return;` allowed */
+		Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";");
+		if (n->lhs && is_vec(cur_fn_ret)) vec_assign_ok(cur_fn_ret, type_of(n->lhs), "a return");
+		return n;
+	}
 	if (consume("if")) {
 		Node *n = node(ND_IF); expect("("); n->cond = expr(); expect(")"); n->then = stmt(); if (consume("else")) n->els = stmt();
 		/* Constant condition: keep only the taken branch (what GCC's DCE does). The kernel's BUILD_BUG_ON is
@@ -1212,6 +1433,7 @@ static Node *stmt(void) {
 				Type *pts[MAXPARAMS]; int np = 0, va = proto_params(pts, &np);   /* the parameter TYPES decide how calls pass FP args */
 				record_func_sig(nm, ty, pts, np, va);
 				while (consume("__attribute__")) attribute();   /* trailing: `void h(void) __attribute__((error("...")))` */
+				no_type_attrs();
 				sig_set_pcs(nm, decl_attr.pcs);
 				continue;
 			}
@@ -1222,6 +1444,7 @@ static Node *stmt(void) {
 					static int sseq; char sn[80]; snprintf(sn, sizeof sn, "%.60s.%d", nm, sseq++); g = new_global(sn); g->is_static = 1; g->type = ty;
 				} else if (!(g = global_find(nm))) { g = new_global(nm); g->type = ty; g->is_extern = 1; }
 				while (consume("__attribute__")) attribute();
+				no_type_attrs();
 				attr_merge(&g->attr, &decl_attr);
 				if (sc & SC_TLS) g->is_tls = 1;
 				add_local_at(nm, ty, 0); strncpy(locals[nlocals - 1].gname, g->name, 63);   /* bound BEFORE the initializer: it may name itself (&x.head) */
@@ -1249,7 +1472,7 @@ static Node *stmt(void) {
 			if (consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
 			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
 				if (is("{") || ty->kind == TY_ARRAY) bc = bc->next = init_of(v, ty);   /* aggregate initializer (incl. char a[N] = "str") */
-				else bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, assign())); }
+				else { Node *r = assign(); if (is_vec(ty)) vec_assign_ok(ty, type_of(r), "an initializer"); bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, r)); } }
 		} while (consume(","));
 		expect(";");
 		Node *n = node(ND_BLOCK); n->body = blk.next; return n;
@@ -1265,6 +1488,7 @@ static void typedef_decl(Type *base, Attr battr) {
 		char nm[64]; Type *ty = declarator(base, nm);
 		if (is("(")) ty = func_proto(ty);
 		while (consume("__attribute__")) attribute();
+		no_type_attrs();
 		add_typedef(nm, aligned_type(ty, decl_attr.align));
 	} while (consume(","));
 	expect(";");
@@ -1296,7 +1520,7 @@ static int proto_params(Type **pts, int *np) {
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
 static Func *function_tail(const char *name, Type *ret) {
 	strncpy(cur_func_name, name, sizeof cur_func_name - 1);   /* for `__func__` inside the body */
-	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret;
+	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret; cur_fn_ret = ret;
 	in_func = 1;
 	nlocals = 0; local_bytes = 0;
 	scope_push();                                            /* the function's scope: its parameters and body */
@@ -1340,6 +1564,7 @@ static Func *function_tail(const char *name, Type *ret) {
 	}
 	decl_attr = fattr;
 	while (consume("__attribute__")) attribute();       /* trailing: int f(void) __attribute__((noreturn)) { … } — before the binding (pcs) */
+	no_type_attrs();
 	Node *vla_prologue = take_vla_pending();   /* VLA parameter bounds (`int a[n][m]`, `x[i++]`): evaluated at entry */
 	f->nparams = np;
 	{ Type *pts[MAXPARAMS]; for (int i = 0; i < np && i < MAXPARAMS; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic ? 1 : unproto ? 2 : 0); }   /* publish the signature for callers */
@@ -1566,7 +1791,7 @@ static int elide_more(void) {   /* consume the `,` before the next member's init
 	tk = tk->next; return 1;
 }
 static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
-	if (ty->kind == TY_ARRAY) {
+	if (ty->kind == TY_ARRAY || is_vec(ty)) {                /* a vector's lanes elide like an array's elements (GCC) */
 		if (ty->len == 0) die("parse: brace elision into an unsized array (line %d)", tk->line);
 		for (int k = 0; k < ty->len; k++) {
 			if (!*pending && (k ? !elide_more() : 0)) return;
@@ -1597,7 +1822,14 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 	Node *e = *pending ? *pending : assign(); *pending = NULL;   /* scalar leaf */
 	pi_append(tail, base, ty, e, 0, 0);
 }
+static int init_nest;                                   /* braces around the object being initialized (0: a whole declarator's) */
+static int parse_init1(Type *ty, int base, InitPlace **tail);
 static int parse_init(Type *ty, int base, InitPlace **tail) {
+	int braced = is("{");
+	init_nest += braced; int r = parse_init1(ty, base, tail); init_nest -= braced;
+	return r;
+}
+static int parse_init1(Type *ty, int base, InitPlace **tail) {
 	if (is("{")) {
 		expect("{");
 		if (ty->kind == TY_STRUCT) {
@@ -1627,10 +1859,12 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 			}
 			free(marr); expect("}"); init_sso = outer_sso; return ty->size;
 		}
-		if (ty->kind == TY_ARRAY) {
+		if (ty->kind == TY_ARRAY || is_vec(ty)) {           /* a vector: its lanes, in order (no designators, as GCC) */
 			int esz = ty->base->size, idx = 0, maxidx = -1;
 			while (!is("}")) {
 				int lo = idx, hi = idx;
+				if (is_vec(ty) && is("[")) die("parse: a designator in a vector initializer (line %d)", tk->line);
+				if (is_vec(ty) && idx >= ty->len) die("parse: excess elements in a vector initializer (line %d)", tk->line);
 				if (is("[")) { expect("["); lo = hi = (int)eval_const(assign()); if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("="); }
 				InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);   /* parse element once, replicate across the range */
 				for (int k = lo; k <= hi; k++) {
@@ -1711,6 +1945,11 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 		tk = save;   /* just a cast of a constant — fall through to the scalar leaf */
 	}
 	Node *e = assign(); add_type(e);
+	if (is_vec(ty) && !is_vec(e->type) && init_nest) { elide_init(ty, base, tail, &e); return ty->size; }   /* elided braces */
+	if (is_vec(ty) || is_vec(e->type)) {   /* a whole vector value (a whole vector object from a scalar is an error, as in GCC) */
+		vec_assign_ok(ty, e->type, "an initializer");
+		pi_append(tail, base, ty, e, 0, 0); return ty->size;
+	}
 	if ((ty->kind == TY_STRUCT || ty->kind == TY_ARRAY) && !(e->type && e->type->kind == TY_STRUCT && e->type->size == ty->size)) {
 		elide_init(ty, base, tail, &e);   /* brace elision: this scalar starts the aggregate's flattened member list */
 		return ty->size;
@@ -1978,6 +2217,7 @@ Func *parse(Token *tok) {
 				if (ty->size > 0 && g->type->size == 0) g->type = ty;   /* a later declaration completes the type */
 			}
 			while (consume("__attribute__")) attribute();
+			no_type_attrs();
 			attr_merge(&g->attr, &decl_attr);
 			if (decl_attr.alias[0]) decl_symbol_attrs(name, &decl_attr, g->is_static);
 			if (consume("=")) {
