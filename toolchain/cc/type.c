@@ -9,18 +9,18 @@
 #include <stdlib.h>
 #include "cc.h"
 
-static Type int_ty    = { TY_INT,   NULL, 4, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
-static Type uint_ty   = { TY_INT,   NULL, 4, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
-static Type char_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* plain char = unsigned (ARM default) */
-static Type schar_ty  = { TY_CHAR,  NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* signed char                        */
-static Type short_ty  = { TY_SHORT, NULL, 2, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
-static Type ushort_ty = { TY_SHORT, NULL, 2, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
-static Type llong_ty  = { TY_LLONG, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* long long          (r0:r1 pair)    */
-static Type ullong_ty = { TY_LLONG, NULL, 8, 0, NULL, 1, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };   /* unsigned long long                 */
-static Type bool_ty   = { TY_CHAR,  NULL, 1, 0, NULL, 1, 0, NULL, 1, 0, NULL, 0, 0, 0, 0 };   /* _Bool: stores only 0/1        */
-static Type float_ty  = { TY_FLOAT,  NULL, 4, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
-static Type double_ty = { TY_DOUBLE, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, 0 };
-static Type ldouble_ty = { TY_DOUBLE, NULL, 8, 0, NULL, 0, 0, NULL, 0, 0, NULL, 0, 0, 0, -1 };
+static Type int_ty    = { .kind = TY_INT,    .size = 4 };
+static Type uint_ty   = { .kind = TY_INT,    .size = 4, .is_unsigned = 1 };
+static Type char_ty   = { .kind = TY_CHAR,   .size = 1, .is_unsigned = 1 };   /* plain char = unsigned (ARM default) */
+static Type schar_ty  = { .kind = TY_CHAR,   .size = 1 };                     /* signed char                        */
+static Type short_ty  = { .kind = TY_SHORT,  .size = 2 };
+static Type ushort_ty = { .kind = TY_SHORT,  .size = 2, .is_unsigned = 1 };
+static Type llong_ty  = { .kind = TY_LLONG,  .size = 8 };                     /* long long          (r0:r1 pair)    */
+static Type ullong_ty = { .kind = TY_LLONG,  .size = 8, .is_unsigned = 1 };   /* unsigned long long                 */
+static Type bool_ty   = { .kind = TY_CHAR,   .size = 1, .is_unsigned = 1, .is_bool = 1 };   /* _Bool: stores only 0/1  */
+static Type float_ty  = { .kind = TY_FLOAT,  .size = 4 };
+static Type double_ty = { .kind = TY_DOUBLE, .size = 8 };
+static Type ldouble_ty = { .kind = TY_DOUBLE, .size = 8, .tag = -1 };
 Type *ty_int  = &int_ty;   Type *ty_uint   = &uint_ty;   Type *ty_bool = &bool_ty;
 Type *ty_float = &float_ty; Type *ty_double = &double_ty; Type *ty_ldouble = &ldouble_ty;
 int   is_fp(Type *t) { return t && (t->kind == TY_FLOAT || t->kind == TY_DOUBLE); }
@@ -47,7 +47,7 @@ int   align_of(Type *t) {
  * Pointers/arrays/structs pass through unchanged. */
 static Type *promote(Type *t) {
 	if (t->kind == TY_PTR || t->kind == TY_ARRAY || t->kind == TY_STRUCT || is_fp(t)) return t;
-	if (t->size == 8) return t->is_unsigned ? ty_ullong : ty_llong;
+	if (t->size == 8) return t->prec ? t : t->is_unsigned ? ty_ullong : ty_llong;   /* a wide bit-field keeps its width */
 	return (t->is_unsigned && t->size >= 4) ? ty_uint : ty_int;
 }
 /* Usual arithmetic conversions (the integer part): the higher-rank (wider) type wins; at equal rank an
@@ -58,6 +58,10 @@ Type *usual_arith(Type *a, Type *b) {
 	Type *pa = promote(a), *pb = promote(b);
 	int size = pa->size > pb->size ? pa->size : pb->size;
 	if (size == 8) {
+		/* GCC: a wide bit-field is an integer type of its own width — the operand of greater precision wins (the
+		 * unsigned one at equal precision), so u33 + u40 is a 40-bit sum and u40 + int stays 40-bit */
+		int qa = pa->size == 8 ? (pa->prec ? pa->prec : 64) : 32, qb = pb->size == 8 ? (pb->prec ? pb->prec : 64) : 32;
+		if (qa < 64 && qb < 64) return qa > qb ? pa : qb > qa ? pb : pa->is_unsigned ? pa : pb;
 		int u = (pa->size == 8 && pa->is_unsigned) || (pb->size == 8 && pb->is_unsigned);
 		return u ? ty_ullong : ty_llong;
 	}

@@ -107,13 +107,17 @@ static int str_decode(const char *s, unsigned char *out, int cap);
 /* One shared initializer traversal (like a real compiler's InitListChecker): parse the initializer syntax
  * ONCE into a neutral list of scalar leaf placements, then lower to either a .data byte image (globals) or
  * a block of runtime stores (locals). Kills the old global_init/init_of fork that drifted in capability. */
-struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset; struct InitPlace *next; };
+struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset, sso; struct InitPlace *next; };   /* sso: in a
+                                                                                                             * reverse-storage-order struct */
+static int init_sso;                                     /* parse_init: the struct whose members are being placed is reversed */
 static int   parse_init(Type *ty, int base, InitPlace **tail);
 static Init *lower_global(InitPlace *places, int total);
 static Node *lower_local(Node *dest, InitPlace *places, int total);
 static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic);
 static void sig_set_pcs(const char *name, int pcs);
+static int  sig_align(const char *name, int align);
+static int  decl_align(Node *e);
 /* Declaration attributes collected since the last reset; declarations snapshot/reset it (see Attr). */
 static Attr decl_attr;
 static long eval_const(Node *n); static Node *assign(void);
@@ -182,10 +186,17 @@ static void skip_parens(void) { expect("("); int d = 1; while (d && tk->kind != 
 /* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
  * `packed` -> *packed=1, `aligned(N)` -> *alignb=N. Unknown attributes (with any (...) payload) are skipped.
  * A name may be spelled bare or double-underscored (packed / __packed__). */
-static void parse_attribute(int *packed, int *alignb) {
+static void parse_attribute(int *packed, int *alignb, int *sso) {
 	expect("("); expect("(");
 	while (!is(")") && tk->kind != TK_EOF) {   /* attribute names are plain identifiers, so match on text */
 		if (!strcmp(tk->text, "packed") || !strcmp(tk->text, "__packed__")) { if (packed) *packed = 1; tk = tk->next; }
+		else if (!strcmp(tk->text, "scalar_storage_order") || !strcmp(tk->text, "__scalar_storage_order__")) {   /* GCC: byte order of the scalars */
+			tk = tk->next; expect("(");
+			if (tk->kind != TK_STR || (strcmp(tk->sval, "big-endian") && strcmp(tk->sval, "little-endian")))
+				die("parse: scalar_storage_order needs \"big-endian\" or \"little-endian\" (line %d)", tk->line);
+			*sso = !strcmp(tk->sval, "big-endian");      /* little-endian is this target's own order */
+			tk = tk->next; expect(")");
+		}
 		else if (!strcmp(tk->text, "aligned") || !strcmp(tk->text, "__aligned__")) { tk = tk->next; if (consume("(")) { int n = (int)eval_const(assign()); if (alignb && n > *alignb) *alignb = n; expect(")"); } }
 		else { tk = tk->next; if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); } }
 		if (!consume(",")) break;
@@ -393,7 +404,8 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 
 static Type *struct_decl(int is_union) {
 	int packed = 0, alignb = 0;
-	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct __attribute__((packed)) S */
+	int sso = 0;
+	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso);   /* struct __attribute__((packed)) S */
 	char tag[64] = ""; if (tk->kind == TK_IDENT) ident(tag);
 	if (!is("{")) {                                          /* a reference: the visible tag, else a new incomplete type */
 		/* `struct tag;` alone declares a NEW incomplete type in this scope, hiding an outer one (C11 6.7.2.3p7). */
@@ -430,9 +442,13 @@ static Type *struct_decl(int is_union) {
 		expect(";");
 	}
 	decl_attr = outer;
-	while (consume("__attribute__")) parse_attribute(&packed, &alignb);   /* struct {...} __attribute__((packed)) */
+	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso);   /* struct {...} __attribute__((packed)) */
 	ty->members = mh.next;
 	layout_struct(ty, packed, alignb, is_union);
+	if ((ty->sso = sso))                                 /* scalars and arrays of scalars reverse; nested aggregates aren't modelled */
+		for (Member *m = ty->members; m; m = m->next)
+			if (m->type->kind == TY_STRUCT || (m->type->kind == TY_ARRAY && (m->type->base->kind == TY_ARRAY || m->type->base->kind == TY_STRUCT)))
+				die("parse: scalar_storage_order struct '%s': member '%s' is a nested aggregate (not supported)", tag, m->name);
 	/* Promote members of anonymous struct/union members into this type (accessible directly), at the
 	 * anonymous block's offset + the sub-member's own offset. */
 	Member *ph = NULL, *pt = NULL;
@@ -833,13 +849,14 @@ static Node *builtin_lower(char *name) {
 static void bitfield_node(Node *n, Type *ty, int bw, int bo) {
 	n->bit_width = bw; n->bit_offset = bo; n->bf_type = ty;
 	n->type = bw > 32 ? ty : (ty->is_unsigned && bw == 32) ? ty_uint : ty_int;
+	if (bw > 32 && bw < 8 * ty->size) { Type *t = calloc(1, sizeof *t); *t = *ty; t->prec = bw; n->type = t; }   /* long long:40 */
 }
 /* base.member — resolve the member's offset+type on the struct; ND_MEMBER holds the base lvalue. */
 static Node *struct_member(Node *base, const char *mname) {
 	add_type(base);
 	if (!base->type || base->type->kind != TY_STRUCT) die("parse: '.%s' on a non-struct", mname);
 	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
-		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type;
+		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type; n->sso = base->type->sso;
 		if (m->is_bitfield) bitfield_node(n, m->type, m->bit_width, m->bit_offset);
 		return n;
 	}
@@ -854,7 +871,11 @@ static Node *postfix(void) {
 /* The postfix operators applied to an already-parsed operand (also a compound literal: (int[]){1,2}[i]). */
 static Node *postfix_ops(Node *n) {
 	for (;;) {
-		if (consume("[")) { Node *idx = expr(); expect("]"); n = unary(ND_DEREF, new_add(n, idx)); }
+		if (consume("[")) {
+			Node *idx = expr(); expect("]");
+			int rev = (n->kind == ND_MEMBER && n->sso) || (idx->kind == ND_MEMBER && idx->sso);   /* an element of a reversed array */
+			n = unary(ND_DEREF, new_add(n, idx)); n->sso = rev;
+		}
 		else if (consume(".")) { char m[64]; ident(m); n = struct_member(n, m); }
 		else if (consume("->")) { char m[64]; ident(m); n = struct_member(unary(ND_DEREF, n), m); }
 		else if (consume("++")) n = rmw(n, ND_ADD, num(1), 1);   /* x++ */
@@ -914,12 +935,17 @@ static Node *unary_expr(void) {
 	}
 	if (consume("_Alignof")) {   /* __alignof__(type|expr) -> a constant */
 		if (cast_ahead()) { char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")"); return num(align_of(t)); }
-		Node *e = unary_expr(); add_type(e); return num(e->type ? align_of(e->type) : 4);
+		Node *e = unary_expr(); add_type(e); return num(decl_align(e));
 	}
 	if (consume("++")) return rmw(unary_expr(), ND_ADD, num(1), 0);   /* ++x */
 	if (consume("--")) return rmw(unary_expr(), ND_SUB, num(1), 0);   /* --x */
 	if (consume("&&")) { Node *n = node(ND_LABELADDR); ident(n->name); map_label(n->name); return n; }   /* &&label : GNU address-of-label */
-	if (consume("&")) return unary(ND_ADDR, unary_expr());   /* address-of */
+	if (consume("&")) {                                      /* address-of */
+		Node *e = unary_expr();
+		add_type(e);
+		if (e->sso && e->type->kind != TY_ARRAY) die("parse: address of a scalar with reverse storage order (line %d)", tk->line);   /* GCC: an error */
+		return unary(ND_ADDR, e);
+	}
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
 	if (consume("-")) return unary(ND_NEG, unary_expr());
 	if (consume("!")) return unary(ND_NOT, unary_expr());
@@ -1318,6 +1344,7 @@ static Func *function_tail(const char *name, Type *ret) {
 	f->nparams = np;
 	{ Type *pts[MAXPARAMS]; for (int i = 0; i < np && i < MAXPARAMS; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic ? 1 : unproto ? 2 : 0); }   /* publish the signature for callers */
 	sig_set_pcs(name, decl_attr.pcs);
+	sig_align(name, decl_attr.align);                     /* aligned(N) on any declaration applies to the definition */
 	/* Bind params per AAPCS (aapcs_layout, the same placement callers use; an sret function's hidden buffer
 	 * pointer takes word 0). gen_func homes r0..r3 right above the frame record, contiguous with the caller's
 	 * stack args, so a core/stack param lives at [r11, #8 + 4*word]; varargs begin after the last fixed word.
@@ -1334,6 +1361,7 @@ static Func *function_tail(const char *name, Type *ret) {
 			add_local_at(prm[i].name, prm[i].ty, vr[i] >= 0 ? 8 + 4 * vr[i] : 8 + 4 * pos[i] + (f->vfp_save ? 64 : 0));
 	}
 	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
+	f->attr.align = sig_align(name, 0);                      /* ...its alignment: the largest any declaration asked for */
 	if (consume(";")) { in_func = 0; scope_pop(); return NULL; }   /* a prototype — no body to compile (bounds never evaluated) */
 	expect("{");
 	Node h = {0}, *c = &h;
@@ -1513,7 +1541,7 @@ static int str_decode(const char *s, unsigned char *out, int cap) {
 }
 static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo) {
 	InitPlace *p = calloc(1, sizeof *p);
-	p->off = off; p->ty = ty; p->expr = expr; p->bit_width = bw; p->bit_offset = bo;
+	p->off = off; p->ty = ty; p->expr = expr; p->bit_width = bw; p->bit_offset = bo; p->sso = init_sso;
 	(*tail)->next = p; *tail = p; return p;
 }
 struct pp_ent { int off, seq; Type *ty; Node *expr; };
@@ -1578,7 +1606,7 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 			Member **marr = malloc((nm ? nm : 1) * sizeof *marr);
 			{ int i = 0; for (Member *m = ty->members; m; m = m->next) if (INIT_MEMBER(m)) marr[i++] = m; }
 			#undef INIT_MEMBER
-			int at = 0;
+			int at = 0, outer_sso = init_sso; init_sso = ty->sso;
 			while (!is("}")) {
 				int olddes = tk->kind == TK_IDENT && tk->next && !strcmp(tk->next->text, ":");   /* GNU old-style `member: value` */
 				if (is(".") || olddes) {   /* designated: reposition the member cursor absolutely */
@@ -1597,7 +1625,7 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 				at++;
 				if (!consume(",")) break;
 			}
-			free(marr); expect("}"); return ty->size;
+			free(marr); expect("}"); init_sso = outer_sso; return ty->size;
 		}
 		if (ty->kind == TY_ARRAY) {
 			int esz = ty->base->size, idx = 0, maxidx = -1;
@@ -1607,7 +1635,7 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 				InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);   /* parse element once, replicate across the range */
 				for (int k = lo; k <= hi; k++) {
 					if (ty->len > 0 && k >= ty->len) continue;   /* sized array: drop excess elements */
-					for (InitPlace *p = th.next; p; p = p->next) pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset);
+					for (InitPlace *p = th.next; p; p = p->next) { int s = init_sso; init_sso = p->sso; pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset); init_sso = s; }
 					if (k > maxidx) maxidx = k;
 				}
 				idx = hi + 1;
@@ -1626,8 +1654,10 @@ static int parse_init(Type *ty, int base, InitPlace **tail) {
 		Member *m = NULL; for (Member *mm = ty->members; mm; mm = mm->next) if (!strcmp(mm->name, mn)) { m = mm; break; }
 		if (!m) die("parse: struct has no member '%s'", mn);
 		consume("=");
+		int outer_sso = init_sso; init_sso = ty->sso;
 		if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset); }
 		else parse_init(m->type, base + m->offset, tail);
+		init_sso = outer_sso;
 		return ty->size;
 	}
 	if (ty->kind == TY_ARRAY && is("[")) {   /* braceless `[i] = v` continuation */
@@ -1763,12 +1793,19 @@ static Init *lower_global(InitPlace *places, int total) {
 			else v = (unsigned long long)fp_to_int(d, p->ty);
 		} else v = (unsigned long long)eval_const(p->expr);
 		if (p->ty->is_bool) v = v != 0;
-		if (p->bit_width) {
+		if (p->bit_width && p->sso) {                    /* big-endian unit: the field at mirrored bits, bytes MSB first */
+			int sz = p->ty->size, lo = 8 * sz - p->bit_offset - p->bit_width;
+			for (int bit = 0; bit < p->bit_width; bit++) {
+				int ub = lo + bit, at = p->off * 8 + (sz - 1 - ub / 8) * 8 + ub % 8;
+				if ((v >> bit) & 1) img[at / 8] |= 1 << (at % 8); else img[at / 8] &= ~(1 << (at % 8));
+			}
+		} else if (p->bit_width) {
 			for (int bit = 0; bit < p->bit_width; bit++) {
 				int at = p->off * 8 + p->bit_offset + bit;
 				if ((v >> bit) & 1) img[at / 8] |= 1 << (at % 8); else img[at / 8] &= ~(1 << (at % 8));
 			}
-		} else for (int k = 0; k < p->ty->size; k++) img[p->off + k] = (unsigned char)(k < 8 ? v >> (8 * k) : 0);
+		} else for (int k = 0; k < p->ty->size; k++)     /* little-endian, or byte-reversed for a reverse-order struct */
+			img[p->off + (p->sso ? p->ty->size - 1 - k : k)] = (unsigned char)(k < 8 ? v >> (8 * k) : 0);
 	}
 	Init head = {0}, *c = &head;
 	for (int at = 0; at < size; ) {
@@ -1813,7 +1850,7 @@ static Node *lower_local(Node *dest, InitPlace *places, int total) {
 		if (cur < total) emit_zero_local(dest, cur, total - cur, &c);
 		free(a);
 		for (InitPlace *p = places; p; p = p->next) {
-			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = p->off; dm->type = p->ty;
+			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = p->off; dm->type = p->ty; dm->sso = p->sso;
 			if (p->bit_width) bitfield_node(dm, p->ty, p->bit_width, p->bit_offset);
 			c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, p->expr)); c = c->next;
 		}
@@ -1831,7 +1868,7 @@ static Init *global_init(Type *ty) {
  * nodes the right width; the parameter types let a caller place/widen each argument per AAPCS (a 64-bit
  * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
  * Populated for every prototype/definition. */
-typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs; } FuncSig;   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
+typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs, align; } FuncSig;   /* align: aligned(N) */   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
 static StrMap func_sigs;                                 /* name -> its FuncSig */
 static FuncSig *sig_of(const char *name) { return name && name[0] ? strmap_get(&func_sigs, name) : NULL; }
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic) {
@@ -1848,6 +1885,20 @@ Type *func_ret_type(const char *name) { FuncSig *f = sig_of(name); return f ? f-
 int func_declared(const char *name) { return sig_of(name) != NULL; }
 int func_base_pcs(const char *name) {   /* a `...` prototype or pcs("aapcs"); unknown params (2) use the normal (VFP) PCS, like GCC */
 	FuncSig *f = sig_of(name); return f && (f->variadic == 1 || f->base_pcs);
+}
+static int sig_align(const char *name, int align) {    /* record a declaration's aligned(N); returns the largest so far */
+	FuncSig *f = sig_of(name); if (!f) return align;
+	if (align > f->align) f->align = align;
+	return f->align;
+}
+/* __alignof__ of an expression: a DECLARATION's alignment when it names one (GCC) — a function's (at least 4, the ARM
+ * code alignment; more with aligned(N)), an object's aligned(N) — else its type's. */
+static int decl_align(Node *e) {
+	Node *d = e->kind == ND_ADDR && e->lhs && e->lhs->kind == ND_GVAR ? e->lhs : e;
+	if (d->kind == ND_GVAR && func_declared(d->name) && !global_find(d->name)) { int a = sig_align(d->name, 0); return a > 4 ? a : 4; }
+	int t = e->type ? align_of(e->type) : 4;
+	if (d->kind == ND_GVAR) { Gvar *g = global_find(d->name); if (g && g->attr.align > t) return g->attr.align; }
+	return t;
 }
 static void sig_set_pcs(const char *name, int pcs) {   /* a declaration's pcs(...) attribute -> its calls */
 	FuncSig *f = sig_of(name); if (pcs && f) f->base_pcs = pcs == 1;

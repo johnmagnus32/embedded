@@ -47,7 +47,11 @@ typedef struct Member { char name[64]; struct Type *type; int offset; int is_bit
 typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off;
                       struct Type **params; int nparams; int variadic;
                       int quals;      /* 1 = const, 2 = volatile (only __builtin_types_compatible_p looks) */
-                      int tag; } Type; /* a distinct type of an otherwise-equal representation: each enum, long double (-1) */
+                      int tag;        /* a distinct type of an otherwise-equal representation: each enum, long double (-1) */
+                      int prec;       /* a wide bit-field's type (see above) */
+                      int sso; } Type; /* a struct with scalar_storage_order("big-endian"): its scalars are stored
+                                        * byte-reversed (bit-fields in big-endian bit order) */ /* a wide bit-field's type (GCC: `unsigned long long b:40` is a 40-bit type): its
+                                         * value bits (0 = all); arithmetic on it wraps at that width */
 extern Type *ty_int, *ty_char;               /* signed int (4) + plain char (1, unsigned on ARM) */
 extern Type *ty_uint, *ty_schar, *ty_short, *ty_ushort;   /* the remaining 32/16/8-bit scalar singletons */
 extern Type *ty_llong, *ty_ullong;           /* long long / unsigned long long (8 bytes, register pair) */
@@ -122,6 +126,8 @@ typedef struct Node {
 	int vla_obj;                 /* ND_VAR: a VLA object — its slot holds the (alloca'd) address, not the array */
 	struct Node *target;         /* ND_CUR: the ND_RMW whose old value it reads (a back-link, not a child) */
 	int tls;                     /* ND_GVAR: a thread-local object (its address comes from the thread pointer) */
+	int sso;                     /* ND_MEMBER / ND_DEREF: a scalar (or array element) of a scalar_storage_order("big-endian")
+	                              * struct — byte-reversed in memory */
 	int tls_local;               /* ...defined in this translation unit (a non-PIC access can use local-exec) */
 } Node;
 

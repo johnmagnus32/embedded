@@ -95,4 +95,9 @@ builtin-diff: $(BUILD)/cc
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
 	@python3 torture/builtin_diff.py
 
-.PHONY: clean test torture abi-interop builtin-diff
+# Programs whose results are compared with GCC's rather than predicted (torture/diff/*.c; torture/gnu_diff.sh).
+gnu-diff: $(BUILD)/cc
+	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
+	@GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/gnu_diff.sh
+
+.PHONY: clean test torture abi-interop builtin-diff gnu-diff

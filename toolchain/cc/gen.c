@@ -190,6 +190,26 @@ static void store(Type *ty) {   /* addr in r1 (32-bit) / r2 (64-bit); value in r
 	else if (ty->size == 8) fprintf(o, "\tstr r0, [r2]\n\tstr r1, [r2, #4]\n");   /* value pair r0:r1, addr r2 */
 	else                    fprintf(o, "\tstr r0, [r1]\n");
 }
+/* Reverse-storage-order scalars (scalar_storage_order("big-endian")): their bytes are big-endian in memory. swap(reg,
+ * size) reverses a value's bytes in place; load_lv/store_lv are load/store for an lvalue that may be one. */
+static void swap_reg(const char *r, int size) {
+	if (size == 2) fprintf(o, "\trev16 %s, %s\n", r, r);
+	else if (size == 4) fprintf(o, "\trev %s, %s\n", r, r);
+}
+static void swap_value(int size) {   /* r0(:r1) */
+	if (size == 8) fprintf(o, "\trev ip, r0\n\trev r0, r1\n\tmov r1, ip\n");
+	else swap_reg("r0", size);
+}
+static int reversed(Node *lv) { return lv && (lv->kind == ND_MEMBER || lv->kind == ND_DEREF) && lv->sso; }
+static void load_lv(Node *lv, Type *ty) {   /* r0 = &lvalue -> r0(:r1) = its value */
+	if (!reversed(lv) || ty->size == 1) { load(ty); return; }
+	if (ty->size == 2) { fprintf(o, "\tldrh r0, [r0]\n\trev16 r0, r0\n"); if (!ty->is_unsigned) fprintf(o, "\tsxth r0, r0\n"); return; }
+	load(ty); swap_value(ty->size);
+}
+static void store_lv(Node *lv, Type *ty) {   /* as store(); r0(:r1) keeps the value */
+	if (!reversed(lv) || ty->size == 1) { store(ty); return; }
+	swap_value(ty->size); store(ty); swap_value(ty->size);
+}
 /* Convert the value in r0(:r1) of type src for storing into a _Bool: nonzero (either word) -> 1. Other narrow
  * targets need nothing here (the store truncates). */
 static void to_bool(Type *dst, Type *src) {
@@ -357,15 +377,20 @@ static void shr64c(int k, int arith) {
 static int bf_wide(Node *m) { return m->bf_type->size == 8 || m->bit_offset + m->bit_width > 32; }
 /* Bitfield read: r0 = &storage-unit on entry -> r0(:r1) = the field value. Two shifts isolate the field —
  * left so its top bit reaches the top, then right (arithmetic if signed) down to bit 0. */
+static int bf_bo(Node *n) {   /* the field's bit offset in its unit's VALUE: big-endian bit order in a reversed unit */
+	return n->sso ? 8 * n->bf_type->size - n->bit_offset - n->bit_width : n->bit_offset;
+}
 static void gen_bitfield_load(Node *n) {
-	int sz = n->bf_type->size, bo = n->bit_offset, bw = n->bit_width, sg = !n->bf_type->is_unsigned;
+	int sz = n->bf_type->size, bo = bf_bo(n), bw = n->bit_width, sg = !n->bf_type->is_unsigned;
 	if (bf_wide(n)) {
 		fprintf(o, "\tldr r1, [r0, #4]\n\tldr r0, [r0]\n");
+		if (n->sso) swap_value(8);
 		shl64c(64 - bo - bw); shr64c(64 - bw, sg);   /* sz <= 4: the (<= 32-bit) value is in r0 */
 		return;
 	}
 	int lsh = 32 - bo - bw, rsh = 32 - bw;
 	fprintf(o, sz == 1 ? "\tldrb r0, [r0]\n" : sz == 2 ? "\tldrh r0, [r0]\n" : "\tldr r0, [r0]\n");
+	if (n->sso) swap_reg("r0", sz);
 	if (lsh) fprintf(o, "\tlsl r0, r0, #%d\n", lsh);
 	if (rsh) fprintf(o, sg ? "\tasr r0, r0, #%d\n" : "\tlsr r0, r0, #%d\n", rsh);
 }
@@ -373,20 +398,26 @@ static void gen_bitfield_load(Node *n) {
  * value in, leaving the unit's other bits. Leaves r0 = the field as stored (re-read: truncated to its width),
  * which is the value of the assignment expression. */
 static void bitfield_put(Node *lhs) {
-	int sz = lhs->bf_type->size, bo = lhs->bit_offset, bw = lhs->bit_width;
+	int sz = lhs->bf_type->size, bo = bf_bo(lhs), bw = lhs->bit_width;
 	unsigned long long fm = bw >= 64 ? ~0ULL : (1ULL << bw) - 1, pm = fm << bo;   /* field mask, placed mask */
 	if (bf_wide(lhs)) {
 		load_imm("r3", fm & 0xffffffff); fprintf(o, "\tand r0, r0, r3\n"); load_imm("r3", fm >> 32); fprintf(o, "\tand r1, r1, r3\n");
 		shl64c(bo);
-		for (int w = 0; w < 2; w++) {
-			fprintf(o, "\tldr r3, [r2, #%d]\n", 4 * w); load_imm("ip", w ? pm >> 32 : pm & 0xffffffff);
-			fprintf(o, "\tbic r3, r3, ip\n\torr r3, r3, r%d\n\tstr r3, [r2, #%d]\n", w, 4 * w);
+		for (int w = 0; w < 2; w++) {                    /* value word w (0 = low) lives at word 1-w when reversed */
+			int at = lhs->sso ? 4 * (1 - w) : 4 * w;
+			fprintf(o, "\tldr r3, [r2, #%d]\n", at); if (lhs->sso) swap_reg("r3", 4);
+			load_imm("ip", w ? pm >> 32 : pm & 0xffffffff);
+			fprintf(o, "\tbic r3, r3, ip\n\torr r3, r3, r%d\n", w);
+			if (lhs->sso) swap_reg("r3", 4);
+			fprintf(o, "\tstr r3, [r2, #%d]\n", at);
 		}
 	} else {
 		fprintf(o, sz == 1 ? "\tldrb r3, [r2]\n" : sz == 2 ? "\tldrh r3, [r2]\n" : "\tldr r3, [r2]\n");
+		if (lhs->sso) swap_reg("r3", sz);
 		load_imm("ip", fm); fprintf(o, "\tand r0, r0, ip\n");      /* value &= fieldmask */
 		if (bo) fprintf(o, "\tlsl r0, r0, #%d\n\tlsl ip, ip, #%d\n", bo, bo);   /* value + mask into place */
 		fprintf(o, "\tbic r3, r3, ip\n\torr r3, r3, r0\n");
+		if (lhs->sso) swap_reg("r3", sz);
 		fprintf(o, sz == 1 ? "\tstrb r3, [r2]\n" : sz == 2 ? "\tstrh r3, [r2]\n" : "\tstr r3, [r2]\n");
 	}
 	fprintf(o, "\tmov r0, r2\n"); gen_bitfield_load(lhs);
@@ -487,7 +518,20 @@ static void gen_builtin(Node *n) {
 	die("cc: unsupported builtin '%s' (would be an undefined symbol)", n->name);
 }
 
+/* A wide bit-field type's arithmetic wraps at its width: cut r0:r1 back to prec bits (zero- or sign-extended). */
+static void gen_expr1(Node *n);
 static void gen_expr(Node *n) {
+	gen_expr1(n);
+	Type *t = n->type;
+	if (!t || !t->prec || t->size != 8) return;
+	switch (n->kind) {
+	case ND_ADD: case ND_SUB: case ND_MUL: case ND_DIV: case ND_MOD: case ND_SHL: case ND_SHR:
+	case ND_NEG: case ND_BITNOT: case ND_BITAND: case ND_BITOR: case ND_BITXOR:
+		fprintf(o, "\tlsl r1, r1, #%d\n\t%s r1, r1, #%d\n", 64 - t->prec, t->is_unsigned ? "lsr" : "asr", 64 - t->prec);
+	default: break;
+	}
+}
+static void gen_expr1(Node *n) {
 	switch (n->kind) {
 	case ND_NUM:                                                 /* 64-bit literal fills the pair r0:r1 */
 		if (is64(n->type)) { load_imm("r0", n->val & 0xffffffff); load_imm("r1", (n->val >> 32) & 0xffffffff); }
@@ -496,7 +540,7 @@ static void gen_expr(Node *n) {
 	case ND_MEMBER:
 		gen_addr(n);
 		if (n->bit_width) { gen_bitfield_load(n); return; }              /* bitfield: extract from its unit */
-		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type);   /* struct member that is itself an aggregate decays to its address */
+		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load_lv(n, n->type);   /* struct member that is itself an aggregate decays to its address */
 		return;
 	case ND_VAR: case ND_GVAR:                             /* address -> r0; scalars then load; arrays/structs decay to their address */
 		gen_addr(n); if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT) load(n->type); return;
@@ -507,7 +551,7 @@ static void gen_expr(Node *n) {
 		return;
 	}
 	case ND_DEREF: gen_expr(n->lhs);                        /* pointer -> r0, then load the pointee by width */
-		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT && !n->type->fn_ret) load(n->type);   /* an aggregate *p IS its address; *fp is the function */
+		if (n->type->kind != TY_ARRAY && n->type->kind != TY_STRUCT && !n->type->fn_ret) load_lv(n, n->type);   /* an aggregate *p IS its address; *fp is the function */
 		return;
 	case ND_ASSIGN:
 		if (n->lhs->kind == ND_REGVAR) { gen_expr(n->rhs); fprintf(o, "\tmov %s, r0\n", n->lhs->reg); return; }   /* write a global reg var */
@@ -521,8 +565,8 @@ static void gen_expr(Node *n) {
 		}
 		gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");      /* destination address */
 		gen_as(n->rhs, n->lhs->type);                       /* value in r0(:r1), converted to the dest type */
-		if (is64(n->lhs->type)) { fprintf(o, "\tpop {r2}\n"); store(n->lhs->type); }   /* addr r2; str r0:r1 */
-		else { fprintf(o, "\tpop {r1}\n"); store(n->lhs->type); if (n->lhs->type->size < 4) gen_cast(n->lhs->type); }   /* addr r1; value = as stored (narrowed) */
+		if (is64(n->lhs->type)) { fprintf(o, "\tpop {r2}\n"); store_lv(n->lhs, n->lhs->type); }   /* addr r2; str r0:r1 */
+		else { fprintf(o, "\tpop {r1}\n"); store_lv(n->lhs, n->lhs->type); if (n->lhs->type->size < 4) gen_cast(n->lhs->type); }   /* addr r1; value = as stored (narrowed) */
 		return;                                             /* r0(:r1) keeps the value (assignment result) */
 	case ND_CAST:   gen_expr(n->lhs);
 		if (n->type->is_bool || is_fp(n->type) || is_fp(n->lhs->type)) { conv(n->lhs->type, n->type); if (!is_fp(n->type)) gen_cast(n->type); return; }
@@ -543,12 +587,12 @@ static void gen_expr(Node *n) {
 		gen_addr(lv); fp_mem("str", "r0", off);
 		gen_expr(n->init); fp_mem("str", "r0", off + 12); if (is64(n->init->type)) fp_mem("str", "r1", off + 16);
 		fp_mem("ldr", "r0", off);
-		if (bf) gen_bitfield_load(lv); else load(lv->type);
+		if (bf) gen_bitfield_load(lv); else load_lv(lv, lv->type);
 		fp_mem("str", "r0", off + 4); if (w) fp_mem("str", "r1", off + 8);
 		gen_as(n->rhs, bf ? lv->bf_type : lv->type);
 		if (bf) { fp_mem("ldr", "r2", off); bitfield_put(lv); }
-		else if (w) { fp_mem("ldr", "r2", off); store(lv->type); }
-		else { fp_mem("ldr", "r1", off); store(lv->type); if (lv->type->size < 4 && !n->is_post) { fprintf(o, "\tmov r0, r1\n"); load(lv->type); } }   /* value = as stored (narrowed) */
+		else if (w) { fp_mem("ldr", "r2", off); store_lv(lv, lv->type); }
+		else { fp_mem("ldr", "r1", off); store_lv(lv, lv->type); if (lv->type->size < 4 && !n->is_post) { fprintf(o, "\tmov r0, r1\n"); load_lv(lv, lv->type); } }   /* value = as stored (narrowed) */
 		if (n->is_post) { fp_mem("ldr", "r0", off + 4); if (w) fp_mem("ldr", "r1", off + 8); }
 		return;
 	}
