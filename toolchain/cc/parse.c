@@ -565,12 +565,13 @@ static void  tag_add(const char *name, Type *t) { if (name[0]) strmap_put(&scope
  * one naturally-aligned storage unit of its declared type; `T : 0` forces the next unit boundary; `packed` (on
  * the struct, or on one member) makes the members' alignment 1 — no padding — unless one has aligned(N), which
  * still holds (and so still aligns the struct); `aligned(N)` on the struct raises it to N. */
-static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
+static void layout_struct(Type *ty, int packed, int alignb, int is_union, int maxalign) {   /* maxalign: #pragma pack(n) */
 	long long bitpos = 0; int salign = 1;   /* in BITS: 64-bit so a ~2 GB member can't overflow */
 	if (is_union) {                         /* every member overlaps at offset 0; size = widest member */
 		int maxsz = 0;
 		for (Member *m = ty->members; m; m = m->next) {
 			int ma = packed || m->packed ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;
+			if (maxalign && ma > maxalign) ma = maxalign;   /* #pragma pack caps even an aligned(N) member (GCC) */
 			m->offset = 0; m->ealign = ma; if (m->is_bitfield) m->bit_offset = 0;
 			if (m->type->size > maxsz) maxsz = m->type->size;
 			if (ma > salign) salign = ma;
@@ -582,11 +583,21 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 	}
 	for (Member *m = ty->members; m; m = m->next) {
 		int pk = packed || m->packed, msz = m->type->size, ma = pk ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;   /* aligned(N) holds even when packed */
+		if (maxalign && ma > maxalign) ma = maxalign;        /* #pragma pack(n): no member aligned beyond n */
 		m->ealign = ma;
+		if (ma > salign) salign = ma;                       /* the member's alignment is the struct's, even when it packs */
 		if (m->is_bitfield) {
+			if (maxalign) pk = 1;                           /* under any #pragma pack, bitfields pack densely (GCC drops the
+			                                                 * straddle rule, even where pack doesn't cap their alignment) */
 			int unit = ma * 8;
 			if (m->bit_width == 0) { bitpos = (bitpos + unit - 1) / unit * unit; continue; }   /* :0 -> align, no storage */
-			if (!pk && (bitpos % unit) + m->bit_width > msz * 8)     /* would straddle the storage unit */
+			if (pk) {                                       /* bit by bit: the byte holding its first bit */
+				m->offset = (int)(bitpos / 8);
+				m->bit_offset = (int)(bitpos % 8);
+				bitpos += m->bit_width;
+				continue;
+			}
+			if ((bitpos % unit) + m->bit_width > msz * 8)   /* would straddle the storage unit */
 				bitpos = (bitpos + unit - 1) / unit * unit;
 			m->offset = (int)((bitpos / unit) * ma);
 			m->bit_offset = (int)(bitpos - m->offset * 8LL);
@@ -596,7 +607,6 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 			m->offset = (int)byte;
 			bitpos = (byte + msz) * 8;
 		}
-		if (ma > salign) salign = ma;
 	}
 	if (alignb > salign) salign = alignb;
 	long long bytes = (bitpos + 7) / 8;
@@ -662,7 +672,9 @@ static Type *struct_decl1(int is_union) {
 	 * written after the closing brace (`struct {...} __packed;`, the common kernel form) and must repack. */
 	Member mh = {0}, *mc = &mh;
 	Attr outer = decl_attr;   /* member attributes are the members' own, not the enclosing declaration's */
-	while (!consume("}")) {
+	int maxalign = 0;         /* #pragma pack in force at the closing brace (where GCC lays the struct out) */
+	for (;;) {
+		if (is("}")) { maxalign = tk->pack; tk = tk->next; break; }
 		decl_attr = (Attr){0};
 		Type *base = declspec(NULL, NULL);
 		Attr mbase = decl_attr;
@@ -686,8 +698,11 @@ static Type *struct_decl1(int is_union) {
 	decl_attr = outer;
 	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso, &tunion);   /* struct {...} __attribute__((packed)) */
 	ty->members = mh.next;
-	layout_struct(ty, packed, alignb, is_union);
-	for (Member *m = ty->members; m; m = m->next) if (m->type->vsize_off) { layout_vla_struct(ty, m, is_union); break; }
+	layout_struct(ty, packed, alignb, is_union, maxalign);
+	for (Member *m = ty->members; m; m = m->next) if (m->type->vsize_off) {
+		if (maxalign) die("parse: a variable-size struct member under #pragma pack (line %d)", tk->line);
+		layout_vla_struct(ty, m, is_union); break;
+	}
 	if (tunion) make_transparent(ty);
 	if ((ty->sso = sso))                                 /* scalars and arrays of scalars reverse; nested aggregates aren't modelled */
 		for (Member *m = ty->members; m; m = m->next)
@@ -3157,6 +3172,8 @@ static Type *fn_type_of(const char *name) {   /* a declared function's type (typ
 	return ft;
 }
 int func_declared(const char *name) { return sig_of(name) != NULL; }
+static Func *parsed_funcs;                               /* the unit's definitions (for the symbol pragmas) */
+static int func_defined(const char *name) { for (Func *f = parsed_funcs; f; f = f->next) if (!strcmp(f->name, name) && !f->no_emit) return 1; return 0; }
 static int func_unprototyped(const char *name) { FuncSig *f = sig_of(name); return !f || f->variadic == 2; }
 int func_base_pcs(const char *name) {   /* a `...` prototype or pcs("aapcs"); unknown params (2) use the normal (VFP) PCS, like GCC */
 	FuncSig *f = sig_of(name); return f && (f->variadic == 1 || f->base_pcs);
@@ -3187,6 +3204,34 @@ static const Attr *decl_attrs_of(const char *name) {   /* the attributes a decla
 Type *func_param_type(const char *name, int i) {
 	FuncSig *f = sig_of(name);
 	return f && i < f->nparams ? f->params[i] : NULL;   /* NULL => unknown or a vararg */
+}
+
+/* The symbol pragmas, applied after the whole unit is parsed (they may name something declared later, and GCC applies
+ * them to whatever the file ends up defining or declaring): `weak N` makes N's symbol weak — when nothing defines it,
+ * a reference stays undefined-weak (its address is 0); `weak N = T` is that plus an alias to T; redefine_extname N T
+ * renames N's symbol to T, exactly like `asm("T")`. #ident lines become .ident. */
+static void apply_pragma_names(void) {
+	for (PragmaName *p = idents; p; p = p->next) topasm("\t.ident %s%s", p->name, "");
+	for (PragmaName *p = pragma_redefines; p; p = p->next) {
+		if (global_find(p->name) || func_declared(p->name) || strmap_get(&asm_labels, p->name)) {
+			const char *old = strmap_get(&asm_labels, p->name);
+			if (old && strcmp(old, p->target)) die("parse: '%s' relabeled: #pragma redefine_extname after asm(\"%s\")", p->name, old);
+			if (!old) strmap_put(&asm_labels, strdup(p->name), strdup(p->target));
+		}
+	}
+	for (PragmaName *p = pragma_weaks; p; p = p->next) {
+		Gvar *g = global_find(p->name); int defined = (g && !g->is_extern) || func_defined(p->name);
+		if (p->target) {                                     /* weak N = T: N is a weak alias for T */
+			if (defined) die("parse: #pragma weak %s = %s: '%s' is defined here", p->name, p->target, p->name);
+			Attr a = (Attr){0}; a.weak = 1; snprintf(a.alias, sizeof a.alias, "%s", p->target);
+			decl_symbol_attrs(p->name, &a, 0);
+		} else if (defined) {
+			Attr a = (Attr){0}; a.weak = 1; decl_symbol_attrs(p->name, &a, 0);   /* a definition here: emit it weak */
+		} else {                                             /* nothing defines it: references become weak-undefined */
+			strmap_put(&weak_names, strdup(p->name), (void *)1);
+			topasm("\t.weak %s%s", asm_name(p->name), "");
+		}
+	}
 }
 
 Func *parse(Token *tok) {
@@ -3231,8 +3276,10 @@ Func *parse(Token *tok) {
 			continue;
 		}
 		decl_attr = (Attr){0};
+		int pvis = tk->vis;                                   /* #pragma GCC visibility push in force: these definitions' */
 		int td, sc; Type *base = declspec(&td, &sc);               /* type keywords/qualifiers + storage class; struct/enum defs register */
 		Attr battr = decl_attr;                               /* declspec attributes apply to every declarator */
+		if (pvis && !battr.vis) battr.vis = decl_attr.vis = pvis;
 		if (consume(";")) continue;                          /* type-only declaration, e.g. `struct P { ... };`   */
 		if (td) { typedef_decl(base, battr); continue; }   /* (file scope: type_suffix rejects a VLA) */
 		char name[64]; Type *ty = declarator(base, name);    /* *s + name + array suffix */
@@ -3292,6 +3339,8 @@ Func *parse(Token *tok) {
 		}
 		if (!defined) expect(";");
 	}
+	parsed_funcs = head.next;
+	apply_pragma_names();                                    /* #pragma weak / redefine_extname / #ident (lex.c collected them) */
 	for (Func *f = head.next; f; f = f->next)                /* type every body now that all signatures are known */
 		for (Node *s = f->body; s; s = s->next) add_type(s);
 	return head.next;

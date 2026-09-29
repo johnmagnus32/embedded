@@ -69,17 +69,102 @@ static const char *PUNCT[] = { "<<=", ">>=", "...",                             
                                "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=",       /* compound assign */
                                "+","-","*","/","%","(",")","{","}","[","]",";",",",".","=","<",">","&","|","^","~","!","?",":", NULL };
 
+/* ---- directives in preprocessed input: line markers (skipped), #ident, #pragma ------------------------------------
+ * A pragma the compiler acts on is done here, in source order: `pack` and `GCC visibility push/pop` are state stamped on
+ * every later token (the parser reads it where it applies: a struct's closing brace, a declaration's name), `weak` and
+ * `redefine_extname` name symbols (the parser applies them). GCC's advisory ones (diagnostic, optimize, STDC ...) and
+ * pragmas GCC doesn't know are ignored (C11 6.10.6); the ones that change code we don't implement die. */
+static int pack_cur, pack_stack[64], npack;
+static int vis_stack[64], nvis;
+PragmaName *pragma_weaks, *pragma_redefines, *idents;
+static void pname_add(PragmaName **l, const char *n, size_t nl, const char *t, size_t tl) {
+	PragmaName *e = calloc(1, sizeof *e); e->name = strndup(n, nl); e->target = t ? strndup(t, tl) : NULL;
+	PragmaName **p = l; while (*p) p = &(*p)->next; *p = e;   /* in source order */
+}
+static const char *skip_blank(const char *p) { while (*p == ' ' || *p == '\t') p++; return p; }
+static const char *word(const char *p, size_t *n) {   /* an identifier at p: its length in *n (0: none) */
+	const char *s = p; while (isalnum((unsigned char)*p) || *p == '_' || *p == '$') p++; *n = p - s; return s;
+}
+static void pragma(const char *p, const char *eol, int line) {
+	char buf[512]; size_t len = eol - p < (long)sizeof buf - 1 ? (size_t)(eol - p) : sizeof buf - 1; memcpy(buf, p, len); buf[len] = 0;
+	size_t n; const char *w = word(skip_blank(buf), &n), *q = skip_blank(w + n);
+	#define IS(s) (n == strlen(s) && !strncmp(w, s, n))
+	if (IS("pack")) {   /* (n) () (push[, n]) (pop): the maximum alignment of the members of later structs */
+		if (*q != '(') die("lex: #pragma pack: expected '(' on line %d", line);
+		q = skip_blank(q + 1);
+		size_t k; const char *a = word(q, &k); int push = 0, pop = 0;
+		if (k == 4 && !strncmp(a, "push", 4)) push = 1; else if (k == 3 && !strncmp(a, "pop", 3)) pop = 1;
+		if (push || pop) { q = skip_blank(a + k); if (*q == ',') q = skip_blank(q + 1); }
+		int val = -1;
+		if (isdigit((unsigned char)*q)) { val = (int)strtol(q, (char **)&q, 0); q = skip_blank(q); }
+		else if (isalpha((unsigned char)*q) || *q == '_') die("lex: #pragma pack with an identifier is not supported (line %d)", line);
+		if (*q != ')') die("lex: #pragma pack: malformed (line %d)", line);
+		if (val >= 0 && val != 0 && val != 1 && val != 2 && val != 4 && val != 8 && val != 16)
+			die("lex: #pragma pack: alignment must be a small power of two, not %d (line %d)", val, line);
+		if (push) { if (npack == 64) die("lex: #pragma pack: push too deep"); pack_stack[npack++] = pack_cur; if (val >= 0) pack_cur = val; }
+		else if (pop) { if (val >= 0) die("lex: #pragma pack(pop, n) is not supported (line %d)", line); if (npack) pack_cur = pack_stack[--npack]; }
+		else pack_cur = val < 0 ? 0 : val;                  /* pack() : the default */
+	} else if (IS("weak")) {   /* weak NAME [= TARGET] */
+		size_t k; const char *a = word(q, &k); if (!k) die("lex: #pragma weak: expected a name (line %d)", line);
+		q = skip_blank(a + k);
+		if (*q == '=') { size_t tk2; const char *t = word(skip_blank(q + 1), &tk2); if (!tk2) die("lex: #pragma weak: expected a target (line %d)", line); pname_add(&pragma_weaks, a, k, t, tk2); }
+		else pname_add(&pragma_weaks, a, k, NULL, 0);
+	} else if (IS("redefine_extname")) {
+		size_t k1, k2; const char *a = word(q, &k1), *b = word(skip_blank(a + k1), &k2);
+		if (!k1 || !k2) die("lex: #pragma redefine_extname: expected two names (line %d)", line);
+		pname_add(&pragma_redefines, a, k1, b, k2);
+	} else if (IS("GCC")) {
+		size_t k; const char *a = word(q, &k); q = skip_blank(a + k);
+		#define ISA(s) (k == strlen(s) && !strncmp(a, s, k))
+		if (ISA("visibility")) {
+			size_t k2; const char *op = word(q, &k2); q = skip_blank(op + k2);
+			if (k2 == 3 && !strncmp(op, "pop", 3)) { if (!nvis) die("lex: #pragma GCC visibility pop with no push (line %d)", line); nvis--; }
+			else if (k2 == 4 && !strncmp(op, "push", 4)) {
+				if (*q != '(') die("lex: #pragma GCC visibility push: expected '(' (line %d)", line);
+				size_t k3; const char *v = word(skip_blank(q + 1), &k3);
+				int vis = k3 == 7 && !strncmp(v, "default", 7) ? VIS_DEFAULT : k3 == 6 && !strncmp(v, "hidden", 6) ? VIS_HIDDEN
+				        : k3 == 8 && !strncmp(v, "internal", 8) ? VIS_INTERNAL : k3 == 9 && !strncmp(v, "protected", 9) ? VIS_PROTECTED : 0;
+				if (!vis) die("lex: #pragma GCC visibility push: unknown visibility (line %d)", line);
+				if (nvis == 64) die("lex: #pragma GCC visibility: push too deep");
+				vis_stack[nvis++] = vis;
+			} else die("lex: #pragma GCC visibility: expected push or pop (line %d)", line);
+		} else if (ISA("target") || ISA("pch_preprocess")) die("lex: #pragma GCC %.*s is not supported (line %d)", (int)k, a, line);
+		/* diagnostic optimize push_options pop_options reset_options unroll ivdep novector system_header poison
+		 * dependency warning error, and GCC pragmas we don't know: nothing to do in the code */
+		#undef ISA
+	} else if (IS("scalar_storage_order")) die("lex: #pragma scalar_storage_order is not supported (line %d)", line);
+	else if (IS("message")) fprintf(stderr, "cc: note: #pragma message: %s\n", q);
+	/* STDC ..., omp / acc (no -fopenmp), and unknown pragmas: ignored, as GCC does */
+	#undef IS
+}
+static const char *directive(const char *p, int line) {   /* p just past the '#'; returns the end of its line */
+	const char *eol = p; while (*eol && *eol != '\n') eol++;
+	p = skip_blank(p);
+	size_t n; const char *w = word(p, &n);
+	if (isdigit((unsigned char)*p) || (n == 4 && !strncmp(w, "line", 4)) || p == eol) return eol;   /* a line marker; `#` alone */
+	if (n == 6 && !strncmp(w, "pragma", 6)) { pragma(w + 6, eol, line); return eol; }
+	if (n == 5 && !strncmp(w, "ident", 5)) {                 /* #ident "string" -> .ident */
+		const char *s = skip_blank(w + 5), *e = eol; while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r')) e--;
+		if (*s != '"' || e - s < 2 || e[-1] != '"') die("lex: #ident: expected a string on line %d", line);
+		pname_add(&idents, s, e - s, NULL, 0); return eol;
+	}
+	die("lex: unexpected #%.*s directive in preprocessed input (line %d)", (int)(n ? n : 1), n ? w : p, line);
+	return eol;
+}
 static Token *new_tok(TokKind kind, int line) {
-	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line; return t;
+	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line;
+	t->pack = (unsigned char)pack_cur; t->vis = nvis ? (unsigned char)vis_stack[nvis - 1] : 0;
+	return t;
 }
 
 Token *lex(const char *src) {
 	Token head = {0}, *cur = &head;
-	int line = 1;
+	int line = 1, bol = 1;
 	for (const char *p = src; *p; ) {
-		if (*p == '\n') { line++; p++; continue; }
+		if (*p == '\n') { line++; p++; bol = 1; continue; }
 		if (isspace((unsigned char)*p)) { p++; continue; }
-		if (*p == '#') { while (*p && *p != '\n') p++; continue; }                        /* cpp line-marker/directive (we consume gcc -E output) */
+		if (*p == '#' && bol) { p = directive(p + 1, line); continue; }                   /* a directive line cpp passed on */
+		bol = 0;
 		if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }      /* line comment  */
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) { if(*p=='\n')line++; p++; } if(*p) p+=2; continue; }
 
@@ -140,14 +225,19 @@ Token *lex(const char *src) {
 			memcpy(t->text, p, n); t->text[n] = 0; p = end;
 			cur = cur->next = t; continue;
 		}
-		if (isalpha((unsigned char)*p) || *p == '_') {                                   /* ident / keyword */
-			const char *s = p; while (isalnum((unsigned char)*p) || *p == '_') p++;
+		if (isalpha((unsigned char)*p) || *p == '_' || *p == '$') {                      /* ident / keyword ($: GCC allows it) */
+			const char *s = p; while (isalnum((unsigned char)*p) || *p == '_' || *p == '$') p++;
 			Token *t = new_tok(TK_IDENT, line);
 			size_t n = p - s; if (n >= sizeof t->text) n = sizeof t->text - 1;
 			memcpy(t->text, s, n); t->text[n] = 0;
 			for (int i = 0; GNU_SPELLING[i][0][0]; i++) if (!strcmp(t->text, GNU_SPELLING[i][0])) { strcpy(t->text, GNU_SPELLING[i][1]); break; }   /* one canonical keyword */
 			for (int i = 0; KEYWORDS[i]; i++) if (!strcmp(t->text, KEYWORDS[i])) { t->kind = TK_KW; break; }
 			cur = cur->next = t; continue;
+		}
+		{   /* digraphs (cpp keeps their spelling): <: :> <% %> are [ ] { } */
+			static const char dg[][2][3] = { {"<:", "["}, {":>", "]"}, {"<%", "{"}, {"%>", "}"} };
+			int d = -1; for (int i = 0; i < 4; i++) if (p[0] == dg[i][0][0] && p[1] == dg[i][0][1]) d = i;
+			if (d >= 0) { Token *t = new_tok(TK_PUNCT, line); strcpy(t->text, dg[d][1]); cur = cur->next = t; p += 2; continue; }
 		}
 		int matched = 0;                                                                 /* punctuator */
 		for (int i = 0; PUNCT[i]; i++) { size_t l = strlen(PUNCT[i]);

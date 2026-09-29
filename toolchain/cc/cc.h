@@ -27,9 +27,14 @@ typedef struct Token {
 	int line;              /* source line, for diagnostics                       */
 	int wide;              /* TK_STR / char TK_NUM: element width of an L"" / U"" (4) or u"" (2) literal; 0 = plain */
 	int imag;              /* TK_NUM: an imaginary constant (GNU `2.0i`, `3if`, `1i`) */
+	unsigned char pack;    /* #pragma pack in force here: the maximum member alignment (0: none) */
+	unsigned char vis;     /* #pragma GCC visibility push in force here: a VIS_* (0: none) */
 } Token;
 
 Token *lex(const char *src);                 /* tokenize the whole source into a linked list */
+/* #pragma weak / redefine_extname and #ident lines the lexer met (applied by the parser / emitted by gen). */
+typedef struct PragmaName { char *name, *target; struct PragmaName *next; } PragmaName;
+extern PragmaName *pragma_weaks, *pragma_redefines, *idents;   /* weak: target NULL or `= target`; ident: name = its string */
 int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal text -> code points (escapes + UTF-8) */
 
 /* ---- types (type.c) ------------------------------------------------------------------------------ */

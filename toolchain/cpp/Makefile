@@ -10,7 +10,7 @@ OURLD := ../ld/build/ld
 GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
-$(BUILD)/cpp: cpp.c | $(BUILD)
+$(BUILD)/cpp: cpp.c predef.h | $(BUILD)
 	$(CC) $(CFLAGS) -o $@ cpp.c
 
 $(BUILD):
@@ -47,15 +47,19 @@ test: $(BUILD)/cpp
 	  || { echo "FAIL pragma once: $$n copies (want 1), after=$$a"; fail=$$((fail+1)); }; \
 	printf '#pragma pack(1)\nstruct s { char c; int i; };\n' > $$t/pack.c; \
 	printf '#inlcude "x.h"\n' > $$t/typo.c; \
-	if ! $(BUILD)/cpp $$t/pack.c >/dev/null 2>$$t/e1 && grep -q 'pack' $$t/e1 && ! $(BUILD)/cpp $$t/typo.c >/dev/null 2>$$t/e2 && grep -q 'inlcude' $$t/e2; \
-	  then echo "PASS rejected: $$(cat $$t/e1) / $$(cat $$t/e2)"; ok=$$((ok+1)); \
-	  else echo "FAIL #pragma pack / unknown directive not rejected"; fail=$$((fail+1)); fi; \
+	if $(BUILD)/cpp $$t/pack.c 2>/dev/null | grep -qx '#pragma pack(1)' && ! $(BUILD)/cpp $$t/typo.c >/dev/null 2>$$t/e2 && grep -q 'inlcude' $$t/e2; \
+	  then echo "PASS #pragma pack passed to the compiler (as GCC's -E); rejected: $$(cat $$t/e2)"; ok=$$((ok+1)); \
+	  else echo "FAIL #pragma pack not passed through / unknown directive not rejected"; fail=$$((fail+1)); fi; \
 	if [ -x "$(GNU)gcc" ]; then for m in tests/macro/*.c; do \
 	  $(BUILD)/cpp $$m > $$t/m.ours 2>$$t/me && $(GNU)gcc -E -P -undef $$m > $$t/m.gnu 2>/dev/null \
 	  && python3 tests/tokdiff.py $$t/m.ours $$t/m.gnu > $$t/md; \
 	  if [ $$? = 0 ]; then echo "PASS $$(basename $$m): token-identical to GNU cpp"; ok=$$((ok+1)); \
 	  else echo "FAIL $$(basename $$m): $$(cat $$t/me $$t/md)"; fail=$$((fail+1)); fi; done; \
 	else echo "SKIP tests/macro: no GNU gcc at $(GNU)gcc"; fi; \
+	if [ -x "$(GNU)gcc" ]; then \
+	  if GNU=$(GNU) CPP=$(BUILD)/cpp bash tests/predef-gate.sh > $$t/pg; then echo "PASS $$(tail -1 $$t/pg)"; ok=$$((ok+1)); \
+	  else echo "FAIL $$(cat $$t/pg)"; fail=$$((fail+1)); fi; \
+	else echo "SKIP predef-gate: no GNU gcc"; fi; \
 	rm -rf $$t; echo "----- $$ok passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
 clean:
