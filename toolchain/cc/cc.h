@@ -36,19 +36,20 @@ int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal te
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT, TY_VECTOR, TY_COMPLEX } TypeKind;   /* arithmetic kinds precede TY_PTR */
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
  * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
-typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int packed; int promoted; struct Member *next; } Member;   /* align: aligned(N) on the member; packed: packed on the member (alignment 1); promoted: a lookup alias of an anonymous member's member (no storage of its own) */
+typedef struct Member { char name[64]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int packed; int ealign; int promoted; int voff, vdepth; struct Member *next; } Member;   /* align: aligned(N) on the member; packed: packed on the member (alignment 1); ealign: the alignment the layout gave it; promoted: a lookup alias of an anonymous member's member (no storage of its own); voff: after a variable-length member, the frame slot holding its offset (0: `offset` is it), in function vdepth's frame */
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
 /* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
  * it declares a function returning fn_ret (not a variable); as a parameter it adjusts to a function pointer. */
 /* is_bool: _Bool (1 byte, unsigned) — every conversion INTO it yields 0/1 (x != 0), not a truncation. */
 /* vsize_off: a VARIABLY-modified array (VLA): the frame slot holding its byte size, computed where its declarator
- * was (size is then 0 and unused); 0 = a normal fixed-size type. */
+ * was (size is then 0 and unused); 0 = a normal fixed-size type. vsize_depth: the function (nesting depth) whose
+ * frame holds that slot. */
 /* A function type (fn_ret set) also carries its prototype: params[nparams], variadic (1 = `...`, 2 = unknown). */
 /* TY_VECTOR (GCC vector_size): `len` lanes of the integer/floating element `base`, `size` bytes; held and copied by
  * value like a struct (codegen: a vector-valued expression yields its address). TY_COMPLEX (_Complex, and GCC's
  * integer complex types): the real then the imaginary part, both of type `base`, held the same way. */
-typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off;
+typedef struct Type { TypeKind kind; struct Type *base; int size; int len; Member *members; int is_unsigned; int align; struct Type *fn_ret; int is_bool; int vsize_off, vsize_depth;
                       struct Type **params; int nparams; int variadic;
                       int quals;      /* 1 = const, 2 = volatile (only __builtin_types_compatible_p looks) */
                       int tag;        /* a distinct type of an otherwise-equal representation: each enum, long double (-1) */
@@ -144,6 +145,10 @@ typedef struct Node {
 	int sso;                     /* ND_MEMBER / ND_DEREF: a scalar (or array element) of a scalar_storage_order("big-endian")
 	                              * struct — byte-reversed in memory */
 	int tls_local;               /* ...defined in this translation unit (a non-PIC access can use local-exec) */
+	int chain;                   /* nested functions: ND_VAR of an enclosing function's local — the static-chain hops to
+	                              * its frame; ND_CALL of a nested function — 1 + the hops to the frame it expects as its
+	                              * static chain (0: none); ND_GOTO / ND_LABELADDR to an enclosing function's label — hops */
+	char *owner;                 /* ND_GOTO / ND_LABELADDR: the enclosing function the label is in (NULL: this one) */
 } Node;
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
@@ -170,6 +175,9 @@ typedef struct Func {
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
 	int vfp;                     /* AAPCS-VFP (hard float, not variadic): FP params/results in VFP registers */
 	int vfp_save;                /* a param arrives in s0-s15: d0-d7 are saved above the homed r0-r3 */
+	int nested;                  /* a GNU nested function: its static chain (the enclosing frame) arrives in ip and is kept
+	                              * in its first local slot, [r11, #-4] */
+	int final_frame, alloca_slot;   /* set by codegen (-1 before): the frame size and alloca-floor slot (a non-local goto into it) */
 	Attr attr;
 	Node *body;                  /* statement list                                               */
 	struct Func *next;

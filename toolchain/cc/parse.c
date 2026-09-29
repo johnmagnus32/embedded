@@ -17,8 +17,10 @@ static Node *cur_switch;                           /* innermost switch, so case/
 static char cur_func_name[64];                     /* name of the function being parsed, for `__func__` */
 static Type *cur_fn_ret;                           /* ...and its return type */
 static int stmtexpr_body;                          /* the next block is a ({...})'s: its last expression is the value */
-static struct { char from[64], to[64]; } lscope[512]; static int nlscope, lscope_seq;   /* __label__ renames, innermost last */
-static void map_label(char *name) { for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return; } }
+static int fn_depth;                               /* function nesting while parsing: 0 file scope, 1 a function, 2+ nested */
+/* __label__ renames, innermost last; owner/depth: the function that declared it (a nested function's goto to it is non-local) */
+static struct { char from[64], to[64], owner[64]; int depth; } lscope[512]; static int nlscope, lscope_seq;
+static int map_label(char *name) { for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return i; } return -1; }
 
 /* ---- token helpers ------------------------------------------------------------------------------- */
 static int is(const char *s)     { return (tk->kind == TK_PUNCT || tk->kind == TK_KW) && !strcmp(tk->text, s); }
@@ -33,8 +35,10 @@ static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expecte
  * lookup walks from the innermost scope out to file scope, so an inner declaration shadows an outer one and
  * ends with its block. File-scope objects and functions are found in the globals and signature tables, under
  * every scope's ordinary identifiers (a local, a typedef or an enum constant hides a global of the name). */
-enum { ID_LOCAL, ID_TYPEDEF, ID_ENUMC };
-typedef struct { int kind; int local; Type *type; long val; } Ident;   /* local: its locals[] index */
+enum { ID_LOCAL, ID_TYPEDEF, ID_ENUMC, ID_NESTFN };
+typedef struct { int kind; int local; Type *type; long val; int depth; char *fname; } Ident;   /* local: its locals[] index; depth: the
+                                                                                                * function it belongs to (a local, a nested function's
+                                                                                                * definer); fname: a nested function's symbol */
 typedef struct Scope { StrMap ids, tags; struct Scope *up; } Scope;
 static Scope file_scope, *scope = &file_scope;
 static void scope_push(void) { Scope *sc = calloc(1, sizeof *sc); sc->up = scope; scope = sc; }
@@ -60,33 +64,47 @@ static int local_exists(const char *name) { return local_index(name) >= 0; }
 static Node *node(NodeKind kind);
 static Node *binary(NodeKind k, Node *l, Node *r);
 static Node *unary(NodeKind k, Node *l);
+static Node *tnum(long long v, Type *t);
+static Node *cast_to(Type *t, Node *e);
+static Node *new_add(Node *l, Node *r);
 static Node *num(long v);
 static Init *global_init(Type *ty);
 static Gvar *global_find(const char *name);
 static void tls_mark(Node *n, Gvar *g) { if (g && g->is_tls) { n->tls = 1; n->tls_local = !g->is_extern; } }
 static Node *local_ref(const char *name) {   /* the node for a block-scope name: its frame slot, or its global */
-	int i = local_index(name);
+	Ident *d = ident_find(name); int i = d && d->kind == ID_LOCAL ? d->local : -1;
 	if (i < 0) die("parse: internal: no local '%s'", name);
 	Node *n = node(locals[i].gname[0] ? ND_GVAR : ND_VAR); n->type = locals[i].type;
 	if (locals[i].gname[0]) { strncpy(n->name, locals[i].gname, 63); tls_mark(n, global_find(locals[i].gname)); return n; }
-	strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla; return n;
+	strncpy(n->name, name, 63); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla;
+	if (d->depth < fn_depth) {   /* an enclosing function's: in its frame, reached through the static chain */
+		if (n->reg[0]) die("parse: nested function uses '%s', a register variable of the enclosing function (line %d)", name, tk->line);
+		n->chain = fn_depth - d->depth;
+	}
+	return n;
 }
-static int add_local(const char *name, Type *ty) {
+/* A frame slot for a local (or, nameless, a temporary) aligned to `align` (at least 4): r11 is 8-aligned, so up to 8
+ * holds; more is the declaration's to arrange (at runtime). The offset points at the object's first (lowest) byte. */
+static int add_local_aligned(const char *name, Type *ty, int align) {
+	if (align < 4) align = 4;
+	if (align > 8) die("parse: internal: a %d-aligned frame slot", align);
+	local_bytes = (local_bytes + ty->size + align - 1) & ~(align - 1);
+	int off = -local_bytes;
+	if (!name[0]) return off;             /* a temporary: no name to bind */
 	if (nlocals >= 1024) die("parse: too many locals in one function");
-	local_bytes += (ty->size + 3) & ~3;   /* a 4-aligned slot big enough for the whole object (arrays too) */
-	int off = -local_bytes;               /* offset points at the object's first (lowest) byte */
 	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0;
 	strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty;
-	if (name[0]) ident_add(name, ID_LOCAL)->local = nlocals;
+	Ident *d = ident_add(name, ID_LOCAL); d->local = nlocals; d->depth = fn_depth;
 	nlocals++;
 	return off;
 }
+static int add_local(const char *name, Type *ty) { int a = align_of(ty); return add_local_aligned(name, ty, a > 8 ? 8 : a); }
 /* Bind a name to an explicit offset without allocating frame space — for params 5+ that live in the
  * CALLER's frame (above our saved r11/lr), at [r11, #8 + 4*(i-4)]. */
 static void add_local_at(const char *name, Type *ty, int off) {
 	if (nlocals >= 1024) die("parse: too many locals in one function");
 	locals[nlocals].gname[0] = locals[nlocals].reg[0] = 0; locals[nlocals].vla = 0; strncpy(locals[nlocals].name, name, 63); locals[nlocals].offset = off; locals[nlocals].type = ty;
-	if (name[0]) ident_add(name, ID_LOCAL)->local = nlocals;
+	if (name[0]) { Ident *d = ident_add(name, ID_LOCAL); d->local = nlocals; d->depth = fn_depth; }
 	nlocals++;
 }
 
@@ -370,9 +388,9 @@ static long eval_const(Node *n);
 static int in_func;                                      /* parsing a function (params or body): VLAs allowed */
 static Node vla_ph, *vla_pt = &vla_ph;
 static Node *take_vla_pending(void) { Node *h = vla_ph.next; vla_ph.next = NULL; vla_pt = &vla_ph; return h; }
-static Node *vsize_node(Type *t) {   /* sizeof(t): a constant, or a VLA's size slot */
+static Node *vsize_node(Type *t) {   /* sizeof(t): a constant, or a VLA's size slot (maybe an enclosing function's) */
 	if (!t->vsize_off) return num(t->size);
-	Node *v = node(ND_VAR); strcpy(v->name, "__vla_size"); v->offset = t->vsize_off; v->type = ty_uint; return v;
+	Node *v = node(ND_VAR); strcpy(v->name, "__vla_size"); v->offset = t->vsize_off; v->type = ty_uint; v->chain = fn_depth - t->vsize_depth; return v;
 }
 static Node *with_vla_pending(Node *val) {   /* an expression whose type parse queued VLA sizes: ({ sizes; val; }) */
 	Node *p = take_vla_pending(); if (!p) return val;
@@ -388,7 +406,7 @@ static Type *type_suffix(Type *base) {
 		if (ok && !inner->vsize_off) return array_of(inner, (int)n);
 		if (!in_func) die("parse: variable-length array outside a function (line %d)", tk->line);
 		Type *t = array_of(inner, 0); t->size = 0;
-		t->vsize_off = add_local("", ty_uint);
+		t->vsize_off = add_local("", ty_uint); t->vsize_depth = fn_depth;
 		Node *cnt = node(ND_CAST); cnt->lhs = ok ? num(n) : e; cnt->type = ty_uint;
 		vla_pt = vla_pt->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, vsize_node(t), binary(ND_MUL, cnt, vsize_node(inner))));
 		return t;
@@ -463,7 +481,7 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 		int maxsz = 0;
 		for (Member *m = ty->members; m; m = m->next) {
 			int ma = packed || m->packed ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;
-			m->offset = 0; if (m->is_bitfield) m->bit_offset = 0;
+			m->offset = 0; m->ealign = ma; if (m->is_bitfield) m->bit_offset = 0;
 			if (m->type->size > maxsz) maxsz = m->type->size;
 			if (ma > salign) salign = ma;
 		}
@@ -474,6 +492,7 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 	}
 	for (Member *m = ty->members; m; m = m->next) {
 		int pk = packed || m->packed, msz = m->type->size, ma = pk ? 1 : align_of(m->type); if (m->align > ma) ma = m->align;   /* aligned(N) holds even when packed */
+		m->ealign = ma;
 		if (m->is_bitfield) {
 			int unit = ma * 8;
 			if (m->bit_width == 0) { bitpos = (bitpos + unit - 1) / unit * unit; continue; }   /* :0 -> align, no storage */
@@ -496,6 +515,40 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union) {
 	ty->align = salign;
 }
 
+/* A struct with a variable-length member (GNU, block scope): its layout from that member on depends on the sizes, so
+ * it's computed at run time where the type is declared (queued with the VLA sizes): each later member's offset in a
+ * frame slot of its own (Member.voff), the struct's size in the type's size slot. The same rules as layout_struct,
+ * with the position a runtime byte count plus constant bits: a bit-field after the member must be packed (then its
+ * bit offset is still a constant). `first` is the first variable-length member (its offset is still constant). */
+static Node *slot_ref(int off, int depth) { Node *v = node(ND_VAR); strcpy(v->name, "__vla_layout"); v->offset = off; v->type = ty_uint; v->chain = fn_depth - depth; return v; }
+static Node *align_up_node(Node *x, int a) { return a <= 1 ? x : binary(ND_BITAND, binary(ND_ADD, x, tnum(a - 1, ty_uint)), tnum(-a, ty_uint)); }
+static void layout_vla_struct(Type *ty, Member *first, int is_union) {
+	if (is_union) die("parse: a union with a variable-length member is not supported (line %d)", tk->line);
+	if (!in_func) die("parse: a variable-length member outside a function (line %d)", tk->line);
+	int pos = add_local("", ty_uint), bits = 0;           /* the running position: [pos] bytes + `bits` */
+	#define QUEUE(lhs, rhs) (vla_pt = vla_pt->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lhs, rhs)))
+	QUEUE(slot_ref(pos, fn_depth), tnum(first->offset, ty_uint));
+	for (Member *m = first; m; m = m->next) {
+		if (m->promoted || m->is_anon) die("parse: an anonymous member after a variable-length one is not supported (line %d)", tk->line);
+		if (m->is_bitfield) {
+			if (m->ealign != 1 || !m->bit_width) die("parse: a bit-field after a variable-length member must be packed and named (line %d)", tk->line);
+			m->voff = add_local("", ty_uint); m->vdepth = fn_depth; m->offset = 0; m->bit_offset = bits % 8;
+			QUEUE(slot_ref(m->voff, fn_depth), binary(ND_ADD, slot_ref(pos, fn_depth), tnum(bits / 8, ty_uint)));
+			bits += m->bit_width;
+			continue;
+		}
+		if (m != first) {
+			QUEUE(slot_ref(pos, fn_depth), align_up_node(binary(ND_ADD, slot_ref(pos, fn_depth), tnum((bits + 7) / 8, ty_uint)), m->ealign));
+			bits = 0;
+			m->voff = add_local("", ty_uint); m->vdepth = fn_depth; m->offset = 0;
+			QUEUE(slot_ref(m->voff, fn_depth), slot_ref(pos, fn_depth));
+		}
+		QUEUE(slot_ref(pos, fn_depth), binary(ND_ADD, slot_ref(pos, fn_depth), vsize_node(m->type)));
+	}
+	ty->size = 0; ty->vsize_off = add_local("", ty_uint); ty->vsize_depth = fn_depth;
+	QUEUE(vsize_node(ty), align_up_node(binary(ND_ADD, slot_ref(pos, fn_depth), tnum((bits + 7) / 8, ty_uint)), ty->align));
+	#undef QUEUE
+}
 static Type *struct_decl(int is_union) {
 	int packed = 0, alignb = 0;
 	int sso = 0, tunion = 0;
@@ -526,7 +579,6 @@ static Type *struct_decl(int is_union) {
 		do {
 			decl_attr = mbase;
 			char mname[64]; Type *mt = declarator(base, mname);
-			if (mt->vsize_off) die("parse: variable-length member '%s' in a struct (GNU extension) is not supported (line %d)", mname, tk->line);
 			Member *m = calloc(1, sizeof *m); strncpy(m->name, mname, 63); m->type = mt;
 			if (consume(":")) { m->is_bitfield = 1; m->bit_width = (int)eval_const(assign()); }   /* type name : width */
 			while (consume("__attribute__")) attribute();
@@ -541,6 +593,7 @@ static Type *struct_decl(int is_union) {
 	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso, &tunion);   /* struct {...} __attribute__((packed)) */
 	ty->members = mh.next;
 	layout_struct(ty, packed, alignb, is_union);
+	for (Member *m = ty->members; m; m = m->next) if (m->type->vsize_off) { layout_vla_struct(ty, m, is_union); break; }
 	if (tunion) make_transparent(ty);
 	if ((ty->sso = sso))                                 /* scalars and arrays of scalars reverse; nested aggregates aren't modelled */
 		for (Member *m = ty->members; m; m = m->next)
@@ -936,6 +989,9 @@ static Node *conv_args(Node *call) {   /* a prototyped call: complex arguments c
 	Type *ft = call->lhs ? call->lhs->type : NULL; if (ft && is_ptr(ft)) ft = ft->base; if (ft && !ft->fn_ret) ft = NULL;
 	int i = 0;
 	for (Node **ap = &call->args; *ap; ap = &(*ap)->next, i++) {
+		if (type_of(*ap)->kind == TY_STRUCT && (*ap)->type->vsize_off) {   /* variable size: passed by reference (GCC's ARM ABI) */
+			Node *nx = (*ap)->next; (*ap)->next = NULL; *ap = unary(ND_ADDR, *ap); (*ap)->next = nx; continue;
+		}
 		Type *pt = call->lhs ? (ft && i < ft->nparams ? ft->params[i] : NULL) : func_param_type(call->name, i);
 		if (!pt || !(is_cplx(pt) || is_cplx(type_of(*ap))) || same_cplx(pt, (*ap)->type)) continue;
 		Node *nx = (*ap)->next; (*ap)->next = NULL; *ap = cplx_convert(pt, *ap); (*ap)->next = nx;
@@ -1179,7 +1235,10 @@ static Node *builtin_lower(char *name) {
 			return unary(ND_ADDR, gv);
 		}
 		if (!strcmp(name, "__builtin_va_start")) { expect("("); Node *n = node(ND_VA_START); n->lhs = assign(); expect(","); assign(); expect(")"); return n; }
-		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL, NULL), d); expect(")"); return n; }
+		if (!strcmp(name, "__builtin_va_arg"))   { expect("("); Node *n = node(ND_VA_ARG); n->lhs = assign(); expect(","); char d[64]; n->type = declarator(declspec(NULL, NULL), d); expect(")");
+			if (!n->type->vsize_off) return n;
+			Type *t = n->type; n->type = pointer_to(t); return unary(ND_DEREF, n);   /* variable size: passed by reference (GCC's ARM ABI) */
+		}
 		if (!strcmp(name, "__builtin_va_end"))   { expect("("); Node *e = assign(); expect(")"); return e; }   /* no-op, but its argument's side effects happen */
 		if (!strcmp(name, "__builtin_unreachable")) { expect("("); expect(")"); return num(0); }   /* no-op, not a call */
 		if (!strcmp(name, "__builtin_expect"))    {   /* value is the 1st arg; the hint is still EVALUATED (side effects: expect(c, z++)) */
@@ -1211,18 +1270,22 @@ static Node *builtin_lower(char *name) {
 			long off = 0; char mn[64]; ident(mn);
 			Member *m = NULL; for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break;
 			if (!m) die("parse: __builtin_offsetof: no member '%s'", mn);
-			off = m->offset; t = m->type;
-			Node *rt = NULL;   /* runtime index terms (container_of uses offsetof(t, arr[i]) with a variable i) */
+			Node *rt = NULL;   /* runtime terms: a variable index (container_of's offsetof(t, arr[i])), a variable-size layout */
+			#define RT(term) (rt = rt ? binary(ND_ADD, rt, term) : (term))
+			off = m->offset; if (m->voff) RT(slot_ref(m->voff, m->vdepth)); t = m->type;
 			for (;;) {
-				if (consume(".")) { ident(mn); for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break; if (!m) die("parse: __builtin_offsetof: no member '%s'", mn); off += m->offset; t = m->type; }
+				if (consume(".")) { ident(mn); for (m = t->members; m; m = m->next) if (!strcmp(m->name, mn)) break; if (!m) die("parse: __builtin_offsetof: no member '%s'", mn); off += m->offset; if (m->voff) RT(slot_ref(m->voff, m->vdepth)); t = m->type; }
 				else if (consume("[")) {
-					Node *ie = assign(); expect("]"); int elem = t->base ? t->base->size : 1; int ok = 1; long idx = eval_try(ie, &ok);
-					if (ok) off += idx * elem;                                  /* constant index folds into off */
-					else { Node *term = binary(ND_MUL, ie, num(elem)); rt = rt ? binary(ND_ADD, rt, term) : term; }   /* runtime index -> a term */
+					Node *ie = assign(); expect("]"); int ok = 1; long idx = eval_try(ie, &ok);
+					if (t->base && t->base->vsize_off) RT(binary(ND_MUL, ie, vsize_node(t->base)));   /* a variable-size element */
+					else { int elem = t->base ? t->base->size : 1;
+						if (ok) off += idx * elem;                              /* constant index folds into off */
+						else RT(binary(ND_MUL, ie, num(elem))); }                /* runtime index -> a term */
 					if (t->base) t = t->base;
 				}
 				else break;
 			}
+			#undef RT
 			expect(")"); return rt ? binary(ND_ADD, num(off), rt) : num(off);
 		}
 		if (!strcmp(name, "alloca") && is("(") && !local_exists(name)) strcpy(name, "__builtin_alloca");   /* GCC: always the builtin */
@@ -1236,7 +1299,10 @@ static Node *builtin_lower(char *name) {
 			Node *n = node(ND_CALL);
 			/* Direct `bl name` if `name` is a function; INDIRECT (through the value) if it's a
 			 * variable holding a function pointer — a param/local, or a global. n->lhs = the callee. */
-			if (local_exists(name)) {                        /* a local/param fn-ptr shadows everything -> indirect */
+			Ident *nf = ident_find(name);
+			if (nf && nf->kind == ID_NESTFN) {               /* a nested function: + the frame it expects as its static chain */
+				strncpy(n->name, nf->fname, 63); n->chain = fn_depth - nf->depth + 1;
+			} else if (local_exists(name)) {                 /* a local/param fn-ptr shadows everything -> indirect */
 				n->lhs = local_ref(name);
 			} else if (func_declared(name)) {
 				strncpy(n->name, name, 63);                 /* a known FUNCTION -> direct `bl` (wins over a same-named
@@ -1251,6 +1317,7 @@ static Node *builtin_lower(char *name) {
 			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
 			expect(")"); n->args = argh.next; return conv_args(n);
 		}
+		{ Ident *nf = ident_find(name); if (nf && nf->kind == ID_NESTFN) die("parse: the address of nested function '%s' needs a trampoline (not supported) (line %d)", name, tk->line); }
 		if (local_exists(name)) return local_ref(name);
 		Gvar *g = global_find(name);                         /* locals shadow globals */
 		if (g) { Node *n = node(ND_GVAR); strncpy(n->name, name, 63); n->type = g->type; tls_mark(n, g); return n; }
@@ -1275,6 +1342,12 @@ static Node *struct_member(Node *base, const char *mname) {
 	add_type(base);
 	if (!base->type || base->type->kind != TY_STRUCT) die("parse: '.%s' on a non-struct", mname);
 	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
+		if (m->voff) {   /* after a variable-length member: at base + the runtime offset */
+			if (!is_lval(base)) die("parse: a member of a variable-size struct value (line %d)", tk->line);
+			Node *at = unary(ND_DEREF, cast_to(pointer_to(m->type), new_add(cast_to(pointer_to(ty_char), unary(ND_ADDR, base)), slot_ref(m->voff, m->vdepth))));
+			if (!m->is_bitfield) return at;
+			Node *n = node(ND_MEMBER); n->lhs = at; n->offset = 0; bitfield_node(n, m->type, m->bit_width, m->bit_offset); return n;
+		}
 		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type; n->sso = base->type->sso;
 		if (m->is_bitfield) bitfield_node(n, m->type, m->bit_width, m->bit_offset);
 		return n;
@@ -1363,7 +1436,11 @@ static Node *unary_expr(void) {
 	}
 	if (consume("++")) return rmw(unary_expr(), ND_ADD, num(1), 0);   /* ++x */
 	if (consume("--")) return rmw(unary_expr(), ND_SUB, num(1), 0);   /* --x */
-	if (consume("&&")) { Node *n = node(ND_LABELADDR); ident(n->name); map_label(n->name); return n; }   /* &&label : GNU address-of-label */
+	if (consume("&&")) {   /* &&label : GNU address-of-label (maybe an enclosing function's __label__) */
+		Node *n = node(ND_LABELADDR); ident(n->name); int li = map_label(n->name);
+		if (li >= 0 && lscope[li].depth < fn_depth) n->owner = strdup(lscope[li].owner);
+		return n;
+	}
 	if (consume("&")) {                                      /* address-of */
 		Node *e = unary_expr();
 		add_type(e);
@@ -1440,6 +1517,12 @@ static Node *assign(void) {
 	if (!consume("=")) return n;
 	if (!is_lval(n)) die("parse: assignment to non-lvalue (line %d)", tk->line);
 	Node *r = assign();
+	if (type_of(n)->kind == TY_STRUCT && n->type->vsize_off) {   /* a variable-size struct: memcpy its run-time size */
+		Node *h = NULL, **t = &h, *p = bind(&t, pointer_to(n->type), unary(ND_ADDR, n));
+		Node *c = node(ND_CALL); strcpy(c->name, "memcpy"); c->args = ref(p); c->args->next = unary(ND_ADDR, r); c->args->next->next = vsize_node(n->type);
+		*t = unary(ND_EXPRSTMT, c);
+		return stmtexpr_of(h, unary(ND_DEREF, ref(p)));
+	}
 	if (is_vec(type_of(n))) vec_assign_ok(n->type, type_of(r), "an assignment");   /* (a vector into a scalar: codegen's check) */
 	if (is_cplx(n->type) || is_cplx(type_of(r))) r = cplx_convert(n->type, r);
 	return binary(ND_ASSIGN, n, r);
@@ -1542,18 +1625,51 @@ static Node *loop_body(void) {   /* break and continue in it leave the cleanup s
 	Cleanup *sb = brk_cleanups, *sc = cont_cleanups; brk_cleanups = cont_cleanups = cleanups;
 	Node *b = stmt(); brk_cleanups = sb; cont_cleanups = sc; return b;
 }
+/* ---- GNU nested functions ----------------------------------------------------------------------------
+ * A function defined inside another sees the enclosing functions' locals (and __label__ labels): it is compiled as a
+ * file-local function `name.N` that receives the frame of the function it's defined in — its STATIC CHAIN — in ip
+ * (as GCC does on ARM), kept in its first frame slot [r11, #-4]. An enclosing local is reached by walking the chain
+ * (ND_VAR.chain hops); a call passes the frame the callee expects; a goto to an enclosing function's label restores
+ * that function's frame and jumps (a non-local goto). Its address can't be taken: that needs a trampoline (code
+ * written to the stack), which this compiler doesn't make. */
+static Func *function_tail(const char *name, Type *ret);
+static Func **nested_pend; static int nnested_pend, nested_pend_cap;   /* finished nested functions, outermost first */
+static int nested_def_ahead(void) {   /* cursor at the parameter list's "(": is this a definition (a body or K&R decls follow)? */
+	Token *save = tk; int d = 0;
+	do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF);
+	while (is("__attribute__")) { tk = tk->next; if (is("(")) { int e = 0; do { if (is("(")) e++; else if (is(")")) e--; tk = tk->next; } while (e && tk->kind != TK_EOF); } }
+	int def = is("{") || (is_typename() && !is("__attribute__"));
+	tk = save; return def;
+}
+static void nested_function(const char *name, Type *ret) {
+	static int seq; char sym[64]; snprintf(sym, sizeof sym, "%.50s.%d", name, seq++);
+	Ident *d = ident_add(name, ID_NESTFN); d->depth = fn_depth; d->fname = strdup(sym);   /* in scope already: it may recurse */
+	/* the enclosing function's parse state, restored after */
+	char fname[64]; strcpy(fname, cur_func_name); Type *fret = cur_fn_ret; int lb = local_bytes, nl = nlocals, sb = stmtexpr_body;
+	Cleanup *c = cleanups, *cb = brk_cleanups, *cc = cont_cleanups, *ck = case_cleanups; Node *sw = cur_switch; Attr da = decl_attr;
+	int at = nnested_pend;
+	cur_switch = NULL; stmtexpr_body = 0;
+	Func *f = function_tail(sym, ret);
+	if (!f) die("parse: internal: nested function '%s' without a body", name);
+	f->nested = 1; f->is_static = 1;
+	strcpy(cur_func_name, fname); cur_fn_ret = fret; local_bytes = lb; nlocals = nl; stmtexpr_body = sb; in_func = 1;
+	cleanups = c; brk_cleanups = cb; cont_cleanups = cc; case_cleanups = ck; cur_switch = sw; decl_attr = da;
+	if (nnested_pend == nested_pend_cap) { nested_pend_cap = nested_pend_cap ? 2 * nested_pend_cap : 16; nested_pend = realloc(nested_pend, nested_pend_cap * sizeof *nested_pend); }
+	memmove(nested_pend + at + 1, nested_pend + at, (nnested_pend - at) * sizeof *nested_pend);   /* before its own nested ones */
+	nested_pend[at] = f; nnested_pend++;
+}
 /* After a function body: a goto out of cleanup scopes runs them first; into one is an error. */
-static void resolve_goto_cleanups(void) {
-	for (int i = 0; i < nfn_gotos; i++) {
+static void resolve_goto_cleanups(int g0, int l0) {   /* this function's: gotos [g0, n), labels [l0, n) (an enclosing one's are below) */
+	for (int i = g0; i < nfn_gotos; i++) {
 		Node *g = fn_gotos[i].n; Cleanup *from = fn_gotos[i].at, *to = NULL; int found = 0;
-		for (int k = 0; k < nfn_labels && !found; k++) if (!strcmp(fn_labels[k].n->name, g->name)) { to = fn_labels[k].at; found = 1; }
+		for (int k = l0; k < nfn_labels && !found; k++) if (!strcmp(fn_labels[k].n->name, g->name)) { to = fn_labels[k].at; found = 1; }
 		if (!found || from == to) continue;
 		Cleanup *e = from; while (e && e != to) e = e->up;
 		if (e != to) die("parse: goto %s jumps into the scope of a cleanup variable", g->name);
 		Node *jump = node(ND_GOTO); *jump = *g; jump->next = NULL;
 		Node *nx = g->next; *g = *then_stmt(cleanup_calls(from, to), jump); g->next = nx;
 	}
-	nfn_gotos = nfn_labels = 0;
+	nfn_gotos = g0; nfn_labels = l0;
 }
 static Node *stmt(void) {
 	if (consume(";")) return node(ND_BLOCK);                  /* empty statement (e.g. `while (...) ;`) */
@@ -1632,7 +1748,8 @@ static Node *stmt(void) {
 		                              * expansion of a macro like wait_event gets its OWN `__out:`) — rename uniquely */
 		do { if (tk->kind == TK_IDENT) {
 			if (nlscope >= 512) die("parse: too many __label__ declarations in scope (>512)");
-			strncpy(lscope[nlscope].from, tk->text, 63); snprintf(lscope[nlscope].to, 64, "%.40s.%d", tk->text, ++lscope_seq); nlscope++;
+			strncpy(lscope[nlscope].from, tk->text, 63); snprintf(lscope[nlscope].to, 64, "%.40s.%d", tk->text, ++lscope_seq);
+			strcpy(lscope[nlscope].owner, cur_func_name); lscope[nlscope].depth = fn_depth; nlscope++;
 			tk = tk->next; } } while (consume(","));
 		expect(";"); return node(ND_BLOCK);
 	}
@@ -1644,10 +1761,18 @@ static Node *stmt(void) {
 			n->lhs = expr();
 			if (cleanups) die("parse: a computed goto in the scope of a cleanup variable (line %d)", tk->line);
 		}
-		else { ident(n->name); map_label(n->name); jump_note(&fn_gotos, &nfn_gotos, &fn_gotos_cap, n); }
+		else {
+			ident(n->name); int li = map_label(n->name);
+			if (li >= 0 && lscope[li].depth < fn_depth) {   /* a non-local goto: out of this nested function into the one whose label it is */
+				if (cleanups) die("parse: a non-local goto out of the scope of a cleanup variable (line %d)", tk->line);
+				n->owner = strdup(lscope[li].owner); n->chain = fn_depth - lscope[li].depth;
+			} else jump_note(&fn_gotos, &nfn_gotos, &fn_gotos_cap, n);
+		}
 		expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
-		Node *n = node(ND_LABEL); ident(n->name); map_label(n->name); expect(":"); jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, n); return n;
+		Node *n = node(ND_LABEL); ident(n->name); int li = map_label(n->name); expect(":");
+		if (li >= 0 && lscope[li].depth < fn_depth) die("parse: label '%s' is an enclosing function's __label__ (line %d)", lscope[li].from, tk->line);
+		jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, n); return n;
 	}
 	if (consume("return")) {   /* `return;` allowed */
 		Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";");
@@ -1719,11 +1844,16 @@ static Node *stmt(void) {
 		int td, sc = 0; Type *base = declspec(&td, &sc);
 		Attr battr = decl_attr;
 		if (td) { typedef_decl(base, battr); Node *b = node(ND_BLOCK); b->body = take_vla_pending(); return b; }   /* a VLA typedef's size is computed HERE */
-		if (consume(";")) return node(ND_BLOCK);             /* type-only (e.g. a struct definition) */
+		if (consume(";")) { Node *b = node(ND_BLOCK); b->body = take_vla_pending(); return b; }   /* type-only (e.g. a struct definition; a
+		                                                                                         * variable-size one's layout runs here) */
 		Node blk = {0}, *bc = &blk;                          /* each initializer becomes a statement in a block */
 		do {
 			decl_attr = battr;
 			char nm[64]; Type *ty = declarator(base, nm);
+			if (is("(") && nested_def_ahead()) {   /* a GNU nested function: a definition ends the declaration */
+				nested_function(nm, ty);
+				Node *n = node(ND_BLOCK); n->body = blk.next; return n;
+			}
 			if (is("(")) {   /* local function prototype `T name(params);` — record it, no local variable */
 				Type *pts[MAXPARAMS]; int np = 0, va = proto_params(pts, &np);   /* the parameter TYPES decide how calls pass FP args */
 				record_func_sig(nm, ty, pts, np, va);
@@ -1750,11 +1880,14 @@ static Node *stmt(void) {
 			if (ty->vsize_off) {   /* a VLA object: its slot holds an alloca'd block, behind a mark (re-running this frees the last one) */
 				if (is("=")) die("parse: a variable-length array cannot be initialized (line %d)", tk->line);
 				no_cleanup("a variable-length array");
-				int off = add_local(nm, pointer_to(ty->base)); locals[nlocals - 1].type = ty; locals[nlocals - 1].vla = 1;
+				Type *pt = pointer_to(ty->kind == TY_ARRAY ? ty->base : ty);   /* an array's decays; a variable-size struct's address */
+				int off = add_local(nm, pt); locals[nlocals - 1].type = ty; locals[nlocals - 1].vla = 1;
 				bc = bc->next = node(ND_VLAMARK);
-				Node *pv = node(ND_VAR); strncpy(pv->name, nm, 63); pv->offset = off; pv->type = pointer_to(ty->base);
-				Node *al = node(ND_CALL); strcpy(al->name, "__builtin_alloca"); al->args = vsize_node(ty);
-				bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, pv, al));
+				Node *pv = node(ND_VAR); strncpy(pv->name, nm, 63); pv->offset = off; pv->type = pt;
+				int al = align_of(ty) > decl_attr.align ? align_of(ty) : decl_attr.align;   /* alloca gives 8: more is realigned */
+				Node *a = node(ND_CALL); strcpy(a->name, "__builtin_alloca"); a->args = al > 8 ? binary(ND_ADD, vsize_node(ty), tnum(al, ty_uint)) : vsize_node(ty);
+				Node *blk = al > 8 ? cast_to(pt, align_up_node(cast_to(ty_uint, a), al)) : a;
+				bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, pv, blk));
 				continue;
 			}
 			if (ty->kind == TY_ARRAY && ty->len == 0 && consume("=")) {   /* unsized `T x[] = ...`: the initializer sizes it, THEN allocate */
@@ -1765,13 +1898,21 @@ static Node *stmt(void) {
 				push_cleanup(v);
 				continue;
 			}
-			int off = add_local(nm, ty);
+			int al = align_of(ty) > decl_attr.align ? align_of(ty) : decl_attr.align;
+			if (al > 8) {   /* over-aligned past the frame's 8: a pointer slot, into an area realigned at run time */
+				Type *at = array_of(ty_char, ty->size + al);
+				Node *area = node(ND_VAR); area->offset = add_local("", at); area->type = at;
+				Node *pv = node(ND_VAR); pv->offset = add_local(nm, pointer_to(ty)); pv->type = pointer_to(ty);
+				locals[nlocals - 1].type = ty; locals[nlocals - 1].vla = 1;
+				Node *a = binary(ND_BITAND, binary(ND_ADD, cast_to(ty_uint, area), tnum(al - 1, ty_uint)), tnum(-al, ty_uint));
+				bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, pv, cast_to(pointer_to(ty), a)));
+			} else add_local_aligned(nm, ty, al);
 			if (consume("asm")) { expect("("); strncpy(locals[nlocals - 1].reg, tk->text, 7); tk = tk->next; expect(")"); }   /* register var (both spellings) */
-			if (consume("=")) { Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; strncpy(v->reg, local_reg(nm), 7);
+			if (consume("=")) { Node *v = local_ref(nm);
 				if (is("{") || ty->kind == TY_ARRAY) bc = bc->next = init_of(v, ty);   /* aggregate initializer (incl. char a[N] = "str") */
 				else { Node *r = assign(); if (is_vec(ty)) vec_assign_ok(ty, type_of(r), "an initializer"); if (is_cplx(ty) || is_cplx(type_of(r))) r = cplx_convert(ty, r);
 					bc = bc->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, v, r)); } }
-			{ Node *v = node(ND_VAR); strncpy(v->name, nm, 63); v->offset = off; v->type = ty; push_cleanup(v); }   /* once initialized */
+			if (decl_attr.cleanup[0]) push_cleanup(local_ref(nm));   /* its scope begins, initialized */
 		} while (consume(","));
 		expect(";");
 		Node *n = node(ND_BLOCK); n->body = blk.next; return n;
@@ -1828,9 +1969,12 @@ static int global_asm_label(const char *name, int sc) {
 }
 static Func *function_tail(const char *name, Type *ret) {
 	strncpy(cur_func_name, name, sizeof cur_func_name - 1);   /* for `__func__` inside the body */
-	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret; cur_fn_ret = ret;
-	in_func = 1;
-	nlocals = 0; local_bytes = 0;
+	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret; cur_fn_ret = ret; f->final_frame = -1;
+	int nested = fn_depth > 0;                               /* a GNU nested function (see nested_function) */
+	in_func = 1; fn_depth++;
+	if (!nested) nlocals = 0;                                /* a nested one's locals follow its definer's (both visible) */
+	local_bytes = 0;
+	if (nested) add_local("", ty_uint);                     /* [r11, #-4]: the static chain */
 	scope_push();                                            /* the function's scope: its parameters and body */
 	expect("(");
 	struct { char name[64]; Type *ty; } prm[MAXPARAMS]; int np = 0;   /* collect params, then assign offsets by kind */
@@ -1896,16 +2040,16 @@ static Func *function_tail(const char *name, Type *ret) {
 	}
 	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
 	f->attr.align = sig_align(name, 0);                      /* ...its alignment: the largest any declaration asked for */
-	if (is(";") || is(",")) { in_func = 0; scope_pop(); return NULL; }   /* a prototype (the declaration may go on) — no body to compile */
+	if (is(";") || is(",")) { in_func = 0; fn_depth--; scope_pop(); return NULL; }   /* a prototype (the declaration may go on) — no body to compile */
 	expect("{");
 	Node h = {0}, *c = &h;
 	for (Node *v = vla_prologue; v; ) { Node *nx = v->next; v->next = NULL; c = c->next = v; v = nx; }
-	cleanups = brk_cleanups = cont_cleanups = case_cleanups = NULL; nfn_gotos = nfn_labels = 0;
+	cleanups = brk_cleanups = cont_cleanups = case_cleanups = NULL; int g0 = nfn_gotos, l0 = nfn_labels;
 	while (!consume("}")) c = c->next = stmt();
 	if (cleanups) { c->next = cleanup_calls(cleanups, NULL); cleanups = NULL; }   /* falling off the end */
-	resolve_goto_cleanups();
+	resolve_goto_cleanups(g0, l0);
 	f->body = h.next;
-	in_func = 0; scope_pop();
+	in_func = 0; fn_depth--; scope_pop();
 	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
 	return f;   /* add_type runs in a final pass (parse()), once every function's return type is recorded */
 }
@@ -2114,8 +2258,9 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 		return;
 	}
 	if (ty->kind == TY_STRUCT) {
-		if (!*pending) { *pending = assign(); add_type(*pending); }
-		if ((*pending)->type && (*pending)->type->kind == TY_STRUCT && (*pending)->type->size == ty->size) {   /* a whole struct value */
+		if (!*pending && tk->kind != TK_STR) { *pending = assign(); add_type(*pending); }   /* maybe a whole struct value (a string
+		                                                                                     * never is: it's a member char array's) */
+		if (*pending && (*pending)->type && (*pending)->type->kind == TY_STRUCT && (*pending)->type->size == ty->size) {   /* a whole struct value */
 			pi_append(tail, base, ty, *pending, 0, 0); *pending = NULL; return;
 		}
 		int first = 1, uni = 1;
@@ -2256,6 +2401,8 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		if (is("{")) return parse_init(t, base, tail);
 		tk = save;   /* just a cast of a constant — fall through to the scalar leaf */
 	}
+	if (tk->kind == TK_STR && ty->kind == TY_STRUCT) { Node *none = NULL; elide_init(ty, base, tail, &none); return ty->size; }   /* elided
+	                                                                           * braces: the string initializes the first char array */
 	Node *e = assign(); add_type(e);
 	if (is_vec(ty) && !is_vec(e->type) && init_nest) { elide_init(ty, base, tail, &e); return ty->size; }   /* elided braces */
 	if (is_vec(ty) || is_vec(e->type)) {   /* a whole vector value (a whole vector object from a scalar is an error, as in GCC) */
@@ -2509,7 +2656,10 @@ Func *parse(Token *tok) {
 				Func *fn = function_tail(name, ty);
 				if (fn) {   /* a definition ends the declaration */
 					fn->is_static = (sc & SC_STATIC) != 0; if (fn->attr.alias[0]) die("parse: alias on a function definition '%s'", name);
-					cur = cur->next = fn; defined = 1; break;
+					cur = cur->next = fn; defined = 1;
+					for (int i = 0; i < nnested_pend; i++) cur = cur->next = nested_pend[i];   /* its nested functions, after it */
+					nnested_pend = 0;
+					break;
 				}
 				decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
 			} else if (consume("asm") && global_asm_label(name, sc)) {   /* `register T x asm("rN")`: a global register variable */

@@ -90,6 +90,16 @@ int is_sret(Type *t, int vfp) {
 	if (is_vec(t)) return t->size > 16;
 	return t && (t->kind == TY_STRUCT || is_cplx(t)) && t->size > 4 && !(vfp && vfp_class(t, &n));   /* a complex: as a struct of its parts */
 }
+/* AAPCS doubleword alignment of an argument (an even register pair / 8-aligned stack slot), as GCC (9+) decides it: a
+ * scalar, vector or complex by its type's NATURAL alignment (an aligned() typedef doesn't count); a struct or union by
+ * its members' (a member's aligned() does, the struct's own doesn't). */
+static int arg_align8(Type *t) {
+	if (!t || t->kind == TY_ARRAY) return 0;   /* an array argument is a pointer */
+	if (t->kind == TY_STRUCT) { for (Member *m = t->members; m; m = m->next) if (!m->promoted && m->ealign > 4) return 1; return 0; }
+	if (is_vec(t)) return t->size >= 8;
+	if (is_cplx(t)) return t->base->size > 4;
+	return t->kind != TY_PTR && t->size > 4;
+}
 /* A class-k VFP candidate of nel elements moved between memory at [base] and s0.. (float elements) / d0.. */
 static void vfp_block(const char *op, const char *base, int k, int nel) {
 	int ns = nel * vfp_regs(k);
@@ -112,7 +122,7 @@ static void vec_check(Type *to, Type *from, const char *what) {
 int aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg) {
 	int ncrn = first, nsaa = 0; unsigned sused = 0; int vclosed = 0;
 	for (int i = 0; i < n; i++) {
-		int nel, k = vfp ? vfp_class(ty[i], &nel) : 0, al8 = ty[i] && ty[i]->kind != TY_ARRAY && align_of(ty[i]) >= 8;
+		int nel, k = vfp ? vfp_class(ty[i], &nel) : 0, al8 = arg_align8(ty[i]);
 		if (vreg) vreg[i] = -1;
 		if (k) {
 			int w = vfp_regs(k), need = nel * w, got = -1;
@@ -291,11 +301,15 @@ static void emit_copy(const char *dst, int doff, const char *src, int soff, int 
 	for (i = 0; i + 4 <= size; i += 4) fprintf(o, "\tldr r2, [%s, #%d]\n\tstr r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
 	for (; i < size; i++) fprintf(o, "\tldrb r2, [%s, #%d]\n\tstrb r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
 }
+/* r0 = the frame `hops` static-chain links up (0: this one): each nested function keeps its chain at [r11, #-4]. */
+static void chain_frame(int hops) { fprintf(o, "\tmov r0, r11\n"); while (hops-- > 0) fprintf(o, "\tldr r0, [r0, #-4]\n"); }
 /* Put the ADDRESS of an lvalue in r0. A variable's address is fp+offset; *p's address is p's value. */
 static void gen_addr(Node *n) {
 	switch (n->kind) {
-	case ND_VAR:   /* fp-relative: locals are below fp (negative), stack params above it (positive) */
-		emit_addimm("r0", "r11", n->offset);
+	case ND_VAR:   /* fp-relative: locals are below fp (negative), stack params above it (positive); an enclosing
+	                * function's (nested functions) relative to its frame, up the static chain */
+		if (n->chain) { chain_frame(n->chain); emit_addimm("r0", "r0", n->offset); }
+		else emit_addimm("r0", "r11", n->offset);
 		if (n->vla_obj) fprintf(o, "\tldr r0, [r0]\n");   /* a VLA: the slot holds its block's address */
 		return;
 	case ND_DEREF: gen_expr(n->lhs); return;                                 /* the pointer value IS the address */
@@ -475,6 +489,8 @@ static long builtin_const_arg(Node *n) {
 	return n->args->val;
 }
 static int cur_alloca_slot;   /* frame slot holding the alloca floor (0 = the function uses no alloca) */
+static Func *gen_prog;        /* every function (a non-local goto looks up the frame of its label's function) */
+static Func *find_func(Func *prog, const char *name);
 static Node *vla_marks[256]; static int nvla_marks;   /* this function's VLA declarations, in source order */
 static int cur_setjmp_save;   /* frame slots for r4-r10 in a function using __builtin_setjmp (0 = none) */
 static void gen_builtin(Node *n) {
@@ -595,7 +611,8 @@ static void gen_expr1(Node *n) {
 	case ND_REGVAR: fprintf(o, "\tmov r0, %s\n", n->reg); return;   /* read a global register variable */
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_LABELADDR: {                                    /* &&label -> the label's code address (movw/movt) */
-		fprintf(o, "\tmovw r0, #:lower16:" CLABEL_FMT "\n\tmovt r0, #:upper16:" CLABEL_FMT "\n", cur_gen_func, n->name, cur_gen_func, n->name);
+		const char *fn = n->owner ? n->owner : cur_gen_func;   /* an enclosing function's __label__ (nested functions) */
+		fprintf(o, "\tmovw r0, #:lower16:" CLABEL_FMT "\n\tmovt r0, #:upper16:" CLABEL_FMT "\n", fn, n->name, fn, n->name);
 		return;
 	}
 	case ND_DEREF: gen_expr(n->lhs);                        /* pointer -> r0, then load the pointee by width */
@@ -607,6 +624,7 @@ static void gen_expr1(Node *n) {
 		if (is_aggr(n->lhs->type)) {   /* whole struct/union/vector copy — memcpy, not a scalar store */
 			vec_check(n->lhs->type, n->rhs->type, "an assignment");
 			if (!is_aggr(n->rhs->type)) die("cc: assigning a scalar to a struct in %s", cur_gen_func);
+			if (n->lhs->type->vsize_off) die("cc: internal: a variable-size struct copy in %s", cur_gen_func);   /* the parser's memcpy */
 			gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");   /* dest addr */
 			gen_expr(n->rhs);                                /* a struct-typed rhs leaves its ADDRESS in r0 */
 			fprintf(o, "\tpop {r1}\n");                      /* r1 = dest, r0 = src */
@@ -662,7 +680,7 @@ static void gen_expr1(Node *n) {
 		gen_addr(n->lhs);
 		if (is_aggr(n->type)) {   /* by-value composite: its words ARE at ap; the result is that address */
 			fprintf(o, "\tldr r1, [r0]\n");
-			if (align_of(n->type) >= 8) fprintf(o, "\tadd r1, r1, #7\n\tbic r1, r1, #7\n");
+			if (arg_align8(n->type)) fprintf(o, "\tadd r1, r1, #7\n\tbic r1, r1, #7\n");
 			emit_addimm("r2", "r1", 4 * arg_words(n->type)); fprintf(o, "\tstr r2, [r0]\n\tmov r0, r1\n");
 		}
 		else if (is64(n->type))   /* 64-bit: 8-align ap (AAPCS even-word), then r0=low@[ap], r1=high@[ap+4]; ap += 8 */
@@ -717,7 +735,8 @@ static void gen_expr1(Node *n) {
 		}
 		int vfp = !soft_float && !(callee ? func_base_pcs(callee) : ft && ft->variadic == 1);   /* AAPCS-VFP unless the callee is variadic / pcs("aapcs") */
 		int sret = is_sret(n->type, vfp), total = aapcs_layout(at, nargs, sret, vfp, pos, vreg);
-		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs ? 1 : 0, regw = total ? 4 : 0, vs = 0;   /* vs: s-registers used */
+		int nstk = total > 4 ? total - 4 : 0, cw = n->lhs || n->chain ? 1 : 0, regw = total ? 4 : 0, vs = 0;   /* vs: s-registers used;
+		                                                                                                            * cw: a slot for the callee or the static chain */
 		for (int i = 0; i < nargs; i++) if (vreg[i] >= 0) { int nel, k = vfp_class(at[i], &nel), e = vreg[i] + nel * vfp_regs(k); if (e > vs) vs = e; }
 		vs = (vs + 1) & ~1;   /* staged and loaded as d registers */
 		/* One area from sp, laid out in argument-word order: [0,16) = r0..r3 staging, then the outgoing stack
@@ -742,12 +761,13 @@ static void gen_expr1(Node *n) {
 			if (is64(at[i])) mem_op("str", "r1", "sp", at_off + 4);
 		}
 		if (sret) { emit_addimm("r0", "r11", n->offset); fprintf(o, "\tstr r0, [sp]\n"); }   /* hidden r0 = &result temp */
-		if (cw) { gen_expr(n->lhs); mem_op("str", "r0", "sp", cslot); }
+		if (n->lhs) { gen_expr(n->lhs); mem_op("str", "r0", "sp", cslot); }
+		else if (n->chain) { chain_frame(n->chain - 1); mem_op("str", "r0", "sp", cslot); }   /* a nested callee's static chain -> ip */
 		if (vs) { emit_addimm("ip", "sp", vslot); fprintf(o, "\tvldm ip, {d0-d%d}\n", vs / 2 - 1); }   /* after anything that could use VFP */
 		if (cw) mem_op("ldr", "r12", "sp", cslot);
 		if (regw) fprintf(o, "\tpop {r0, r1, r2, r3}\n");
-		if (cw) fprintf(o, "\tblx r12\n");
-		else    fprintf(o, "\tbl %s\n", n->name);                /* result in r0(:r1) */
+		if (n->lhs) fprintf(o, "\tblx r12\n");
+		else        fprintf(o, "\tbl %s\n", n->name);            /* result in r0(:r1) */
 		mem_op("ldr", "ip", "sp", spslot - 4 * regw); fprintf(o, "\tadd sp, sp, ip\n");   /* back to the caller's (possibly 4-aligned) sp */
 		if (regw) fprintf(o, "\tsub sp, sp, #16\n");   /* the distance was measured from the area base, below the popped r0-r3 */
 		int rnel, rk = vfp ? vfp_class(n->type, &rnel) : 0;   /* a float/double/HFA result comes back in s0../d0.. */
@@ -1015,6 +1035,14 @@ static void gen_stmt(Node *n) {
 	}   /* %N-substituted template + constraint-driven operand load/store */
 	case ND_GOTO:
 		if (n->lhs) { gen_expr(n->lhs); fprintf(o, "\tbx r0\n"); return; }   /* computed goto */
+		if (n->owner) {   /* non-local (a nested function's, to an enclosing one's __label__): that function's frame + sp, then jump */
+			Func *of = find_func(gen_prog, n->owner);
+			if (!of || of->final_frame < 0) die("cc: internal: goto %s: its function %s is not generated yet", n->name, n->owner);
+			chain_frame(n->chain); fprintf(o, "\tmov r11, r0\n");
+			if (of->alloca_slot) { fp_mem("ldr", "ip", of->alloca_slot); fprintf(o, "\tmov sp, ip\n"); }   /* its dynamic stack floor */
+			else emit_addimm("sp", "r11", -of->final_frame);
+			fprintf(o, "\tb " CLABEL_FMT "\n", n->owner, n->name); return;
+		}
 		fprintf(o, "\tb " CLABEL_FMT "\n", cur_gen_func, n->name); return;
 	case ND_LABEL: fprintf(o, CLABEL_FMT ":\n", cur_gen_func, n->name); return;
 	case ND_BREAK:    if (!brk_lbl)  die("cc: break outside a loop");    fprintf(o, "\tb .L%d\n", brk_lbl);  return;
@@ -1061,7 +1089,9 @@ static void gen_func(Func *f) {
 	if (homed) fprintf(o, "\tpush {r0, r1, r2, r3}\n");
 	if (f->vfp_save) fprintf(o, "\tvpush {d0-d7}\n");   /* VFP argument registers, below the homed r0-r3 */
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
-	if (frame) emit_addimm("sp", "sp", -frame);   /* ip is free here; frame may exceed the imm range */
+	if (f->nested) fprintf(o, "\tstr ip, [sp, #-4]!\n");   /* the static chain: first slot, [r11, #-4] (before anything uses ip) */
+	if (frame - 4 * f->nested) emit_addimm("sp", "sp", -(frame - 4 * f->nested));   /* ip is free here; frame may exceed the imm range */
+	f->final_frame = frame; f->alloca_slot = cur_alloca_slot;   /* for a non-local goto into this function */
 	if (cur_alloca_slot) { fprintf(o, "\tmov ip, sp\n"); fp_mem("str", "ip", cur_alloca_slot); }   /* alloca floor = the frame's bottom */
 	if (nvla_marks) { fprintf(o, "\tmov ip, #0\n"); for (int i = 0; i < nvla_marks; i++) fp_mem("str", "ip", vla_marks[i]->offset); }   /* no VLA allocated yet */
 	/* A longjmp may arrive from code that used r4-r10: the caller still expects them preserved (AAPCS). */
@@ -1163,7 +1193,7 @@ static void dce(Func *prog) {
 void gen(Func *prog, const char *out) {
 	o = fopen(out, "w"); if (!o) die("cc: cannot open %s", out);
 	if (!soft_float) fprintf(o, "\t.fpu vfpv4\n\t.eabi_attribute 28, 1\n");   /* hard float: VFP code, Tag_ABI_VFP_args (AAPCS-VFP) */
-	dce(prog);
+	dce(prog); gen_prog = prog;
 	for (Func *f = prog; f; f = f->next) if (f->reachable) gen_func(f);
 	gen_data();
 	fprintf(o, "\t.section .note.GNU-stack,\"\",%%progbits\n");   /* this code needs no executable stack (as GCC marks it) */

@@ -2,8 +2,8 @@
 # abi.sh — AAPCS / AAPCS-VFP interoperability with GCC: the functions in abi/callee.c and the calls in
 # abi/caller.c are each built by GCC and by our cc, linked in all four combinations and run on qemu. Every
 # case (FP args incl. back-filling and the stack spill past s15, HFA args/returns, variadic doubles, a struct
-# split across r3 and the stack; and, in vcallee/vcaller.c, the generic-vector cases) must give the same answer both
-# ways, or our calling convention is wrong.
+# split across r3 and the stack; vcallee/vcaller.c: generic vectors; acallee/acaller.c: doubleword alignment of
+# over-aligned typedefs and structs) must give the same answer both ways, or our calling convention is wrong.
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(cd "$HERE/../../.." && pwd); T=$ROOT/toolchain
 X=${GNU:-$ROOT/projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-}
@@ -14,7 +14,7 @@ build() {   # build <gcc|ours> <name>
 	else "${X}gcc" -E -o "$W/$2.i" "$HERE/abi/$2.c" && "$T/cc/build/cc" -o "$W/$2.s" "$W/$2.i" && "$T/as/build/as" -o "$W/$2.o" "$W/$2.s"; fi
 }
 fail=0
-for pair in "callee caller" "vcallee vcaller"; do set -- $pair
+for pair in "callee caller" "vcallee vcaller" "acallee acaller"; do set -- $pair
 for callee in gcc ours; do for caller in gcc ours; do
 	build "$callee" "$1"; build "$caller" "$2"
 	"$T/ld/build/ld" -Ttext 0x40000000 -o "$W/m.elf" "$RT/crt_gnu.o" "$W/$2.o" "$W/$1.o" $(ls "$RT"/*.ours.o) "$T/rt/build/libosrt.a"
