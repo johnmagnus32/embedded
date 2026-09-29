@@ -153,7 +153,7 @@ typedef struct Node {
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
-typedef struct Attr { int weak, used, align, pcs, vis, packed; char section[64], alias[64], cleanup[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
+typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gnu_inline; char section[64], alias[64], cleanup[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
                                                                                          * packed: on a member (its alignment 1) or an enum (its smallest type);
                                                                                          * cleanup: a local's scope-exit function (cleanup(fn));
                                                                                          * vis: 0 unset, else VIS_* */
@@ -178,6 +178,7 @@ typedef struct Func {
 	int nested;                  /* a GNU nested function: its static chain (the enclosing frame) arrives in ip and is kept
 	                              * in its first local slot, [r11, #-4] */
 	int final_frame, alloca_slot;   /* set by codegen (-1 before): the frame size and alloca-floor slot (a non-local goto into it) */
+	int no_emit;                 /* an inline-only definition (GNU `extern inline` + gnu_inline): calls go to the external one */
 	Attr attr;
 	Node *body;                  /* statement list                                               */
 	struct Func *next;
@@ -198,6 +199,7 @@ typedef struct Init { int kind; long val; char sym[SYMEXPR_MAX]; int size; struc
 #define SC_STATIC 2   /* `static` — file-local symbol (no .global)  */
 #define SC_REGISTER 4 /* `register` — for a file-scope `register T x asm("rN")` global register variable */
 #define SC_TLS 8      /* `_Thread_local` / `__thread` — one object per thread (.tdata/.tbss) */
+#define SC_INLINE 16  /* `inline` (with extern + gnu_inline: an inline-only definition, never emitted) */
 typedef struct Gvar {
 	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
 	Type *type;

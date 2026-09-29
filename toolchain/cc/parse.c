@@ -16,11 +16,24 @@ static Token *tk;                                  /* the parse cursor */
 static Node *cur_switch;                           /* innermost switch, so case/default can attach to it */
 static char cur_func_name[64];                     /* name of the function being parsed, for `__func__` */
 static Type *cur_fn_ret;                           /* ...and its return type */
+typedef struct { Token *params; Type *ret; } InlineDef;   /* an always_inline function expanded at its calls (see inline_expand) */
+static StrMap inline_defs;
+static int decl_sc_inline_extern;                  /* the function being defined is `extern inline` (GNU: inline-only with gnu_inline) */
+typedef struct InlineCtx { const char *name; Type *ret; Node *retvar; char end[64]; Node **pack; int npack; int id; struct InlineCtx *up; } InlineCtx;
+static InlineCtx *inline_ctx;                      /* the expansion being parsed (innermost) */
+static int saw_va_pack;                            /* the function being parsed uses __builtin_va_arg_pack */
+static Node *inline_expand(const char *name, InlineDef *def, Node *args);
+static Node *call_args(void);
 static int stmtexpr_body;                          /* the next block is a ({...})'s: its last expression is the value */
 static int fn_depth;                               /* function nesting while parsing: 0 file scope, 1 a function, 2+ nested */
 /* __label__ renames, innermost last; owner/depth: the function that declared it (a nested function's goto to it is non-local) */
 static struct { char from[64], to[64], owner[64]; int depth; } lscope[512]; static int nlscope, lscope_seq;
-static int map_label(char *name) { for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return i; } return -1; }
+static int inline_label_id = -1;                   /* in an always_inline expansion: its labels get this suffix (apart per call) */
+static int map_label(char *name) {
+	for (int i = nlscope - 1; i >= 0; i--) if (!strcmp(lscope[i].from, name)) { strcpy(name, lscope[i].to); return i; }
+	if (inline_label_id >= 0) { char t[64]; snprintf(t, sizeof t, "%.48s.inl%d", name, inline_label_id); strcpy(name, t); }
+	return -1;
+}
 
 /* ---- token helpers ------------------------------------------------------------------------------- */
 static int is(const char *s)     { return (tk->kind == TK_PUNCT || tk->kind == TK_KW) && !strcmp(tk->text, s); }
@@ -158,6 +171,7 @@ static void decl_symbol_attrs(const char *name, const Attr *a, int is_static) {
 	if (a->alias[0]) { if (!is_static && !a->weak) topasm("\t.global %s%s", name, ""); topasm("\t.set %s, %s", name, a->alias); }
 }
 static void attr_merge(Attr *to, const Attr *a) {
+	to->always_inline |= a->always_inline; to->gnu_inline |= a->gnu_inline;
 	to->weak |= a->weak; to->used |= a->used; if (a->align > to->align) to->align = a->align; if (a->pcs) to->pcs = a->pcs;
 	if (a->vis) to->vis = a->vis;
 	if (a->section[0]) strcpy(to->section, a->section);
@@ -200,6 +214,8 @@ static void attribute(void) {
 		if (L > 4 && !strncmp(t, "__", 2) && !strcmp(t + L - 2, "__")) { snprintf(nm, sizeof nm, "%.*s", (int)(L - 4), t + 2); } else snprintf(nm, sizeof nm, "%s", t);
 		tk = tk->next;
 		if (!strcmp(nm, "weak")) decl_attr.weak = 1;
+		else if (!strcmp(nm, "always_inline")) decl_attr.always_inline = 1;
+		else if (!strcmp(nm, "gnu_inline")) decl_attr.gnu_inline = 1;
 		else if (!strcmp(nm, "pcs") && consume("(")) {   /* the RTABI helpers are pcs("aapcs"): core-register args/results under hard float */
 			if (tk->kind != TK_STR) die("parse: __attribute__((pcs)) needs a string (line %d)", tk->line);
 			if (!strcmp(tk->sval, "aapcs")) decl_attr.pcs = 1; else if (!strcmp(tk->sval, "aapcs-vfp")) decl_attr.pcs = 2;
@@ -336,7 +352,8 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("_Thread_local")) { if (!sc) die("parse: _Thread_local here (line %d)", tk->line); *sc |= SC_TLS; continue; }   /* tracked: file-scope `register T x asm("rN")` */
 		if (consume("const")) { quals |= 1; continue; }
 		if (consume("volatile")) { quals |= 2; continue; }
-		if (consume("restrict") || consume("inline")) continue;
+		if (consume("restrict")) continue;
+		if (consume("inline")) { if (sc) *sc |= SC_INLINE; continue; }
 		if (consume("__extension__")) continue;   /* GNU no-op prefix */
 		if (consume("__attribute__")) {   /* a type attribute here applies to the whole specifier's type, wherever it stands */
 			attribute(); if (pend_vsize) vsize = pend_vsize; if (pend_mode) mode = pend_mode; tunion |= pend_tunion; pend_vsize = pend_mode = pend_tunion = 0; continue; }
@@ -1100,6 +1117,15 @@ static Node *builtin_lower(char *name) {
 		Type *t = type_of(re); if (!is_fp(t) || type_of(im)->kind != t->kind) die("parse: __builtin_complex needs two operands of one floating type (line %d)", tk->line);
 		return cpair(complex_of(t), re, im);
 	}
+	if (!strcmp(b, "va_arg_pack_len")) {   /* the expansion's pack size (only valid inside an always_inline expansion) */
+		expect("("); expect(")");
+		if (!inline_ctx) { saw_va_pack = 1; Node *n = node(ND_CALL); strcpy(n->name, name); return n; }   /* the definition's own parse */
+		return num(inline_ctx->npack);
+	}
+	if (!strcmp(b, "return_address") || !strcmp(b, "frame_address")) {   /* the level: any integer constant expression */
+		expect("("); long lv = eval_const(assign()); expect(")");
+		Node *n = node(ND_CALL); strcpy(n->name, name); n->args = tnum(lv, ty_uint); n->type = pointer_to(ty_char); return n;
+	}
 	if (!strcmp(b, "shuffle")) {   /* (a, mask) or (a, b, mask) */
 		expect("("); Node *x = assign(), *y = NULL; expect(","); Node *m = assign();
 		if (consume(",")) { y = m; m = assign(); }
@@ -1230,7 +1256,11 @@ static Node *builtin_lower(char *name) {
 			 * Synthesize it like a string literal so it decays to its address. */
 			Gvar *g = add_global(); g->is_str = 1; g->type = ty_char;
 			snprintf(g->name, sizeof g->name, ".LSTR%d", str_id++);
-			strncpy(g->str, cur_func_name, sizeof g->str - 1);
+			if (inline_ctx) strncpy(g->str, inline_ctx->name, sizeof g->str - 1);   /* an expanded always_inline function: its own name */
+			else {   /* a nested function's symbol is name.N: its name is the part before */
+				strncpy(g->str, cur_func_name, sizeof g->str - 1);
+				char *dot = strrchr(g->str, '.'); if (fn_depth > 1 && dot) *dot = 0;
+			}
 			Node *gv = node(ND_GVAR); strncpy(gv->name, g->name, 63); gv->type = ty_char;
 			return unary(ND_ADDR, gv);
 		}
@@ -1313,9 +1343,9 @@ static Node *builtin_lower(char *name) {
 				if (gv) { Node *c = node(ND_GVAR); strncpy(c->name, name, 63); c->type = gv->type; n->lhs = c; }   /* a real fn-ptr global -> indirect */
 				else strncpy(n->name, name, 63);            /* an as-yet-undeclared external -> direct call */
 			}
-			Node argh = {0}, *ac = &argh;
-			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }   /* assign(), so ',' separates args */
-			expect(")"); n->args = argh.next; return conv_args(n);
+			n->args = call_args();
+			if (!n->lhs) { InlineDef *id = strmap_get(&inline_defs, n->name); if (id) return inline_expand(name, id, n->args); }
+			return conv_args(n);
 		}
 		{ Ident *nf = ident_find(name); if (nf && nf->kind == ID_NESTFN) die("parse: the address of nested function '%s' needs a trampoline (not supported) (line %d)", name, tk->line); }
 		if (local_exists(name)) return local_ref(name);
@@ -1375,9 +1405,7 @@ static Node *postfix_ops(Node *n) {
 		else if (consume("--")) n = rmw(n, ND_SUB, num(1), 1);   /* x-- */
 		else if (consume("(")) {   /* call on an arbitrary expr: _Generic(...)(args), (fp)(args), f(x)(y) — indirect via lhs */
 			Node *c = node(ND_CALL); c->lhs = n;
-			Node argh = {0}, *ac = &argh;
-			if (!is(")")) { do { ac = ac->next = assign(); } while (consume(",")); }
-			expect(")"); c->args = argh.next; n = conv_args(c);
+			c->args = call_args(); n = conv_args(c);
 		}
 		else return n;
 	}
@@ -1625,6 +1653,70 @@ static Node *loop_body(void) {   /* break and continue in it leave the cleanup s
 	Cleanup *sb = brk_cleanups, *sc = cont_cleanups; brk_cleanups = cont_cleanups = cleanups;
 	Node *b = stmt(); brk_cleanups = sb; cont_cleanups = sc; return b;
 }
+/* ---- always_inline expansion ---------------------------------------------------------------------------
+ * We don't inline. But an always_inline function using __builtin_va_arg_pack() (it forwards its caller's variadic
+ * arguments, whose register/stack layout depends on where they end up) or one with no out-of-line definition
+ * (GNU `extern inline` + gnu_inline) must be inlined at every call, as GCC does even at -O0. Its tokens (from the
+ * parameter list) are recorded, and each call re-parses them into the caller: the arguments bound to fresh locals
+ * named as the parameters, the variadic ones to temporaries (the pack), `return e` a store + a jump to the end, the
+ * labels renamed apart, the names resolved in the function's own (file) scope. */
+static Node *inline_expand(const char *name, InlineDef *def, Node *args) {
+	static int seq;
+	if (!in_func) die("parse: a call to always_inline '%s' outside a function (line %d)", name, tk->line);
+	for (InlineCtx *u = inline_ctx; u; u = u->up) if (!strcmp(u->name, name)) die("parse: recursive always_inline '%s' can't be inlined (line %d)", name, tk->line);
+	InlineCtx cx = { .name = name, .ret = def->ret, .id = seq++, .up = inline_ctx };
+	Token *resume = tk; Scope *outer = scope; int nl = nlocals; Type *fret = cur_fn_ret;
+	scope = &file_scope; scope_push();                  /* its names are the file's + its own, not the caller's */
+	Node h = {0}, *c = &h, *a = args;
+	tk = def->params; expect("(");
+	if (is("void") && !strcmp(tk->next->text, ")")) tk = tk->next;
+	else if (!is(")")) do {
+		if (consume("...")) {   /* the rest: the pack, each argument in a temporary of its promoted type */
+			Node **tail = &c->next;
+			for (; a; a = a->next) {
+				Node *e = a; Type *t = type_of(e);
+				t = t->kind == TY_ARRAY ? pointer_to(t->base) : t->kind == TY_FLOAT ? ty_double : t->kind < TY_LLONG && !is_fp(t) && t->size < 4 ? ty_int : t;
+				cx.pack = realloc(cx.pack, (cx.npack + 1) * sizeof *cx.pack); cx.pack[cx.npack++] = bind(&tail, t, e);
+			}
+			while (c->next) c = c->next;
+			break;
+		}
+		char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
+		if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);
+		if (!a) die("parse: too few arguments to always_inline '%s' (line %d)", name, resume->line);
+		Node *e = a; a = a->next; e->next = NULL;
+		add_local(p, ty); c = c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, local_ref(p), e));
+	} while (consume(","));
+	expect(")");
+	if (a && !cx.pack) die("parse: too many arguments to always_inline '%s' (line %d)", name, resume->line);
+	cx.retvar = node(ND_VAR);   /* (void is char here: a void function's "result" is just unused) */ cx.retvar->offset = add_local("", def->ret); cx.retvar->type = def->ret;
+	snprintf(cx.end, sizeof cx.end, ".inl%d.end", cx.id);
+	int lid = inline_label_id; cur_fn_ret = def->ret; inline_ctx = &cx; inline_label_id = cx.id;
+	if (!is("{")) die("parse: always_inline '%s' with K&R parameter declarations is not supported", name);
+	c = c->next = stmt();                               /* the body, `{...}` */
+	Node *end = node(ND_LABEL); strcpy(end->name, cx.end); jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, end); c = c->next = end;
+	inline_ctx = cx.up; cur_fn_ret = fret; inline_label_id = lid;
+	scope_pop(); scope = outer; nlocals = nl; tk = resume; free(cx.pack);
+	return stmtexpr_of(h.next, ref(cx.retvar));
+}
+static Node *va_pack_args(void) {   /* `__builtin_va_arg_pack ()` as a call's last arguments: the expansion's pack */
+	tk = tk->next; expect("("); expect(")");
+	if (!inline_ctx) { saw_va_pack = 1; Node *n = node(ND_CALL); strcpy(n->name, "__builtin_va_arg_pack"); return n; }   /* the definition's own
+	                                                                                                   * parse: marks it, never emitted */
+	Node h = {0}, *c = &h;
+	for (int i = 0; i < inline_ctx->npack; i++) c = c->next = ref(inline_ctx->pack[i]);
+	return h.next;
+}
+static int va_pack_ahead(void) { return tk->kind == TK_IDENT && !strcmp(tk->text, "__builtin_va_arg_pack") && tk->next && !strcmp(tk->next->text, "("); }
+static Node *call_args(void) {   /* `(args)` after a callee (the "(" consumed): assign()s; a pack splices in */
+	Node argh = {0}, *ac = &argh;
+	if (!is(")")) do {
+		if (va_pack_ahead()) { ac->next = va_pack_args(); while (ac->next) ac = ac->next; if (!is(")")) die("parse: __builtin_va_arg_pack () must be the last arguments (line %d)", tk->line); break; }
+		ac = ac->next = assign();
+	} while (consume(","));
+	expect(")");
+	return argh.next;
+}
 /* ---- GNU nested functions ----------------------------------------------------------------------------
  * A function defined inside another sees the enclosing functions' locals (and __label__ labels): it is compiled as a
  * file-local function `name.N` that receives the frame of the function it's defined in — its STATIC CHAIN — in ip
@@ -1776,6 +1868,12 @@ static Node *stmt(void) {
 	}
 	if (consume("return")) {   /* `return;` allowed */
 		Node *n = node(ND_RETURN); if (!is(";")) n->lhs = expr(); expect(";");
+		if (inline_ctx) {   /* in an always_inline expansion: the result, then to its end */
+			Node *g = node(ND_GOTO); strcpy(g->name, inline_ctx->end); jump_note(&fn_gotos, &nfn_gotos, &fn_gotos_cap, g);
+			if (!n->lhs) return g;
+			Node *v = is_cplx(cur_fn_ret) || is_cplx(type_of(n->lhs)) ? cplx_convert(cur_fn_ret, n->lhs) : n->lhs;
+			return then_stmt(unary(ND_EXPRSTMT, binary(ND_ASSIGN, ref(inline_ctx->retvar), v)), g);
+		}
 		if (n->lhs && is_vec(cur_fn_ret)) vec_assign_ok(cur_fn_ret, type_of(n->lhs), "a return");
 		if (n->lhs && (is_cplx(cur_fn_ret) || is_cplx(type_of(n->lhs)))) n->lhs = cplx_convert(cur_fn_ret, n->lhs);
 		if (!cleanups) return n;
@@ -1865,6 +1963,7 @@ static Node *stmt(void) {
 			if ((sc & SC_TLS) && !(sc & (SC_STATIC | SC_EXTERN))) die("parse: block-scope _Thread_local '%s' must be static or extern (line %d)", nm, tk->line);
 			if (sc & (SC_STATIC | SC_EXTERN)) {   /* block-scope static/extern: a GLOBAL object, only the NAME is block-scoped */
 				Gvar *g;
+				if ((sc & SC_STATIC) && inline_ctx) die("parse: a static local in always_inline '%s', expanded at each call, is not supported (line %d)", inline_ctx->name, tk->line);
 				if (sc & SC_STATIC) {             /* own file-local object `nm.N` (GCC's naming); initialized once, statically */
 					static int sseq; char sn[80]; snprintf(sn, sizeof sn, "%.60s.%d", nm, sseq++); g = new_global(sn); g->is_static = 1; g->type = ty;
 				} else if (!(g = global_find(nm))) { g = new_global(nm); g->type = ty; g->is_extern = 1; }
@@ -1968,6 +2067,7 @@ static int global_asm_label(const char *name, int sc) {
 	return 1;
 }
 static Func *function_tail(const char *name, Type *ret) {
+	Token *params_tk = tk; saw_va_pack = 0;                 /* (an always_inline one is re-parsed from here at each call) */
 	strncpy(cur_func_name, name, sizeof cur_func_name - 1);   /* for `__func__` inside the body */
 	Func *f = calloc(1, sizeof *f); strncpy(f->name, name, 63); f->ret_type = ret; cur_fn_ret = ret; f->final_frame = -1;
 	int nested = fn_depth > 0;                               /* a GNU nested function (see nested_function) */
@@ -2050,6 +2150,11 @@ static Func *function_tail(const char *name, Type *ret) {
 	resolve_goto_cleanups(g0, l0);
 	f->body = h.next;
 	in_func = 0; fn_depth--; scope_pop();
+	if (saw_va_pack && !f->attr.always_inline) die("parse: %s uses __builtin_va_arg_pack but isn't always_inline", name);
+	if (f->attr.always_inline && (saw_va_pack || (f->attr.gnu_inline && decl_sc_inline_extern))) {   /* inlined at every call */
+		InlineDef *d = calloc(1, sizeof *d); d->params = params_tk; d->ret = ret; strmap_put(&inline_defs, strdup(name), d);
+		f->no_emit = 1;
+	}
 	f->frame = (local_bytes + 7) & ~7;                       /* 8-byte aligned frame (locals+params, arrays sized) */
 	return f;   /* add_type runs in a final pass (parse()), once every function's return type is recorded */
 }
@@ -2626,6 +2731,8 @@ Func *parse(Token *tok) {
 		for (unsigned i = 0; i < sizeof bt / sizeof *bt; i++) { Type *pt[1] = { bt[i].p }; record_func_sig(bt[i].n, bt[i].r, pt, bt[i].p ? 1 : 0, 0); }
 		Type *f3[3] = { ty_float, ty_float, ty_float }, *d3[3] = { ty_double, ty_double, ty_double };   /* fused multiply-add */
 		record_func_sig("__builtin_fma", ty_double, d3, 3, 0); record_func_sig("__builtin_fmaf", ty_float, f3, 3, 0); record_func_sig("__builtin_fmal", ty_double, d3, 3, 0);
+		Type *ap[3] = { vp, vp, ui };   /* untyped call forwarding */
+		record_func_sig("__builtin_apply_args", vp, NULL, 0, 0); record_func_sig("__builtin_apply", vp, ap, 3, 0); record_func_sig("__builtin_return", ty_char, ap + 1, 1, 0);
 	}
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
@@ -2653,9 +2760,11 @@ Func *parse(Token *tok) {
 			if (ty->fn_ret) {   /* via a function typedef (`fn_t f;`): a function PROTOTYPE, no storage (kernel fs_param_type) */
 				record_func_sig(name, ty->fn_ret, ty->params, ty->nparams, ty->variadic); decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
 			} else if (is("(")) {   /* records its own signature; NULL = a prototype */
-				Func *fn = function_tail(name, ty);
+				decl_sc_inline_extern = (sc & SC_EXTERN) && (sc & SC_INLINE);
+				Func *fn = function_tail(name, ty); decl_sc_inline_extern = 0;
 				if (fn) {   /* a definition ends the declaration */
 					fn->is_static = (sc & SC_STATIC) != 0; if (fn->attr.alias[0]) die("parse: alias on a function definition '%s'", name);
+					if ((sc & SC_EXTERN) && (sc & SC_INLINE) && fn->attr.gnu_inline) fn->no_emit = 1;   /* GNU inline-only: the external one is called */
 					cur = cur->next = fn; defined = 1;
 					for (int i = 0; i < nnested_pend; i++) cur = cur->next = nested_pend[i];   /* its nested functions, after it */
 					nnested_pend = 0;

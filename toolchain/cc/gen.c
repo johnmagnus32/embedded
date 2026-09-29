@@ -553,6 +553,34 @@ static void gen_builtin(Node *n) {
 		fprintf(o, "\tvfma.f%d %c2, %c0, %c1\n", dbl ? 64 : 32, k, k, k); from_vfp(dbl, 2);
 		return;
 	}
+	/* GCC's untyped call forwarding. apply_args' block (a frame temp): [0] the incoming core argument words (the homed
+	 * r0-r3, contiguous with the stack arguments), [4] the saved d0-d7 (0 if none came in VFP registers). apply(fn,
+	 * block, size) calls fn with those registers and `size` bytes of the stack arguments, keeping the result
+	 * registers in its own frame temp — [16] r0, [20] r1, [24] d0-d3 — which it returns; return(result) returns them. */
+	if (!strcmp(b, "apply_args")) {
+		emit_addimm("r0", "r11", cur_core_home); fp_mem("str", "r0", n->offset);
+		if (cur_core_home == 72) fprintf(o, "\tadd r0, r11, #8\n"); else fprintf(o, "\tmov r0, #0\n");   /* d0-d7 saved below r0-r3 */
+		fp_mem("str", "r0", n->offset + 4); emit_addimm("r0", "r11", n->offset); return;
+	}
+	if (!strcmp(b, "apply")) {
+		if (!n->args || !n->args->next || !n->args->next->next || n->args->next->next->next) die("cc: __builtin_apply needs (function, arguments, size)");
+		int t = n->offset, skip = uniq();   /* [0] fn [4] block [8] size [12] sp [16..56) the result registers */
+		gen_expr(n->args); fp_mem("str", "r0", t); gen_expr(n->args->next); fp_mem("str", "r0", t + 4); gen_expr(n->args->next->next); fp_mem("str", "r0", t + 8);
+		fprintf(o, "\tmov ip, sp\n"); fp_mem("str", "ip", t + 12);
+		fprintf(o, "\tadd r0, r0, #7\n\tbic r0, r0, #7\n\tsub sp, sp, r0\n\tbic sp, sp, #7\n");   /* the stack arguments' copy */
+		fp_mem("ldr", "r1", t + 4); fprintf(o, "\tldr r1, [r1]\n\tadd r1, r1, #16\n"); fp_mem("ldr", "r2", t + 8); fprintf(o, "\tmov r0, sp\n\tbl memcpy\n");
+		fp_mem("ldr", "r1", t + 4); fprintf(o, "\tldr r1, [r1, #4]\n\tcmp r1, #0\n\tbeq .L%d\n\tvldmia r1, {d0-d7}\n.L%d:\n", skip, skip);
+		fp_mem("ldr", "r0", t + 4); fprintf(o, "\tldr r0, [r0]\n\tldm r0, {r0, r1, r2, r3}\n");
+		fp_mem("ldr", "ip", t); fprintf(o, "\tblx ip\n");
+		fp_mem("str", "r0", t + 16); fp_mem("str", "r1", t + 20); emit_addimm("ip", "r11", t + 24); fprintf(o, "\tvstmia ip, {d0-d3}\n");
+		fp_mem("ldr", "ip", t + 12); fprintf(o, "\tmov sp, ip\n"); emit_addimm("r0", "r11", t + 16);
+		return;
+	}
+	if (!strcmp(b, "return")) {
+		if (!n->args || n->args->next) die("cc: __builtin_return needs a result block");
+		gen_expr(n->args); fprintf(o, "\tmov ip, r0\n\tadd r0, ip, #8\n\tvldmia r0, {d0-d3}\n\tldr r1, [ip, #4]\n\tldr r0, [ip]\n\tb .L%d\n", ret_label);
+		return;
+	}
 	if (!strcmp(b, "trap")) { fprintf(o, "\t.inst 0xe7f000f0\n"); return; }   /* GCC's ARM trap: a permanently-undefined insn */
 	if (!strcmp(b, "prefetch")) {   /* (addr[, rw[, locality]]): evaluate every argument, prefetch addr */
 		if (!n->args) die("cc: __builtin_prefetch needs an address");
@@ -1058,6 +1086,8 @@ static void alloc_temps(Node *n, int *frame) {
 	if (n->kind == ND_CPAIR) { *frame += (n->type->size + 3) & ~3; n->offset = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_alloca") && !cur_alloca_slot) { *frame += 4; cur_alloca_slot = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_setjmp") && !cur_setjmp_save) { *frame += 28; cur_setjmp_save = -*frame; }
+	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_apply_args")) { *frame += 8; n->offset = -*frame; }
+	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_apply")) { *frame += 56; n->offset = -*frame; }
 	if (n->kind == ND_ASM && n->val) { *frame += 4 * n->val; n->offset = -*frame; }   /* one address per output */
 	if (n->kind == ND_VLAMARK) { if (nvla_marks >= 256) die("cc: too many VLA declarations in one function"); *frame += 4; n->offset = -*frame; vla_marks[nvla_marks++] = n; }
 	if (n->kind == ND_CALL && is_aggr(n->type) && strncmp(n->name, "__builtin_", 10)) {
@@ -1174,14 +1204,14 @@ static Func *find_func(Func *prog, const char *name) {
 }
 static void dce_mark(Func *prog, Node *n) {   /* mark functions referenced anywhere in n's subtree */
 	if (!n) return;
-	Func *g = find_func(prog, n->name); if (g && !g->reachable) g->reachable = 1;   /* queue newly-seen */
+	Func *g = find_func(prog, n->name); if (g && !g->reachable && !g->no_emit) g->reachable = 1;   /* queue newly-seen */
 	dce_mark(prog, n->lhs); dce_mark(prog, n->rhs); dce_mark(prog, n->cond);
 	dce_mark(prog, n->then); dce_mark(prog, n->els); dce_mark(prog, n->init); dce_mark(prog, n->inc);
 	for (Node *c = n->body; c; c = c->next) dce_mark(prog, c);
 	for (Node *a = n->args; a; a = a->next) dce_mark(prog, a);
 }
 static void dce(Func *prog) {
-	for (Func *f = prog; f; f = f->next) f->reachable = f->is_static && !f->attr.used ? 0 : 1;   /* roots: exported + __used functions */
+	for (Func *f = prog; f; f = f->next) f->reachable = f->no_emit || (f->is_static && !f->attr.used) ? 0 : 1;   /* roots: exported + __used functions */
 	for (Gvar *gv = globals; gv; gv = gv->next)                                 /* + functions in data initializers */
 		for (Init *it = gv->init; it; it = it->next)
 			if (it->kind == INIT_SYM) { Func *fn = find_func(prog, it->sym); if (fn) fn->reachable = 1; }
@@ -1194,7 +1224,7 @@ void gen(Func *prog, const char *out) {
 	o = fopen(out, "w"); if (!o) die("cc: cannot open %s", out);
 	if (!soft_float) fprintf(o, "\t.fpu vfpv4\n\t.eabi_attribute 28, 1\n");   /* hard float: VFP code, Tag_ABI_VFP_args (AAPCS-VFP) */
 	dce(prog); gen_prog = prog;
-	for (Func *f = prog; f; f = f->next) if (f->reachable) gen_func(f);
+	for (Func *f = prog; f; f = f->next) if (f->reachable && !f->no_emit) gen_func(f);   /* (an inline-only definition's calls are external) */
 	gen_data();
 	fprintf(o, "\t.section .note.GNU-stack,\"\",%%progbits\n");   /* this code needs no executable stack (as GCC marks it) */
 	fclose(o);
