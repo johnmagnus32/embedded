@@ -452,8 +452,8 @@ U11,6,BTN_LEFT,,P02
 U11,7,BTN_RIGHT,,P03
 U11,8,BTN_A,,P04
 U11,9,BTN_B,,P05
-U11,10,BTN_X,,P06
-U11,11,BTN_Y,,P07
+U11,10,,,P06 — spare (internal pull-up) — was X/Y
+U11,11,,,P07 — spare (internal pull-up) — was X/Y
 U11,12,GND,gnd,GND
 U11,13,BTN_START,,P10
 U11,14,BTN_SELECT,,P11
@@ -495,42 +495,34 @@ SW7,1,BTN_B,,A — A/B pair
 SW7,2,BTN_B,,B — A/B pair
 SW7,3,GND,gnd,C — C/D pair
 SW7,4,GND,gnd,D — C/D pair
-SW8,1,BTN_X,,A — A/B pair
-SW8,2,BTN_X,,B — A/B pair
+SW8,1,BTN_START,,A — A/B pair
+SW8,2,BTN_START,,B — A/B pair
 SW8,3,GND,gnd,C — C/D pair
 SW8,4,GND,gnd,D — C/D pair
-SW9,1,BTN_Y,,A — A/B pair
-SW9,2,BTN_Y,,B — A/B pair
+SW9,1,BTN_SELECT,,A — A/B pair
+SW9,2,BTN_SELECT,,B — A/B pair
 SW9,3,GND,gnd,C — C/D pair
 SW9,4,GND,gnd,D — C/D pair
-SW10,1,BTN_START,,A — A/B pair
-SW10,2,BTN_START,,B — A/B pair
-SW10,3,GND,gnd,C — C/D pair
-SW10,4,GND,gnd,D — C/D pair
-SW11,1,BTN_SELECT,,A — A/B pair
-SW11,2,BTN_SELECT,,B — A/B pair
-SW11,3,GND,gnd,C — C/D pair
-SW11,4,GND,gnd,D — C/D pair
+SW10,1,GND,gnd,1
+SW10,2,BTN_VOLUP,,2
+SW10,3,GND,gnd,3
+SW10,4,GND,gnd,4 — mounting lug
+SW10,5,GND,gnd,5 — mounting lug
+SW11,1,GND,gnd,1
+SW11,2,BTN_VOLDOWN,,2
+SW11,3,GND,gnd,3
+SW11,4,GND,gnd,4 — mounting lug
+SW11,5,GND,gnd,5 — mounting lug
 SW12,1,GND,gnd,1
-SW12,2,BTN_VOLUP,,2
+SW12,2,BTN_L,,2
 SW12,3,GND,gnd,3
 SW12,4,GND,gnd,4 — mounting lug
 SW12,5,GND,gnd,5 — mounting lug
 SW13,1,GND,gnd,1
-SW13,2,BTN_VOLDOWN,,2
+SW13,2,BTN_R,,2
 SW13,3,GND,gnd,3
 SW13,4,GND,gnd,4 — mounting lug
 SW13,5,GND,gnd,5 — mounting lug
-SW14,1,GND,gnd,1
-SW14,2,BTN_L,,2
-SW14,3,GND,gnd,3
-SW14,4,GND,gnd,4 — mounting lug
-SW14,5,GND,gnd,5 — mounting lug
-SW15,1,GND,gnd,1
-SW15,2,BTN_R,,2
-SW15,3,GND,gnd,3
-SW15,4,GND,gnd,4 — mounting lug
-SW15,5,GND,gnd,5 — mounting lug
 U12,1,+3V3,pwr,VDD_PADS
 U12,2,GND,gnd,GND
 U12,3,,,PIO2

@@ -15,7 +15,7 @@ motion, and console-feel buttons.
 - **NOR flash:** W25Q128 (on SPI3, shared with the FPGA-config bus)
 - **Bluetooth:** Ezurio BT830-SA-01 (CSR8811, UART-HCI on USART1 4-wire, BLE-only host)
 - **Battery:** 1S LiPo (Adafruit 2011, 2000 mAh), USB-C charge + power-path, buck-boost 3.3 V rail; % via a divider → STM32 ADC
-- **Buttons:** 14 all-tactile (D-pad, A/B/X/Y, Start/Select, Vol±, L/R bumpers) via a PCA9555 I2C expander (0 STM32 GPIO)
+- **Buttons:** 12 all-tactile (D-pad, A/B, Start/Select, Vol±, L/R bumpers) via a PCA9555 I2C expander (0 STM32 GPIO)
 - **Power on/off:** single slide switch in the SYS system-power path (true off, charge-while-off preserved)
 - **Programming:** ST-Link V2 (SWD) header; **UART header** on USART2 (PA2/PA3) for debug
 
@@ -161,26 +161,26 @@ STM32 ADC (no fuel-gauge IC).
 
 ---
 
-## 6. Controls — 14 all-tactile buttons via PCA9555 I2C expander
+## 6. Controls — 12 all-tactile buttons via PCA9555 I2C expander
 
-All buttons hang off the **PCA9555** on the shared I2C1 bus → **buttons cost 0 STM32 GPIO**. 14 buttons use
-14 of the 16 pins (2 spare). All-tactile → HASL is fine; internal expander pull-ups
+All buttons hang off the **PCA9555** on the shared I2C1 bus → **buttons cost 0 STM32 GPIO**. 12 buttons use
+12 of the 16 pins (4 spare). All-tactile → HASL is fine; internal expander pull-ups
 → no per-button resistors.
 
 | # | Qty | Role | Part | LCSC # | Interface | Src | Fit | Note |
 |---|-----|------|------|--------|-----------|-----|-----|------|
 | 56 | 1 | GPIO expander (all buttons) | PCA9555PWR | C2864778 | I2C1 (PB8/PB9) base 0x20 + INT | ✅ | JLC | TI TSSOP-24. **Strap A0/A1/A2 → GND for 0x20** (must not float). All 16 pins INPUTS at POR. Internal ~100 kΩ pull-up per input → **no external per-button pull-ups** (a tactile just ties pin→GND). VCC 3.3 V. **INT erratum (§8.4.1.1):** after each input read, re-point the command byte to a non-00h register before another slave read; add a low-rate poll safety net. |
 | 57 | 4 | D-pad tactiles (U/D/L/R) | TS-1187A-B-A-B | C318884 | 4× expander pin → GND | ✅ | JLC | XKB 5.1×5.1 mm body (6.5 mm across the terminals) top-actuated, 1.6 N, 100k cycles. Diagonals work (expander reads all pins); a shell rocker keycap restores roll. Software debounce. |
-| 58 | 4 | Face tactiles (A/B/X/Y) | TS-1187A-B-A-B | C318884 | 4× expander pin → GND | ✅ | JLC | Same part as the D-pad. Top-actuated. |
+| 58 | 2 | Face tactiles (A/B) | TS-1187A-B-A-B | C318884 | 2× expander pin → GND | ✅ | JLC | Same part as the D-pad. Top-actuated. **A/B only (Game Boy layout)** — X/Y dropped 2026-09-29; their expander pins P06/P07 stay free. |
 | 59 | 2 | Start / Select tactiles | TS-1187A-B-A-B | C318884 | 2× expander pin → GND | ✅ | JLC | Same part, on the expander. |
 | 60 | 2 | Volume +/− tactiles | ALPS SKRTLBE010 (side-actuated SMD) | C127481 | 2× expander pin → GND | ✅ | JLC | 4.5×3.4 mm, 1.6 N. RTOS maps the edges to software volume. |
 | 61 | 2 | L / R bumper tactiles | ALPS SKRTLBE010 | C127481 | 2× expander pin → GND | ✅ | JLC | Same side-actuated part, edge-mounted. Only 100k cycles — upgrade to a higher-life part (ALPS SKHHLNA010/C125031 = 500k) in a later rev if they wear. |
 | 62 | 1 | Expander INT pull-up | RC0603JR-0710KL (10 kΩ) | C99198 | PCA9555 INT (open-drain) → 3V3 | ✅ | JLC | 10 kΩ → 3V3. INT → a native STM32 EINT so the button task is interrupt-driven, not polled. |
 | 63 | 1 | PCA9555 VDD decoupling | CC0603KRX7R9BB104 (100 nF) | C14663 | VDD(pin24) → GND | ✅ | JLC | HF decoupling at the expander VDD. |
 
-> **Expander pin budget:** D-pad 4 + face 4 + Start/Select 2 + Volume 2 + L/R 2 = **14 of 16** (2 spare: P16/P17 → NC, held by the
-> internal pull-ups). **Pin map (same as gameboy-v3):** P00 UP · P01 DOWN · P02 LEFT · P03 RIGHT · P04 A · P05 B ·
-> P06 X · P07 Y · P10 START · P11 SELECT · P12 VOL+ · P13 VOL− · P14 L · P15 R (each pin → tactile → GND). No
+> **Expander pin budget:** D-pad 4 + face 2 + Start/Select 2 + Volume 2 + L/R 2 = **12 of 16** (4 spare: P06/P07/P16/P17 → NC, held
+> by the internal pull-ups). **Pin map (gameboy-v3's, minus X/Y):** P00 UP · P01 DOWN · P02 LEFT · P03 RIGHT · P04 A · P05 B ·
+> P10 START · P11 SELECT · P12 VOL+ · P13 VOL− · P14 L · P15 R (each pin → tactile → GND). No
 > power button (the slide switch is a hard power switch, not a GPIO). STM32-side cost = PB8/PB9 (I2C) + 1 EINT
 > for INT. **Daughterboard option:** put the expander + switches on the button board on a 5-wire cable
 > (SDA/SCL/INT/3V3/GND); keep the INT pull-up mainboard-side.
@@ -268,7 +268,7 @@ spare I2C bus except I2C3 — PA8/PB4, kept free as the escape bus — is consum
 | HSE crystal | 2 | PH0 (OSC_IN) / PH1 (OSC_OUT) — §9 |
 | Console/debug UART (USART2) | 2 | PA2 (TX) / PA3 (RX) |
 | SWD | 2 | PA13 / PA14 |
-| Buttons (14) | 0 | all on the PCA9555 expander |
+| Buttons (12) | 0 | all on the PCA9555 expander |
 | Power on/off | 0 | slide switch in the SYS power path (#55) — not a GPIO |
 | **Total** | **33** | of 50 (BOOT0/NRST are dedicated, non-GPIO) |
 

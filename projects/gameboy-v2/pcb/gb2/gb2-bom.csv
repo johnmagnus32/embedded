@@ -108,14 +108,12 @@ SW4,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,LEFT tactile · TS-1187A-B-A-B 
 SW5,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,RIGHT tactile · TS-1187A-B-A-B · #57
 SW6,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,A tactile · TS-1187A-B-A-B · #58
 SW7,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,B tactile · TS-1187A-B-A-B · #58
-SW8,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,X tactile · TS-1187A-B-A-B · #58
-SW9,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,Y tactile · TS-1187A-B-A-B · #58
-SW10,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,START tactile · TS-1187A-B-A-B · #59
-SW11,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,SELECT tactile · TS-1187A-B-A-B · #59
-SW12,buttons,C127481,easyeda2kicad:SKRTLBE010,VOLUP side tactile · SKRTLBE010 · #60
-SW13,buttons,C127481,easyeda2kicad:SKRTLBE010,VOLDOWN side tactile · SKRTLBE010 · #60
-SW14,buttons,C127481,easyeda2kicad:SKRTLBE010,L side tactile · SKRTLBE010 · #61
-SW15,buttons,C127481,easyeda2kicad:SKRTLBE010,R side tactile · SKRTLBE010 · #61
+SW8,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,START tactile · TS-1187A-B-A-B · #59
+SW9,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,SELECT tactile · TS-1187A-B-A-B · #59
+SW10,buttons,C127481,easyeda2kicad:SKRTLBE010,VOLUP side tactile · SKRTLBE010 · #60
+SW11,buttons,C127481,easyeda2kicad:SKRTLBE010,VOLDOWN side tactile · SKRTLBE010 · #60
+SW12,buttons,C127481,easyeda2kicad:SKRTLBE010,L side tactile · SKRTLBE010 · #61
+SW13,buttons,C127481,easyeda2kicad:SKRTLBE010,R side tactile · SKRTLBE010 · #61
 U12,bluetooth,,manual:BT830-SA-01-T_R,"Bluetooth module (UART-HCI, BLE host on MCU) · Ezurio BT830-SA-01 · #64"
 C47,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,BT830 VREG_OUT_HV stability cap · CC0603KRX5R6BB475 · #65
 C48,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,BT830 VDD_PADS decoupling · CC0603KRX7R9BB104 · #66
