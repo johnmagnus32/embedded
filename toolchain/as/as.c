@@ -233,15 +233,31 @@ static void select_section(void) {
 	u32 type = SHT_PROGBITS, flags = 0; char nmbuf[128]; const char *nm = toks[1];
 	if (nm[0] == '"') { size_t l = strlen(nm + 1); if (l && nm[l] == '"') l--; if (l >= sizeof nmbuf) die(".section: name too long");
 		memcpy(nmbuf, nm + 1, l); nmbuf[l] = 0; nm = nmbuf; }   /* `.section ".export_symbol","a"`: the quotes aren't part of the name */
-	if      (!strncmp(nm, ".text",   5)) flags = SHF_ALLOC | SHF_EXECINSTR;
-	else if (!strncmp(nm, ".rodata", 7)) flags = SHF_ALLOC;
-	else if (!strncmp(nm, ".data",   5)) flags = SHF_ALLOC | SHF_WRITE;
-	else if (!strncmp(nm, ".bss",    4)) { flags = SHF_ALLOC | SHF_WRITE; type = SHT_NOBITS; }
-	else if (!strncmp(nm, ".tbss", 5)) { flags = SHF_ALLOC | SHF_WRITE | 0x400; type = SHT_NOBITS; }   /* SHF_TLS */
-	else if (!strncmp(nm, ".tdata", 6)) flags = SHF_ALLOC | SHF_WRITE | 0x400;
-	else if (!strncmp(nm, ".init_array", 11)) { flags = SHF_ALLOC | SHF_WRITE; type = 14; }
-	else if (!strncmp(nm, ".fini_array", 11)) { flags = SHF_ALLOC | SHF_WRITE; type = 15; }
-	else if (!strncmp(nm, ".note", 5)) type = 7;
+	/* Without an explicit flag string, GAS gives a WELL-KNOWN name its standard flags and type (elf_special_sections):
+	 * some match a `.name.suffix` too (`.text.foo`, `.data.rel.ro`, `.rodata.str1.1`), the rest only exactly — `.init`
+	 * is AX but `.init.x` is a plain section, and `.textfoo` is NOT `.text`. Any other name: PROGBITS, no flags. */
+	static const struct { const char *n; u32 flags, type; int suffix; } special[] = {
+		{ ".text",          SHF_ALLOC | SHF_EXECINSTR,   SHT_PROGBITS, 1 },
+		{ ".data",          SHF_ALLOC | SHF_WRITE,       SHT_PROGBITS, 1 },
+		{ ".rodata",        SHF_ALLOC,                   SHT_PROGBITS, 1 },
+		{ ".bss",           SHF_ALLOC | SHF_WRITE,       SHT_NOBITS,   1 },
+		{ ".tdata",         SHF_ALLOC | SHF_WRITE | 0x400, SHT_PROGBITS, 1 },   /* 0x400 = SHF_TLS */
+		{ ".tbss",          SHF_ALLOC | SHF_WRITE | 0x400, SHT_NOBITS,   1 },
+		{ ".init_array",    SHF_ALLOC | SHF_WRITE,       14,           1 },
+		{ ".fini_array",    SHF_ALLOC | SHF_WRITE,       15,           1 },
+		{ ".preinit_array", SHF_ALLOC | SHF_WRITE,       16,           1 },
+		{ ".note",          0,                           7,            1 },
+		{ ".init",          SHF_ALLOC | SHF_EXECINSTR,   SHT_PROGBITS, 0 },   /* musl's crti.s: `.section .init` */
+		{ ".fini",          SHF_ALLOC | SHF_EXECINSTR,   SHT_PROGBITS, 0 },
+		{ ".ARM.exidx",     SHF_ALLOC | 0x80,            0x70000001,   0 },   /* 0x80 = SHF_LINK_ORDER */
+		{ ".ARM.attributes", 0,                          0x70000003,   0 },
+	};
+	for (unsigned i = 0; i < sizeof special / sizeof *special; i++) {
+		size_t l = strlen(special[i].n);
+		if (strncmp(nm, special[i].n, l)) continue;
+		if (nm[l] && !(special[i].suffix && nm[l] == '.')) continue;
+		flags = special[i].flags; type = special[i].type; break;
+	}
 	u32 entsize = 0;
 	if (ntok >= 3 && toks[2][0] == '"') { flags = 0;   /* explicit "flags" overrides: GAS letters */
 		for (const char *f = toks[2] + 1; *f && *f != '"'; f++) switch (*f) {

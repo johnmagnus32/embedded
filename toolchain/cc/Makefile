@@ -47,6 +47,8 @@ test: $(BUILD)/cc
 	  if [ "$$got" = "$$want" ]; then echo "PASS $$(basename $$c): main() == $$got"; pass=$$((pass+1)); \
 	  else echo "FAIL $$(basename $$c): got $$got, want $$want"; fail=$$((fail+1)); fi; \
 	done; \
+	if GNU=$(GNU) CC=$(BUILD)/cc bash tests/inline-emit.sh > $$t/ie 2>&1; then echo "PASS $$(cat $$t/ie)"; pass=$$((pass+1)); \
+	else echo "FAIL inline-emit:"; sed 's/^/    /' $$t/ie; fail=$$((fail+1)); fi; \
 	for c in tests/reject/*.c; do \
 	  want=$$(sed -n 's|^//[[:space:]]*error:[[:space:]]*||p' $$c | head -1); \
 	  if $(BUILD)/cc -o $$t/r.s $$c 2>$$t/rerr; then echo "FAIL $$c: accepted (want an error: $$want)"; fail=$$((fail+1)); \

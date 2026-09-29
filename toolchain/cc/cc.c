@@ -22,6 +22,8 @@ int pic = 0;   /* -fPIC: emit position-independent code (global/string access vi
 int default_vis = 0;   /* -fvisibility= */
 const char *vis_directive(int vis) { return vis == VIS_HIDDEN ? ".hidden" : vis == VIS_INTERNAL ? ".internal" : vis == VIS_PROTECTED ? ".protected" : NULL; }
 int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; default hard (gnueabihf) */
+int gnu89_inline = 0;   /* -fgnu89-inline (and the gnu89/c89 dialects): `inline` is an external definition, `extern
+                         * inline` the inline-only one — the C99 rule is the other way round */
 
 /* Recursive descent follows the program's nesting, and 10000 nested struct definitions or declarators are legal C:
  * the compiler runs on a thread with a 256 MiB stack (address space reserved; pages touched only as used). */
@@ -46,6 +48,8 @@ static void *compile(void *unused) {
 			default_vis = !strcmp(v, "default") ? 0 : !strcmp(v, "hidden") ? VIS_HIDDEN : !strcmp(v, "internal") ? VIS_INTERNAL
 			            : !strcmp(v, "protected") ? VIS_PROTECTED : (die("cc: unknown -fvisibility=%s", v), 0);
 		}
+		else if (!strcmp(argv[i], "-fgnu89-inline")) gnu89_inline = 1;
+		else if (!strcmp(argv[i], "-fno-gnu89-inline")) gnu89_inline = 0;
 		else if (!strcmp(argv[i], "-mfloat-abi=hard")) soft_float = 0;
 		else if (!strcmp(argv[i], "-mfloat-abi=soft")) soft_float = 1;   /* no floating code allowed; no VFP ABI attributes (the kernel) */
 		else if (argv[i][0] != '-') in = argv[i];

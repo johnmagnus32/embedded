@@ -88,7 +88,15 @@ if [ -f "${MUSL}/usr/lib/libc.a" ] && [ -x "${GNUCC}gcc" ] && [ -f "${KERNEL}" ]
     && ok "musl link (our ld + musl libc.a + our rt)" || no "musl link"
 else sk "musl link (no musl static stage / reference gcc)"; fi
 
-echo "==== 6. loader host-logic units (best-effort) ===="
+echo "==== 6. musl SELF-BUILD: real musl built by our whole toolchain, then booted ===="
+if [ -d "${IMG}/scratch/musl/src" ] && [ -x "${BIN}/arm-os-custom-gcc" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ] \
+   && [ -d "${IMG}/libc/stage-musl-static/usr/include" ]; then
+  MUSL_SRC="${IMG}/scratch/musl/src" TC="${BIN}" SYSROOT_INC="${IMG}/libc/stage-musl-static/usr/include" \
+    REFKERNEL="${KERNEL}" GEN_INIT_CPIO="${GIC}" WORK="${IMG}/scratch/musl-selfbuild" bash "${HERE}/musl-selfbuild.sh" \
+    && ok "musl self-build (our cpp/cc/as/ar/ld built libc.a; 4 programs booted)" || no "musl self-build"
+else sk "musl self-build (no musl source tree / custom toolchain / kernel)"; fi
+
+echo "==== 7. loader host-logic units (best-effort) ===="
 if [ -f "${REPO}/libc/ld/test/test_reloc.c" ]; then
   b="$(mktemp -u /tmp/ld-l2.XXXXXX)"
   if cc -std=c11 -Wall -I"${REPO}/libc/ld/src" "${REPO}/libc/ld/test/test_reloc.c" -o "${b}" 2>/dev/null && "${b}" >/dev/null 2>&1; then

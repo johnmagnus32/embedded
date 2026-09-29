@@ -398,6 +398,17 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("volatile")) { quals |= 2; continue; }
 		if (consume("restrict")) continue;
 		if (consume("inline")) { if (sc) *sc |= SC_INLINE; continue; }
+		if (consume("_Noreturn")) continue;   /* C11: the function doesn't return — no effect on the code we generate */
+		if (consume("_Alignas")) {            /* C11 `_Alignas(N)` / `_Alignas(type)`: the declaration's alignment */
+			expect("(");
+			int a;
+			if (is_typename()) { char d[64]; Type *t = declarator(declspec(NULL, NULL), d); a = align_of(t); }
+			else a = (int)eval_const(assign());
+			expect(")");
+			if (a <= 0 || (a & (a - 1))) die("parse: _Alignas(%d) is not a positive power of two (line %d)", a, tk->line);
+			if (a > decl_attr.align) decl_attr.align = a;
+			continue;
+		}
 		if (consume("__extension__")) continue;   /* GNU no-op prefix */
 		if (consume("__attribute__")) {   /* a type attribute here applies to the whole specifier's type, wherever it stands */
 			attribute(); if (pend_vsize) vsize = pend_vsize; if (pend_mode) mode = pend_mode; tunion |= pend_tunion; pend_vsize = pend_mode = pend_tunion = 0; continue; }
@@ -776,6 +787,7 @@ static int is_typename(void) {   /* does a declaration start at the cursor? */
 	return is("int") || is("char") || is("void") || is("short") || is("long") || is("signed") || is("unsigned") || is("_Bool") || is("float") || is("double") || is("_Complex")
 	    || is("struct") || is("union") || is("enum") || is("typedef") || is("typeof")
 	    || is("const") || is("volatile") || is("static") || is("extern") || is("register") || is("inline") || is("__attribute__") || is("_Thread_local")
+	    || is("_Noreturn") || is("_Alignas")
 	    || is("__extension__") || is("__auto_type") || is("auto")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
@@ -3152,7 +3164,8 @@ static Init *global_init(Type *ty) {
  * nodes the right width; the parameter types let a caller place/widen each argument per AAPCS (a 64-bit
  * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
  * Populated for every prototype/definition. */
-typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs, align; Attr attr; } FuncSig;   /* align: aligned(N) */   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
+typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs, align; Attr attr; int ext_decl; } FuncSig;   /* ext_decl: some
+                                     * file-scope declaration was not `inline` without extern (so this TU defines it externally) */   /* align: aligned(N) */   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
 static StrMap func_sigs;                                 /* name -> its FuncSig */
 static FuncSig *sig_of(const char *name) { return name && name[0] ? strmap_get(&func_sigs, name) : NULL; }
 static void record_func_sig(const char *name, Type *ret, Type **params, int np, int variadic) {
@@ -3192,6 +3205,14 @@ static int decl_align(Node *e) {
 	if (d->kind == ND_GVAR) { Gvar *g = global_find(d->name); if (g && g->attr.align > t) return g->attr.align; }
 	return t;
 }
+/* C11 6.7.4p7: when EVERY file-scope declaration of a function in this unit says `inline` and none says `extern`, the
+ * definition here is an INLINE definition — no external definition is emitted, and calls go to the one another unit
+ * provides (GCC does exactly this, which is why its `inline` bodies are never even checked at -O0). */
+static void sig_note_decl(const char *name, int sc) {
+	FuncSig *f = sig_of(name); if (!f) return;
+	if (!(sc & SC_INLINE) || (sc & (SC_EXTERN | SC_STATIC))) f->ext_decl = 1;
+}
+static int sig_inline_only(const char *name) { FuncSig *f = sig_of(name); return f && !f->ext_decl; }
 static void sig_attrs(const char *name, const Attr *a) {   /* a function declaration's attributes: pcs(...) -> its calls; all kept for copy() */
 	FuncSig *f = sig_of(name); if (!f) return;
 	if (a->pcs) f->base_pcs = a->pcs == 1;
@@ -3297,13 +3318,17 @@ Func *parse(Token *tok) {
 				while (consume("__attribute__")) attribute();
 				no_type_attrs(); no_cleanup("a function");
 				record_func_sig(name, ty->fn_ret, ty->params, ty->nparams, ty->variadic); sig_attrs(name, &decl_attr); sig_align(name, decl_attr.align);
+				sig_note_decl(name, sc);
 				decl_symbol_attrs(name, &decl_attr, sc & SC_STATIC);
 			} else if (is("(") || fparams) {   /* records its own signature; NULL = a prototype */
 				decl_sc_inline_extern = (sc & SC_EXTERN) && (sc & SC_INLINE);
 				Func *fn = function_tail(name, ty, fparams); decl_sc_inline_extern = 0;
+				sig_note_decl(name, sc);
 				if (fn) {   /* a definition ends the declaration */
 					fn->is_static = (sc & SC_STATIC) != 0; if (fn->attr.alias[0]) die("parse: alias on a function definition '%s'", name);
-					if ((sc & SC_EXTERN) && (sc & SC_INLINE) && fn->attr.gnu_inline) fn->no_emit = 1;   /* GNU inline-only: the external one is called */
+					if ((sc & SC_EXTERN) && (sc & SC_INLINE) && (fn->attr.gnu_inline || gnu89_inline)) fn->no_emit = 1;   /* gnu89
+					                                     * `extern inline`: inline-only, the external definition is another unit's */
+					if (gnu89_inline || fn->attr.gnu_inline) fn->gnu89_inline = 1;   /* ...so the C11 rule below doesn't apply to it */
 					cur = cur->next = fn; defined = 1;
 					for (int i = 0; i < nnested_pend; i++) cur = cur->next = nested_pend[i];   /* its nested functions, after it */
 					nnested_pend = 0;
@@ -3326,7 +3351,9 @@ Func *parse(Token *tok) {
 				while (consume("__attribute__")) attribute();
 				no_type_attrs(); no_cleanup("a global");
 				attr_merge(&g->attr, &decl_attr);
-				if (decl_attr.alias[0]) decl_symbol_attrs(name, &decl_attr, g->is_static);
+				if (decl_attr.alias[0] || (decl_attr.weak && g->is_extern))   /* `extern weak T x;`: a .weak reference, so an
+				                                                              * undefined one resolves to 0 (musl's _DYNAMIC) */
+					decl_symbol_attrs(name, &decl_attr, g->is_static);
 				if (consume("=")) {
 					if (g->init) die("parse: redefinition of '%s' (line %d)", name, tk->line);
 					g->init = global_init(ty); g->type = ty;           /* the defining declaration's (possibly now-sized) type */
@@ -3339,6 +3366,8 @@ Func *parse(Token *tok) {
 		}
 		if (!defined) expect(";");
 	}
+	for (Func *f = head.next; f; f = f->next)                /* a C11 inline definition provides no external one */
+		if (!f->is_static && !f->nested && !f->gnu89_inline && sig_inline_only(f->name)) f->no_emit = 1;
 	parsed_funcs = head.next;
 	apply_pragma_names();                                    /* #pragma weak / redefine_extname / #ident (lex.c collected them) */
 	for (Func *f = head.next; f; f = f->next)                /* type every body now that all signatures are known */

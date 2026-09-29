@@ -25,7 +25,7 @@ RTLIB="${here}/../lib/libosrt.a"   # the compiler runtime (64-bit division, int6
 
 mode=link            # link | compile | asm | preprocess
 out=""
-cppargs=()           # -I/-D/-U/-isystem -> forwarded to cpp
+cppargs=()           # -I/-D/-U/-isystem + the flags that shape the PREDEFINED macros -> forwarded to cpp
 inputs=()            # .c/.S/.s/.i sources to run through the pipeline
 linkobjs=()          # .o/.a already-built, passed straight to ld
 ttext=""             # -Ttext <addr> forwarded to ld
@@ -66,10 +66,16 @@ while [ $# -gt 0 ]; do
     # implicitly by our tools (static ELF, no host libc, no PIC unless -pie is passed to ld).
     -Wl,*) IFS=, read -r -a wl <<< "${1#-Wl,}"; ldextra+=("${wl[@]}") ;;   # linker options, as gcc passes them
     -Wa,*|-Wp,*) ;;                          # assembler/preprocessor passthrough we don't forward
-    -fPIC|-fpic) picflag="-fPIC" ;;          # position-independent codegen -> forwarded to cc1
+    -fPIC|-fpic|-fPIE|-fpie) picflag="-fPIC"; cppargs+=("$1") ;;   # position-independent codegen -> cc1 (and __PIC__/__PIE__ -> cpp)
+    -fno-pic|-fno-PIC|-fno-pie|-fno-PIE) picflag=""; cppargs+=("$1") ;;
     -fvisibility=*) visflag="$1" ;;          # default symbol visibility -> forwarded to cc1
-    -mfloat-abi=*) floatabi="$1" ;;          # float ABI -> forwarded to cc1
-    -O*|-g*|-W*|-f*|-m*|-std=*|-pipe|-pedantic|-ansi) ;;
+    -mfloat-abi=*) floatabi="$1"; cppargs+=("$1") ;;   # float ABI -> cc1 (and __ARM_PCS_VFP / __SOFTFP__ -> cpp)
+    # Flags that change cpp's predefined macros must reach it (musl's setjmp needs __VFP_FP__, its `_Noreturn`
+    # needs __STDC_VERSION__): cpp knows this set and errors on anything else, so it's listed, not passed blind.
+    -std=*|-ansi|-undef|-trigraphs|-pthread) cppargs+=("$1") ;;
+    -O|-O[0-9]|-Os|-Oz|-Og|-Ofast) cppargs+=("$1") ;;
+    -ffreestanding|-fhosted|-ffast-math|-fno-fast-math|-fsigned-char|-funsigned-char|-fno-signed-char|-fno-unsigned-char) cppargs+=("$1") ;;
+    -O*|-g*|-W*|-f*|-m*|-pipe|-pedantic) ;;
     -static) ldextra+=(-static) ;;           # a static link: ld takes no shared objects, -l finds lib<name>.a
     -nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
     -pie|--pie) linkpie=1 ;;
@@ -102,7 +108,7 @@ compile_one() {
       "${CC1}" ${picflag} ${visflag} ${floatabi} -o "${s}" "${src}"
       ;;
     S)
-      "${CPP}" "${cppargs[@]}" "${src}" > "${s}"
+      "${CPP}" -x assembler-with-cpp "${cppargs[@]}" "${src}" > "${s}"
       [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${s}" "${out}"; else cat "${s}"; fi; return 0; }
       ;;
     s)

@@ -87,6 +87,7 @@ void aapcs_place(Aapcs *a, Type *t, int *pos, int *vreg);
 int  aapcs_words(const Aapcs *a);
 int  vfp_class(Type *t, int *nel);           /* 0; 1 = float elements; 2 = double; 3/4 = 64/128-bit vectors (a scalar/vector/HFA/HVA) */
 extern int exec_stack;                       /* the code needs an executable stack (a nested function's trampoline) */
+extern int gnu89_inline;                     /* -fgnu89-inline: gnu89 `inline` semantics (see cc.c) */
 extern int soft_float;                       /* -mfloat-abi=soft: no floating code, base PCS attributes */
 int  arg_words(Type *t);                     /* words an argument of type t occupies (struct = ceil(size/4)) */
 int  is_sret(Type *t, int vfp);              /* returned via a caller-supplied buffer (struct > 4 bytes, not an HFA under VFP; vector > 16) */
@@ -189,6 +190,7 @@ typedef struct Func {
 	int frame;                   /* bytes of stack for locals+params (8-aligned)                 */
 	int vfp;                     /* AAPCS-VFP (hard float, not variadic): FP params/results in VFP registers */
 	int vfp_save;                /* a param arrives in s0-s15: d0-d7 are saved above the homed r0-r3 */
+	int gnu89_inline;            /* gnu89 `inline` semantics apply (-fgnu89-inline or __attribute__((gnu_inline))) */
 	int nested;                  /* a GNU nested function: its static chain (the enclosing frame) arrives in ip and is kept
 	                              * in its first local slot, [r11, #-4] */
 	int final_frame, alloca_slot;   /* set by codegen (-1 before): the frame size and alloca-floor slot (a non-local goto into it) */

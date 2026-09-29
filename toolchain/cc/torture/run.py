@@ -24,6 +24,7 @@ LIBC_SRC = ["string.c", "stdlib.c", "stdio.c", "printf.c", "malloc.c"]
 RTLIB = os.path.join(ROOT, "toolchain/rt/build/libosrt.a")   # OUR compiler runtime (the libgcc analogue): ends every link of ours
 INC = ["-nostdinc", "-isystem", os.path.join(ROOT, "libc/include"), "-isystem", os.path.join(ROOT, "kernel/include/uapi")]
 CPP_FLAGS = ["-E"] + INC + ["-std=gnu89", "-w", "-D__TORTURE__"]
+CC_FLAGS = ["-fgnu89-inline"]   # our cc, told the same dialect the oracle gets (-std=gnu89: `inline` IS emitted)
 GCC_FLAGS = ["-O0", "-marm", "-mcpu=cortex-a7", "-std=gnu89", "-w", "-fno-builtin-printf"]
 QEMU = ["qemu-system-arm", "-M", "virt", "-cpu", "cortex-a7", "-m", "256", "-nographic", "-semihosting", "-net", "none", "-kernel"]
 
@@ -45,7 +46,7 @@ def build_runtime():
         b = os.path.join(rt, os.path.splitext(os.path.basename(s))[0])
         rc, _, e = run([X + "gcc", "-E"] + INC + ["-std=gnu11", "-o", b + ".i", s])   # libc is modern C; tests are gnu89
         if rc: sys.exit("runtime: preprocess %s: %s" % (s, last(e)))
-        for cmd in ([CC, "-o", b + ".s", b + ".i"], [AS, "-o", b + ".ours.o", b + ".s"]):
+        for cmd in ([CC] + CC_FLAGS + ["-o", b + ".s", b + ".i"], [AS, "-o", b + ".ours.o", b + ".s"]):
             rc, _, e = run(cmd)
             if rc: sys.exit("runtime: OUR toolchain failed on %s: %s" % (s, last(e)))
         rc, _, e = run([X + "gcc"] + [f for f in GCC_FLAGS if not f.startswith("-std")] + ["-std=gnu11", "-c", "-o", b + ".gnu.o", s] + INC)
@@ -78,7 +79,7 @@ def one_compile(path):
         rc, _, e = run([X + "gcc"] + [f for f in GCC_FLAGS if not f.startswith("-std")] + ["-c", "-x", "cpp-output", "-o", os.path.join(td, "g.o"), i])
         gnu = "pass" if rc == 0 else "compile-fail"
         s = os.path.join(td, "t.s")
-        rc, _, e = run([CC, "-o", s, i])
+        rc, _, e = run([CC] + CC_FLAGS + ["-o", s, i])
         if rc: return name, {"tier": t, "ours": "cc-fail" if rc != 124 else "cc-timeout", "gnu": gnu, "why": last(e)}
         rc, _, e = run([AS, "-o", os.path.join(td, "t.o"), s])
         if rc: return name, {"tier": t, "ours": "as-fail", "gnu": gnu, "why": last(e)}
@@ -102,7 +103,7 @@ def one(path, ours_rt, gnu_rt, libgcc):
             else: rc, _, _ = run(QEMU + [g_elf], timeout=20); gnu = "pass" if rc == 0 else ("timeout" if rc == 124 else "fail(%d)" % rc)
         # ours
         s = os.path.join(td, "t.s"); o = os.path.join(td, "t.o"); elf = os.path.join(td, "t.elf")
-        rc, _, e = run([CC, "-o", s, i])
+        rc, _, e = run([CC] + CC_FLAGS + ["-o", s, i])
         if rc: return name, {"tier": t, "ours": "cc-fail", "gnu": gnu, "why": last(e)}
         rc, _, e = run([AS, "-o", o, s])
         if rc: return name, {"tier": t, "ours": "as-fail", "gnu": gnu, "why": last(e)}

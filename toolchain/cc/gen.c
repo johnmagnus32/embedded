@@ -878,7 +878,7 @@ static int asm_is_input(const char *c)  { return !strchr(c, '=') || strchr(c, '+
 /* Emit the template, substituting %0..%9 with each operand's register (or immediate) and turning \n/\t
  * escapes into real newlines/tabs so our as sees one instruction per line. %% -> %, %= (unique id) dropped,
  * a leading modifier letter (%w0/%c0) is ignored. */
-static void emit_asm_template(const char *t, char subst[][SYMEXPR_MAX + 24], const int *isimm, const int *hireg, int nops, int basic, int nlabels, int goto_id) {
+static void emit_asm_template(const char *t, char subst[][SYMEXPR_MAX + 24], const int *isimm, const int *hireg, const int *vfpslot, int nops, int basic, int nlabels, int goto_id) {
 	fprintf(o, "\t");
 	for (const char *p = t; *p; ) {
 		if (*p == '%' && !basic) {
@@ -897,6 +897,10 @@ static void emit_asm_template(const char *t, char subst[][SYMEXPR_MAX + 24], con
 						if (mod == 'H' || mod == 'R') {   /* 64-bit operand in a register PAIR: %H = second reg, %R = most-significant (LE: same) */
 							if (hireg[i] < 0) die("cc: asm %%%c%d on an operand that isn't a 64-bit register pair", mod, i);
 							fputs(asm_regname(hireg[i]), o);
+						}
+						else if (mod == 'P') {   /* %P = a VFP operand as its DOUBLE-precision register (musl's `vabs.f64 %P0, %P1`) */
+							if (vfpslot[i] < 0) die("cc: asm %%P%d on an operand that isn't a VFP register", i);
+							fprintf(o, "d%d", vfpslot[i]);
 						}
 						else if (mod == 'Q') fputs(subst[i], o);   /* %Q = least-significant reg of the pair (LE: the first) */
 						else if (mod == 'a' && !isimm[i] && subst[i][0] != '[') fprintf(o, "[%s]", subst[i]);   /* %a: operand as an ADDRESS (kernel prefetchw: `pldw %a0` -> `pldw [r0]`) */
@@ -933,8 +937,25 @@ static void gen_asm(Node *n) {
 		int rn = asm_regnum(ops[i]->reg); regof[i] = rn; if (rn >= 0) used |= 1 << rn;
 	}
 	#define ASM_MEM(i) (strpbrk(ops[i]->cons, "mQoV") != NULL)   /* memory constraints: m/o/V general, Q = single-register address (ARM) */
+	/* VFP register operands (ARM's "w" = a VFP register named as a double, "t"/"x" = one named as a single): each
+	 * takes its own d register out of the caller-saved d0-d7 — nothing of ours is live there at a statement — and the
+	 * value moves between it and the core registers our codegen keeps values in. The CONSTRAINT decides the spelling,
+	 * the TYPE decides how much moves: GCC prints "t" as the low s register even for a double (`s14` for d7). */
+	int vfp[16]; for (int i = 0; i < nops; i++) vfp[i] = -1;
+	{
+		int slot = 0;
+		for (int i = 0; i < nops; i++) {
+			if (regof[i] < -1 || ASM_MEM(i) || !strpbrk(ops[i]->cons, "wtx")) continue;
+			if (regof[i] >= 0) die("cc: asm operand %d: a VFP constraint \"%s\" on a register variable", i, ops[i]->cons);
+			need_fp();
+			if (slot >= 8) die("cc: out of VFP registers for asm operands");
+			vfp[i] = slot++; regof[i] = -4;
+			snprintf(subst[i], sizeof subst[i], strchr(ops[i]->cons, 'w') ? "d%d" : "s%d", strchr(ops[i]->cons, 'w') ? vfp[i] : 2 * vfp[i]);
+		}
+	}
+	#define ASM_VFP(i) (vfp[i] >= 0)
 	int hireg[16]; for (int i = 0; i < nops; i++) hireg[i] = -1;
-	for (int i = 0; i < nops; i++) if (regof[i] >= -1 && !ASM_MEM(i) && is64(ops[i]->type)) {   /* 64-bit value: an EVEN/ODD pair (ldrexd/strexd need it) */
+	for (int i = 0; i < nops; i++) if (regof[i] >= -1 && !ASM_MEM(i) && !ASM_VFP(i) && is64(ops[i]->type)) {   /* 64-bit value: an EVEN/ODD pair (ldrexd/strexd need it) */
 		if (regof[i] >= 0) { hireg[i] = regof[i] + 1; used |= 1 << hireg[i]; continue; }   /* pinned: low reg given, high follows */
 		int lo = -1;
 		for (int c = 0; c <= 8; c += 2) if (!(used & (3 << c))) { lo = c; break; }   /* r0/r1 .. r8/r9 (r10/r11 has fp) */
@@ -948,7 +969,9 @@ static void gen_asm(Node *n) {
 		regof[i] = rn; used |= 1 << rn;
 	}
 	for (int i = 0; i < nops; i++) if (regof[i] == -3) {   /* "N": the SAME register as output N (a 64-bit input tied to a 32-bit output passes its low word) */
-		int d = ops[i]->cons[0] - '0'; regof[i] = regof[d]; hireg[i] = is64(ops[i]->type) ? hireg[d] : -1;
+		int d = ops[i]->cons[0] - '0';
+		if (ASM_VFP(d)) { vfp[i] = vfp[d]; regof[i] = -4; strcpy(subst[i], subst[d]); continue; }
+		regof[i] = regof[d]; hireg[i] = is64(ops[i]->type) ? hireg[d] : -1;
 		if (regof[i] < 0) die("cc: asm matching constraint names a non-register operand");
 	}
 	/* AAPCS: r4-r10 are callee-saved. Our stack-machine code never keeps values in them, but GCC-built callers
@@ -959,7 +982,16 @@ static void gen_asm(Node *n) {
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], sizeof subst[i], ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
 	/* Each register output's lvalue is evaluated ONCE: its address goes to the asm's frame slot, read back
 	 * for a "+r" input value and for the final store (asm("" : "+r"(*f())) calls f once). */
-	for (int i = 0; i < nouts; i++) if (regof[i] >= 0 && !ASM_MEM(i)) { gen_addr(ops[i]); fp_mem("str", "r0", n->offset + 4 * i); }
+	for (int i = 0; i < nouts; i++) if ((regof[i] >= 0 || ASM_VFP(i)) && !ASM_MEM(i)) { gen_addr(ops[i]); fp_mem("str", "r0", n->offset + 4 * i); }
+	for (int i = 0; i < nops; i++) if (ASM_VFP(i) && asm_is_input(ops[i]->cons)) {   /* stage each VFP input's value */
+		if (i < nouts) { fp_mem("ldr", "r0", n->offset + 4 * i); load(ops[i]->type); }   /* "+w": the current value */
+		else gen_expr(ops[i]);
+		fprintf(o, is64(ops[i]->type) ? "\tpush {r0, r1}\n" : "\tpush {r0}\n");
+	}
+	for (int i = nops - 1; i >= 0; i--) if (ASM_VFP(i) && asm_is_input(ops[i]->cons)) {
+		if (is64(ops[i]->type)) fprintf(o, "\tpop {r0, r1}\n\tvmov d%d, r0, r1\n", vfp[i]);
+		else fprintf(o, "\tpop {r0}\n\tvmov s%d, r0\n", 2 * vfp[i]);
+	}
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0 && (ASM_MEM(i) || asm_is_input(ops[i]->cons))) {
 		if (ASM_MEM(i)) gen_addr(ops[i]);
 		else if (i < nouts) { fp_mem("ldr", "r0", n->offset + 4 * i); load(ops[i]->type); }   /* "+r": the current value */
@@ -972,11 +1004,17 @@ static void gen_asm(Node *n) {
 	}
 	int nlabels = 0; for (Node *l = n->body; l; l = l->next) nlabels++;
 	int goto_id = nlabels ? uniq() : 0;
-	emit_asm_template(n->asm_tmpl, subst, isimm, hireg, nops, n->asm_basic, nlabels, goto_id);
+	emit_asm_template(n->asm_tmpl, subst, isimm, hireg, vfp, nops, n->asm_basic, nlabels, goto_id);
 	/* The way out, on the fall-through path and (asm goto) before each label: the outputs stored, r4-r10 restored. */
 	Node *l = n->body;
 	for (int path = 0; path <= nlabels; path++) {
 		if (path) fprintf(o, ".Lag%d_%d:\n", goto_id, path - 1);
+		for (int i = 0; i < nops; i++) if (i < nouts && ASM_VFP(i)) {   /* a VFP output's value back to core registers */
+			if (is64(ops[i]->type)) fprintf(o, "\tvmov r0, r1, d%d\n", vfp[i]);
+			else fprintf(o, "\tvmov r0, s%d\n", 2 * vfp[i]);
+			fp_mem("ldr", is64(ops[i]->type) ? "r2" : "r1", n->offset + 4 * i);
+			store(ops[i]->type);
+		}
 		for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
 			if (hireg[i] >= 0) fprintf(o, "\tpush {%s, %s}\n", asm_regname(regof[i]), asm_regname(hireg[i]));
 			else fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));

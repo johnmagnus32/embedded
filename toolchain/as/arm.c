@@ -1257,6 +1257,21 @@ void md_assemble(char **t, int n) {
 	}
 
 	if (media_insn(m)) return;
+	{   /* legacy VFP system-register names (pre-UAL, still in musl's fenv-hf.S and older kernel asm): GAS takes them
+	     * as the UAL ones — fmrx/fmxr are vmrs/vmsr, fmstat is `vmrs APSR_nzcv, fpscr` */
+		static char ual[16]; static char *lt[3]; const char *leg = NULL;
+		if (!strncmp(m, "fmrx", 4)) leg = "vmrs"; else if (!strncmp(m, "fmxr", 4)) leg = "vmsr";
+		else if (!strncmp(m, "fmstat", 6)) leg = "fmstat";
+		if (leg && !strcmp(leg, "fmstat")) {
+			if (ntok != 1) die("fmstat: takes no operands");
+			snprintf(ual, sizeof ual, "vmrs%s", m + 6);
+			lt[0] = ual; lt[1] = (char *)"APSR_nzcv"; lt[2] = (char *)"fpscr";
+			toks = lt; ntok = 3; m = ual;
+		} else if (leg) {
+			snprintf(ual, sizeof ual, "%s%s", leg, m + 4);
+			toks[0] = ual; m = ual;
+		}
+	}
 	if (vfp_insn(m)) return;
 	if (!strncmp(m, "clrex", 5) && !m[5]) { emit32(0xf57ff01fu); return; }
 	if (!strcmp(m, "bkpt")) { u32 v = ntok > 1 ? (u32)snum(toks[1], 0, 0xffff, "bkpt number") : 0; emit32(0xe1200070u | ((v >> 4) << 8) | (v & 15)); return; }
