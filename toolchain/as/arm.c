@@ -213,13 +213,22 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	                         { rd = need_reg(1); rn = rd; opidx = 2; }                   /* add Rd, op2  ==  add Rd, Rd, op2 (GAS) */
 	else                     { rd = need_reg(1); rn = need_reg(2); opidx = 3; }        /* add/… Rd, Rn, op2 */
 	u32 op2;
-	if (form == DP_MOV && opidx < ntok && toks[opidx][0] == '#' && explicit_rot(opidx)) { I = 1; op2 = explicit_rot_enc(opidx); }
-	else if (form == DP_MOV && opidx < ntok && toks[opidx][0] == '#') {   /* mov/mvn #imm: if not encodable, use the complement (mov<->mvn, e.g. `mov rd,#-14` -> `mvn rd,#13`) */
-		u32 v = imm(toks[opidx]), enc; I = 1;
-		if (modimm_try(v, &enc)) op2 = enc;
-		else if (modimm_try(~v, &enc)) { op2 = enc; opc ^= 2; }        /* mov(13) <-> mvn(15) differ by bit 1 */
-		else if (opc == 13 && !s && v <= 0xffff) { emit32((cond << 28) | 0x03000000u | ((v >> 12) << 16) | (rd << 12) | (v & 0xfff)); return; }   /* mov #imm16 -> movw (GAS, v6T2+) */
-		else die("immediate #%u not encodable (mov/mvn/movw)", v);
+	if (opidx < ntok && toks[opidx][0] != '#' && toks[opidx][0] != ':' && reg(toks[opidx]) < 0) {   /* `mov r7, 190`: GAS takes */
+		size_t n = strlen(toks[opidx]) + 2; char *h = malloc(n); snprintf(h, n, "#%s", toks[opidx]); toks[opidx] = h;   /* an immediate */
+	}                                                                                                 /* without its '#' */
+	if (opidx < ntok && toks[opidx][0] == '#' && toks[opidx][1] != ':' && !explicit_rot(opidx)) {
+		/* #imm not a modified immediate: the partner instruction with the complement (mov/mvn, and/bic, adc/sbc) or
+		 * the negation (add/sub, cmp/cmn) — `and r1,r1,#-16` is `bic r1,r1,#15` — else mov #imm16 is movw (GAS) */
+		static const struct { u32 a, b; int neg; } alt[] = { {13,15,0}, {0,14,0}, {5,6,0}, {4,2,1}, {10,11,1} };
+		u32 v = imm(toks[opidx]), enc; I = 1; int done = modimm_try(v, &enc);
+		for (unsigned k = 0; !done && k < sizeof alt / sizeof *alt; k++)
+			if (opc == alt[k].a || opc == alt[k].b) {
+				if (modimm_try(alt[k].neg ? -v : ~v, &enc)) { opc = opc == alt[k].a ? alt[k].b : alt[k].a; done = 1; }
+				break;
+			}
+		if (!done && opc == 13 && !s && v <= 0xffff) { emit32((cond << 28) | 0x03000000u | ((v >> 12) << 16) | (rd << 12) | (v & 0xfff)); return; }   /* mov #imm16 -> movw (v6T2+) */
+		if (!done) die("%s: immediate #%u (%#x) not encodable as an ARM modified-immediate, nor its partner's", toks[0], v, v);
+		op2 = enc;
 	} else if (opidx < ntok && (toks[opidx][0] == ':' || (toks[opidx][0] == '#' && toks[opidx][1] == ':'))) {   /* group reloc */
 		if (opc != 4 && opc != 2) die("%s: group relocations only on add/sub", toks[0]);
 		long c; int sym; int g = parse_group(toks[opidx], &c, &sym);

@@ -27,6 +27,7 @@ static Node *call_args(void);
 static int stmtexpr_body;                          /* the next block is a ({...})'s: its last expression is the value */
 static int unevaluated;                            /* parsing sizeof's operand: only its type matters (no objects made) */
 static int in_proto;                               /* parsing a prototype's parameter types (their VLA bounds are never evaluated) */
+static int in_params;                              /* parsing any parameter list (C99 `[static N]`, `[const]`, `[*]` allowed) */
 static int fn_depth;                               /* function nesting while parsing: 0 file scope, 1 a function, 2+ nested */
 /* __label__ renames, innermost last; owner/depth: the function that declared it (a nested function's goto to it is non-local) */
 static struct { char from[64], to[64], owner[64]; int depth; } lscope[512]; static int nlscope, lscope_seq;
@@ -462,6 +463,20 @@ static Node *with_vla_pending(Node *val) {   /* an expression whose type parse q
 }
 static Type *type_suffix(Type *base) {
 	if (consume("[")) {                                       /* [] (param) allowed; else a constant expr, or a VLA bound */
+		/* a parameter's `[static N]` / `[const]` / `[restrict]`: a hint and the decayed pointer's qualifiers (this
+		 * compiler doesn't check const writes), so dropped; `[*]`: a VLA of unspecified size (prototypes) */
+		int quals = 0;
+		for (;;) {
+			if (consume("static")) quals = 1;
+			else if (consume("const") || consume("volatile") || consume("restrict") || consume("__restrict") || consume("__restrict__")
+			         || consume("_Atomic")) quals = 1;
+			else break;
+		}
+		if (quals && !in_params) die("parse: an array qualifier or `static` outside a parameter (line %d)", tk->line);
+		if (is("*") && tk->next && !strcmp(tk->next->text, "]")) {
+			if (!in_params) die("parse: `[*]` outside a prototype (line %d)", tk->line);
+			tk = tk->next->next; return array_of(type_suffix(base), 0);
+		}
 		if (consume("]")) return array_of(type_suffix(base), 0);
 		Node *e = assign(); expect("]");
 		Type *inner = type_suffix(base);                        /* outer dim wraps inner */
@@ -516,7 +531,8 @@ static Type *declarator1(Type *base, char *name, int depth) {
 	}
 	if (is("(") && group_ahead()) {
 		Token *in = tk->next; tk = skip_balanced(tk);
-		if (is("(")) { decl_fparams = tk; base = func_proto(base); }   /* after a group: a parameter list */
+		if (is("(")) { Token *pt = tk; base = func_proto(base); decl_fparams = pt; }   /* after a group: a parameter list (noted
+		                                                     * after: its parameters' own declarators reset decl_fparams) */
 		else base = type_suffix(base);
 		while (consume("__attribute__")) attribute();              /* trailing: `void (*f)(args) __attribute__((noreturn))` */
 		base = take_type_attrs(base);
@@ -528,7 +544,7 @@ static Type *declarator1(Type *base, char *name, int depth) {
 	name[0] = 0; if (tk->kind == TK_IDENT) ident(name);      /* name omitted => abstract declarator */
 	while (consume("__attribute__")) attribute();       /* trailing attr before the suffix: `int __attribute__((x)) v` */
 	base = take_type_attrs(base);
-	if (depth > 0 && is("(")) { decl_fparams = tk; base = func_proto(base); }   /* inside a group: `(*f(void))` */
+	if (depth > 0 && is("(")) { Token *pt = tk; base = func_proto(base); decl_fparams = pt; }   /* inside a group: `(*f(void))` */
 	base = type_suffix(base);
 	while (consume("__attribute__")) attribute();       /* trailing attr after the suffix: `int v[N] __attribute__((aligned(64)))` */
 	return take_type_attrs(base);
@@ -623,7 +639,11 @@ static void layout_vla_struct(Type *ty, Member *first, int is_union) {
 	QUEUE(vsize_node(ty), align_up_node(binary(ND_ADD, slot_ref(pos, fn_depth), tnum((bits + 7) / 8, ty_uint)), ty->align));
 	#undef QUEUE
 }
-static Type *struct_decl(int is_union) {
+static Type *struct_decl1(int is_union);
+static Type *struct_decl(int is_union) {   /* (members aren't parameters, even in a parameter's type) */
+	int ip = in_params; in_params = 0; Type *t = struct_decl1(is_union); in_params = ip; return t;
+}
+static Type *struct_decl1(int is_union) {
 	int packed = 0, alignb = 0;
 	int sso = 0, tunion = 0;
 	while (consume("__attribute__")) parse_attribute(&packed, &alignb, &sso, &tunion);   /* struct __attribute__((packed)) S */
@@ -2398,11 +2418,11 @@ static void typedef_decl(Type *base, Attr battr) {
 /* A prototype's parameter list `( ... )` (cursor at "("), types only: returns 1 for `...`, 2 for `()` (unknown
  * parameters — callers apply the default promotions), else 0. Arrays/functions adjust to pointers. */
 static int proto_params(Type ***ptsp, int *np) {   /* *ptsp: a fresh array of the types (the caller's) */
-	Node *vla_mark = vla_pt; int cap = 8; Type **pts = *ptsp = malloc(cap * sizeof *pts); in_proto++;
+	Node *vla_mark = vla_pt; int cap = 8; Type **pts = *ptsp = malloc(cap * sizeof *pts);
 	expect("("); *np = 0;
 	if (consume(")")) return 2;
 	if (is("void") && !strcmp(tk->next->text, ")")) { tk = tk->next->next; return 0; }
-	int va = 0;
+	int va = 0; in_proto++; in_params++;
 	do {
 		if (consume("...")) { va = 1; break; }
 		char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
@@ -2412,7 +2432,7 @@ static int proto_params(Type ***ptsp, int *np) {   /* *ptsp: a fresh array of th
 		if (*np == cap) pts = *ptsp = realloc(pts, (cap *= 2) * sizeof *pts);
 		pts[(*np)++] = ty;
 	} while (consume(","));
-	expect(")"); in_proto--;
+	expect(")"); in_proto--; in_params--;
 	vla_mark->next = NULL; vla_pt = vla_mark;   /* its own parameters' VLA bounds are never evaluated (outer ones stay queued) */
 	return va;
 }
@@ -2446,6 +2466,7 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 	int unproto = is(")");   /* `f()`: parameters unknown to callers (default promotions) */
 	if (is("void") && !strcmp(tk->next->text, ")")) tk = tk->next;   /* (void) = no params */
 	else if (!is(")")) {
+		in_params++;
 		do {
 			if (consume("...")) { f->variadic = 1; break; }   /* `...` */
 			char p[64]; Type *ty = declarator(declspec(NULL, NULL), p);
@@ -2462,6 +2483,7 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 				if (p[0]) add_local_at(p, ty, vr >= 0 ? 8 + 4 * vr : 8 + 4 * pos + (early_sv ? 64 : 0));
 			}
 		} while (consume(","));
+		in_params--;
 	}
 	expect(")");
 	if (resume) tk = resume;
@@ -2594,6 +2616,16 @@ static double eval_fp(Node *n, int *ok) {
 	#undef OPND
 	return n->type->kind == TY_FLOAT ? (double)(float)r : r;
 }
+/* The address of an lvalue whose base is an integer constant address (`((T *)K)->m.n`, `*(T *)K`): K plus the
+ * member offsets; anything else isn't a constant. */
+static long int_address(Node *lv, int *ok) {
+	long a = 0;
+	for (;;) {
+		if (lv->kind == ND_MEMBER && !lv->bit_width) { a += lv->offset; lv = lv->lhs; }
+		else if (lv->kind == ND_DEREF) return a + eval_node(lv->lhs, ok);
+		else { *ok = 0; return 0; }
+	}
+}
 static long eval_node(Node *n, int *ok) {
 	long r;
 	if (is_fp(n->type)) { *ok = 0; return 0; }   /* not an INTEGER constant (casts/compares of one fold below) */
@@ -2614,15 +2646,10 @@ static long eval_node(Node *n, int *ok) {
 	}
 	switch (n->kind) {
 	case ND_NUM:    return n->val;
-	case ND_ADDR: {   /* &((T *)K)->m, &((T *)K)[i]: an integer address plus the offset (the classic offsetof) */
-		long a = 0; Node *lv = n->lhs;
-		for (;;) {
-			if (lv->kind == ND_MEMBER && !lv->bit_width) { a += lv->offset; lv = lv->lhs; }
-			else if (lv->kind == ND_DEREF) { r = a + eval_node(lv->lhs, ok); break; }
-			else { *ok = 0; return 0; }
-		}
-		break;
-	}
+	case ND_ADDR: r = int_address(n->lhs, ok); break;   /* &((T *)K)->m, &((T *)K)[i]: the classic offsetof */
+	case ND_MEMBER: case ND_DEREF:                      /* an array lvalue decays to its address: &((T *)0)->arr[i] */
+		if (!n->type || n->type->kind != TY_ARRAY) { *ok = 0; return 0; }
+		r = int_address(n, ok); break;
 	case ND_NEG:    r = -eval_node(n->lhs, ok); break;
 	case ND_BITNOT: r = ~eval_node(n->lhs, ok); break;
 	case ND_NOT:    return !eval_node(n->lhs, ok);
@@ -2779,12 +2806,21 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 }
 static int init_nest;                                   /* braces around the object being initialized (0: a whole declarator's) */
 static int parse_init1(Type *ty, int base, InitPlace **tail);
+static int literal_is_element(Token *t, int np);
 static int parse_init(Type *ty, int base, InitPlace **tail) {
 	int braced = is("{");
 	init_nest += braced; int r = parse_init1(ty, base, tail); init_nest -= braced;
 	return r;
 }
 static int parse_init1(Type *ty, int base, InitPlace **tail) {
+	if (is("{") && ty->kind == TY_ARRAY && tk->next->kind == TK_STR
+	    && (tk->next->wide ? ty->base->size == tk->next->wide : ty->base->kind == TY_CHAR)) {   /* `char a[] = { "..." }`: */
+		Token *t = tk->next; while (t->kind == TK_STR) t = t->next;                          /* the string, braced */
+		if ((t->kind == TK_PUNCT && !strcmp(t->text, "}")) || (t->kind == TK_PUNCT && !strcmp(t->text, ",") && t->next->kind == TK_PUNCT && !strcmp(t->next->text, "}"))) {
+			expect("{"); int r = parse_init1(ty, base, tail); consume(","); expect("}");
+			return r;
+		}
+	}
 	if (is("{")) {
 		expect("{");
 		if (ty->kind == TY_STRUCT) {
@@ -2876,7 +2912,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		Token *save = tk; int np = 0;
 		while (is("(")) {
 			tk = tk->next; np++;
-			if (cast_ahead()) {
+			if (cast_ahead() && literal_is_element(tk, np)) {
 				char d[64]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
 				if (is("{")) { int r = parse_init(t, base, tail); while (np--) expect(")"); return r; }
 				break;   /* a cast, not a compound literal */
@@ -2885,7 +2921,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		}
 		tk = save;   /* ordinary parenthesized expression — fall through to the scalar leaf */
 	}
-	if (cast_ahead()) {   /* compound literal (T){...}: initialize as if the braces were written directly */
+	if (cast_ahead() && literal_is_element(tk, 0)) {   /* compound literal (T){...}: initialize as if the braces were written directly */
 		Token *save = tk; char d[64];
 		expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
 		if (is("{")) return parse_init(t, base, tail);
@@ -2907,6 +2943,17 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 	return ty->size;
 }
 
+/* Is the compound literal `(T){...}` at t, inside np grouping parens, the whole initializer element? Else it's an
+ * operand of a larger expression (`((T){4}).a`, `(T){1}.x + 2`), parsed as one. */
+static int literal_is_element(Token *t, int np) {
+	#define P(t, s) ((t)->kind == TK_PUNCT && !strcmp((t)->text, s))
+	t = skip_balanced(t);                                    /* (T) */
+	if (!P(t, "{")) return 0;
+	int d = 0; do { if (P(t, "{")) d++; else if (P(t, "}")) d--; t = t->next; } while (d && t->kind != TK_EOF);
+	while (np--) { if (!P(t, ")")) return 0; t = t->next; }
+	return P(t, ",") || P(t, "}") || P(t, ";");
+	#undef P
+}
 /* Fold an initializer expression to a link-time address constant `symbol + byte-addend` (returns 0 if it
  * isn't one). Handles &sym, &sym.member, &arr[i] (new_add bakes the *elem-size scale into an ND_MUL, so the
  * addend reads straight out of the tree), pointer +/- constant, casts, and a bare array/function/global name

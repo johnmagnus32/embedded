@@ -69,6 +69,25 @@ static Tok *copytok(const Tok *o) {
 static const char *PUNCT[] = { "<<=", ">>=", "...", "->", "++", "--", "<<", ">>", "<=", ">=", "==", "!=",
                                "&&", "||", "##", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", NULL };
 
+/* The length of the preprocessing token at p (not whitespace or a comment) and its kind. */
+static size_t lex_len(const char *p, Kind *kind) {
+	const char *s = p;
+	if (*p == '"' || *p == '\'') {                                          /* string / char literal */
+		char q = *p++; while (*p && *p != q) { if (*p == '\\' && p[1]) p++; p++; } if (*p) p++;
+		*kind = q == '"' ? TSTR : TCHAR;
+	} else if (isdigit((unsigned char)*p) || (*p == '.' && isdigit((unsigned char)p[1]))) {
+		p++; while (isalnum((unsigned char)*p) || *p == '.' || ((*p=='+'||*p=='-') && (p[-1]=='e'||p[-1]=='E'))) p++;   /* pp-number */
+		*kind = TNUM;
+	} else if (isalpha((unsigned char)*p) || *p == '_') {
+		while (isalnum((unsigned char)*p) || *p == '_') p++;
+		*kind = TIDENT;
+	} else {
+		size_t l = 1;
+		for (int i = 0; PUNCT[i]; i++) { size_t pl = strlen(PUNCT[i]); if (!strncmp(p, PUNCT[i], pl)) { l = pl; break; } }
+		*kind = TPUNCT; return l;
+	}
+	return p - s;
+}
 static Tok *tokenize(const char *src) {
 	Tok head = {0}, *cur = &head;
 	int bol = 1, space = 0;
@@ -79,21 +98,8 @@ static Tok *tokenize(const char *src) {
 		if (p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; continue; }
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) p++; if (*p) p += 2; space = 1; continue; }
 
-		const char *s = p; Tok *t;
-		if (*p == '"' || *p == '\'') {                                          /* string / char literal */
-			char q = *p++; while (*p && *p != q) { if (*p == '\\' && p[1]) p++; p++; } if (*p) p++;
-			t = newtok(q == '"' ? TSTR : TCHAR, s, p - s);
-		} else if (isdigit((unsigned char)*p) || (*p == '.' && isdigit((unsigned char)p[1]))) {
-			p++; while (isalnum((unsigned char)*p) || *p == '.' || ((*p=='+'||*p=='-') && (p[-1]=='e'||p[-1]=='E'))) p++;   /* pp-number */
-			t = newtok(TNUM, s, p - s);
-		} else if (isalpha((unsigned char)*p) || *p == '_') {
-			while (isalnum((unsigned char)*p) || *p == '_') p++;
-			t = newtok(TIDENT, s, p - s);
-		} else {
-			size_t l = 1;
-			for (int i = 0; PUNCT[i]; i++) { size_t pl = strlen(PUNCT[i]); if (!strncmp(p, PUNCT[i], pl)) { l = pl; break; } }
-			t = newtok(TPUNCT, s, l); p += l;
-		}
+		Kind k; size_t l = lex_len(p, &k);
+		Tok *t = newtok(k, p, l); p += l;
 		t->bol = bol; t->space = space; bol = 0; space = 0;
 		cur = cur->next = t;
 	}
@@ -134,12 +140,24 @@ static char *inc_dirs[64]; static int n_inc_dirs;
 
 /* ------------------------------------------------------------------ output ------------------------ */
 static FILE *out;
+/* Would `a` written right before `b` read back as other tokens (`-` `-1` -> `--1`, `x` `y` -> `xy`, `/` `*`)? Tokens
+ * from different places (a macro's result and its neighbour, a paste) meet with no space between; GCC's output
+ * separates exactly these (cpp_avoid_paste). */
+static int would_merge(const char *a, const char *b) {
+	size_t la = strlen(a), lb = strlen(b);
+	if (a[la - 1] == '/' && (b[0] == '/' || b[0] == '*')) return 1;       /* a comment */
+	char sb[256], *buf = la + lb < sizeof sb ? sb : malloc(la + lb + 1);
+	memcpy(buf, a, la); memcpy(buf + la, b, lb + 1);
+	Kind k; int m = lex_len(buf, &k) != la;
+	if (buf != sb) free(buf);
+	return m;
+}
 static void emit(Tok *tok) {
-	int line_open = 0;
+	int line_open = 0; const Tok *prev = NULL;
 	for (; tok && tok->kind != TEOF; tok = tok->next) {
 		if (tok->bol && line_open) fputc('\n', out);
-		else if (tok->space || (tok->bol && !line_open)) fputc(' ', out);
-		fputs(tok->text, out); line_open = 1;
+		else if (tok->space || (tok->bol && !line_open) || (prev && would_merge(prev->text, tok->text))) fputc(' ', out);
+		fputs(tok->text, out); line_open = 1; prev = tok;
 	}
 	if (line_open) fputc('\n', out);
 }
@@ -198,12 +216,15 @@ static Tok *stringize(Tok *arg) {
 	return newtok(TSTR, buf, k);
 }
 /* Paste two tokens' spellings into one new token (the ## operator). Either side may be NULL (an empty
- * macro argument acts as a placemarker); if both are empty the result is nothing (NULL). */
+ * macro argument acts as a placemarker); if both are empty the result is nothing (NULL). The spelling must be
+ * exactly one preprocessing token (GCC: "pasting X and Y does not give a valid preprocessing token"). */
 static Tok *paste(Tok *a, Tok *b) {
-	char buf[512]; snprintf(buf, sizeof buf, "%s%s", a ? a->text : "", b ? b->text : "");
-	if (!buf[0]) return NULL;
-	Kind k = (isalpha((unsigned char)buf[0]) || buf[0] == '_') ? TIDENT : isdigit((unsigned char)buf[0]) ? TNUM : TPUNCT;
-	return newtok(k, buf, strlen(buf));
+	if (!a || !b) return a ? a : b;
+	size_t n = strlen(a->text) + strlen(b->text) + 1; char *buf = malloc(n); snprintf(buf, n, "%s%s", a->text, b->text);
+	Tok *r = tokenize(buf);
+	if (r->kind == TEOF || r->next->kind != TEOF) die("pasting \"%s\" and \"%s\" does not give a valid preprocessing token", a->text, b->text);
+	free(buf); r->next = NULL; r->bol = 0; r->space = a->space;   /* where the left operand was */
+	return r;
 }
 /* Copy an argument's tokens WITHOUT its terminating TEOF (which must never leak into the output stream). */
 static Tok *copy_noeof(Tok *arg) {
@@ -212,6 +233,17 @@ static Tok *copy_noeof(Tok *arg) {
 	return head.next;
 }
 
+static int is_paste(const Tok *t) { return t->kind == TPUNCT && !strcmp(t->text, "##"); }
+static int param_index(const Macro *m, const Tok *t) {
+	if (t->kind == TIDENT) for (int i = 0; i < m->nparams; i++) if (!strcmp(t->text, m->params[i])) return i;
+	return -1;
+}
+/* A ## operand's tokens (fresh, TEOF-free): a parameter's raw argument (NULL: absent or empty), else the token. */
+static Tok *operand(const Macro *m, const Tok *t, Tok **args, int nargs) {
+	int i = param_index(m, t);
+	if (i < 0) return copytok(t);
+	return i < nargs ? copy_noeof(args[i]) : NULL;
+}
 /* Substitute args into a function-macro body, handling # and ##; params expanded unless adjacent to #/##. */
 static Tok *subst(Macro *m, Tok **args, int nargs) {
 	Tok head = {0}, *cur = &head;
@@ -220,45 +252,53 @@ static Tok *subst(Macro *m, Tok **args, int nargs) {
 		if (t->kind == TIDENT) for (int i = 0; i < m->nparams; i++) if (!strcmp(t->text, m->params[i])) pi = i;
 		int va = (m->variadic && t->kind == TIDENT && !strcmp(t->text, "__VA_ARGS__"));
 
-		if (t->text[0] == '#' && !t->text[1] && t->next) {          /* # param  -> stringize */
+		if (m->func && t->text[0] == '#' && !t->text[1] && t->next) {   /* # param  -> stringize (function-like only) */
 			int qi = -1; for (int i = 0; i < m->nparams; i++) if (!strcmp(t->next->text, m->params[i])) qi = i;
 			Tok *a = (qi >= 0 && qi < nargs) ? args[qi] : NULL;
 			cur = cur->next = stringize(a); t = t->next->next; continue;
 		}
-		if (t->next && t->next->text[0] == '#' && t->next->text[1] == '#') {   /* lhs ## rhs -> paste */
-			/* LEFT operand: a parameter contributes its raw (unexpanded) tokens; else the body token itself.
-			 * Place all but its last token, and keep the last one to paste with the right operand's first. */
-			Tok *lastl;
-			if (pi >= 0) {
-				Tok *lcopy = (pi < nargs) ? copy_noeof(args[pi]) : NULL;   /* TEOF-free, so last() is a real token */
-				Tok *lt = last(lcopy);
-				while (lcopy && lcopy != lt) { cur = cur->next = lcopy; lcopy = lcopy->next; }
-				lastl = lt;                                               /* NULL if the argument was empty */
-			} else {
-				lastl = copytok(t);
+		if (t->next && is_paste(t->next)) {   /* a ## chain: lhs ## rhs [## rhs ...] */
+			/* Each operand is a parameter's RAW (unexpanded) tokens — an absent or empty argument is a placemarker —
+			 * or the body token itself. The last token so far (acc) pastes onto the next operand's first; an
+			 * operand's other tokens pass through. The group's first token keeps the body position's spacing. */
+			int sp = t->space, first = 1;
+			#define EMIT(x) do { Tok *e_ = (x); if (first) { e_->space = sp; first = 0; } cur = cur->next = e_; } while (0)
+			Tok *acc = NULL;
+			for (Tok *x = operand(m, t, args, nargs); x; ) { Tok *nx = x->next; x->next = NULL; if (nx) EMIT(x); else acc = x; x = nx; }
+			while (t->next && is_paste(t->next)) {
+				Tok *rhs = t->next->next;
+				if (!rhs) die("'##' cannot appear at either end of a macro expansion");
+				Tok *r = operand(m, rhs, args, nargs);
+				int vaop = m->variadic && param_index(m, rhs) == m->nparams - 1;
+				if (vaop && acc && !strcmp(acc->text, ",")) {   /* GNU `, ## __VA_ARGS__`: an OMITTED variadic argument drops
+				                                               * the comma (as does an empty one when it's the only parameter);
+				                                               * else the comma stays and the arguments follow, unpasted */
+					int omitted = nargs < m->nparams || (m->nparams == 1 && !r);
+					if (!omitted) EMIT(acc);
+					acc = NULL;
+					for (Tok *x = r; x; ) { Tok *nx = x->next; x->next = NULL; if (nx) EMIT(x); else acc = x; x = nx; }
+				} else {
+					Tok *rest = r ? r->next : NULL; if (r) r->next = NULL;
+					Tok *p = paste(acc, r);
+					if (!rest) acc = p;
+					else { if (p) EMIT(p); acc = NULL; for (Tok *x = rest; x; ) { Tok *nx = x->next; x->next = NULL; if (nx) EMIT(x); else acc = x; x = nx; } }
+				}
+				t = rhs;
 			}
-			/* RIGHT operand: first token pastes onto lastl; the rest follow verbatim. */
-			Tok *rhs = t->next->next;
-			int ri = -1; if (rhs && rhs->kind == TIDENT) for (int i = 0; i < m->nparams; i++) if (!strcmp(rhs->text, m->params[i])) ri = i;
-			Tok *rfirst, *rrest;
-			if (ri >= 0 && ri < nargs) { Tok *rc = copy_noeof(args[ri]); rfirst = rc; rrest = rc ? rc->next : NULL; }
-			else { rfirst = rhs ? copytok(rhs) : NULL; rrest = NULL; }
-			Tok *pasted = paste(lastl, rfirst);
-			if (pasted) cur = cur->next = pasted;
-			for (Tok *x = rrest; x; x = x->next) cur = cur->next = copytok(x);   /* rrest is already TEOF-free */
-			t = t->next->next->next;   /* advance past the '##' and the right-operand body token */
+			if (acc) EMIT(acc);
+			#undef EMIT
+			t = t->next;
 			continue;
 		}
-		if (pi >= 0 && pi < nargs) {                                 /* a parameter: splice its EXPANDED argument */
-			for (Tok *a = expand(copy_body(args[pi], NULL)); a && a->kind != TEOF; a = a->next)
+		if (pi >= 0 && pi < nargs) {                                 /* a parameter: splice its EXPANDED argument, */
+			int firsttok = 1;                                       /* spaced where the parameter is in the body */
+			for (Tok *a = expand(copy_body(args[pi], NULL)); a && a->kind != TEOF; a = a->next) {
 				cur = cur->next = copytok(a);
+				if (firsttok) { cur->space = t->space; firsttok = 0; }
+			}
 			t = t->next; continue;
 		}
-		if (va) {                                                   /* __VA_ARGS__: the trailing variadic argument */
-			int i = m->nparams - 1;
-			if (i < nargs) for (Tok *a = args[i]; a && a->kind != TEOF; a = a->next) cur = cur->next = copytok(a);
-			t = t->next; continue;
-		}
+		if (pi >= 0 || va) { t = t->next; continue; }               /* an omitted (variadic) argument: nothing */
 		cur = cur->next = copytok(t); t = t->next;                  /* ordinary body token */
 	}
 	return head.next;
@@ -272,7 +312,7 @@ static Tok *expand(Tok *tok) {
 			Macro *m = macro_find(tok->text);
 			if (m && !m->func) {                                    /* object-like */
 				Hide *hs = hide_add(tok->hide, m->name);
-				Tok *rep = copy_body(m->body, hs);
+				Tok *rep = copy_body(subst(m, NULL, 0), hs);   /* (its ## pastes) */
 				if (rep) { rep->space = tok->space; rep->bol = tok->bol; last(rep)->next = tok->next; tok = rep; }
 				else tok = tok->next;
 				continue;
@@ -453,7 +493,9 @@ static void do_define(Tok *t) {
 			if (np >= 64) die("too many macro parameters (>64)");
 			if (is_p(p, "...")) { m->variadic = 1; params[np++] = xstrdup("__VA_ARGS__"); p = p->next; break; }
 			if (p->kind == TIDENT) params[np++] = xstrdup(p->text);
-			p = p->next; if (p && is_p(p, ",")) p = p->next;
+			p = p->next;
+			if (p && is_p(p, "...")) { m->variadic = 1; p = p->next; break; }   /* GNU named variadic `args...` */
+			if (p && is_p(p, ",")) p = p->next;
 		}
 		m->nparams = np; m->params = malloc(np * sizeof(char *)); for (int i = 0; i < np; i++) m->params[i] = params[i];
 		t = p ? p->next : NULL;   /* body starts after ')' */

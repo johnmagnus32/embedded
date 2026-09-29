@@ -7,7 +7,7 @@ CFLAGS ?= -O0 -g -Wall -Wextra -std=gnu11
 OURCC := ../cc/build/cc
 OURAS := ../as/build/as
 OURLD := ../ld/build/ld
-GNU   ?= ../../projects/gameboy-v3/build/toolchain-gcc-initial/bin/arm-none-linux-gnueabihf-
+GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
 $(BUILD)/cpp: cpp.c | $(BUILD)
@@ -50,6 +50,12 @@ test: $(BUILD)/cpp
 	if ! $(BUILD)/cpp $$t/pack.c >/dev/null 2>$$t/e1 && grep -q 'pack' $$t/e1 && ! $(BUILD)/cpp $$t/typo.c >/dev/null 2>$$t/e2 && grep -q 'inlcude' $$t/e2; \
 	  then echo "PASS rejected: $$(cat $$t/e1) / $$(cat $$t/e2)"; ok=$$((ok+1)); \
 	  else echo "FAIL #pragma pack / unknown directive not rejected"; fail=$$((fail+1)); fi; \
+	if [ -x "$(GNU)gcc" ]; then for m in tests/macro/*.c; do \
+	  $(BUILD)/cpp $$m > $$t/m.ours 2>$$t/me && $(GNU)gcc -E -P -undef $$m > $$t/m.gnu 2>/dev/null \
+	  && python3 tests/tokdiff.py $$t/m.ours $$t/m.gnu > $$t/md; \
+	  if [ $$? = 0 ]; then echo "PASS $$(basename $$m): token-identical to GNU cpp"; ok=$$((ok+1)); \
+	  else echo "FAIL $$(basename $$m): $$(cat $$t/me $$t/md)"; fail=$$((fail+1)); fi; done; \
+	else echo "SKIP tests/macro: no GNU gcc at $(GNU)gcc"; fi; \
 	rm -rf $$t; echo "----- $$ok passed, $$fail failed -----"; [ $$fail -eq 0 ]
 
 clean:
