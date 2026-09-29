@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <pthread.h>
 #include "cc.h"
 
 void die(const char *fmt, ...) {
@@ -22,7 +23,20 @@ int default_vis = 0;   /* -fvisibility= */
 const char *vis_directive(int vis) { return vis == VIS_HIDDEN ? ".hidden" : vis == VIS_INTERNAL ? ".internal" : vis == VIS_PROTECTED ? ".protected" : NULL; }
 int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; default hard (gnueabihf) */
 
+/* Recursive descent follows the program's nesting, and 10000 nested struct definitions or declarators are legal C:
+ * the compiler runs on a thread with a 256 MiB stack (address space reserved; pages touched only as used). */
+static int g_argc; static char **g_argv;
+static void *compile(void *unused);
 int main(int argc, char **argv) {
+	g_argc = argc; g_argv = argv;
+	pthread_attr_t a; pthread_t t;
+	if (pthread_attr_init(&a) || pthread_attr_setstacksize(&a, (size_t)256 << 20) || pthread_create(&t, &a, compile, NULL))
+		die("cannot start the compiler thread (256 MiB stack)");
+	pthread_join(t, NULL);
+	return 0;
+}
+static void *compile(void *unused) {
+	(void)unused; int argc = g_argc; char **argv = g_argv;
 	const char *out = "a.s", *in = NULL;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
@@ -46,5 +60,5 @@ int main(int argc, char **argv) {
 	Token *tok = lex(src);
 	Func *prog = parse(tok);
 	gen(prog, out);
-	return 0;
+	return NULL;
 }

@@ -76,7 +76,12 @@ int   func_base_pcs(const char *name);      /* calls use the base PCS: declared 
 /* vfp = the AAPCS-VFP variant (hard float, non-variadic callee): float/double/HFA args go to s0-s15 instead,
  * vreg[i] = their first s-register (-1 = core/stack; a VFP arg that overflowed to the stack has a pos). */
 int  aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg);
+typedef struct { int ncrn, nsaa, vclosed, vfp; unsigned sused; } Aapcs;   /* the placement so far (NCRN, NSAA, the used s-regs) */
+static inline Aapcs aapcs_start(int first, int vfp) { return (Aapcs){ .ncrn = first, .vfp = vfp }; }
+void aapcs_place(Aapcs *a, Type *t, int *pos, int *vreg);
+int  aapcs_words(const Aapcs *a);
 int  vfp_class(Type *t, int *nel);           /* 0; 1 = float elements; 2 = double; 3/4 = 64/128-bit vectors (a scalar/vector/HFA/HVA) */
+extern int exec_stack;                       /* the code needs an executable stack (a nested function's trampoline) */
 extern int soft_float;                       /* -mfloat-abi=soft: no floating code, base PCS attributes */
 int  arg_words(Type *t);                     /* words an argument of type t occupies (struct = ceil(size/4)) */
 int  is_sret(Type *t, int vfp);              /* returned via a caller-supplied buffer (struct > 4 bytes, not an HFA under VFP; vector > 16) */
@@ -94,7 +99,6 @@ int   is_cplx(Type *t);
 int   same_cplx(Type *a, Type *b);           /* two complex types of the same element type */
 /* add_type is declared after the Node typedef below */
 
-#define MAXPARAMS 128   /* function parameters (C11 5.2.4.1 requires >= 127) */
 
 /* ---- AST (parse.c) ------------------------------------------------------------------------------- */
 typedef enum {
@@ -123,7 +127,7 @@ typedef struct Node {
 	long val2; int is_range;     /* ND_CASE `low ... high` range (GCC case ranges)               */
 	char name[64];               /* ND_VAR / ND_CALL name                                        */
 	char reg[8];                 /* ND_VAR pinned to a hard register (`register x __asm__("r7")`)*/
-	char cons[8];                /* ND_ASM operand: its constraint ("r"/"=r"/"+r"/"i"/…)         */
+	char cons[32];               /* ND_ASM operand: its constraint ("r"/"=r"/"+r"/"i"/…)         */
 	char *asm_tmpl;              /* ND_ASM: the (possibly multi-line, %N-bearing) template string */
 	int asm_basic;               /* ND_ASM: basic asm (no `:` sections) — `%` is literal, not an operand ref */
 	int asm_clobber;             /* ND_ASM: register mask from the clobber list (operands avoid them; r4-r10 saved) */
@@ -135,7 +139,7 @@ typedef struct Node {
 	struct Node *init, *inc;         /* ND_FOR: initializer statement + per-iteration step expr    */
 	struct Node *case_list, *case_next;  /* ND_SWITCH: its cases; ND_CASE: link in that list        */
 	int is_default;                  /* ND_CASE: this is `default:`                                 */
-	struct Node *body;           /* ND_BLOCK: statement list (chained via ->next)                */
+	struct Node *body;           /* ND_BLOCK: statement list (chained via ->next); val = LABELED: a label and its statement */
 	struct Node *args;           /* ND_CALL: argument list (chained via ->next)                  */
 	struct Node *next;           /* next statement / next argument in a list                     */
 	int is_post;                 /* ND_RMW: x++ / x-- — the result is the OLD value               */
@@ -149,11 +153,16 @@ typedef struct Node {
 	                              * its frame; ND_CALL of a nested function — 1 + the hops to the frame it expects as its
 	                              * static chain (0: none); ND_GOTO / ND_LABELADDR to an enclosing function's label — hops */
 	char *owner;                 /* ND_GOTO / ND_LABELADDR: the enclosing function the label is in (NULL: this one) */
+	int unproto;                 /* ND_CALL: no prototype in scope at the call (the arguments go by their own promoted types,
+	                              * whatever a later definition says — as GCC does) */
+	char *imm_sym;               /* ND_ASM immediate operand ("i"/"s") that is an address: its `sym+off` (else the value is val) */
+	int imm_bad;                 /* ND_ASM immediate operand that isn't a constant: an error if the asm is emitted (a
+	                              * dead `if (__builtin_constant_p(x)) asm(... "i"(x))` branch is dropped first) */
 } Node;
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
-typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gnu_inline; char section[64], alias[64], cleanup[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
+typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gnu_inline, common; char section[64], alias[64], cleanup[64]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
                                                                                          * packed: on a member (its alignment 1) or an enum (its smallest type);
                                                                                          * cleanup: a local's scope-exit function (cleanup(fn));
                                                                                          * vis: 0 unset, else VIS_* */
@@ -200,6 +209,7 @@ typedef struct Init { int kind; long val; char sym[SYMEXPR_MAX]; int size; struc
 #define SC_REGISTER 4 /* `register` — for a file-scope `register T x asm("rN")` global register variable */
 #define SC_TLS 8      /* `_Thread_local` / `__thread` — one object per thread (.tdata/.tbss) */
 #define SC_INLINE 16  /* `inline` (with extern + gnu_inline: an inline-only definition, never emitted) */
+#define SC_AUTO 32    /* `auto`: a block-scope object's default; on a block-scope function, a nested one declared ahead */
 typedef struct Gvar {
 	char name[64];               /* symbol (a var name, or a .LSTR label for a string)           */
 	Type *type;
@@ -211,7 +221,10 @@ typedef struct Gvar {
 	int wide;                    /* is_str: element width of a wide literal (4 = L/U, 2 = u); 0 = char */
 	Init *init;                  /* initializer item list -> .data; NULL -> .bss                 */
 	Attr attr;
-	char str[1024];              /* is_str / is_topasm: the decoded text (adjacent literals concatenated) */
+	char *str;                   /* is_str: the literal's bytes (slen of them; adjacent ones concatenated, each decoded on
+	                              * its own); is_topasm: the text */
+	int slen;
+	unsigned *wstr;              /* a wide literal (wide = 2/4): its slen code units */
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
@@ -226,5 +239,7 @@ void gen(Func *prog, const char *out);   /* emit ARM assembly text for the whole
 /* ---- shared (cc.c) ------------------------------------------------------------------------------- */
 void die(const char *fmt, ...);          /* "cc: ..." + exit(1) */
 int  name_is_weak(const char *name);     /* declared weak on a prototype (parse.c) */
+const char *asm_name(const char *name);  /* a C name's assembler symbol: its asm label (`T x __asm__("sym")`), else itself */
+int  is_alias_target(const char *name);  /* named by an alias("name") attribute (so kept, even static and otherwise unused) */
 
 #endif

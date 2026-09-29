@@ -118,28 +118,31 @@ static void vec_check(Type *to, Type *from, const char *what) {
  * registers goes wholly to the stack; a composite may SPLIT across r3 and the stack only while nothing is on the
  * stack yet (so its words stay contiguous in this space). Under vfp a float/double/HFA takes the lowest free
  * run of s0-s15 (a double an even pair; back-filling); once one doesn't fit, all VFP registers close and it and
- * later ones go to the stack. `first` reserves leading core words (the sret pointer). Returns the core words. */
-int aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg) {
-	int ncrn = first, nsaa = 0; unsigned sused = 0; int vclosed = 0;
-	for (int i = 0; i < n; i++) {
-		int nel, k = vfp ? vfp_class(ty[i], &nel) : 0, al8 = arg_align8(ty[i]);
-		if (vreg) vreg[i] = -1;
-		if (k) {
-			int w = vfp_regs(k), need = nel * w, got = -1;
-			for (int s = 0; !vclosed && s + need <= 16 && got < 0; s += w) if (!((sused >> s) & ((1u << need) - 1))) got = s;
-			if (got >= 0) { sused |= ((1u << need) - 1) << got; vreg[i] = got; pos[i] = -1; continue; }
-			vclosed = 1; sused = 0xffff;
-			if (al8) nsaa = (nsaa + 1) & ~1;
-			pos[i] = 4 + nsaa; nsaa += arg_words(ty[i]); continue;
-		}
-		int nw = arg_words(ty[i]), comp = is_aggr(ty[i]);
-		if (nw && al8) ncrn = (ncrn + 1) & ~1;
-		if (ncrn + nw <= 4) { pos[i] = ncrn; ncrn += nw; continue; }
-		if (comp && ncrn < 4 && nsaa == 0) { pos[i] = ncrn; nsaa = nw - (4 - ncrn); ncrn = 4; continue; }   /* split r3 | stack */
-		ncrn = 4; if (al8) nsaa = (nsaa + 1) & ~1;
-		pos[i] = 4 + nsaa; nsaa += nw;
+ * later ones go to the stack. `first` reserves leading core words (the sret pointer). Returns the core words.
+ * aapcs_place places one argument after the ones before it (a declaration's parameters, as they're parsed). */
+void aapcs_place(Aapcs *a, Type *t, int *pos, int *vreg) {   /* the next argument (a = aapcs_start(...)) */
+	int nel, k = a->vfp ? vfp_class(t, &nel) : 0, al8 = arg_align8(t);
+	if (vreg) *vreg = -1;
+	if (k) {
+		int w = vfp_regs(k), need = nel * w, got = -1;
+		for (int s = 0; !a->vclosed && s + need <= 16 && got < 0; s += w) if (!((a->sused >> s) & ((1u << need) - 1))) got = s;
+		if (got >= 0) { a->sused |= ((1u << need) - 1) << got; *vreg = got; *pos = -1; return; }
+		a->vclosed = 1; a->sused = 0xffff;
+		if (al8) a->nsaa = (a->nsaa + 1) & ~1;
+		*pos = 4 + a->nsaa; a->nsaa += arg_words(t); return;
 	}
-	return nsaa ? 4 + nsaa : ncrn;
+	int nw = arg_words(t), comp = is_aggr(t);
+	if (nw && al8) a->ncrn = (a->ncrn + 1) & ~1;
+	if (a->ncrn + nw <= 4) { *pos = a->ncrn; a->ncrn += nw; return; }
+	if (comp && a->ncrn < 4 && a->nsaa == 0) { *pos = a->ncrn; a->nsaa = nw - (4 - a->ncrn); a->ncrn = 4; return; }   /* split r3 | stack */
+	a->ncrn = 4; if (al8) a->nsaa = (a->nsaa + 1) & ~1;
+	*pos = 4 + a->nsaa; a->nsaa += nw;
+}
+int aapcs_words(const Aapcs *a) { return a->nsaa ? 4 + a->nsaa : a->ncrn; }
+int aapcs_layout(Type **ty, int n, int first, int vfp, int *pos, int *vreg) {
+	Aapcs a = aapcs_start(first, vfp);
+	for (int i = 0; i < n; i++) aapcs_place(&a, ty[i], &pos[i], vreg ? &vreg[i] : NULL);
+	return aapcs_words(&a);
 }
 /* Widen the 32-bit value in r0 into the pair r0:r1 (sign- or zero-extend by the source's sign). */
 static void extend64(Type *from) {
@@ -324,16 +327,16 @@ static void gen_addr(Node *n) {
 			int g = ngot++;
 			if (pic) {
 				fprintf(o, "\tldr r0, .LTLS%d_%d\n\tadd r0, pc, r0\n\tb .LTA%d_%d\n.LTLS%d_%d:\n\t.word %s(tlsgd)\n.LTA%d_%d:\n",
-				        cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+				        cur_func_id, g, cur_func_id, g, cur_func_id, g, asm_name(n->name), cur_func_id, g);
 				emit_libcall("__tls_get_addr");
 			} else if (n->tls_local)
 				fprintf(o, "\tldr ip, .LTLS%d_%d\n\tb .LTA%d_%d\n.LTLS%d_%d:\n\t.word %s(tpoff)\n.LTA%d_%d:\n"
 				           "\tmrc p15, 0, r0, c13, c0, 3\n\tadd r0, r0, ip\n",
-				        cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+				        cur_func_id, g, cur_func_id, g, cur_func_id, g, asm_name(n->name), cur_func_id, g);
 			else
 				fprintf(o, "\tldr ip, .LTLS%d_%d\n\tadd ip, pc, ip\n\tb .LTA%d_%d\n.LTLS%d_%d:\n\t.word %s(gottpoff)\n.LTA%d_%d:\n"
 				           "\tldr ip, [ip]\n\tmrc p15, 0, r0, c13, c0, 3\n\tadd r0, r0, ip\n",
-				        cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+				        cur_func_id, g, cur_func_id, g, cur_func_id, g, asm_name(n->name), cur_func_id, g);
 			return;
 		}
 		if (pic) {
@@ -348,10 +351,10 @@ static void gen_addr(Node *n) {
 			    ".LGOT%d_%d:\n\t.word %s(GOT_PREL)\n"   /* GAS: (GOT_PREL) = R_ARM_GOT_PREL; (GOT) would be R_ARM_GOT32 */
 			    ".LGA%d_%d:\n"
 			    "\tldr r0, [r0]\n",             /* r0 = GOT[sym] = &sym                                 */
-			    cur_func_id, g, cur_func_id, g, cur_func_id, g, n->name, cur_func_id, g);
+			    cur_func_id, g, cur_func_id, g, cur_func_id, g, asm_name(n->name), cur_func_id, g);
 			return;
 		}
-		fprintf(o, "\tmovw r0, #:lower16:%s\n\tmovt r0, #:upper16:%s\n", n->name, n->name);   /* address via movw/movt (no literal pool -> no ±4095 range limit) */
+		fprintf(o, "\tmovw r0, #:lower16:%s\n\tmovt r0, #:upper16:%s\n", asm_name(n->name), asm_name(n->name));   /* address via movw/movt (no literal pool -> no ±4095 range limit) */
 		return;
 	}
 	case ND_STMTEXPR:   /* ({ ...; lvalue; }) as an lvalue: run the body, take the last expr's address */
@@ -557,6 +560,13 @@ static void gen_builtin(Node *n) {
 	 * r0-r3, contiguous with the stack arguments), [4] the saved d0-d7 (0 if none came in VFP registers). apply(fn,
 	 * block, size) calls fn with those registers and `size` bytes of the stack arguments, keeping the result
 	 * registers in its own frame temp — [16] r0, [20] r1, [24] d0-d3 — which it returns; return(result) returns them. */
+	/* The stack level, as the alloca floor (the stack machine's temporaries live below it): save reads it, restore
+	 * frees everything allocated since (a VLA / alloca block) — sp and the floor back to it. */
+	if (!strcmp(b, "stack_save")) { if (!cur_alloca_slot) die("cc: internal: no alloca floor for __builtin_stack_save"); fp_mem("ldr", "r0", cur_alloca_slot); return; }
+	if (!strcmp(b, "stack_restore")) {
+		if (!n->args || n->args->next || !cur_alloca_slot) die("cc: __builtin_stack_restore needs one pointer");
+		gen_expr(n->args); fprintf(o, "\tmov sp, r0\n"); fp_mem("str", "r0", cur_alloca_slot); return;
+	}
 	if (!strcmp(b, "apply_args")) {
 		emit_addimm("r0", "r11", cur_core_home); fp_mem("str", "r0", n->offset);
 		if (cur_core_home == 72) fprintf(o, "\tadd r0, r11, #8\n"); else fprintf(o, "\tmov r0, #0\n");   /* d0-d7 saved below r0-r3 */
@@ -752,12 +762,14 @@ static void gen_expr1(Node *n) {
 	}
 	case ND_CALL: {
 		if (n->name[0] && !strncmp(n->name, "__builtin_", 10)) { gen_builtin(n); return; }   /* never a real call */
-		Node *av[MAXPARAMS]; Type *at[MAXPARAMS]; int pos[MAXPARAMS], vreg[MAXPARAMS], nargs = 0;
-		for (Node *a = n->args; a; a = a->next) { if (nargs >= MAXPARAMS) die("cc: too many call args (>%d)", MAXPARAMS); av[nargs++] = a; }
+		int nargs = 0; for (Node *a = n->args; a; a = a->next) nargs++;
+		Node **av = malloc((nargs + 1) * sizeof *av); Type **at = malloc((nargs + 1) * sizeof *at);
+		int *pos = malloc((nargs + 1) * sizeof *pos), *vreg = malloc((nargs + 1) * sizeof *vreg);
+		nargs = 0; for (Node *a = n->args; a; a = a->next) av[nargs++] = a;
 		const char *callee = n->lhs ? 0 : n->name;                 /* a direct call's signature, or the pointed-to function type's */
 		Type *ft = n->lhs ? n->lhs->type : NULL; if (ft && is_ptr(ft)) ft = ft->base; if (ft && !ft->fn_ret) ft = NULL;
 		for (int i = 0; i < nargs; i++) {                          /* a declared param type decides the slot (a 64-bit param takes a narrower arg widened) */
-			Type *pt = callee ? func_param_type(callee, i) : ft && i < ft->nparams ? ft->params[i] : 0;
+			Type *pt = callee ? (n->unproto ? NULL : func_param_type(callee, i)) : ft && i < ft->nparams ? ft->params[i] : 0;
 			if (pt && pt->transparent && !is_aggr(av[i]->type)) pt = pt->members->type;   /* a member's value: passed as the first member */
 			at[i] = pt ? pt : av[i]->type->kind == TY_FLOAT ? ty_double : av[i]->type;   /* no prototype / a vararg: float promotes to double */
 		}
@@ -795,7 +807,7 @@ static void gen_expr1(Node *n) {
 		if (cw) mem_op("ldr", "r12", "sp", cslot);
 		if (regw) fprintf(o, "\tpop {r0, r1, r2, r3}\n");
 		if (n->lhs) fprintf(o, "\tblx r12\n");
-		else        fprintf(o, "\tbl %s\n", n->name);            /* result in r0(:r1) */
+		else        fprintf(o, "\tbl %s\n", asm_name(n->name));   /* result in r0(:r1); an asm label renames it */
 		mem_op("ldr", "ip", "sp", spslot - 4 * regw); fprintf(o, "\tadd sp, sp, ip\n");   /* back to the caller's (possibly 4-aligned) sp */
 		if (regw) fprintf(o, "\tsub sp, sp, #16\n");   /* the distance was measured from the area base, below the popped r0-r3 */
 		int rnel, rk = vfp ? vfp_class(n->type, &rnel) : 0;   /* a float/double/HFA result comes back in s0../d0.. */
@@ -806,6 +818,7 @@ static void gen_expr1(Node *n) {
 			emit_addimm("r0", "r11", n->offset);
 		}
 		else if (rk) from_vfp(rk == 2, 0);
+		free(av); free(at); free(pos); free(vreg);
 		return;
 	}
 	default: break;
@@ -865,7 +878,7 @@ static int asm_is_input(const char *c)  { return !strchr(c, '=') || strchr(c, '+
 /* Emit the template, substituting %0..%9 with each operand's register (or immediate) and turning \n/\t
  * escapes into real newlines/tabs so our as sees one instruction per line. %% -> %, %= (unique id) dropped,
  * a leading modifier letter (%w0/%c0) is ignored. */
-static void emit_asm_template(const char *t, char subst[][24], const int *isimm, const int *hireg, int nops, int basic) {
+static void emit_asm_template(const char *t, char subst[][SYMEXPR_MAX + 24], const int *isimm, const int *hireg, int nops, int basic, int nlabels, int goto_id) {
 	fprintf(o, "\t");
 	for (const char *p = t; *p; ) {
 		if (*p == '%' && !basic) {
@@ -875,8 +888,12 @@ static void emit_asm_template(const char *t, char subst[][24], const int *isimm,
 			else {
 				char mod = 0;
 				if (*p && !(*p >= '0' && *p <= '9')) { mod = *p; p++; }   /* modifier letter (%c0/%w0/…) */
-				if (*p >= '0' && *p <= '9') { int i = *p - '0'; p++;
-					if (i < nops) {
+				if (*p >= '0' && *p <= '9') { int i = 0; while (*p >= '0' && *p <= '9') i = i * 10 + (*p++ - '0');
+					if (mod == 'l') {   /* asm goto: label i - nops, through its stub (outputs stored, registers restored) */
+						if (i < nops || i >= nops + nlabels) die("cc: asm %%l%d names no label", i);
+						fprintf(o, ".Lag%d_%d", goto_id, i - nops);
+					}
+					else if (i < nops) {
 						if (mod == 'H' || mod == 'R') {   /* 64-bit operand in a register PAIR: %H = second reg, %R = most-significant (LE: same) */
 							if (hireg[i] < 0) die("cc: asm %%%c%d on an operand that isn't a 64-bit register pair", mod, i);
 							fputs(asm_regname(hireg[i]), o);
@@ -903,9 +920,15 @@ static void emit_asm_template(const char *t, char subst[][24], const int *isimm,
 static void gen_asm(Node *n) {
 	Node *ops[16]; int nops = 0;
 	for (Node *a = n->args; a; a = a->next) { if (nops >= 16) die("cc: too many asm operands"); ops[nops++] = a; }
-	int nouts = n->val, regof[16], used = n->asm_clobber & ~(1 << 14), isimm[16] = {0}; char subst[16][24];   /* clobbered regs are off-limits for operands */
+	int nouts = n->val, regof[16], used = n->asm_clobber & ~(1 << 14), isimm[16] = {0}; char subst[16][SYMEXPR_MAX + 24];   /* clobbered regs are off-limits for operands */
 	for (int i = 0; i < nops; i++) {                       /* immediates + pinned registers; a matching digit ("0") resolves later */
-		if (strchr(ops[i]->cons, 'i')) { regof[i] = -2; isimm[i] = 1; snprintf(subst[i], 24, "%ld", ops[i]->val); continue; }
+		if (ops[i]->imm_bad) die("cc: asm operand %d (\"%s\") must be a constant in %s", i, ops[i]->cons, cur_gen_func);
+		if (ops[i]->imm_sym || (strpbrk(ops[i]->cons, "insIJKLMN") && !strpbrk(ops[i]->cons, "rlgmQoV0123456789"))) {   /* an immediate */
+			regof[i] = -2; isimm[i] = 1;
+			if (ops[i]->imm_sym) { if (strlen(ops[i]->imm_sym) >= sizeof subst[i]) die("cc: asm symbolic operand too long"); strcpy(subst[i], ops[i]->imm_sym); }
+			else snprintf(subst[i], sizeof subst[i], "%ld", ops[i]->val);
+			continue;
+		}
 		if (ops[i]->cons[0] >= '0' && ops[i]->cons[0] <= '9') { if (ops[i]->cons[0] - '0' >= nouts || i < nouts) die("cc: asm matching constraint \"%s\" must be an input naming an output", ops[i]->cons); regof[i] = -3; continue; }
 		int rn = asm_regnum(ops[i]->reg); regof[i] = rn; if (rn >= 0) used |= 1 << rn;
 	}
@@ -933,7 +956,7 @@ static void gen_asm(Node *n) {
 	char csave[48] = ""; for (int r = 4; r <= 10; r++) if ((used | n->asm_clobber) & (1 << r)) {   /* allocated OR clobbered callee-saved */ if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
 	if (csave[0]) fprintf(o, "\tpush {%s}\n", csave);
 	/* an "m" operand references memory: hold its ADDRESS in the reg and substitute "[reg]" */
-	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], 24, ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
+	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], sizeof subst[i], ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));
 	/* Each register output's lvalue is evaluated ONCE: its address goes to the asm's frame slot, read back
 	 * for a "+r" input value and for the final store (asm("" : "+r"(*f())) calls f once). */
 	for (int i = 0; i < nouts; i++) if (regof[i] >= 0 && !ASM_MEM(i)) { gen_addr(ops[i]); fp_mem("str", "r0", n->offset + 4 * i); }
@@ -947,17 +970,28 @@ static void gen_asm(Node *n) {
 		if (hireg[i] >= 0) fprintf(o, "\tpop {%s, %s}\n", asm_regname(regof[i]), asm_regname(hireg[i]));
 		else fprintf(o, "\tpop {%s}\n", asm_regname(regof[i]));
 	}
-	emit_asm_template(n->asm_tmpl, subst, isimm, hireg, nops, n->asm_basic);
-	for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
-		if (hireg[i] >= 0) fprintf(o, "\tpush {%s, %s}\n", asm_regname(regof[i]), asm_regname(hireg[i]));
-		else fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
+	int nlabels = 0; for (Node *l = n->body; l; l = l->next) nlabels++;
+	int goto_id = nlabels ? uniq() : 0;
+	emit_asm_template(n->asm_tmpl, subst, isimm, hireg, nops, n->asm_basic, nlabels, goto_id);
+	/* The way out, on the fall-through path and (asm goto) before each label: the outputs stored, r4-r10 restored. */
+	Node *l = n->body;
+	for (int path = 0; path <= nlabels; path++) {
+		if (path) fprintf(o, ".Lag%d_%d:\n", goto_id, path - 1);
+		for (int i = 0; i < nops; i++) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
+			if (hireg[i] >= 0) fprintf(o, "\tpush {%s, %s}\n", asm_regname(regof[i]), asm_regname(hireg[i]));
+			else fprintf(o, "\tpush {%s}\n", asm_regname(regof[i]));
+		}
+		for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
+			if (hireg[i] >= 0) { fprintf(o, "\tpop {r0, r1}\n"); fp_mem("ldr", "r2", n->offset + 4 * i); }   /* 64-bit store: addr r2, value r0:r1 */
+			else { fprintf(o, "\tpop {r0}\n"); fp_mem("ldr", "r1", n->offset + 4 * i); }
+			store(ops[i]->type);
+		}
+		if (csave[0]) fprintf(o, "\tpop {%s}\n", csave);
+		if (!nlabels) break;
+		if (!path) fprintf(o, "\tb .Lag%d_end\n", goto_id);
+		else { fprintf(o, "\tb " CLABEL_FMT "\n", cur_gen_func, l->name); l = l->next; }
 	}
-	for (int i = nops - 1; i >= 0; i--) if (i < nouts && regof[i] >= 0 && !ASM_MEM(i)) {
-		if (hireg[i] >= 0) { fprintf(o, "\tpop {r0, r1}\n"); fp_mem("ldr", "r2", n->offset + 4 * i); }   /* 64-bit store: addr r2, value r0:r1 */
-		else { fprintf(o, "\tpop {r0}\n"); fp_mem("ldr", "r1", n->offset + 4 * i); }
-		store(ops[i]->type);
-	}
-	if (csave[0]) fprintf(o, "\tpop {%s}\n", csave);
+	if (nlabels) fprintf(o, ".Lag%d_end:\n", goto_id);
 	#undef ASM_MEM
 }
 
@@ -1084,7 +1118,8 @@ static void alloc_temps(Node *n, int *frame) {
 	if (!n) return;
 	if (n->kind == ND_RMW) { *frame += 24; n->offset = -*frame; }   /* &lvalue + old value + operand */
 	if (n->kind == ND_CPAIR) { *frame += (n->type->size + 3) & ~3; n->offset = -*frame; }
-	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_alloca") && !cur_alloca_slot) { *frame += 4; cur_alloca_slot = -*frame; }
+	if (n->kind == ND_CALL && (!strcmp(n->name, "__builtin_alloca") || !strcmp(n->name, "__builtin_stack_save") || !strcmp(n->name, "__builtin_stack_restore"))
+	    && !cur_alloca_slot) { *frame += 4; cur_alloca_slot = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_setjmp") && !cur_setjmp_save) { *frame += 28; cur_setjmp_save = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_apply_args")) { *frame += 8; n->offset = -*frame; }
 	if (n->kind == ND_CALL && !strcmp(n->name, "__builtin_apply")) { *frame += 56; n->offset = -*frame; }
@@ -1111,11 +1146,12 @@ static void gen_func(Func *f) {
 	if (f->attr.section[0]) fprintf(o, "\t.section %s,\"ax\",%%progbits\n", f->attr.section);   /* __attribute__((section)) (__init ...) */
 	else fprintf(o, "\t.text\n");
 	fprintf(o, "\t.p2align %d\n", log2i(f->attr.align > 4 ? f->attr.align : 4));
+	const char *sym = asm_name(f->name);   /* its symbol: an asm label renames it */
 	if (!f->is_static && vis_directive(f->attr.vis ? f->attr.vis : default_vis))   /* explicit, else -fvisibility= */
-		fprintf(o, "\t%s %s\n", vis_directive(f->attr.vis ? f->attr.vis : default_vis), f->name);
-	if (f->attr.weak || name_is_weak(f->name)) fprintf(o, "\t.weak %s\n", f->name);
-	else if (!f->is_static) fprintf(o, "\t.global %s\n", f->name);   /* `static` -> file-local symbol */
-	fprintf(o, "\t.type %s, %%function\n%s:\n", f->name, f->name);
+		fprintf(o, "\t%s %s\n", vis_directive(f->attr.vis ? f->attr.vis : default_vis), sym);
+	if (f->attr.weak || name_is_weak(f->name)) fprintf(o, "\t.weak %s\n", sym);
+	else if (!f->is_static) fprintf(o, "\t.global %s\n", sym);   /* `static` -> file-local symbol */
+	fprintf(o, "\t.type %s, %%function\n%s:\n", sym, sym);
 	if (homed) fprintf(o, "\tpush {r0, r1, r2, r3}\n");
 	if (f->vfp_save) fprintf(o, "\tvpush {d0-d7}\n");   /* VFP argument registers, below the homed r0-r3 */
 	fprintf(o, "\tpush {r11, lr}\n\tmov r11, sp\n");
@@ -1133,7 +1169,7 @@ static void gen_func(Func *f) {
 	if (f->vfp_save) fprintf(o, "\tadd sp, sp, #64\n");      /* discard the saved d0-d7 */
 	if (homed) fprintf(o, "\tadd sp, sp, #16\n");            /* and the homed r0..r3 */
 	fprintf(o, "\tbx lr\n");
-	fprintf(o, "\t.size %s, .-%s\n", f->name, f->name);    /* the symbol's size (debuggers, backtraces, a provider's exports) */
+	fprintf(o, "\t.size %s, .-%s\n", sym, sym);    /* the symbol's size (debuggers, backtraces, a provider's exports) */
 }
 
 /* An initialized object's section, as GCC chooses it: a const (not volatile) object is read-only — .rodata, or
@@ -1151,9 +1187,9 @@ static const char *data_section(Gvar *g) {
 static void gvar_head(Gvar *g, const char *deflt) {
 	if (g->attr.section[0]) fprintf(o, "\t.section %s,\"aw\",%s\n", g->attr.section, strncmp(g->attr.section, ".bss", 4) ? "%progbits" : "%nobits");
 	else fprintf(o, "\t%s\n", deflt);
-	if (g->attr.weak || name_is_weak(g->name)) fprintf(o, "\t.weak %s\n", g->name);
-	else if (!g->is_static) fprintf(o, "\t.global %s\n", g->name);
-	fprintf(o, "\t.type %s, %%object\n", g->name);      /* STT_OBJECT + a real .size -> exported size (copy relocs) */
+	if (g->attr.weak || name_is_weak(g->name)) fprintf(o, "\t.weak %s\n", asm_name(g->name));
+	else if (!g->is_static) fprintf(o, "\t.global %s\n", asm_name(g->name));
+	fprintf(o, "\t.type %s, %%object\n", asm_name(g->name));      /* STT_OBJECT + a real .size -> exported size (copy relocs) */
 	int al = align_of(g->type); if (g->attr.align > al) al = g->attr.align;
 	if (al > 1) fprintf(o, "\t.p2align %d\n", log2i(al));
 }
@@ -1164,32 +1200,44 @@ static void gen_data(void) {
 	for (Gvar *g = globals; g; g = g->next) {            /* object visibility: its own, else -fvisibility= for a definition */
 		if (g->is_str || g->is_topasm || g->is_static) continue;
 		const char *v = vis_directive(g->attr.vis ? g->attr.vis : g->is_extern ? 0 : default_vis);
-		if (v) fprintf(o, "\t%s %s\n", v, g->name);
+		if (v) fprintf(o, "\t%s %s\n", v, asm_name(g->name));
 	}
 	for (Gvar *g = globals; g; g = g->next) if (g->is_str) {
-		if (!g->wide) { fprintf(o, "\t.section .rodata\n%s:\n\t.asciz \"%s\"\n", g->name, g->str); continue; }
-		int n = g->type->len; unsigned *w = malloc(n * sizeof *w); int wl = wstr_decode(g->str, w, n);   /* wide: one word/halfword per character */
-		fprintf(o, "\t.section .rodata\n\t.p2align %d\n%s:\n", g->wide == 4 ? 2 : 1, g->name);
-		for (int i = 0; i <= wl; i++) fprintf(o, g->wide == 4 ? "\t.word %u\n" : "\t.hword %u\n", i < wl ? (g->wide == 4 ? w[i] : w[i] & 0xffff) : 0);
-		free(w);
+		if (!g->wide) {   /* its bytes, 64 to a line (an assembler line stays short), escaped: any byte value round-trips */
+			fprintf(o, "\t.section .rodata\n%s:\n", g->name);
+			for (int i = 0; i < g->slen; ) {
+				fputs("\t.ascii \"", o);
+				for (int k = 0; k < 64 && i < g->slen; k++, i++) {
+					unsigned char c = (unsigned char)g->str[i];
+					if (c == '"' || c == '\\') fprintf(o, "\\%c", c); else if (c >= 32 && c < 127) fputc(c, o); else fprintf(o, "\\%03o", c);
+				}
+				fputs("\"\n", o);
+			}
+			fputs("\t.byte 0\n", o);
+			continue;
+		}
+		fprintf(o, "\t.section .rodata\n\t.p2align %d\n%s:\n", g->wide == 4 ? 2 : 1, g->name);   /* wide: one word/halfword per character */
+		for (int i = 0; i <= g->slen; i++) fprintf(o, g->wide == 4 ? "\t.word %u\n" : "\t.hword %u\n", i < g->slen ? (g->wide == 4 ? g->wstr[i] : g->wstr[i] & 0xffff) : 0);
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && g->init) {
 		gvar_head(g, data_section(g));
-		fprintf(o, "%s:\n", g->name);
+		fprintf(o, "%s:\n", asm_name(g->name));
 		for (Init *it = g->init; it; it = it->next) {
 			if (it->kind == INIT_CONST) {
 				if (it->size == 8) fprintf(o, "\t.word %ld\n\t.word %ld\n", it->val & 0xffffffff, (it->val >> 32) & 0xffffffff);   /* low, high */
 				else fprintf(o, it->size == 1 ? "\t.byte %ld\n" : it->size == 2 ? "\t.hword %ld\n" : "\t.word %ld\n", it->val);
 			}
-			else if (it->kind == INIT_SYM) { if (it->val) fprintf(o, "\t.word %s+%ld\n", it->sym, it->val); else fprintf(o, "\t.word %s\n", it->sym); }   /* val = byte addend for &sym.member / &sym[i] */
+			else if (it->kind == INIT_SYM) {   /* a word (a label difference may be a halfword) */
+				const char *d = it->size == 2 ? ".hword" : ".word";
+				if (it->val) fprintf(o, "\t%s %s+%ld\n", d, asm_name(it->sym), it->val); else fprintf(o, "\t%s %s\n", d, asm_name(it->sym)); }   /* val = byte addend for &sym.member / &sym[i] */
 			else fprintf(o, "\t.space %d\n", it->size);
 		}
-		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
+		fprintf(o, "\t.size %s, . - %s\n", asm_name(g->name), asm_name(g->name));
 	}
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_str && !g->is_topasm && !g->init && !g->is_extern && !g->attr.alias[0]) {
 		gvar_head(g, g->is_tls ? ".section .tbss,\"awT\",%nobits" : ".bss");
-		fprintf(o, "%s:\n\t.space %d\n", g->name, g->type->size);
-		fprintf(o, "\t.size %s, . - %s\n", g->name, g->name);
+		fprintf(o, "%s:\n\t.space %d\n", asm_name(g->name), g->type->size);
+		fprintf(o, "\t.size %s, . - %s\n", asm_name(g->name), asm_name(g->name));
 	}
 }
 
@@ -1211,7 +1259,8 @@ static void dce_mark(Func *prog, Node *n) {   /* mark functions referenced anywh
 	for (Node *a = n->args; a; a = a->next) dce_mark(prog, a);
 }
 static void dce(Func *prog) {
-	for (Func *f = prog; f; f = f->next) f->reachable = f->no_emit || (f->is_static && !f->attr.used) ? 0 : 1;   /* roots: exported + __used functions */
+	for (Func *f = prog; f; f = f->next) f->reachable = f->no_emit || (f->is_static && !f->attr.used && !is_alias_target(f->name)) ? 0 : 1;   /* roots: exported,
+	                                                                                                   * __used, and alias targets */
 	for (Gvar *gv = globals; gv; gv = gv->next)                                 /* + functions in data initializers */
 		for (Init *it = gv->init; it; it = it->next)
 			if (it->kind == INIT_SYM) { Func *fn = find_func(prog, it->sym); if (fn) fn->reachable = 1; }
@@ -1226,6 +1275,6 @@ void gen(Func *prog, const char *out) {
 	dce(prog); gen_prog = prog;
 	for (Func *f = prog; f; f = f->next) if (f->reachable && !f->no_emit) gen_func(f);   /* (an inline-only definition's calls are external) */
 	gen_data();
-	fprintf(o, "\t.section .note.GNU-stack,\"\",%%progbits\n");   /* this code needs no executable stack (as GCC marks it) */
+	fprintf(o, "\t.section .note.GNU-stack,\"%s\",%%progbits\n", exec_stack ? "x" : "");   /* an executable stack only for trampolines (as GCC marks it) */
 	fclose(o);
 }

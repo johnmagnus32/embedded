@@ -3,6 +3,7 @@
 BUILD  ?= build
 CC     ?= cc
 CFLAGS ?= -O0 -g -Wall -Wextra -std=c11
+CFLAGS += -pthread   # the compiler runs on a big-stack thread (cc.c)
 COMMON := ../common
 CFLAGS += -I$(COMMON)
 

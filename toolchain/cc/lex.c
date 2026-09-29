@@ -57,6 +57,7 @@ static const char *KEYWORDS[] = {
 	"_Thread_local",                                                        /* C11 thread storage duration (GNU __thread) */
 	"__extension__", "_Bool", "_Generic",                                   /* GNU no-op prefix; C99 bool; C11 _Generic */
 	"_Complex", "__real__", "__imag__",                                     /* C99 complex; GNU part operators */
+	"auto",                                                                 /* storage class */
 	"_Alignof", "typeof", "asm",                                            /* alignof operator; GNU typeof; inline assembly */
 	"__label__",                                                            /* GNU local-label declaration */
 	"__auto_type",                                                          /* GNU type inference (kernel min/max) */

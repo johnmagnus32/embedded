@@ -140,8 +140,10 @@ void type_node(Node *n) {
 	case ND_ASSIGN: case ND_RMW: n->type = n->lhs->type; return;
 	case ND_COND:   /* ?: over two arithmetic arms takes the usual-arithmetic-conversion type (so a mixed
 	                 * 32/64 ?: is 64-bit and each arm gets widened in codegen); else the `then` arm's type. */
-		n->type = (n->then->type && n->els->type && n->then->type->kind < TY_PTR && n->els->type->kind < TY_PTR)
-		          ? usual_arith(n->then->type, n->els->type) : n->then->type;
+		if (n->then->type && n->els->type && n->then->type->kind < TY_PTR && n->els->type->kind < TY_PTR)
+			n->type = usual_arith(n->then->type, n->els->type);
+		else if (is_ptr_like(n->els->type) && !is_ptr_like(n->then->type)) n->type = n->els->type->kind == TY_ARRAY ? pointer_to(n->els->type->base) : n->els->type;   /* c ? 0 : p */
+		else n->type = n->then->type->kind == TY_ARRAY ? pointer_to(n->then->type->base) : n->then->type;
 		return;
 	case ND_COMMA:  n->type = n->rhs->type; return;    /* value of the right operand */
 	case ND_STMTEXPR: {                                /* ({...}) — value/type of the last expression-statement */

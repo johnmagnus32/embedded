@@ -47,3 +47,14 @@ done
 boot
 check "musl TLS (RT=$RT, our cc)" "$want"
 echo "PASS musl TLS (RT=$RT): our cc's _Thread_local, per-thread, status 0: '$want'"
+
+# GNU nested functions called through their addresses — trampolines written to the stack, compiled by OUR cc (a real
+# kernel: __clear_cache's cacheflush syscall + the executable stack the object's .note.GNU-stack asks for); -fPIC too
+for pic in "" -fPIC; do
+  "$T/cpp/build/cpp" "$HERE/musl-tramp-cc.c" > "$W/tramp.i" && "$T/cc/build/cc" $pic -o "$W/tramp.s" "$W/tramp.i" && "$T/as/build/as" -o "$W/tramp.o" "$W/tramp.s"
+  "$T/ld/build/ld" -o "$W/init" "$L/crt1.o" "$L/crti.o" "$W/tramp.o" "$L/libc.a" "$RTLIB" "$L/crtn.o"
+  boot
+  want="musl-tramp 120091 970011 131206 23"
+  check "nested-function trampolines (RT=$RT, our cc ${pic:-non-PIC})" "$want"
+  echo "PASS nested-function trampolines (RT=$RT, ${pic:-non-PIC}): qsort callback, recursion, 2-level, status 0: '$want'"
+done
