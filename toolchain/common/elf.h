@@ -39,6 +39,8 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define SHF_WRITE      1
 #define SHF_ALLOC      2
 #define SHF_EXECINSTR  4
+#define SHF_MERGE      0x10    /* entries of sh_entsize bytes the linker may merge (strings with SHF_STRINGS) */
+#define SHF_STRINGS    0x20
 #define SHF_LINK_ORDER 0x80    /* ordered like the section sh_link names (.ARM.exidx -> its .text) */
 #define SHF_TLS        0x400   /* thread-local storage (.tdata/.tbss) */
 #define SHN_UNDEF 0

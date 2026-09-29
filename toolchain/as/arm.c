@@ -37,10 +37,17 @@ static struct { int sec; u32 off; char *sym; long addend; int kind; } *ldrlit; s
 static void join_toks(int from, char *out, size_t n); static void pool_ref(u32 insn, u32 val, int sym); static void pool_flush(int sec);   /* kind: 0 = ldr Rd,literal ; 1 = adr Rd,label */
 /* Named-symbol branches (b/bl <sym>): deferred to md_finish so we can RESOLVE ones defined in the same
  * section (like GNU as does for local labels) and only RELOCATE truly external/cross-section ones. */
-static struct { int sec; u32 off; char *sym; int is_bl; } *brfix; static int nbrfix, brfixcap;
+static int syntax_unified;   /* .syntax unified: every '#' is optional; divided (the default) needs it on data-processing and
+                              * address immediates and shift amounts (not movw/svc/bkpt) — GAS my_get_expression */
+static void need_hash(const char *what) { if (!syntax_unified) die("%s: immediate expression requires a # prefix", what); }
+static struct { int sec; u32 off; XVal v; int is_bl; u32 seq; } *brfix; static int nbrfix, brfixcap;   /* branch targets: c + sym - msym + dot*P */
+static struct { int sec; u32 off; XVal v; int upper; u32 seq; } *mwfix; static int nmwfix, mwfixcap;   /* movw/movt `sym - label` (PC-relative) */
+#define R_ARM_MOVW_PREL_NC 45   /* movw Rd, #:lower16:(sym - .) — imm16 = (S+A-P) & 0xffff */
+#define R_ARM_MOVT_PREL    46   /* movt Rd, #:upper16:(sym - .) — imm16 = (S+A-P) >> 16 */
 
 /* The current instruction's tokens (set by md_assemble; the enc_* helpers read them, like tc-arm.c). */
 static char **toks; static int ntok;
+#include "arm-int.h"
 
 /* ------------------------------------------------------------------ operand parsing --------------- */
 /* Register names, case-insensitive (GAS): r0-r15, APCS a1-a4 v1-v8 sb sl fp ip sp lr pc, and `.req` aliases.
@@ -160,7 +167,8 @@ static u32 shifted_reg(u32 rm, int si) {
 	int st = shift_type(toks[si]); if (st < 0) die("%s: bad shift '%s'", toks[0], toks[si]);
 	const char *amt = (si + 1 < ntok) ? toks[si + 1] : NULL; if (!amt) die("%s: shift needs an amount", toks[0]);
 	if (amt[0] == '#') return shift_imm_field(st, amt) | rm;
-	int rs = reg(amt); if (rs < 0) die("%s: bad shift amount '%s'", toks[0], amt);
+	int rs = reg(amt);
+	if (rs < 0) { need_hash(toks[0]); return shift_imm_field(st, amt) | rm; }   /* `lsl 2` (unified syntax) */
 	return ((u32)rs << 8) | ((u32)st << 5) | (1u << 4) | rm;
 }
 
@@ -205,6 +213,23 @@ static int parse_group(const char *t, long *c, int *sym) {
 	if (*sym < 0 || dt) die("%s: group relocation needs a symbol (+ constant)", toks[0]);
 	return g;
 }
+/* #imm on a data-processing instruction, as GAS's md_apply_fix (BFD_RELOC_ARM_IMMEDIATE) writes it: a modified
+ * immediate, else the partner instruction with the complement or negation (mov/mvn, and/bic, adc/sbc; add/sub,
+ * cmp/cmn — `and r1,r1,#-16` is `bic r1,r1,#15`), else for mov without S, movw's imm16 (v6T2+). 0: none fits. */
+static int dp_imm(u32 *insn, u32 v) {
+	static const struct { u32 a, b; int neg; } alt[] = { {13,15,0}, {0,14,0}, {5,6,0}, {4,2,1}, {10,11,1} };
+	u32 opc = (*insn >> 21) & 15, enc;
+	if (modimm_try(v, &enc)) { *insn = (*insn & 0xfffff000u) | enc; return 1; }
+	for (unsigned k = 0; k < sizeof alt / sizeof *alt; k++)
+		if (opc == alt[k].a || opc == alt[k].b) {
+			if (!modimm_try(alt[k].neg ? -v : ~v, &enc)) break;
+			*insn = (*insn & 0xfe1ff000u) | ((opc == alt[k].a ? alt[k].b : alt[k].a) << 21) | enc; return 1;
+		}
+	if (opc == 13 && !(*insn & (1u << 20)) && v <= 0xffff) { *insn = (*insn & 0xff00f000u & ~(15u << 20)) | ((v & 0xf000u) << 4) | (v & 0xfffu); return 1; }
+	return 0;
+}
+/* Immediates that name labels defined later: GAS keeps a fixup and applies it once they're known. */
+static struct { int sec; u32 off; char *text; } *dpfix; static int ndpfix, dpfixcap;
 static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	u32 rd = 0, rn = 0, I; int opidx;
 	if (form == DP_MOV)      { rd = need_reg(1);                    opidx = 2; }        /* mov/mvn Rd, op2 */
@@ -213,22 +238,21 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	                         { rd = need_reg(1); rn = rd; opidx = 2; }                   /* add Rd, op2  ==  add Rd, Rd, op2 (GAS) */
 	else                     { rd = need_reg(1); rn = need_reg(2); opidx = 3; }        /* add/… Rd, Rn, op2 */
 	u32 op2;
-	if (opidx < ntok && toks[opidx][0] != '#' && toks[opidx][0] != ':' && reg(toks[opidx]) < 0) {   /* `mov r7, 190`: GAS takes */
+	if (opidx < ntok && toks[opidx][0] != '#' && toks[opidx][0] != ':' && reg(toks[opidx]) < 0) {   /* `mov r7, 190`: GAS takes
+		                                                         * (divided syntax) */
+		need_hash(toks[0]);
 		size_t n = strlen(toks[opidx]) + 2; char *h = malloc(n); snprintf(h, n, "#%s", toks[opidx]); toks[opidx] = h;   /* an immediate */
 	}                                                                                                 /* without its '#' */
 	if (opidx < ntok && toks[opidx][0] == '#' && toks[opidx][1] != ':' && !explicit_rot(opidx)) {
-		/* #imm not a modified immediate: the partner instruction with the complement (mov/mvn, and/bic, adc/sbc) or
-		 * the negation (add/sub, cmp/cmn) — `and r1,r1,#-16` is `bic r1,r1,#15` — else mov #imm16 is movw (GAS) */
-		static const struct { u32 a, b; int neg; } alt[] = { {13,15,0}, {0,14,0}, {5,6,0}, {4,2,1}, {10,11,1} };
-		u32 v = imm(toks[opidx]), enc; I = 1; int done = modimm_try(v, &enc);
-		for (unsigned k = 0; !done && k < sizeof alt / sizeof *alt; k++)
-			if (opc == alt[k].a || opc == alt[k].b) {
-				if (modimm_try(alt[k].neg ? -v : ~v, &enc)) { opc = opc == alt[k].a ? alt[k].b : alt[k].a; done = 1; }
-				break;
-			}
-		if (!done && opc == 13 && !s && v <= 0xffff) { emit32((cond << 28) | 0x03000000u | ((v >> 12) << 16) | (rd << 12) | (v & 0xfff)); return; }   /* mov #imm16 -> movw (v6T2+) */
-		if (!done) die("%s: immediate #%u (%#x) not encodable as an ARM modified-immediate, nor its partner's", toks[0], v, v);
-		op2 = enc;
+		u32 insn = (cond << 28) | (1u << 25) | (opc << 21) | ((u32)s << 20) | (rn << 16) | (rd << 12); long c;
+		if (!const_expr_soft(toks[opidx] + 1, &c)) {
+			dpfix = grow(dpfix, ndpfix, &dpfixcap, sizeof *dpfix);
+			dpfix[ndpfix].sec = cursec; dpfix[ndpfix].off = here(); dpfix[ndpfix].text = strdup(toks[opidx] + 1); ndpfix++;
+			emit32(insn); return;
+		}
+		u32 v = (u32)c;
+		if (!dp_imm(&insn, v)) die("%s: immediate #%u (%#x) not encodable as an ARM modified-immediate, nor its partner's", toks[0], v, v);
+		emit32(insn); return;
 	} else if (opidx < ntok && (toks[opidx][0] == ':' || (toks[opidx][0] == '#' && toks[opidx][1] == ':'))) {   /* group reloc */
 		if (opc != 4 && opc != 2) die("%s: group relocations only on add/sub", toks[0]);
 		long c; int sym; int g = parse_group(toks[opidx], &c, &sym);
@@ -238,31 +262,20 @@ static void enc_dp(u32 opc, int form, u32 cond, int s) {
 	} else op2 = operand2(opidx, &I);
 	emit32((cond << 28) | (I << 25) | (opc << 21) | ((u32)s << 20) | (rn << 16) | (rd << 12) | op2);
 }
-static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <label> */
+static void enc_branch(int is_bl, u32 cond) {   /* b/bl{cond} <target>: a symbol, `.`, `sym + k`, `. + (1f - 9998b)` */
 	if (ntok < 2) die("%s: missing target", toks[0]);
 	u32 base = (cond << 28) | 0x0a000000u | ((u32)is_bl << 24);   /* cond 101 L imm24 */
-	u32 off = here(); emit32(base);        /* placeholder; patched below or by md_apply_fix */
 	char tgt[256]; join_toks(1, tgt, sizeof tgt);
 	size_t tl = strlen(tgt);
 	if (tl > 5 && !strcmp(tgt + tl - 5, "(PLT)")) tgt[tl -= 5] = 0;   /* `bl foo(PLT)`: GAS emits the same CALL/JUMP24 */
-	for (size_t k = 0; k < tl; k++) if (!(isalnum((unsigned char)tgt[k]) || tgt[k] == '_' || tgt[k] == '.' || tgt[k] == '$'))
-		die("%s: unsupported branch target '%s' (was: taken verbatim as a symbol name)", toks[0], tgt);
-	const char *name = tgt;
-	int n; char ldir;
-	char fbn[64];
-	if (parse_local_ref(name, &n, &ldir) == (int)strlen(name)) {   /* 1b / 1f: the fb label's hidden symbol */
-		int fb = fb_symbol(n, ldir);                     /* (before indexing syms: it may grow the table) */
-		strncpy(fbn, syms[fb].name, sizeof fbn - 1); fbn[sizeof fbn - 1] = 0; name = fbn;
-	}
-	/* named symbol: defer to md_finish — resolve if defined in THIS section (local label / same-file),
-	 * else relocate. The placeholder keeps the cond/101/L opcode byte; imm24 is filled in later. */
+	XVal v = expr_x(tgt);                                /* parsed BEFORE the insn is emitted: `.` is its own address */
+	if (v.rtype) die("%s: a relocation operator in a branch target", toks[0]);
+	u32 off = here(); emit32(base);                      /* placeholder: imm24 filled in md_finish */
+	if (v.dot == 1) { v.c += off; v.dot = 0; v.msym = v.msym; }   /* `.` -> this instruction's offset (same section) */
+	else if (v.dot) die("%s: unsupported branch target '%s'", toks[0], tgt);
 	brfix = grow(brfix, nbrfix, &brfixcap, sizeof *brfix);
-	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl;
-	brfix[nbrfix].sym = strdup(name);
-	sym_intern(name);   /* create it NOW (GAS symbol-table order = first reference), resolve in md_finish */
-	nbrfix++;
+	brfix[nbrfix].sec = cursec; brfix[nbrfix].off = off; brfix[nbrfix].is_bl = is_bl; brfix[nbrfix].v = v; brfix[nbrfix].seq = parse_seq; nbrfix++;
 }
-
 static void enc_bx(u32 cond) {   /* bx{cond} Rm — branch-and-exchange (interworking return) */
 	emit32((cond << 28) | 0x012fff10u | need_reg(1));
 }
@@ -270,7 +283,7 @@ static void enc_bx(u32 cond) {   /* bx{cond} Rm — branch-and-exchange (interwo
 /* A load/store address: [Rn], [Rn, #±e], [Rn, ±Rm{, shift}] {!}, or post-indexed [Rn], #±e | ±Rm{, shift}.
  * Offsets are constant expressions (`[pc, #(bar - . - 8)]` was silently 0), `#-0` keeps U=0 (GAS does), and
  * the whole text is parsed — nothing trailing is ignored. One parser for ldr/str and the extra load/stores. */
-typedef struct { int rn, P, U, W, isreg, rm; long imm; u32 shift; int grp, gsym; } Addr;   /* grp: group-reloc index+1 (0 = none) */
+typedef ArmAddr Addr;   /* { rn, P, U, W, isreg, rm, imm, shift, grp, gsym }: grp = group-reloc index+1 (0 = none) */
 static Addr parse_addr(int first) {
 	char buf[512]; size_t bl = 0;
 	for (int i = first; i < ntok; i++) {
@@ -299,6 +312,16 @@ static Addr parse_addr(int first) {
 		long v = eval_const_expr(q);
 		if (v < 0 || (v == 0 && *q == '-')) { a.U = 0; v = -v; }
 		a.imm = v; return a;
+	}
+	{   /* an offset that isn't a register is an immediate without its '#' (`[r3, (0x14)]`: GAS takes it) */
+		const char *q = spec; if (*q == '-' || *q == '+') q++;
+		char w[32]; size_t k = 0; while (q[k] && q[k] != ' ' && k < sizeof w - 1) { w[k] = q[k]; k++; } w[k] = 0;
+		if (reg(w) < 0) {
+			need_hash(toks[0]);
+			long v = eval_const_expr(spec);
+			if (v < 0 || (v == 0 && *spec == '-')) { a.U = 0; v = -v; }
+			a.imm = v; return a;
+		}
 	}
 	if (*spec == '-') { a.U = 0; spec++; } else if (*spec == '+') spec++;
 	char *e = spec; while (*e && *e != ' ') e++;
@@ -414,8 +437,8 @@ static int reglist_caret;   /* the list ended in `}^` (ldm/stm: S bit — user r
  * expression (GAS: `{r0-r2}|0xf0`, `{r3,r4}+{r5,r6}`), optionally ending in `^`. Parsed as one string (the tokenizer
  * split it on commas/spaces), so nothing is silently dropped or truncated. */
 static u32 reglist_at(int start) {
-	char buf[512]; size_t bl = 0;
-	for (int i = start; i < ntok; i++) { int w = snprintf(buf + bl, sizeof buf - bl, "%s%s", i > start ? "," : "", toks[i]); if (w < 0 || (size_t)w >= sizeof buf - bl) die("%s: register list too long", toks[0]); bl += (size_t)w; }
+	char buf[512]; size_t bl = 0;   /* (joined with spaces: a range may be spelled `r8 - r12`, split into three tokens) */
+	for (int i = start; i < ntok; i++) { int w = snprintf(buf + bl, sizeof buf - bl, "%s%s", i > start ? " " : "", toks[i]); if (w < 0 || (size_t)w >= sizeof buf - bl) die("%s: register list too long", toks[0]); bl += (size_t)w; }
 	u32 mask = 0; reglist_caret = 0;
 	if (bl && buf[bl - 1] == '^') { reglist_caret = 1; buf[--bl] = 0; }
 	const char *p = buf;
@@ -489,13 +512,30 @@ static void enc_shift(int st, u32 cond, int s) {
 /* movw/movt Rd, #imm16 — 16-bit immediate (imm4:imm12 split). */
 static void enc_movw(int is_movt, u32 cond) {
 	u32 rd = need_reg(1);
-	if (toks[2][0] == '#' && toks[2][1] == ':') {   /* #:lower16:sym / #:upper16:sym -> a MOVW/MOVT_ABS relocation */
+	if (ntok > 2 && toks[2][0] != '#' && toks[2][0] != ':' && reg(toks[2]) < 0) {   /* GCC prints `movt r0, 21572`: GAS takes */
+		char ex[512]; join_toks(2, ex, sizeof ex); size_t n = strlen(ex) + 2; char *h = malloc(n); snprintf(h, n, "#%s", ex);
+		toks[2] = h; ntok = 3;                           /* an immediate without '#' (a whole expression: `(1 << 15) | 1`) */
+	}
+	if (toks[2][0] == '#' && toks[2][1] == ':') {   /* #:lower16:e / #:upper16:e — e: sym[+k] (ABS), sym - label | sym - . (PREL), a constant */
 		int lower = !strncmp(toks[2], "#:lower16:", 10), upper = !strncmp(toks[2], "#:upper16:", 10);
 		if (!lower && !upper) die("movw/movt: bad relocation operand '%s'", toks[2]);
-		char nm[128]; strncpy(nm, toks[2] + 10, sizeof nm - 1); nm[sizeof nm - 1] = 0;
-		u32 off = here();
-		emit32((cond << 28) | (is_movt ? 0x03400000u : 0x03000000u) | (rd << 12));   /* imm16 = 0 placeholder */
-		add_reloc(cursec, off, sym_intern(nm), lower ? R_ARM_MOVW_ABS_NC : R_ARM_MOVT_ABS);
+		char ex[512]; join_toks(2, ex, sizeof ex);
+		XVal v = expr_x(ex + 10);                        /* (the operand's symbols exist before the insn is emitted: GAS order) */
+		if (v.rtype || v.dot == 1) die("movw/movt: unsupported relocation expression '%s'", ex + 10);
+		u32 op = (cond << 28) | (is_movt ? 0x03400000u : 0x03000000u) | (rd << 12), off = here();
+		if (v.sym < 0 && v.msym < 0) {                   /* a constant: its low / high half */
+			u32 k = (u32)v.c, imm = upper ? k >> 16 : k & 0xffff;
+			emit32(op | ((imm >> 12) << 16) | (imm & 0xfff)); return;
+		}
+		if (v.sym < 0) die("movw/movt: `- sym` with no symbol to subtract from in '%s'", ex + 10);
+		if (v.msym >= 0 || v.dot == -1) {                /* PC-relative: resolved (or relocated) in md_finish */
+			emit32(op); mwfix = grow(mwfix, nmwfix, &mwfixcap, sizeof *mwfix);
+			mwfix[nmwfix].sec = cursec; mwfix[nmwfix].off = off; mwfix[nmwfix].v = v; mwfix[nmwfix].upper = upper; mwfix[nmwfix].seq = parse_seq; nmwfix++; return;
+		}
+		if (v.c < -32768 || v.c > 32767) die("movw/movt: offset %ld out of range", v.c);   /* REL: the addend in imm16 */
+		u32 imm = (u32)v.c & 0xffff;
+		emit32(op | ((imm >> 12) << 16) | (imm & 0xfff));
+		add_reloc(cursec, off, v.sym, lower ? R_ARM_MOVW_ABS_NC : R_ARM_MOVT_ABS);
 		return;
 	}
 	u32 v = imm(toks[2]) & 0xffff;
@@ -611,7 +651,8 @@ static u32 cpreg(const char *t, char pfx, const char *what) {   /* p<n> (or bare
 }
 static void enc_mcr(u32 cond, u32 L) {   /* mcr/mrc p<cp>, <opc1>, Rt, c<CRn>, c<CRm>{, <opc2>} */
 	if (ntok < 6) die("%s: expected p<cp>, <opc1>, Rt, c<n>, c<m>[, <opc2>]", toks[0]);
-	u32 cp = cpreg(toks[1], 'p', "coprocessor"), opc1 = (u32)numop(toks[2]), rt = need_reg(3);
+	u32 cp = cpreg(toks[1], 'p', "coprocessor"), opc1 = (u32)numop(toks[2]);
+	u32 rt = L && cond != 15 && !strcasecmp(toks[3], "APSR_nzcv") ? 15 : need_reg(3);   /* mrc into the flags (not mrc2) */
 	u32 crn = cpreg(toks[4], 'c', "CRn"), crm = cpreg(toks[5], 'c', "CRm");
 	u32 opc2 = (ntok >= 7) ? (u32)numop(toks[6]) : 0;
 	emit32((cond << 28) | 0x0e000010u | L | (opc1 << 21) | (crn << 16) | (rt << 12) | (cp << 8) | (opc2 << 5) | crm);
@@ -757,6 +798,46 @@ static void attr_directive(char **t, int n) {
 	if (tag == 32) { if (n < 4) die(".eabi_attribute Tag_compatibility: expected flag, \"vendor\""); eattr[tag].ival = eval_const_expr(t[2]); eattr[tag].sval = decode_str(t[3]); }
 	else if (tag_is_string(tag)) eattr[tag].sval = decode_str(t[2]);
 	else eattr[tag].ival = eval_const_expr(t[2]);
+}
+/* Command-line options, as GCC passes them (`-EL -march=armv7ve -mfloat-abi=soft -mfpu=vfp -meabi=5 -march=...`): the
+ * same as the directives — the last -march/-mcpu wins, -mfpu is the FPU. -mfloat-abi changes nothing GAS writes (the
+ * compiler emits Tag_ABI_VFP_args itself); EABI 5 and little-endian are all we produce. */
+void md_remap_section(int from, int to, u32 d) {
+	for (int i = 0; i < nbrfix; i++) if (brfix[i].sec == from) { brfix[i].sec = to; brfix[i].off += d; if (brfix[i].v.sym < 0) brfix[i].v.c += d; }   /* (a `.`-relative target moves too) */
+	for (int i = 0; i < nmwfix; i++) if (mwfix[i].sec == from) { mwfix[i].sec = to; mwfix[i].off += d; }
+	for (int i = 0; i < ndpfix; i++) if (dpfix[i].sec == from) { dpfix[i].sec = to; dpfix[i].off += d; }
+}
+u32 md_reloc_by_name(const char *n) {
+	static const struct { const char *n; u32 t; } rt[] = { {"R_ARM_NONE",0}, {"R_ARM_ABS32",2}, {"R_ARM_LDR_PC_G0",4}, {"R_ARM_REL32",3}, {"R_ARM_ABS16",5},
+		{"R_ARM_ABS8",8}, {"R_ARM_CALL",28}, {"R_ARM_JUMP24",29}, {"R_ARM_V4BX",40}, {"R_ARM_PREL31",42}, {"R_ARM_MOVW_ABS_NC",43},
+		{"R_ARM_MOVT_ABS",44}, {"R_ARM_MOVW_PREL_NC",45}, {"R_ARM_MOVT_PREL",46}, {"R_ARM_ALU_PC_G0_NC",57}, {"R_ARM_ALU_PC_G0",58},
+		{"R_ARM_ALU_PC_G1_NC",59}, {"R_ARM_ALU_PC_G1",60}, {"R_ARM_ALU_PC_G2",61}, {"R_ARM_LDR_PC_G1",62}, {"R_ARM_LDR_PC_G2",63},
+		{"R_ARM_LDRS_PC_G0",64}, {"R_ARM_LDRS_PC_G1",65}, {"R_ARM_LDRS_PC_G2",66}, {"R_ARM_LDC_PC_G0",67}, {"R_ARM_LDC_PC_G1",68},
+		{"R_ARM_LDC_PC_G2",69}, {"R_ARM_ALU_SB_G0_NC",70}, {"R_ARM_ALU_SB_G0",71}, {"R_ARM_ALU_SB_G1_NC",72}, {"R_ARM_ALU_SB_G1",73},
+		{"R_ARM_ALU_SB_G2",74}, {"R_ARM_LDR_SB_G0",75}, {"R_ARM_LDR_SB_G1",76}, {"R_ARM_LDR_SB_G2",77}, {"BFD_RELOC_NONE",0}, {"BFD_RELOC_32",2} };
+	for (unsigned i = 0; i < sizeof rt / sizeof *rt; i++) if (!strcmp(rt[i].n, n)) return rt[i].t;
+	die(".reloc: unknown relocation '%s'", n); return 0;
+}
+int md_parse_option(const char *o) {
+	char *t[2]; char name[64];
+	if (!strncmp(o, "-march=", 7) || !strncmp(o, "-mcpu=", 6) || !strncmp(o, "-mfpu=", 6)) {
+		const char *v = strchr(o, '=') + 1; snprintf(name, sizeof name, "%s", v);
+		char *plus = strchr(name, '+'); if (plus) die("%s: architecture extensions (+ext) are not supported", o);
+		t[0] = (char *)(o[2] == 'a' ? ".arch" : o[2] == 'c' ? ".cpu" : ".fpu"); t[1] = name;
+		attr_directive(t, 2); return 1;
+	}
+	if (!strncmp(o, "-mfloat-abi=", 12)) {
+		const char *v = o + 12;
+		if (strcmp(v, "soft") && strcmp(v, "softfp") && strcmp(v, "hard")) die("%s: unknown float ABI", o);
+		return 1;
+	}
+	if (!strcmp(o, "-meabi=5")) return 1;
+	if (!strncmp(o, "-meabi=", 7)) die("%s: only EABI version 5 is supported", o);
+	if (!strcmp(o, "-EL") || !strcmp(o, "-mlittle-endian")) return 1;
+	if (!strcmp(o, "-EB") || !strcmp(o, "-mbig-endian")) die("%s: big-endian is not supported", o);
+	if (!strcmp(o, "-mno-warn-deprecated") || !strcmp(o, "-mwarn-deprecated")) return 1;   /* (we warn about nothing) */
+	if (!strcmp(o, "-mthumb") || !strncmp(o, "-mimplicit-it", 13)) die("%s: Thumb is not supported (ARM state only)", o);
+	return 0;
 }
 static void uleb(unsigned long v) { do { u8 b = v & 0x7f; v >>= 7; if (v) b |= 0x80; emit(&b, 1); } while (v); }
 void md_emit_attributes(void) {
@@ -1235,6 +1316,7 @@ static int vfp_insn(const char *m) {
 void md_assemble(char **t, int n) {
 	toks = t; ntok = n;
 	for (char *c = toks[0]; *c; c++) *c = (char)tolower((unsigned char)*c);   /* GAS: mnemonics are case-insensitive */
+	if (thumb_mode) { thumb_assemble(); return; }
 	static char ualbuf[32]; const char *m = ual_name(toks[0], ualbuf, sizeof ualbuf); toks[0] = (char *)m;
 	size_t L = strlen(m); u32 cond; int s;
 	char b3[4] = { L > 0 ? m[0] : 0, L > 1 ? m[1] : 0, L > 2 ? m[2] : 0, 0 };   /* first 3 chars, for shifts */
@@ -1274,6 +1356,16 @@ void md_assemble(char **t, int n) {
 	}
 	if (vfp_insn(m)) return;
 	if (!strncmp(m, "clrex", 5) && !m[5]) { emit32(0xf57ff01fu); return; }
+	if (!strncmp(m, "hvc", 3) && !m[3]) {   /* hypervisor call (unconditional) */
+		if (!(attr_cur.virt & 2)) die("hvc: selected processor does not support hvc (needs the virtualization extensions: .arch_extension virt)");
+		u32 v = ntok > 1 ? (u32)snum(toks[1], 0, 0xffff, "hvc number") : (die("hvc: missing #imm16"), 0);
+		emit32(0xe1400070u | ((v >> 4) << 8) | (v & 15)); return;
+	}
+	if ((!strncmp(m, "smc", 3) && suffix_c(m + 3, &cond)) || (!strncmp(m, "smi", 3) && suffix_c(m + 3, &cond))) {   /* secure monitor call */
+		if (!(attr_cur.virt & 1)) die("%s: selected processor does not support smc (needs the security extensions: .arch_extension sec)", m);
+		u32 v = ntok > 1 ? (u32)snum(toks[1], 0, 15, "smc number") : (die("smc: missing #imm4"), 0);
+		emit32((cond << 28) | 0x01600070u | v); return;
+	}
 	if (!strcmp(m, "bkpt")) { u32 v = ntok > 1 ? (u32)snum(toks[1], 0, 0xffff, "bkpt number") : 0; emit32(0xe1200070u | ((v >> 4) << 8) | (v & 15)); return; }
 	{   /* tstp/teqp/cmpp/cmnp{cond}: legacy (26-bit) flag-setting compares = Rd field r15 */
 		static const struct { const char *n; u32 opc; } pc[] = { {"tstp",8}, {"teqp",9}, {"cmpp",10}, {"cmnp",11} };
@@ -1425,18 +1517,245 @@ void md_assemble(char **t, int n) {
 }
 
 
-int md_directive(char **t, int n) {
-	/* ARM/ABI metadata we accept and don't (yet) encode: build attributes, arch/cpu/fpu selection (we are fixed
-	 * ARMv7-A), unwind annotations, file/ident. Explicit list — was a substring match, so `.thumb` (or anything
-	 * containing "arm"/"save"/"file") was silently ignored and Thumb code got assembled as ARM. */
-	static const char *const ok[] = { ".arch", ".arch_extension", ".cpu", ".fpu", ".object_arch", ".eabi_attribute",
-		".syntax", ".arm", ".fnstart", ".fnend", ".cantunwind", ".save", ".vsave", ".setfp", ".pad", ".movsp",
-		".personality", ".personalityindex", ".handlerdata", ".unwind_raw", ".file", ".ident", ".loc", ".cfi_sections", NULL };
+/* ---- EHABI unwind tables: .fnstart ... .fnend -----------------------------------------------------------------
+ * Each annotated function gets an .ARM.exidx entry (two words: prel31 to its start, then the unwinding description —
+ * EXIDX_CANTUNWIND, up to 3 opcodes inline for personality routine 0, or a prel31 to an .ARM.extab entry) in the
+ * exidx section of its text section (".ARM.exidx" + name, linked to it). The unwind directives describe the prologue:
+ * each becomes opcodes that UNDO it, recorded in reverse (GAS tc-arm.c: add_unwind_opcode / create_unwind_entry /
+ * s_arm_unwind_* — the same choices of short vs long forms, so the bytes are GAS's). */
+static struct {
+	int active, text, table_sec, personality_sym, personality_index, have_table;
+	u32 start, table_off;
+	unsigned char op[1024]; int nop;
+	long frame_size, pending_offset, fp_offset; int fp_reg, fp_used, sp_restored;
+} uw;
+static unsigned pr_marked[4096];   /* per exidx section: which __aeabi_unwind_cpp_prN it already references */
+static void uw_op(unsigned long op, int len);
+static void uw_flush_pending(void);
+static void uw_adjustsp(long off) {   /* opcodes that pop `off` bytes (vsp += off) — GAS add_unwind_adjustsp */
+	if (off > 0x200) {                                   /* 0xb2 + uleb128((off - 0x204) >> 2) */
+		unsigned long o = (unsigned long)(off - 0x204) >> 2; unsigned char b[5]; int n = 0;
+		if (!o) uw_op(0, 1);
+		while (o) { b[n] = o & 0x7f; o >>= 7; if (o) b[n] |= 0x80; n++; }
+		for (; n; n--) uw_op(b[n - 1], 1);
+		uw_op(0xb2, 1);
+	} else if (off > 0x100) { uw_op(0x3f, 1); uw_op((unsigned long)(off - 0x104) >> 2, 1); }
+	else if (off > 0) uw_op((unsigned long)(off - 4) >> 2, 1);
+	else if (off < 0) { off = -off; while (off > 0x100) { uw_op(0x7f, 1); off -= 0x100; } uw_op((((unsigned long)off - 4) >> 2) | 0x40, 1); }
+}
+static void uw_flush_pending(void) { long o = uw.pending_offset; uw.pending_offset = 0; if (o) uw_adjustsp(o); }
+static void uw_op(unsigned long op, int len) {           /* append (a multi-byte opcode low byte first: the list is reversed) */
+	if (uw.pending_offset) uw_flush_pending();
+	uw.sp_restored = 0;
+	while (len-- > 0) { if (uw.nop == (int)sizeof uw.op) die(".fnend: too many unwind opcodes"); uw.op[uw.nop++] = op & 0xff; op >>= 8; }
+}
+static int unwind_section(int text, int exidx) {         /* the text section's .ARM.extab / .ARM.exidx (made on first use) */
+	if (secs[text].base >= 0) text = secs[text].base;   /* (a subsection's: its section's) */
+	const char *tn = secs[text].name, *prefix = exidx ? ".ARM.exidx" : ".ARM.extab"; char name[256];
+	if (!strncmp(tn, ".gnu.linkonce.t.", 16)) snprintf(name, sizeof name, "%s%s", exidx ? ".gnu.linkonce.armexidx." : ".gnu.linkonce.armextab.", tn + 16);
+	else snprintf(name, sizeof name, "%s%s", prefix, strcmp(tn, ".text") ? tn : "");
+	int i = sec_find(name);
+	if (i < 0) {
+		i = sec_get(name, exidx ? 0x70000001u : SHT_PROGBITS, exidx ? (SHF_ALLOC | 0x80u) : SHF_ALLOC);   /* SHT_ARM_EXIDX, SHF_LINK_ORDER */
+		if (exidx) secs[i].link = text;
+	}
+	cursec = i;
+	return i;
+}
+static void uw_align4(void) { if (secs[cursec].align < 4) secs[cursec].align = 4; while (secs[cursec].len & 3) { u8 z = 0; emit(&z, 1); } }   /* frag_align (2) —
+                                                    * only where an entry is written (an empty .ARM.extab stays align 1) */
+static int uw_personality_sym(int idx) {
+	static const char *const nm[] = { "__aeabi_unwind_cpp_pr0", "__aeabi_unwind_cpp_pr1", "__aeabi_unwind_cpp_pr2" };
+	return sym_intern(nm[idx]);
+}
+static void uw_finish_opcodes(void) {                   /* GAS finish_unwind_opcodes: the deferred .setfp */
+	if (uw.fp_used) { uw.pending_offset += uw.fp_offset - uw.frame_size; uw_flush_pending(); uw_op(0x90 | uw.fp_reg, 1); }
+	else uw_flush_pending();
+}
+/* The table entry (or the inline word): returns the exidx second word when it is inline, 0 when a table entry was
+ * made (at uw.table_sec:uw.table_off). have_data: .handlerdata — the entry is made now and data follows it. */
+static u32 uw_create_entry(int have_data) {
+	uw_finish_opcodes();
+	int ts = unwind_section(uw.text, 0);                 /* GAS makes the extab section here, even when unused */
+	long size;
+	if (uw.personality_sym < 0) {
+		if (uw.personality_index == -2) { if (have_data) die(".handlerdata in a .cantunwind frame"); cursec = uw.text; return 1; }   /* EXIDX_CANTUNWIND */
+		if (uw.personality_index == -1) uw.personality_index = uw.nop > 3 ? 1 : 0;
+		if (uw.personality_index == 0) {
+			if (uw.nop > 3) die(".fnend: too many unwind opcodes for personality routine 0");
+			if (!have_data) {
+				u32 data = 0x80; int n = 3;
+				while (uw.nop > 0) { data = (data << 8) | uw.op[--uw.nop]; n--; }
+				while (n--) data = (data << 8) | 0xb0;
+				cursec = uw.text; return data;
+			}
+			size = 0;
+		} else size = uw.nop - 2;                         /* two opcodes fit in the first word */
+	} else {
+		if (uw.personality_index != -1) die(".fnend: both .personality and .personalityindex");
+		size = uw.nop + 1;                                  /* + the opcode count byte */
+	}
+	size = (size + 3) >> 2;
+	if (size > 0xff) die(".fnend: too many unwind opcodes");
+	uw_align4(); map_section_data();
+	uw.table_sec = ts; uw.table_off = (u32)secs[ts].len; uw.have_table = 1;
+	u32 data; int n;
+	switch (uw.personality_index) {
+	case -1: add_reloc(ts, (u32)secs[ts].len, uw.personality_sym, 42); emit32(0);   /* custom routine: prel31 */
+	         data = size > 0 ? (u32)size - 1 : 0; n = 3; break;
+	case 0:  data = 0x80; n = 3; break;
+	default: data = ((0x80u + (u32)uw.personality_index) << 8) | (u32)size; n = 2; break;
+	}
+	u32 words = (u32)(uw.personality_index == -1 ? size : size + 1); (void)words;
+	while (uw.nop > 0) {
+		if (n == 0) { emit32(data); n = 4; data = 0; }
+		n--; data = (data << 8) | uw.op[--uw.nop];
+	}
+	if (n < 4) { while (n--) data = (data << 8) | 0xb0; emit32(data); }
+	if (!have_data) emit32(0);                          /* an empty descriptor */
+	return 0;
+}
+static void uw_need(const char *d) { if (!uw.active) die("%s: no .fnstart before it", d); }
+static int vfp_dlist(char **t, int n, int *first) {     /* {dA-dB} / {dA, dA+1, ...}: count of consecutive d registers */
+	char buf[256] = ""; for (int i = 1; i < n; i++) { strncat(buf, t[i], sizeof buf - strlen(buf) - 2); strcat(buf, ","); }
+	int lo = -1, hi = -1, cnt = 0; const char *p = buf;
+	while (*p) {
+		while (*p == '{' || *p == ' ' || *p == ',' || *p == '}') p++;
+		if (!*p) break;
+		if (*p != 'd' && *p != 'D') die(".vsave: expected d registers");
+		int a = (int)strtol(p + 1, (char **)&p, 10), b = a;
+		while (*p == ' ') p++;
+		if (*p == '-') { p++; while (*p == ' ') p++; if (*p != 'd' && *p != 'D') die(".vsave: bad range"); b = (int)strtol(p + 1, (char **)&p, 10); }
+		if (a > b || b > 31) die(".vsave: bad register range");
+		if (lo < 0) lo = a; else if (a != hi + 1) die(".vsave: registers must be consecutive");
+		hi = b; cnt += b - a + 1;
+	}
+	if (lo < 0) die(".vsave: empty register list");
+	*first = lo; return cnt;
+}
+static int unwind_directive(char **t, int n) {
 	const char *d = t[0];
-	if (!strcmp(d, ".thumb") || !strcmp(d, ".thumb_func") || !strcmp(d, ".force_thumb") || !strcmp(d, ".thumb_set")
-	    || (!strcmp(d, ".code") && n >= 2 && !strcmp(t[1], "16")))
-		die("%s: Thumb is not supported (ARM state only)", d);
-	if (!strcmp(d, ".code")) { if (n < 2 || strcmp(t[1], "32")) die(".code: expected 32"); return 1; }
+	if (!strcmp(d, ".fnstart")) {
+		if (uw.active) die(".fnstart: duplicate (no .fnend for the previous one)");
+		memset(&uw, 0, sizeof uw); uw.active = 1; uw.text = cursec; uw.start = here();
+		uw.personality_sym = -1; uw.personality_index = -1; uw.fp_reg = 13; return 1;
+	}
+	if (!strcmp(d, ".fnend")) {
+		uw_need(d);
+		u32 val = uw.have_table ? 0 : uw_create_entry(0);
+		int text = uw.text, xs = unwind_section(text, 1);
+		uw_align4(); map_section_data();
+		u32 where = (u32)secs[xs].len;
+		add_reloc(xs, where, section_symbol(text), 42); emit32(uw.start & 0x7fffffffu);   /* prel31 to the function */
+		if (uw.personality_index >= 0 && uw.personality_index < 3) {   /* the EHABI routine it needs, once per section */
+			if (xs >= 4096) die("too many sections");
+			if (!(pr_marked[xs] & (1u << uw.personality_index))) { add_reloc(xs, where, uw_personality_sym(uw.personality_index), 0); pr_marked[xs] |= 1u << uw.personality_index; }
+		}
+		if (val) emit32(val);
+		else { add_reloc(xs, where + 4, section_symbol(uw.table_sec), 42); emit32(uw.table_off); }
+		cursec = text; uw.active = 0; return 1;
+	}
+	if (!strcmp(d, ".cantunwind")) {
+		uw_need(d);
+		if (uw.personality_sym >= 0 || uw.personality_index >= 0) die(".cantunwind: a personality routine is already set");
+		uw.personality_index = -2; return 1;
+	}
+	if (!strcmp(d, ".personality")) {
+		uw_need(d); if (n < 2) die(".personality: expected a symbol");
+		if (uw.personality_sym >= 0 || uw.personality_index != -1) die(".personality: duplicate");
+		uw.personality_sym = sym_intern(t[1]); return 1;
+	}
+	if (!strcmp(d, ".personalityindex")) {
+		uw_need(d); if (n < 2) die(".personalityindex: expected an index");
+		if (uw.personality_sym >= 0 || uw.personality_index != -1) die(".personalityindex: duplicate");
+		long i = eval_const_expr(t[1] + (t[1][0] == '#')); if (i < 0 || i > 15) die(".personalityindex: bad index %ld", i);
+		uw.personality_index = (int)i; return 1;
+	}
+	if (!strcmp(d, ".handlerdata")) {
+		uw_need(d); if (uw.have_table) die(".handlerdata: duplicate");
+		uw_create_entry(1); return 1;                    /* the data that follows goes into the table entry */
+	}
+	if (!strcmp(d, ".pad")) {
+		uw_need(d); if (n < 2) die(".pad: expected #offset");
+		long o = eval_const_expr(t[1] + (t[1][0] == '#'));
+		if (o & 3) die(".pad: stack increment must be multiple of 4");
+		uw.frame_size += o; uw.pending_offset += o; return 1;
+	}
+	if (!strcmp(d, ".setfp")) {
+		uw_need(d); if (n < 3) die(".setfp: expected <fpreg>, <spreg>[, #offset]");
+		int fp = reg(t[1]), sp = reg(t[2]); long off = n > 3 ? eval_const_expr(t[3] + (t[3][0] == '#')) : 0;
+		if (fp < 0 || sp < 0) die(".setfp: expected <reg>, <reg>");
+		if (sp != 13 && sp != uw.fp_reg) die(".setfp: register must be either sp or set by a previous .movsp");
+		uw.fp_reg = fp; uw.fp_used = 1;
+		if (sp == 13) uw.fp_offset = uw.frame_size - off; else uw.fp_offset -= off;
+		return 1;
+	}
+	if (!strcmp(d, ".movsp")) {
+		uw_need(d); if (n < 2) die(".movsp: expected a register");
+		int r = reg(t[1]); long off = n > 2 ? eval_const_expr(t[2] + (t[2][0] == '#')) : 0;
+		if (r < 0) die(".movsp: expected a register");
+		if (r == 13 || r == 15) die(".movsp: SP and PC not permitted");
+		if (uw.fp_reg != 13) die(".movsp: unexpected (the frame register is already moved)");
+		uw_op(0x90 | r, 1); uw.fp_reg = r; uw.fp_offset = uw.frame_size - off; uw.sp_restored = 1; return 1;
+	}
+	if (!strcmp(d, ".save") && n >= 2 && (t[1][0] == '{') && (t[1][1] == 'd' || t[1][1] == 'D')) {   /* .save {dN...}: FSTMX form */
+		uw_need(d); int first, cnt = vfp_dlist(t, n, &first);
+		if (first == 8) uw_op(0xb8 | (cnt - 1), 1); else uw_op(0xb300 | (first << 4) | (cnt - 1), 2);
+		uw.frame_size += cnt * 8 + 4; return 1;
+	}
+	if (!strcmp(d, ".vsave")) {                          /* FSTMD/FLDMD form (GAS s_arm_unwind_save_vfp_armv6) */
+		uw_need(d); int first, cnt = vfp_dlist(t, n, &first), v3 = first >= 16 ? cnt : first + cnt > 16 ? first + cnt - 16 : 0;
+		if (v3 > 0) uw_op(0xc800 | ((first > 16 ? first - 16 : 0) << 4) | (v3 - 1), 2);
+		int below = v3 > 0 ? 16 - first : cnt;
+		if (below > 0) uw_op(0xc900 | (first << 4) | (below - 1), 2);
+		uw.frame_size += cnt * 8; return 1;
+	}
+	if (!strcmp(d, ".save")) {                           /* core registers (GAS s_arm_unwind_save_core) */
+		uw_need(d); char **st = toks; int sn = ntok; toks = t; ntok = n; u32 range = reglist_at(1); toks = st; ntok = sn;
+		if (uw.sp_restored && uw.fp_reg == 12 && (range & 0x3000) == 0x1000) {   /* .movsp ip; .save {..ip..} = .save {..sp..} */
+			uw.nop--; uw.sp_restored = 0; range = (range | 0x2000) & ~0x1000u; uw.pending_offset = 0;
+		}
+		if (range & 0xfff0) {
+			int k; for (k = 0; k < 8; k++) if (!(range & (1u << (k + 4)))) break;
+			if (k == 0 || (range & (0xfff0u << k) & 0xbff0u)) uw_op(0x8000 | ((range >> 4) & 0xfff), 2);   /* long form */
+			else uw_op((range & 0x4000 ? 0xa8 : 0xa0) | (k - 1), 1);   /* r4-r[4+k-1] [+ r14] */
+		}
+		if (range & 0xf) uw_op(0xb100 | (range & 0xf), 2);
+		for (int k = 0; k < 16; k++) if (range & (1u << k)) uw.frame_size += 4;
+		return 1;
+	}
+	if (!strcmp(d, ".unwind_raw")) {                     /* .unwind_raw offset, byte1, byte2, ... */
+		uw_need(d); if (n < 3) die(".unwind_raw: expected offset, opcode bytes");
+		uw.frame_size += eval_const_expr(t[1]);
+		for (int k = n - 1; k >= 2; k--) { long b = eval_const_expr(t[k]); if (b < 0 || b > 255) die(".unwind_raw: opcode byte %ld", b); uw_op((unsigned long)b, 1); }
+		return 1;
+	}
+	return 0;
+}
+
+int md_directive(char **t, int n) {
+	/* ARM/ABI metadata we accept and don't (yet) encode: arch/cpu/fpu selection (we are fixed ARMv7-A: it sets the
+	 * build attributes), file/ident. Explicit list — was a substring match, so `.thumb` (or anything containing
+	 * "arm"/"save"/"file") was silently ignored and Thumb code got assembled as ARM. The unwind directives are
+	 * ENCODED (they were accepted and dropped: every object lost its .ARM.exidx). */
+	static const char *const ok[] = { ".arch", ".arch_extension", ".cpu", ".fpu", ".object_arch", ".eabi_attribute", NULL };
+	const char *d = t[0];
+	if (unwind_directive(t, n)) return 1;
+	if (!strcmp(d, ".thumb") || !strcmp(d, ".force_thumb")) { mode_switch(1); return 1; }
+	if (!strcmp(d, ".arm")) { mode_switch(0); return 1; }
+	if (!strcmp(d, ".thumb_func")) { mode_switch(1); thumb_func_next_label(); return 1; }
+	if (!strcmp(d, ".code")) {
+		long w = n >= 2 ? eval_const_expr(t[1]) : 0;
+		if (w != 16 && w != 32) die(".code: invalid operand (%ld), expecting 16 or 32", w);
+		mode_switch(w == 16); return 1;
+	}
+	if (!strcmp(d, ".thumb_set")) die(".thumb_set: not supported yet");
+	if (!strcmp(d, ".syntax")) {
+		if (n < 2) die(".syntax: expected unified or divided");
+		if (!strcasecmp(t[1], "unified")) syntax_unified = 1; else if (!strcasecmp(t[1], "divided")) syntax_unified = 0;
+		else die(".syntax: unknown '%s'", t[1]);
+		return 1;
+	}
 	if (!strcmp(d, ".ltorg") || !strcmp(d, ".pool")) { pool_flush(cursec); return 1; }
 	if (!strcmp(d, ".cpu") || !strcmp(d, ".arch") || !strcmp(d, ".arch_extension") || !strcmp(d, ".fpu") || !strcmp(d, ".eabi_attribute")) { attr_directive(t, n); return 1; }
 	for (int i = 0; ok[i]; i++) if (!strcmp(d, ok[i])) return 1;
@@ -1448,6 +1767,11 @@ int md_directive(char **t, int n) {
  * is an assembler-internal fixup (no relocation) — exactly what GNU as does for a local literal load. */
 int md_is_branch_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP24; }
 void md_finish(void) {
+	for (int i = 0; i < ndpfix; i++) {
+		u32 v = (u32)const_expr_at(dpfix[i].text, dpfix[i].sec, dpfix[i].off), w = read32(dpfix[i].sec, dpfix[i].off);
+		if (!dp_imm(&w, v)) die("invalid constant (%#x) after fixup: '#%s'", v, dpfix[i].text);
+		patch32(dpfix[i].sec, dpfix[i].off, w);
+	}
 	for (int i = 0; i < nldrlit; i++) {
 		int si = sym_find(ldrlit[i].sym);
 		if (si < 0 || !syms[si].defined) die("ldr literal: undefined symbol '%s'", ldrlit[i].sym);
@@ -1468,21 +1792,55 @@ void md_finish(void) {
 			patch32(ldrlit[i].sec, ldrlit[i].off, w);
 		}
 	}
-	for (int i = 0; i < nbrfix; i++) {   /* named branches: resolve intra-section, else relocate */
-		int si = sym_find(brfix[i].sym);
+	for (int i = 0; i < nbrfix; i++) {   /* branches: resolve intra-section, else relocate */
+		XVal v = brfix[i].v; expr_fold(&v);
 		u32 base = read32(brfix[i].sec, brfix[i].off);
-		/* resolve ONLY a LOCAL same-section symbol; a GLOBAL one keeps a reloc even if defined here
-		 * (it may be interposed/PLT-routed at link time), matching GNU as. */
-		if (si >= 0 && syms[si].defined && !syms[si].global && !syms[si].weak && syms[si].sec == brfix[i].sec) {   /* weak: overridable at link time -> reloc */
-			int32_t rel = (int32_t)syms[si].value - (int32_t)(brfix[i].off + 8);
+		if (v.msym >= 0) die("branch target: a symbol difference that doesn't resolve in one section");
+		Sym *t = v.sym >= 0 ? &syms[v.sym] : NULL;
+		/* resolve ONLY a LOCAL same-section symbol (or a constant `.`-relative target); a GLOBAL/weak one keeps a reloc
+		 * even if defined here (it may be interposed/PLT-routed at link time), matching GNU as */
+		int local = !t || (t->defined && !t->global && !t->weak && t->sec == brfix[i].sec);
+		if (local) {
+			if (t && t->thumb && (t->thumb_func || t->type == STT_FUNC))   /* GAS would make it a blx (or reject a b) */
+				die("branch to Thumb function '%s' from ARM code: interworking is not supported yet", t->name);
+			int32_t rel = (int32_t)((t ? (long)t->value : 0) + v.c) - (int32_t)(brfix[i].off + 8);
+			if (rel & 3) die("branch target misaligned (offset %d)", rel);
 			patch32(brfix[i].sec, brfix[i].off, (base & 0xff000000u) | ((rel >> 2) & 0x00ffffffu));
 		} else {
-			patch32(brfix[i].sec, brfix[i].off, (base & 0xff000000u) | 0xfffffe);   /* addend -8, ARM REL */
+			long a = v.c - 8;                                 /* REL: the addend in imm24 (`b ext + 8` -> 0) */
+			if (a & 3) die("branch addend %ld misaligned", v.c);
+			patch32(brfix[i].sec, brfix[i].off, (base & 0xff000000u) | ((u32)(a >> 2) & 0xffffffu));
 			/* R_ARM_CALL only for an UNCONDITIONAL bl: the linker may turn a CALL into blx (interworking), which can't
 			 * be conditional — so `blne ext` is R_ARM_JUMP24, as GAS emits (was CALL: a conditional call could become
 			 * an unconditional blx at link time) */
 			int uncond = (base >> 28) == 0xe;
-			add_reloc(brfix[i].sec, brfix[i].off, sym_intern(brfix[i].sym), brfix[i].is_bl && uncond ? R_ARM_CALL : R_ARM_JUMP24);
+			reloc_seq = brfix[i].seq; add_reloc(brfix[i].sec, brfix[i].off, v.sym, brfix[i].is_bl && uncond ? R_ARM_CALL : R_ARM_JUMP24); reloc_seq = -1;
 		}
 	}
+	for (int i = 0; i < nmwfix; i++) {   /* movw/movt #:lower16:(sym - label): PC-relative once `label` is known */
+		XVal v = mwfix[i].v; expr_fold(&v);
+		u32 insn = read32(mwfix[i].sec, mwfix[i].off), P = mwfix[i].off;
+		long a;
+		if (v.sym < 0 && v.msym < 0) { u32 k = (u32)v.c; u32 imm = mwfix[i].upper ? k >> 16 : k & 0xffff;   /* resolved: a constant */
+			patch32(mwfix[i].sec, P, (insn & 0xfff0f000u) | ((imm >> 12) << 16) | (imm & 0xfff)); continue; }
+		if (v.msym >= 0) {
+			Sym *l = &syms[v.msym];
+			if (!l->defined || l->sec != mwfix[i].sec) die("movw/movt: `sym - %s`: the label must be in this section", l->name);
+			a = v.c + (long)P - (long)l->value;
+		} else a = v.c;                                    /* `sym - .` (dot folded) */
+		if (a < -32768 || a > 32767) die("movw/movt: offset %ld out of range", a);
+		u32 imm = (u32)a & 0xffff;
+		patch32(mwfix[i].sec, P, (insn & 0xfff0f000u) | ((imm >> 12) << 16) | (imm & 0xfff));
+		reloc_seq = mwfix[i].seq; add_reloc(mwfix[i].sec, P, v.sym, mwfix[i].upper ? R_ARM_MOVT_PREL : R_ARM_MOVW_PREL_NC); reloc_seq = -1;
+	}
 }
+
+/* ------------------------------------------------------------------ for thumb.c (arm-int.h) ------- */
+int arm_ntok(void) { return ntok; }
+const char *arm_tok(int i) { return i >= 0 && i < ntok ? toks[i] : NULL; }
+int arm_reg(const char *t) { return reg(t); }
+long arm_imm(const char *t) { if (!t || t[0] != '#') die("expected #immediate, got '%s'", t ? t : "(nil)"); return eval_const_expr(t + 1); }
+u32 arm_reglist(int start, int *caret) { u32 l = reglist_at(start); *caret = reglist_caret; return l; }
+ArmAddr arm_addr(int first) { return parse_addr(first); }
+int arm_cond(const char *s, u32 *code) { return lookup_cc(s, code); }
+int arm_unified(void) { return syntax_unified; }

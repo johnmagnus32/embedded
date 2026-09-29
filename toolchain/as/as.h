@@ -19,14 +19,28 @@
 /* The assembler's INTERNAL tables (not the ELF on-disk structs — those are Elf32_* in elf.h): the
  * section byte buffers, symbol records, relocations, and forward-local-branch fixups the front-end owns. */
 typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shndx; u32 align, entsize;
-                 int mapstate, lastmap, secsym; } Section;   /* align: sh_addralign (GAS: max requested; an ARM insn = 4);
+                 int mapstate, lastmap, secsym, link;
+                 int base, subsec, merged, lead, fragmode, first_align_mode; u32 first_align, pad_align; } Section;   /* base >= 0: an internal SUBSECTION of secs[base] (merged
+                                                                          * into it at the end, then skipped); first_align: an
+                                                                          * .align before its first byte; lead: that .align's
+                                                                          * own mapping symbol (-1 none); fragmode: the ARM(0)/
+                                                                          * Thumb(1) state of the last instruction in its current
+                                                                          * GAS frag, -1 none yet (the current state then) — it
+                                                                          * picks an alignment's NOPs and mapping symbol */   /* align: sh_addralign (GAS: max requested; an ARM insn = 4);
                                                                  * entsize: M sections; mapstate/lastmap: its mapping-symbol
                                                                  * state + latest $a/$d (-1 none); secsym: its STT_SECTION symbol */
-typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak, sized, vis; } Sym;   /* sized: had a .size;
-                                                                                                         * vis: STV_* (.hidden …) */
+typedef struct { char *name; int sec; u32 value, size; int global, type, defined, weak, sized, vis, thumb, thumb_func; } Sym;   /* sized: had a .size;
+                                                                                                         * vis: STV_* (.hidden …);
+                                                                                                         * thumb: a label in Thumb code
+                                                                                                         * (a FUNC one gets value|1);
+                                                                                                         * thumb_func: .thumb_func's */
 /* global: 1 if .global'd. A symbol is emitted LOCAL iff (defined && !global); undefined or .global'd
  * symbols are GLOBAL. So compiler-internal labels (.L…, not .global'd) are local, like GNU as. */
-typedef struct { int sec; u32 off; int symidx; u32 type; } Reloc;   /* type is an md-supplied reloc code */
+typedef struct { int sec; u32 off; int symidx; u32 type; u32 seq; int sub, dir; } Reloc;   /* sub: the subsection it was made in;
+                                                                             * dir: from a .reloc directive (GAS's separate list) */   /* type: an md-supplied reloc code; seq: when GAS would
+                                                                             * have made its fixup (the .rel section is in that order) */
+extern u32 parse_seq;                                   /* the statement being assembled (fixup creation order) */
+extern long reloc_seq;                                  /* >= 0: add_reloc uses this seq (a fixup recorded earlier, placed now) */
 
 /* The tables grow as needed (a big preprocessed kernel .c emits tens of thousands of .L labels + symbols); names are
  * found through a hash index, so interning stays O(1) per symbol. */
@@ -37,7 +51,7 @@ int sym_add(Sym s);
 void *grow(void *v, int n, int *cap, size_t esz);   /* room for element n of a growable table (doubling) */                              /* append a symbol; a named one joins the name index (first wins) */
 
 /* ---- FRONT-END services (as.c), called by both backends ------------------------------------------ */
-void die(const char *fmt, ...);
+__attribute__((noreturn, format(printf, 1, 2))) void die(const char *fmt, ...);
 int  sec_find(const char *name);
 int  sec_get(const char *name, u32 type, u32 flags);   /* find-or-create + select */
 void emit(const void *p, size_t n);                     /* append bytes to cursec */
@@ -53,14 +67,31 @@ void add_reloc(int sec, u32 off, int symidx, u32 type);
 int  fb_symbol(int n, char dir);
 #define SEC_ABS (-2)                                    /* Sym.sec of an absolute symbol (`.equ N, 16`) */
 long eval_const_expr(const char *s);
+/* An instruction's constant operand that may name later labels (`#((end - start + 256) & ~255)`): 1 and *v if it's
+ * known now, 0 if it must wait — then const_expr_at evaluates the text, `.` = at in sec, once every label is known. */
+int const_expr_soft(const char *s, long *v);
+long const_expr_at(const char *s, int sec, u32 at);
+/* A whole operand expression, unresolved: c + sym - msym - dot*P (sym/msym -1: none; dot: +1 `.`, -1 `- .`, where P is
+ * the location it is used at). expr_fold: a `sym - msym` now both defined in one section becomes part of c. */
+typedef struct { long c; int sym, dot, msym; u32 rtype; } XVal;
+XVal expr_x(const char *s);
+void expr_fold(XVal *v);
 void eval_reloc_expr(const char *s, long *c, int *sym, int *dot);   /* c + sym - dot*P, junk is an error */
+extern int thumb_mode;                                  /* 0: ARM state, 1: Thumb (.thumb / .code 16) */
+void emit16(u32 h);                                      /* append a little-endian halfword (a Thumb instruction) */
+void mode_switch(int to_thumb);                          /* .arm / .thumb: GAS's opcode_select */
+void thumb_func_next_label(void);                        /* .thumb_func: the next (non-.L) label is a Thumb function */
 void map_insn(void); void map_pool_data(void);                    /* a constant expression (`.`, same-section `a - b`, abs syms); dies otherwise */
 int  section_symbol(int sec);                           /* find-or-create sec's STT_SECTION symbol (reloc target) */
+void map_section_data(void);                            /* data follows in cursec: a $d here unless it is already data */
 int  parse_local_ref(const char *s, int *n, char *dir); /* "123b"/"7f" (then a non-ident char): bytes consumed, else 0 */
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
 void md_assemble(char **toks, int ntok);   /* encode ONE instruction (toks[0]=mnemonic) into cursec */
 int  md_directive(char **toks, int ntok);   /* arch pseudo-ops (.cpu/.fpu/…); 1 = handled, 0 = not ours */
+int  md_parse_option(const char *opt);        /* an arch command-line option (-march= ...); 1 = handled */
+u32  md_reloc_by_name(const char *name);       /* .reloc: R_ARM_NAME -> its number (dies if unknown) */
+void md_remap_section(int from, int to, u32 delta);   /* a subsection merged: its fixups now at to:off+delta */
 void md_flush_pools(void);                   /* end of parsing: dump pending literal pools into their sections */
 int  md_is_branch_reloc(u32 type);            /* b/bl reloc (imm24 addend in place)? */
 void md_finish(void);
@@ -76,4 +107,5 @@ void md_req(const char *alias, const char *regname); void md_unreq(const char *a
 
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */
 void obj_write(const char *path);
+extern int file_front;                                   /* the .file symbol GAS puts first (-1: none) */
 #endif

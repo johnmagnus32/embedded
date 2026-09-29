@@ -21,12 +21,12 @@ TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_
 
 # Three layers, GNU-binutils-style: front-end (as.c) + machine-dependent backend (arm.c) + object
 # backend (elf.c). Swapping arm.c for another arch backend is the ONLY change a new target needs.
-OBJS := $(BUILD)/as.o $(BUILD)/arm.o $(BUILD)/elf.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/as.o $(BUILD)/arm.o $(BUILD)/thumb.o $(BUILD)/elf.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
 
 $(BUILD)/as: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
-$(BUILD)/%.o: %.c as.h $(COMMON)/elf.h $(COMMON)/elfutil.h $(COMMON)/strmap.h | $(BUILD)
+$(BUILD)/%.o: %.c as.h arm-int.h $(COMMON)/elf.h $(COMMON)/elfutil.h $(COMMON)/strmap.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD)/elfutil.o: $(COMMON)/elfutil.c $(COMMON)/elfutil.h $(COMMON)/elf.h | $(BUILD)
@@ -39,8 +39,9 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 # test: for each input, assemble with OUR as and GNU as, then compare the raw bytes of the code section
-# (objcopy -O binary -j <sec>) — byte-identity proves our encoder matches GNU as. Finally, confirm GNU
-# ld ACCEPTS our crt0 object (defsym stubs the external ref) — proves the ELF we emit is link-valid.
+# (objcopy -O binary -j <sec>) — byte-identity proves our encoder matches GNU as. tests/obj/*.s are compared as
+# WHOLE objects (gastest/objcmp.sh: every section, relocation order, symbol table with mapping symbols). Finally,
+# confirm GNU ld ACCEPTS our crt0 object (defsym stubs the external ref) — proves the ELF we emit is link-valid.
 # GNU as runs at OUR target (-mcpu=cortex-a7, the T113), not its ARMv4T default (which adds V4BX relocs etc).
 test: $(BUILD)/as
 	@if [ ! -x "$(GNU)as" ]; then echo "SKIP: GNU as not found at '$(GNU)as' (set GNU=<prefix>)"; exit 0; fi; \
@@ -61,6 +62,12 @@ test: $(BUILD)/as
 	    echo "  ours: $$(od -An -tx1 $$t/$$nm.ours.bin | tr -s ' ')"; \
 	    echo "  gnu : $$(od -An -tx1 $$t/$$nm.gnu.bin  | tr -s ' ')"; fail=$$((fail+1)); \
 	  fi; \
+	done; \
+	for src in tests/obj/*.s; do nm=$$(basename $$src); \
+	  if ! $(BUILD)/as -march=armv7-a -o $$t/$$nm.ours.o $$src 2>$$t/err; then echo "FAIL $$nm: our as errored: $$(cat $$t/err)"; fail=$$((fail+1)); continue; fi; \
+	  $(GNU)as -march=armv7-a -o $$t/$$nm.gnu.o $$src 2>$$t/gerr || { echo "FAIL $$nm: GNU as rejected it: $$(head -2 $$t/gerr)"; fail=$$((fail+1)); continue; }; \
+	  if d=$$(GNU=$(GNU) gastest/objcmp.sh $$t/$$nm.ours.o $$t/$$nm.gnu.o); then echo "PASS $$nm — the whole object identical to GNU as"; pass=$$((pass+1)); \
+	  else echo "FAIL $$nm — differs from GNU as:$$d"; fail=$$((fail+1)); fi; \
 	done; \
 	if $(GNU)ld -static -e _start --defsym __libc_start_main=0 -o $$t/crt0.elf $$t/crt0.S.ours.o 2>$$t/lderr; then \
 	  echo "PASS ld-accept — GNU ld links our crt0.o into $$($(GNU)readelf -h $$t/crt0.elf | sed -n 's/.*Type:[[:space:]]*//p')"; pass=$$((pass+1)); \
@@ -87,9 +94,17 @@ gas-suite: $(BUILD)/as
 kernel-parity: $(BUILD)/as
 	@GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) gastest/kernel_parity.sh
 
+# The kernel's own assembly (.S, preprocessed as Kbuild did) through our as and GNU as: whole objects must match.
+kernel-parity-S: $(BUILD)/as
+	@GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) gastest/kernel_parity_S.sh
+
+# Our Thumb encoder against GNU as over a generated operand space (16-bit forms identical; the rest refused).
+thumb-diff: $(BUILD)/as
+	@GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) AS=$(abspath $(BUILD)/as) python3 gastest/thumb_diff.py
+
 # Per-LINE validation over the gas suite's plain (not arch-gated) diagnostic tests: every line GNU as rejects, we must too.
 DIAG_PLAIN := ldr-bad r15-bad shift-bad mrs-msr-arm-v7-a-bad
 diag-lines: $(BUILD)/as
 	@GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) gastest/perline.sh $(addprefix $(GASTEST_WORK)/binutils-2.42/gas/testsuite/gas/arm/,$(addsuffix .s,$(DIAG_PLAIN)))
 
-.PHONY: clean test gas-suite kernel-parity diag-lines
+.PHONY: clean test gas-suite kernel-parity kernel-parity-S thumb-diff diag-lines

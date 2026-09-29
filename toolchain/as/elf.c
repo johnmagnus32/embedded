@@ -46,7 +46,9 @@ static void build_symtab(Obj *o) {
 	for (int r = 0; r < nrel; r++) if (md_is_tls_reloc(rels[r].type)) syms[rels[r].symidx].type = STT_TLS;
 	for (int pass = 0; pass < 2; pass++) {                    /* pass 0 = locals, pass 1 = globals */
 		if (pass == 1) o->first_global = o->ne;
-		for (int i = 0; i < nsym; i++) {
+		for (int k = -1; k < nsym; k++) {                     /* k = -1: the leading .file symbol */
+			int i = k < 0 ? file_front : k;
+			if (i < 0 || (k >= 0 && i == file_front)) continue;
 			int is_local = syms[i].defined && !syms[i].global && !syms[i].weak;   /* weak binds like global (comes after locals) */
 			if (!syms[i].name || is_local != (pass == 0)) continue;
 			if (is_local && !used[i] && syms[i].type != STT_SECTION && !strncmp(syms[i].name, ".L", 2)) continue;
@@ -54,6 +56,8 @@ static void build_symtab(Obj *o) {
 			int e = o->ne++; o->symmap[i] = e;
 			o->esym[e].st_name  = (syms[i].type == STT_SECTION) ? 0 : str_add(&o->str, syms[i].name);   /* section syms are nameless (GNU) */
 			o->esym[e].st_value = syms[i].value;
+			if ((syms[i].thumb_func || (syms[i].thumb && syms[i].type == STT_FUNC)) && syms[i].defined && syms[i].sec >= 0)
+				o->esym[e].st_value |= 1;   /* a Thumb function: bit 0 set (EABI; BFD elf32_arm_swap_symbol_out) */
 			o->esym[e].st_size  = syms[i].size;
 			o->esym[e].st_other = (u8)syms[i].vis;
 			o->esym[e].st_info  = ELF32_ST_INFO(syms[i].weak ? STB_WEAK : (is_local ? STB_LOCAL : STB_GLOBAL), syms[i].type);
@@ -68,8 +72,9 @@ static void build_symtab(Obj *o) {
 static void plan_headers(Obj *o) {
 	o->relof = malloc((nsec + 1) * sizeof *o->relof);
 	for (int i = 0; i < nsec; i++) o->relof[i] = -1;
-	o->total = 1 + nsec;
-	for (int i = 0; i < nsec; i++) if (sec_has_rel(i)) o->relof[i] = o->total++;
+	int live = 0; for (int i = 0; i < nsec; i++) live += !secs[i].merged;
+	o->total = 1 + live;
+	for (int i = 0; i < nsec; i++) if (!secs[i].merged && sec_has_rel(i)) o->relof[i] = o->total++;
 	o->symtab_ndx = o->total++; o->strtab_ndx = o->total++; o->shstrtab_ndx = o->total++;
 	o->sh = calloc(o->total, sizeof *o->sh);
 }
@@ -77,8 +82,9 @@ static void plan_headers(Obj *o) {
 /* Phase 3 — fill every section header + intern its name into .shstrtab. */
 static void build_shdrs(Obj *o) {
 	str_add(&o->shstr, "");
-	for (int i = 0; i < nsec; i++) { Elf32_Shdr *h = &o->sh[secs[i].shndx];
-		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = secs[i].align; h->sh_entsize = secs[i].entsize; }   /* GAS: the largest alignment requested in the section (default 1) */
+	for (int i = 0; i < nsec; i++) { if (secs[i].merged) continue; Elf32_Shdr *h = &o->sh[secs[i].shndx];
+		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = secs[i].align; h->sh_entsize = secs[i].entsize;
+		if (secs[i].link >= 0) h->sh_link = secs[secs[i].link].shndx; }   /* SHF_LINK_ORDER: the section it describes (.ARM.exidx) */   /* GAS: the largest alignment requested in the section (default 1) */
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) { char nm[128]; snprintf(nm, sizeof nm, ".rel%s", secs[i].name);
 		Elf32_Shdr *h = &o->sh[o->relof[i]];
 		h->sh_type = SHT_REL; h->sh_name = str_add(&o->shstr, nm); h->sh_flags = 0x40;   /* SHF_INFO_LINK: sh_info names a section (GAS) */
@@ -95,7 +101,7 @@ static void build_shdrs(Obj *o) {
 /* Phase 4 — assign file offsets + sizes (sections 4-aligned), then the 4-aligned section-header offset. */
 static void layout(Obj *o) {
 	u32 off = sizeof(Elf32_Ehdr);
-	for (int i = 0; i < nsec; i++) { Elf32_Shdr *h = &o->sh[secs[i].shndx];
+	for (int i = 0; i < nsec; i++) { if (secs[i].merged) continue; Elf32_Shdr *h = &o->sh[secs[i].shndx];
 		h->sh_offset = off; h->sh_size = secs[i].len;
 		if (secs[i].type != SHT_NOBITS) off = (off + secs[i].len + 3) & ~3u; }   /* .bss occupies no file space */
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) { int cnt = 0; for (int r = 0; r < nrel; r++) if (rels[r].sec == i) cnt++;
@@ -115,14 +121,24 @@ static void write_out(Obj *o, FILE *f) {
 
 	u8 pad[4] = {0};
 	fwrite(&eh, sizeof eh, 1, f);
-	for (int i = 0; i < nsec; i++) { if (secs[i].type == SHT_NOBITS) continue;   /* .bss: no bytes on disk */
+	for (int i = 0; i < nsec; i++) { if (secs[i].type == SHT_NOBITS || secs[i].merged) continue;   /* .bss: no bytes on disk */
 		fwrite(secs[i].data, 1, secs[i].len, f); u32 p = (4 - (secs[i].len & 3)) & 3; if (p) fwrite(pad, 1, p, f); }
-	/* each .rel section in ADDRESS order (as GAS writes them; ours creates branch relocs at end of pass) — stable */
+	/* each .rel section in FIXUP-CREATION order (GAS: the statement that made each fixup — so a `.reloc` or a later
+	 * subsection's entry sits where its directive was, not at its address); ours places some at end of pass, so by seq,
+	 * stable (then address, for fixups of one statement) */
 	int *ord = malloc((nrel ? nrel : 1) * sizeof *ord);
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) {
-		int n = 0; for (int r = 0; r < nrel; r++) if (rels[r].sec == i) ord[n++] = r;
-		for (int a = 1; a < n; a++) { int v = ord[a], b = a - 1; while (b >= 0 && rels[ord[b]].off > rels[v].off) { ord[b + 1] = ord[b]; b--; } ord[b + 1] = v; }
-		for (int k = 0; k < n; k++) { int r = ord[k]; Elf32_Rel er = { rels[r].off, ELF32_R_INFO(o->symmap[rels[r].symidx], rels[r].type) }; fwrite(&er, sizeof er, 1, f); }
+		int n = 0, nd = 0; for (int r = 0; r < nrel; r++) if (rels[r].sec == i && !rels[r].dir) ord[n++] = r;
+		int *dord = malloc((nrel ? nrel : 1) * sizeof *dord); for (int r = 0; r < nrel; r++) if (rels[r].sec == i && rels[r].dir) dord[nd++] = r;
+		#define RLESS(x, y) (rels[x].sub < rels[y].sub || (rels[x].sub == rels[y].sub && (rels[x].seq < rels[y].seq || (rels[x].seq == rels[y].seq && rels[x].off < rels[y].off))))
+		for (int a = 1; a < n; a++) { int v = ord[a], b = a - 1; while (b >= 0 && RLESS(v, ord[b])) { ord[b + 1] = ord[b]; b--; } ord[b + 1] = v; }
+		#undef RLESS
+		#define PUT(r) do { Elf32_Rel er = { rels[r].off, ELF32_R_INFO(o->symmap[rels[r].symidx], rels[r].type) }; fwrite(&er, sizeof er, 1, f); } while (0)
+		int q = 0;   /* .reloc entries join the fixups GAS's way: the next one goes out before a fixup at a higher address */
+		for (int k = 0; k < n; k++) { while (q < nd && rels[dord[q]].off < rels[ord[k]].off) { PUT(dord[q]); q++; } PUT(ord[k]); }
+		while (q < nd) { PUT(dord[q]); q++; }
+		#undef PUT
+		free(dord);
 	}
 	free(ord);
 	fwrite(o->esym, sizeof(Elf32_Sym), o->ne, f);
@@ -135,7 +151,7 @@ static void write_out(Obj *o, FILE *f) {
 void obj_write(const char *path) {
 	FILE *f = fopen(path, "wb"); if (!f) die("cannot open %s", path);
 	Obj o = {0};
-	for (int i = 0; i < nsec; i++) secs[i].shndx = 1 + i;   /* ELF section indices 1..nsec (build_symtab needs them) */
+	{ int n = 0; for (int i = 0; i < nsec; i++) secs[i].shndx = secs[i].merged ? 0 : 1 + n++; }   /* ELF indices, merged subsections skipped */
 	build_symtab(&o);
 	plan_headers(&o);
 	build_shdrs(&o);
