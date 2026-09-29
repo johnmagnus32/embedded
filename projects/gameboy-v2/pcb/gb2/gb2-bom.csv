@@ -85,7 +85,9 @@ R21,charger,C23231,easyeda2kicad:0603WAF6802T5E,TMR safety-timer 68k · 0603WAF6
 R22,charger,C99198,easyeda2kicad:RC0603JR-0710KL,/CHG pull-up · RC0603JR-0710KL · #10
 R23,charger,C99198,easyeda2kicad:RC0603JR-0710KL,/PGOOD pull-up · RC0603JR-0710KL · #10
 J8,charger,C295747,easyeda2kicad:S2B-PH-SM4-TB,Battery connector (Adafruit 2011 / PKCELL LP-803860) · S2B-PH-SM4-TB(LF)(SN) · #54
-SW1,charger,C319012,easyeda2kicad:SS-12D10L5,Power slide switch (true off) · XKB SS-12D10L5 · #55
+SW1,charger,C431541,easyeda2kicad:MSK12C02-HB,"Power switch, side-edge right-angle slide (drives Q1 gate, carries µA only) · SHOU HAN MSK12C02-HB · #55"
+Q1,charger,C15127,easyeda2kicad:AO3401A,"System power switch, high-side P-MOSFET SYS_SRC→SYS (true off) · AO3401A · #80"
+R30,charger,C25803,easyeda2kicad:0603WAF1003T5E,Q1 gate pull-up 100k (holds the FET off) · 0603WAF1003T5E · #81
 U10,buck-boost,C202140,easyeda2kicad:TPS63021DSJR,3.3 V buck-boost · TPS63021DSJR · #44
 R24,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost FB→VOUT tie · 0603WAF0000T5E · #45
 R25,buck-boost,C25803,easyeda2kicad:0603WAF1003T5E,Buck-boost PS/SYNC pull-down 100k · 0603WAF1003T5E · #46

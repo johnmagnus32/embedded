@@ -401,9 +401,15 @@ J8,1,BAT,pwr,1 — cell + (red) — verify polarity
 J8,2,GND,gnd,2 — cell −
 J8,3,GND,gnd,3 — board-lock tab
 J8,4,GND,gnd,4 — board-lock tab
-SW1,1,SYS,pwr,1 — ON throw → system node
-SW1,2,SYS_SRC,pwr,2 — center = common ← charger OUT
-SW1,3,,,3 — OFF throw — open
+SW1,1,GND,gnd,1 — ON throw → pulls the Q1 gate low
+SW1,2,PWR_SW,,2 — common (datasheet ②) ← Q1 gate
+SW1,3,,,3 — OFF throw — open (100k holds Q1 off)
+SW1,4,GND,gnd,4 — metal shell / mounting tabs
+Q1,1,PWR_SW,,G — low (via SW1) = on
+Q1,2,SYS_SRC,pwr,S — charger OUT
+Q1,3,SYS,pwr,D — system node; body diode blocks SYS_SRC→SYS when off
+R30,1,PWR_SW,,1 — gate
+R30,2,SYS_SRC,pwr,2 — source
 U10,1,SYS,pwr,VINA — control supply — MUST tie to VIN
 U10,2,GND,gnd,GND
 U10,3,BB_FB,,FB — 0 Ω to VOUT (fixed 3.3 V)

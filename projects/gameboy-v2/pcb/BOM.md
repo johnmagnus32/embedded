@@ -1,6 +1,6 @@
 # gameboy-v2 PCB — Bill of Materials
 
-**Status:** Parts-only, **79 rows: 79 ✅ — fully sourced** (#76 TMR 68 kΩ = C23231, confirmed live 2026-09-25; #78 reuses the confirmed 3.3 kΩ C22978; #43 NTC = C2892547 and #79 33 Ω = C23140 confirmed live 2026-09-28). 2026-09-28 review fixes applied: SS_B 3.3 kΩ (#78), LCD RD → +5V_LCD, TPS63021 PS/SYNC under firmware control (#46, PC7), footprint fixes (#34/#54/#64), TS battery-temperature NTC (#43), LCD_WR series termination (#79). Incl. the §8 **LCD 5 V boost** (MT3608 + supports, for the 2090's VIN = 5 V) and the §9 **HSE crystal + 15 pF loads + 0 Ω
+**Status:** Parts-only, **81 rows: 81 ✅ — fully sourced** (#76 TMR 68 kΩ = C23231, confirmed live 2026-09-25; #78 reuses the confirmed 3.3 kΩ C22978; #43 NTC = C2892547 and #79 33 Ω = C23140 confirmed live 2026-09-28; #55 MSK12C02-HB = C431541 + #80 AO3401A = C15127 confirmed live 2026-09-29). 2026-09-28 review fixes applied: SS_B 3.3 kΩ (#78), LCD RD → +5V_LCD, TPS63021 PS/SYNC under firmware control (#46, PC7), footprint fixes (#34/#54/#64), TS battery-temperature NTC (#43), LCD_WR series termination (#79). 2026-09-29: GBA-style side-edge power switch driving a P-FET (#55/#80/#81); face buttons A/B only. Incl. the §8 **LCD 5 V boost** (MT3608 + supports, for the 2090's VIN = 5 V) and the §9 **HSE crystal + 15 pF loads + 0 Ω
 series R** (Bluetooth clock accuracy); row #20 SD_MODE resistor = 620 kΩ / C23219. **Capture-readiness audit (2026-09-25) fixes
 applied:** LITE → STM32 PC6, RD tied direct to 3V3, exact quantities, 2090 module facts from Adafruit's Eagle files, TMR timer
 resistor. **Schematic-capture CSVs written** (`gb2/gb2-bom.csv` + `gb2/gb2-nets.csv`, 2026-09-26: 121 parts, 568 pin rows, adversarially reviewed); next = run `cad/generate_schematic.py` + ERC on a machine with `kicad-cli`. The integrated **gameboy-v2 handheld**: STM32F411RE (game logic, input, audio, FPGA config) +
@@ -16,7 +16,7 @@ motion, and console-feel buttons.
 - **Bluetooth:** Ezurio BT830-SA-01 (CSR8811, UART-HCI on USART1 4-wire, BLE-only host)
 - **Battery:** 1S LiPo (Adafruit 2011, 2000 mAh), USB-C charge + power-path, buck-boost 3.3 V rail; % via a divider → STM32 ADC
 - **Buttons:** 12 all-tactile (D-pad, A/B, Start/Select, Vol±, L/R bumpers) via a PCA9555 I2C expander (0 STM32 GPIO)
-- **Power on/off:** single slide switch in the SYS system-power path (true off, charge-while-off preserved)
+- **Power on/off:** GBA-style side-edge slide switch driving a high-side P-MOSFET in the SYS system-power path (true off, charge-while-off preserved)
 - **Programming:** ST-Link V2 (SWD) header; **UART header** on USART2 (PA2/PA3) for debug
 
 **Src legend:** ✅ = exact part confirmed good on JLCPCB (or proven on gameboy-v1 / ice40-breakout / breadboard).
@@ -124,7 +124,7 @@ LSM6DSOX IMU (0x6A), DRV2605L haptic driver (0x5A), and the PCA9555 expander (0x
 
 ## 5. Battery + Charging + Power-Path + on/off
 
-**BQ24074 power-path → SYS_SRC → slide switch (#55) → SYS → TPS63021 buck-boost → 3.3 V; 3.3 V → AP2127K → iCE40 1.2 V core.** The LCD 5 V boost (§8)
+**BQ24074 power-path → SYS_SRC → P-FET power switch (#80, set by slide switch #55) → SYS → TPS63021 buck-boost → 3.3 V; 3.3 V → AP2127K → iCE40 1.2 V core.** The LCD 5 V boost (§8)
 + MAX98357A VDD hang off SYS (post-switch). No USB-PD sink (plain CC, ~500 mA input); battery % via a resistor divider →
 STM32 ADC (no fuel-gauge IC).
 
@@ -132,18 +132,18 @@ STM32 ADC (no fuel-gauge IC).
 |---|-----|------|------|--------|-----------|-----|-----|------|
 | 34 | 1 | USB-C receptacle (5 V in) | TYPE-C-31-M-12 | C165948 | VBUS/GND (power-only) | ✅ | JLC | 16-pin, 5 V in, **power-only** (D+/D− not routed — STM32 flashes via SWD). VBUS → IN cap → BQ24074 IN. **VBUS ESD/surge** covered by the 28 V-tolerant / 10.5 V-OVP charger IN + the 4.7 µF IN cap; no VBUS TVS (dropped — add one in a later rev only if the exposed port shows ESD flakiness). Full 16-pin USB-2 connector (rated 5 A/20 V; D+/D−/SBU present but unrouted); SMD contacts + THT shield/retention posts; the two plastic locating-peg holes are **non-plated** (footprint fixed 2026-09-28). **Bond the shell/mid-plate + both retention posts to GND** (unbonded shell hurts ESD immunity); net all 4 VBUS + all 4 GND contacts. |
 | 35 | 2 | USB-C CC pulldowns | 5.1 kΩ 1% 0603 | C105580 | CC1/CC2 → GND | ✅ | JLC | Rd = 5.1 kΩ each → advertises a ≤500 mA (SDP) / up-to-1.5 A Type-C sink. This is v2's whole CC network (no PD sink). |
-| 36 | 1 | Power-path charger | BQ24074RGTR | C54313 | autonomous DPPM; /CHG,/PGOOD open-drain | ✅ | JLC | QFN-16-EP. System runs from **OUT = SYS_SRC** (→ slide switch #55 → SYS; works with the cell absent — OUT ≈ 4.4 V). CE→GND. ITERM (pin 15) floats = 10 % termination. **TMR (pin 14) → 68 kΩ to VSS (#76)** — the floating default timer (4 h min) can expire before this cell is full. **Exposed pad → VSS via array** (heat path). Charging is autonomous. **/CHG (pin 9) → STM32 PC2 (pin 10), /PGOOD (pin 7) → PC3 (pin 11)**, both open-drain with **10 kΩ pull-ups to 3.3 V (counted in #10)**. The RTOS reads them for charge status and to gate the battery % (#51); /CHG blinking at 2 Hz = safety-timer fault. Pull-ups to the switched 3.3 V are harmless at true-off. |
+| 36 | 1 | Power-path charger | BQ24074RGTR | C54313 | autonomous DPPM; /CHG,/PGOOD open-drain | ✅ | JLC | QFN-16-EP. System runs from **OUT = SYS_SRC** (→ power switch Q1 #80 → SYS; works with the cell absent — OUT ≈ 4.4 V). CE→GND. ITERM (pin 15) floats = 10 % termination. **TMR (pin 14) → 68 kΩ to VSS (#76)** — the floating default timer (4 h min) can expire before this cell is full. **Exposed pad → VSS via array** (heat path). Charging is autonomous. **/CHG (pin 9) → STM32 PC2 (pin 10), /PGOOD (pin 7) → PC3 (pin 11)**, both open-drain with **10 kΩ pull-ups to 3.3 V (counted in #10)**. The RTOS reads them for charge status and to gate the battery % (#51); /CHG blinking at 2 Hz = safety-timer fault. Pull-ups to the switched 3.3 V are harmless at true-off. |
 | 37 | 1 | EN1/EN2 strap (mandatory) | 0 Ω 0603 (EN2→OUT) + EN1→GND net | C21189 | EN2(pin5)→SYS_SRC (charger OUT, pre-switch); EN1(pin6)→GND | ✅ | JLC | **MANDATORY: EN1→GND + EN2→OUT** = ILIM-resistor mode. Both float to (0,0) = 100 mA input with the ILIM resistor inert otherwise. Strap EN2 to the always-on **OUT (SYS_SRC)** node (3.4–4.4 V < 7 V abs-max) — **never IN**, and never the post-switch SYS (switched off, EN2 would fall to 0 → 100 mA charging). |
 | 38 | 1 | Charger IN cap | CL10A475KO8NNNC (4.7 µF/16 V) | C19666 | IN(pin13) → VSS | ✅ | JLC | IN bypass 1–10 µF, **<10 µF** (USB-IF inrush). 16 V (IN sees the OVP window). |
-| 39 | 1 | Charger OUT cap (SYS_SRC) | CL21A106KOQNNNE (10 µF/16 V) | C1713 | OUT(pins10/11) (SYS_SRC) → VSS | ✅ | JLC | OUT = SYS_SRC (pre-switch; feeds the slide switch #55 → SYS → buck-boost + LCD 5 V boost + amp). Required OUT bypass (4.7–47 µF) even while switched off — place close to pins 10/11. 16 V. Also the input-bulk brownout guard. |
+| 39 | 1 | Charger OUT cap (SYS_SRC) | CL21A106KOQNNNE (10 µF/16 V) | C1713 | OUT(pins10/11) (SYS_SRC) → VSS | ✅ | JLC | OUT = SYS_SRC (pre-switch; feeds the power switch Q1 #80 → SYS → buck-boost + LCD 5 V boost + amp). Required OUT bypass (4.7–47 µF) even while switched off — place close to pins 10/11. 16 V. Also the input-bulk brownout guard. |
 | 40 | 1 | Charger BAT cap | CL21A106KOQNNNE (10 µF/16 V) | C1713 | BAT(pins2/3) → VSS | ✅ | JLC | BAT bypass. Place near the JST-PH. |
 | 41 | 1 | Charge-current resistor (ISET) | 0603WAF2001T5E (2.0 kΩ 1%) | C22975 | ISET(pin16) → VSS | ✅ | JLC | **MANDATORY** (open ISET = no charging). ICHG = KISET/RISET → ~445 mA (~0.22C). DPPM tapers below this on a weak input. 1% required. Cell datasheet confirms 0.2C standard / **1C (2 A) max** charge → 0.22C is safe; TS now pauses charging outside ~3–47 °C (#43). |
 | 42 | 1 | Input-limit resistor (ILIM) | 0603WAF3301T5E (3.3 kΩ 1%) | C22978 | ILIM(pin12) → VSS | ✅ | JLC | IIN = KILIM/RILIM → **403 / 462 / 521 mA** (min/typ/max; KILIM 1330/1525/1720 AΩ, 200–500 mA band). Typ is under the 500 mA SDP ceiling; the max corner is ~4 % over (accepted). **Populate it — open ILIM disables all charging.** Stay ≥1.1 kΩ. Same part as #78 (board total C22978 = 2). Sets only the input *ceiling*; charge-while-play is automatic (DPPM). For faster charge-while-play on a known ≥1.5 A source, ~1.1–1.2 kΩ (no VIN-DPM back-off in resistor mode → can brown a weak brick). |
 | 43 | 1 | TS battery-temperature NTC | KUU KNTC0603/10KF3950 (10 kΩ ±1%, B ≈ 3950) | C2892547 | TS(pin1) → VSS | ✅ | JLC | **Charge-temperature protection** — the 2-wire cell has no thermistor, so a board NTC stands in. The BQ24074 drives 75 µA into TS and pauses charging above **2.1 V (cold, NTC ≳ 28 kΩ)** or below **0.30 V (hot, ≲ 4 kΩ)**, ~3 °C hysteresis → charge window ≈ **3–47 °C** with B ≈ 3950 (the cell is rated 0–45 °C). Fails safe (open → "cold", short → "hot" → charging paused; the system keeps running from USB). **Place under the cell's footprint, well away from the BQ24074** (up to ~0.9 W while charging) so the charger's own heat doesn't read as a hot battery. Self-heating negligible (~56 µW). |
 | 76 | 1 | Charge safety-timer resistor (TMR) | 0603WAF6802T5E (68 kΩ 1% 0603, UNI-ROYAL) | C23231 | TMR(pin14) → VSS | ✅ | JLC | **Needed for a full charge.** tMAXCHG = 10·K_TMR·R_TMR = **6.8 / 9.1 / 11.3 h** (min/typ/max; K_TMR 36/48/60 s/kΩ), covering the worst-case full charge (~5.8 h at 398 mA). The floating default (4 / 5 / 6 h) can expire first → fault, /CHG blinks 2 Hz, charging stops at ~80 %. Don't tie TMR to VSS (that disables the timer — the backstop against a cell that never terminates; TS (#43) only covers temperature). Allowed range 18–72 kΩ; precharge timer = K_TMR·R_TMR ≈ 54 min typ. *(Numbered 76 to keep existing row numbers stable.)* Same fix applies to gameboy-v3 (identical charger, ISET and cell). |
-| 44 | 1 | 3.3 V buck-boost | TPS63021DSJR (fixed 3.3 V) | C202140 | SYS → 3.3 V logic | ✅ | JLC | VSON-14-EP, fixed 3.3 V (**C202140**). 1S cell straddles 3.3 V → buck-boost mandatory. ~1.9–2.4 A at the 3.0 V floor. **EN ties to VIN on the post-switch SYS node** (the slide switch #55 is the on/off control). Inductor + output caps MUST be the datasheet Table-1 combo. **Exposed pad → PGND + thermal vias.** |
+| 44 | 1 | 3.3 V buck-boost | TPS63021DSJR (fixed 3.3 V) | C202140 | SYS → 3.3 V logic | ✅ | JLC | VSON-14-EP, fixed 3.3 V (**C202140**). 1S cell straddles 3.3 V → buck-boost mandatory. ~1.9–2.4 A at the 3.0 V floor. **EN ties to VIN on the post-switch SYS node** (the power switch (#55 → Q1 #80) is the on/off control). Inductor + output caps MUST be the datasheet Table-1 combo. **Exposed pad → PGND + thermal vias.** |
 | 45 | 1 | Buck-boost FB tie | 0603WAF0000T5E (0 Ω) | C21189 | FB(pin3) → VOUT | ✅ | JLC | Fixed-version FB MUST tie to VOUT (0 Ω/net) — the internal divider senses through it. Float = no regulation. |
-| 46 | 1 | Buck-boost PS/SYNC pull-down (mode control) | 0603WAF1003T5E (100 kΩ 1%) | C25803 | PS/SYNC(pin13) ← STM32 PC7; 100 kΩ → GND | ✅ | JLC | **PS/SYNC is driven by STM32 PC7 (push-pull); the 100 kΩ holds it LOW = power-save through reset** (must not float). Firmware drives it **HIGH = forced PWM** while running: VOUT 3.267–3.333 V. Power-save (below ~100 mA) regulates **2.5–3.5 % high** (≈ 3.40 V typ; datasheet +0.6…+5 % → up to 3.50 V, above the iCE40's 3.46 V VCCIO max) and steps as the load crosses the threshold — which also moves the ADC reference (VDDA = VREF+, battery % reads ~0.1 V low). Use power-save only when idle. Same part as #51 (board total C25803 = 3). |
+| 46 | 1 | Buck-boost PS/SYNC pull-down (mode control) | 0603WAF1003T5E (100 kΩ 1%) | C25803 | PS/SYNC(pin13) ← STM32 PC7; 100 kΩ → GND | ✅ | JLC | **PS/SYNC is driven by STM32 PC7 (push-pull); the 100 kΩ holds it LOW = power-save through reset** (must not float). Firmware drives it **HIGH = forced PWM** while running: VOUT 3.267–3.333 V. Power-save (below ~100 mA) regulates **2.5–3.5 % high** (≈ 3.40 V typ; datasheet +0.6…+5 % → up to 3.50 V, above the iCE40's 3.46 V VCCIO max) and steps as the load crosses the threshold — which also moves the ADC reference (VDDA = VREF+, battery % reads ~0.1 V low). Use power-save only when idle. Same part as #51/#81 (board total C25803 = 4). |
 | 47 | 1 | Buck-boost VINA bypass + **VIN tie** | CC0603KRX7R9BB104 (100 nF) | C14663 | VINA(pin1) → GND (cap) **AND VINA → VIN/SYS (net)** | ✅ | JLC | **VINA (pin 1) = the UVLO-sensed control-stage supply — MUST be tied to VIN/SYS** (same input rail as pins 10/11), or the converter sits in permanent UVLO → **dead 3.3 V rail**. The 100 nF is only a bypass (**hard limit 0.22 µF**) — it cannot power VINA. ⚠️ TI's datasheet Fig 7/28 *dropped the drawn VINA→VIN wire* (Rev G) — misleading; VINA must still connect to VIN. Direct copper net (or 0 Ω link). |
 | 48 | 2 | Buck-boost input cap | CL21A106KOQNNNE (10 µF/16 V) | C1713 | VIN(pins10/11) → PGND | ✅ | JLC | 2×10 µF local to VIN/PGND (at the converter pins). **16 V required** (SYS 4.2 V + DC-bias derate). |
 | 49 | 3 | Buck-boost output cap | CL21A226MAQNNNE (22 µF/25 V) | C45783 | VOUT(pins4/5) → PGND | ✅ | JLC | 3×22 µF (min 2), **stability-critical** — must land in the datasheet Table-1 L/C matrix. Place close to VOUT/PGND. |
@@ -153,11 +153,13 @@ STM32 ADC (no fuel-gauge IC).
 | 53 | 1 | LiPo cell | Adafruit 2011 — 1S 2000 mAh, JST-PH, integral PCM | — (Adafruit) | JST-PH → BQ24074 BAT | ✅ | Hand | ~5.5–6.5 h screen-on. 3.7 V nom (4.2/3.0), integral PCM. PKCELL LP-803860: 0.2C std / **1C (2 A) max charge**, 2 A continuous discharge (> board peak). **~60 × 38.5 × 8.5 mm max → confirm enclosure fit.** PCM trip thresholds unpublished (R5402N101KD IC). **Verify polarity** (red = + → BAT). |
 | 54 | 1 | Battery connector | S2B-PH-SM4-TB(LF)(SN) — JST-PH 2.0 mm 2-pin SMD R/A | C295747 | mates the cell → BQ24074 BAT | ✅ | JLC | 2 A. **Polarity: + pad = Adafruit red; reversed = destroyed cell.** Pad 1 = BAT sits where Adafruit's own chargers put VBAT (physical pad positions compared against their Eagle files — their pad numbering is reversed); still check the cell's red lead on arrival. Distinct pitch from speaker/LRA. Footprint carries a printable **"+"** by pad 1 (the original 0.06 mm dot was below JLC's minimum; fixed 2026-09-28). |
 
-**On/off — single slide switch in the SYS system-power node:**
+**On/off — GBA-style side-edge slide switch (#55) driving a high-side P-MOSFET (#80) in the SYS system-power path:**
 
 | # | Qty | Role | Part | LCSC # | Interface | Src | Fit | Note |
 |---|-----|------|------|--------|-----------|-----|-----|------|
-| 55 | 1 | Power switch (SYS system-power) | XKB SS-12D10L5 — SPDT THT slide, 3 A / 125 V, 13×6.8 mm | C319012 | pin 2 (center, common) ← SYS_SRC (charger OUT); pin 1 → **SYS** (buck-boost VIN + LCD 5 V-boost in + amp VDD); pin 3 NC | ✅ | Hand | **In the SYS→system-power path** so one mechanical switch cuts every switched load → a true "off". The **charger sits upstream** → charge-while-off preserved. **Buck-boost EN ties to the post-switch node** (EN follows VIN → on when powered; never floats). 3 A rating vs a real SYS peak ≈ **1.2 A** (LCD 5 V-boost input ~0.2 A + buck-boost input ~0.4 A at a 3.0 V cell + MAX98357A ~0.6 A audio peak; ~0.6 A sustained) → ~2.5× margin. **Size the SYS copper (charger OUT→switch→boost/buck-boost/amp) for ≥1.5 A.** Pin 2 = the center terminal = common (XKB drawing + footprint pad 2 at center). Swap pins 1/3 if the lever's ON direction needs it (footprint unchanged). **Mount at the top/side edge (Game-Boy-style)** — lever through a shell slot; hand-solder or JLC wave-solder. **Confirm the 13×6.8 mm edge fit + lever-travel direction vs the shell slot** — L-knob 5 mm / 2.2 mm travel, 3 THT pins @ 4.7 mm pitch, non-shorting, 10 k cycles; the 3 A rating is AC-spec (fine at 4.4 V DC). |
+| 55 | 1 | Power switch (side-edge slide, drives Q1's gate) | SHOU HAN MSK12C02-HB — SPDT SMD right-angle slide, 12 V / 50 mA, 8 × 2.8 mm | C431541 | pin 2 (common, datasheet ②) → Q1 gate (PWR_SW); pin 1 → GND (ON); pin 3 open (OFF); pin 4 (metal shell/tabs) → GND | ✅ | JLC | **GBA-style side-edge switch:** right-angle, so the lever exits the board edge through a slot in the shell side — place it at the board edge with the actuator slightly overhanging. **It only switches Q1's gate (#80), so it carries µA** — the 50 mA rating is ample; it could NOT carry the ~1.2 A system current itself. Pinout per the SHOU HAN drawing: ② = common, ①/③ = throws (② is 1.5 mm from ③, 3 mm from ①, matching footprint pads 2/3/1), ④ = shell. Lever is tiny (1.6 mm travel) → put a shell-molded slider over it. Footprint's two 0.85 mm plastic-peg holes fixed to non-plated. Swap pins 1/3 if the ON direction must flip (footprint unchanged). 10k-cycle life. |
+| 80 | 1 | System power switch (high-side P-MOSFET) | AO3401A (AOS, SOT-23, P-ch 30 V / 4 A) | C15127 | S ← SYS_SRC (charger OUT); D → **SYS** (buck-boost VIN + LCD 5 V-boost in + amp VDD); G ← PWR_SW | ✅ | JLC | **In the SYS→system-power path** so one switch cuts every switched load → a true "off"; the **charger sits upstream** → charge-while-off preserved. Off = R30 (#81) holds the gate at the source; on = SW1 (#55) grounds the gate (V_GS = −3.0…−4.4 V vs V_th ≈ −0.9 V). R_DS(on) 60 mΩ @ −4.5 V / 85 mΩ @ −2.5 V → ~70–90 mV and ~0.1 W at the **~1.2 A SYS peak** (LCD 5 V-boost input ~0.2 A + buck-boost input ~0.4 A at a 3.0 V cell + MAX98357A ~0.6 A audio peak; ~0.6 A sustained). **True off:** the body diode (drain→source) blocks SYS_SRC→SYS. **Size the SYS copper (charger OUT → Q1 → buck-boost/boost/amp) for ≥1.5 A.** *(Numbered 80 to keep row numbers stable.)* |
+| 81 | 1 | Q1 gate pull-up | 0603WAF1003T5E (100 kΩ 1%) | C25803 | Q1 gate (PWR_SW) → SYS_SRC | ✅ | JLC | Holds Q1 off whenever SW1 is open; ~44 µA through it while on. Same part as #46/#51 (board total C25803 = 4). |
 
 ---
 
@@ -211,7 +213,7 @@ BT830 on **USART1 4-wire HCI** — the only STM32F411 USART with hardware CTS/RT
 
 Breadboard-proven at **VIN = 5 V**, but v2 has no 5 V rail → a small **SYS→5 V boost** feeds the LCD VIN.
 Load ≈ 70–100 mA (the module's 3.3 V LDO feeding its logic + the ~60–80 mA backlight; ≤150 mA on the original board's MIC5225) — the parts below are sized for far more. On the SYS domain, **downstream of the slide
-switch (#55)** for true-off. **MT3608 boost — all 6 rows (68–73) confirmed live on JLC.**
+switch (#55 → Q1 #80)** for true-off. **MT3608 boost — all 6 rows (68–73) confirmed live on JLC.**
 
 | # | Qty | Role | Part | LCSC # | Interface | Src | Fit | Note |
 |---|-----|------|------|--------|-----------|-----|-----|------|
@@ -269,14 +271,14 @@ spare I2C bus except I2C3 — PA8/PB4, kept free as the escape bus — is consum
 | Console/debug UART (USART2) | 2 | PA2 (TX) / PA3 (RX) |
 | SWD | 2 | PA13 / PA14 |
 | Buttons (12) | 0 | all on the PCA9555 expander |
-| Power on/off | 0 | slide switch in the SYS power path (#55) — not a GPIO |
+| Power on/off | 0 | slide switch + P-FET in the SYS power path (#55/#80) — not a GPIO |
 | **Total** | **33** | of 50 (BOOT0/NRST are dedicated, non-GPIO) |
 
 **Layout/firmware rules:**
 1. **No spare SPI** — SPI1 = PPU, I2S2 = audio, SPI3 = FPGA-config + NOR (shared). New peripherals go on I2C / UART / GPIO only.
 2. **USART1 = Bluetooth** (only clean HW-flow-control UART; USART2_CTS is on PA0/ADC, USART6 has none). **Console stays on USART2 (PA2/PA3)** — do not revert per the stale board.dts TODO.
 3. **Buttons on the PCA9555 expander** → 0 GPIO.
-4. **No system 5 V rail** — one local MT3608 boost (§8) makes +5V_LCD for the display only; the amp runs from SYS; buck-boost makes 3.3 V; AP2127K makes the iCE40 1.2 V core. The slide switch (#55) in the SYS power path gives a true "off"; the amp self-gates (SD_MODE on the switched rail).
+4. **No system 5 V rail** — one local MT3608 boost (§8) makes +5V_LCD for the display only; the amp runs from SYS; buck-boost makes 3.3 V; AP2127K makes the iCE40 1.2 V core. The power switch (#55 → P-FET #80) in the SYS power path gives a true "off"; the amp self-gates (SD_MODE on the switched rail).
 5. **Battery divider taps the BAT/cell node** (not SYS/OUT), VREF = 3.3 V.
 6. **All-tactile buttons → HASL** (no ENIG); no per-button pull-ups.
 7. **SPI3 CS mutual-exclusion** — never assert NOR /CS + FPGA SS_B at once (firmware); now backed in HW by a 10 kΩ pull-up on NOR /CS (PB0, #3/#10) + the PPU bitstream leaving SPI_SO high-Z in user mode (#2).
@@ -289,7 +291,7 @@ spare I2C bus except I2C3 — PA8/PB4, kept free as the escape bus — is consum
 - **Battery ↔ BQ24074 power-path → SYS_SRC → slide switch (#55) → SYS (~3.0–4.4 V, not 5 V).**
 - **SYS → TPS63021 buck-boost → 3.3 V logic** (STM32, iCE40 I/O, NOR, sensors, expander, BT830).
 - **3.3 V → AP2127K LDO → 1.2 V iCE40 core.**
-- **On SYS directly:** the **LCD 5 V boost** (+5V_LCD → the 2090's own 3.3 V LDO, which powers its logic + ~60–80 mA backlight), MAX98357A VDD, charge current — all downstream of the slide switch (#55) except the charger, which is upstream (charge-while-off).
+- **On SYS directly:** the **LCD 5 V boost** (+5V_LCD → the 2090's own 3.3 V LDO, which powers its logic + ~60–80 mA backlight), MAX98357A VDD, charge current — all downstream of the power switch (#55 → Q1 #80) except the charger, which is upstream (charge-while-off).
 - When plugged, USB-C 5 V feeds the charger IN (≤500 mA plain CC) and charges/supplements; OUT (SYS_SRC → SYS) then regulates at ~4.4 V. On battery alone, SYS ≈ the cell voltage.
 
 **Net names (for the CSVs):** VBUS · BAT (cell) · SYS_SRC (charger OUT, pre-switch) · SYS (post-switch) · +3V3 ·
@@ -303,7 +305,7 @@ spare I2C bus except I2C3 — PA8/PB4, kept free as the escape bus — is consum
 ## Open items + bring-up
 
 - **LCD 5 V boost — RESOLVED** (§8, rows 68–73): the 2090 is breadboard-proven at **VIN = 5 V** and v2 has no
-  5 V rail, so a **SYS→5 V MT3608 boost** (gated by the slide switch #55) feeds the LCD VIN. Fully sourced.
+  5 V rail, so a **SYS→5 V MT3608 boost** (gated by the power switch (#55 → Q1 #80)) feeds the LCD VIN. Fully sourced.
 - **HSE crystal — DECIDED: add it** (§9, #74/#75): an 8 MHz crystal + 2 load caps on PH0/PH1 (costs only those 2 pins)
   replaces the ±4 %-over-temp HSI as the PLL source, so the BT830 HCI framing is reliable over temperature.
   **Follow-up (firmware):** switch the RTOS PLL source HSI→HSE (the `board.dts` `hse` node is already in).
@@ -312,7 +314,7 @@ spare I2C bus except I2C3 — PA8/PB4, kept free as the escape bus — is consum
 - **`fpga/gameboy-v2.pcf`** (FPGA tooling): create it from ice40-breakout.pcf + LCD_RST = pin 23 (open-drain);
   LITE is on STM32 PC6, not the FPGA. Keep config pins package-fixed.
 - **Verify-on-arrival:** any *replacement* 2090 must have its IM solder jumpers SJ1–SJ4 open (8080 8-bit; un-bridge IM1–IM3 on a
-  module set up for SPI); Adafruit 2011 charge C-rate; enclosure fit for the 2011 (~60 × 38.5 × 8.5 mm — see row 53) + the slide switch (13×6.8 mm edge).
+  module set up for SPI); Adafruit 2011 charge C-rate; enclosure fit for the 2011 (~60 × 38.5 × 8.5 mm — see row 53) + the side-edge power switch (8 × 2.8 mm, lever through a shell-side slot).
 - **Mounting holes:** layout-only (no net). **No test points** (owner decision 2026-09-25) — probe the existing caps and
   headers (SWD #13 / UART #14 carry 3V3 + GND).
 - **No DNP pads** (the flow places every part): the OSC_OUT series R is fitted as 0 Ω (#77); the optional VBUS TVS, I2C parallel
@@ -337,5 +339,5 @@ spare I2C bus except I2C3 — PA8/PB4, kept free as the escape bus — is consum
 - `../../gameboy/gameboy-pcb/BOM.md` — v1 (proven parts reused here).
 - `../../ice40-breakout/BOM.md` + `README.md` — iCE40 core/power + 8080 LCD reference.
 - `../../gameboy-v3/pcb/BOM.md` — sibling board; source of the shared feature parts (charger, buck-boost, IMU, haptics, LRA, PCA9555, BT830, battery, speaker).
-- Datasheets: `../../../cad/docs/` (STM32F411RE, iCE40UP5K, ILI9341, MAX98357A, LSM6DSOX, DRV2605L, Vybronics, BQ24074, TPS63021, PCA9555, BT830, W25Q128, CES-2704, MT3608 = C84817.pdf, KDS crystal = C57131.pdf, DT280QV10 panel, slide switch = C319012.pdf).
+- Datasheets: `../../../cad/docs/` (STM32F411RE, iCE40UP5K, ILI9341, MAX98357A, LSM6DSOX, DRV2605L, Vybronics, BQ24074, TPS63021, PCA9555, BT830, W25Q128, CES-2704, MT3608 = C84817.pdf, KDS crystal = C57131.pdf, DT280QV10 panel, side power switch MSK12C02-HB = C431541.pdf (drawing + pinout) + C431541-spec.pdf, AO3401A = C15127.pdf).
 - Adafruit 2090 Eagle schematics: `../../../cad/docs/adafruit-2090-cap-touch.sch` (original) + `-revD.sch` — source for the #15–#17 module facts (LDO, backlight, LITE/RD/RST circuits, JP1/JP2 pinouts).
