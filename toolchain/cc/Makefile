@@ -87,6 +87,13 @@ torture: $(BUILD)/cc
 	  test -f $(GCC_TAR) || { echo "torture: $(GCC_TAR) missing (fetch it via the os build)"; exit 1; }; \
 	  mkdir -p $(CTORTURE_WORK) && tar -xJf $(GCC_TAR) -C $(CTORTURE_WORK) gcc-13.3.0/gcc/testsuite/gcc.c-torture/execute; }
 	@CTORTURE_WORK=$(CTORTURE_WORK) GNU=$(abspath $(GNU)) python3 torture/run.py -j $$(nproc)
+# gcc.c-torture/compile (~1900 compile-only programs): the front end's coverage, scored where GCC compiles them.
+torture-compile: $(BUILD)/cc
+	@$(MAKE) -s -C ../as >/dev/null
+	@test -d $(CTORTURE_WORK)/gcc-13.3.0/gcc/testsuite/gcc.c-torture/compile || { \
+	  test -f $(GCC_TAR) || { echo "torture: $(GCC_TAR) missing (fetch it via the os build)"; exit 1; }; \
+	  mkdir -p $(CTORTURE_WORK) && tar -xJf $(GCC_TAR) -C $(CTORTURE_WORK) gcc-13.3.0/gcc/testsuite/gcc.c-torture/compile; }
+	@CTORTURE_WORK=$(CTORTURE_WORK) GNU=$(abspath $(GNU)) python3 torture/run.py --compile -j $$(nproc)
 
 clean:
 	rm -rf $(BUILD)
@@ -107,4 +114,4 @@ gnu-diff: $(BUILD)/cc
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
 	@GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/gnu_diff.sh
 
-.PHONY: clean test torture abi-interop builtin-diff gnu-diff
+.PHONY: clean test torture torture-compile abi-interop builtin-diff gnu-diff
