@@ -93,6 +93,8 @@ extern int exec_stack;                       /* the code needs an executable sta
 extern int gnu89_inline;                     /* -fgnu89-inline: gnu89 `inline` semantics (see cc.c) */
 extern int soft_float;                       /* -mfloat-abi=soft: no floating code, base PCS attributes */
 extern int short_wchar, no_unaligned, unsafe_math, finite_math, softfp_abi, unwind_tables, function_sections, data_sections;   /* cc.c: target options (build attributes) */
+extern unsigned fixed_regs;                  /* cc.c: -ffixed-REG (r4-r10) */
+int fixed_reg_number(const char *s);         /* gen.c: a register name -> its number, else -1 */
 extern const char *opt_march, *opt_mfpu; extern char opt_olevel;
 int  arg_words(Type *t);                     /* words an argument of type t occupies (struct = ceil(size/4)) */
 int  is_sret(Type *t, int vfp);              /* returned via a caller-supplied buffer (struct > 4 bytes, not an HFA under VFP; vector > 16) */

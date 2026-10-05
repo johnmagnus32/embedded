@@ -26,6 +26,7 @@ int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; defa
 /* What GCC records in the object's build attributes (and our lexer's wchar_t width): the target options. */
 int unwind_tables = 0;    /* -funwind-tables: an EHABI unwind entry per function (.fnstart/.save/.setfp/.fnend) */
 int short_wchar = 0;      /* -fshort-wchar: wchar_t is 16-bit (L"" / L'' are halfwords; Tag_ABI_PCS_wchar_t 2) */
+unsigned fixed_regs;   /* -ffixed-REG: registers the code generator must leave alone (U-Boot: r9) */
 int function_sections = 0, data_sections = 0;   /* -ffunction-sections / -fdata-sections: one section per function / object
                                                  * (.text.f, .data.x, ...: GCC's names), so a --gc-sections link can drop each */
 const char *opt_march;    /* -march=armv7-a (NULL: -mcpu=cortex-a7, the target's own) */
@@ -67,6 +68,11 @@ static void *compile(void *unused) {
 		else if (!strcmp(argv[i], "-funwind-tables") || !strcmp(argv[i], "-fasynchronous-unwind-tables")) unwind_tables = 1;
 		else if (!strcmp(argv[i], "-fno-unwind-tables") || !strcmp(argv[i], "-fno-asynchronous-unwind-tables")) unwind_tables = 0;
 		else if (!strcmp(argv[i], "-fshort-wchar")) short_wchar = 1; else if (!strcmp(argv[i], "-fno-short-wchar")) short_wchar = 0;
+		else if (!strncmp(argv[i], "-ffixed-", 8)) {
+			int r = fixed_reg_number(argv[i] + 8);
+			if (r < 4 || r > 10) die("cc: %s: only r4-r10 can be left alone (the code generator works in r0-r3, ip, fp, lr)", argv[i]);
+			fixed_regs |= 1u << r;
+		}
 		else if (!strcmp(argv[i], "-ffunction-sections")) function_sections = 1; else if (!strcmp(argv[i], "-fno-function-sections")) function_sections = 0;
 		else if (!strcmp(argv[i], "-fdata-sections")) data_sections = 1; else if (!strcmp(argv[i], "-fno-data-sections")) data_sections = 0;
 		else if (!strcmp(argv[i], "-march=armv7-a")) opt_march = "armv7-a";

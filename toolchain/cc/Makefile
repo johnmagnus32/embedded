@@ -126,4 +126,10 @@ gnu-diff: $(BUILD)/cc
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
 	@GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/gnu_diff.sh
 
-.PHONY: clean test torture torture-compile abi-interop builtin-diff gnu-diff
+# The compiler's own headers (include/: stddef.h, stdint.h, limits.h, float.h, …) against GCC's — every constant and
+# type, freestanding and hosted (tests/headers-diff.sh).
+headers-diff: $(BUILD)/cc
+	@$(MAKE) -s -C ../cpp >/dev/null; $(MAKE) -s -C ../as >/dev/null
+	@GNU=$(abspath $(GNU)) T=$(abspath ..) ./tests/headers-diff.sh
+
+.PHONY: clean test torture torture-compile abi-interop builtin-diff gnu-diff headers-diff

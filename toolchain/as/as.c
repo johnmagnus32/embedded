@@ -790,26 +790,45 @@ static void do_directive(void) {
 		r = fold_msym(r);
 		if (r.sym < 0 && r.msym < 0 && !r.dot) syms[i].size = (u32)r.c;
 		else { dsize = grow(dsize, ndsize, &dsizecap, sizeof *dsize); dsize[ndsize].sym = i; dsize[ndsize].r = r; ndsize++; }
-	} else if (!strcmp(d, ".align") || !strcmp(d, ".p2align") || !strcmp(d, ".balign")) {
+	} else if (!strcmp(d, ".align") || !strncmp(d, ".p2align", 8) || !strncmp(d, ".balign", 7)) {
+		/* .align/.p2align N (a power of two) or .balign N (bytes) [, FILL [, MAX]] — GAS s_align: FILL a byte, or for the
+		 * w/l forms a 2/4-byte little-endian pattern repeated (the padding must be a multiple of it); without one, code
+		 * gets NOPs and data zeros. Padding over MAX: none. ARM's .align: no operand or 0 is 2 (TC_ALIGN_ZERO_IS_DEFAULT). */
+		int bytes_p = d[1] == 'b', base = bytes_p ? 7 : d[1] == 'p' ? 8 : 6;
+		if (d[base] && (d[base + 1] || !strchr("wl", d[base]))) die("unknown directive '%s'", d);
+		u32 fill_len = d[base] == 'w' ? 2 : d[base] == 'l' ? 4 : 1;
 		if (cursec < 0) return;
 		char a1[256] = "", a2[256] = "", a3[256] = "";
 		{ const char *q = cur_stmt; while (*q == ' ' || *q == '\t') q++; while (*q && *q != ' ' && *q != '\t') q++; split_args(q, a1, a2, a3); }
-		long a = a1[0] ? eval_const_expr(a1) : 2;
-		if (strcmp(d, ".balign") ? (a < 0 || a > 16) : (a < 0 || a > 65536 || (a & (a - 1)))) die("%s: bad alignment '%s'", d, toks[1]);
-		u32 bytes = (!strcmp(d, ".balign")) ? (u32)a : (1u << a);
+		long a = a1[0] ? eval_const_expr(a1) : 0;
+		if (base == 6 && a == 0) a = 2;
+		if (bytes_p ? (a < 0 || a > 65536 || (a & (a - 1))) : (a < 0 || a > 16)) die("%s: bad alignment '%s'", d, a1);
+		u32 bytes = bytes_p ? (a ? (u32)a : 1) : (1u << a);
+		int fill_p = a2[0] != 0; long fill = fill_p ? eval_const_expr(a2) : 0, max = a3[0] ? eval_const_expr(a3) : 0;
+		if (max < 0) die("%s: bad maximum '%s'", d, a3);
+		if ((fill_p || max) && secs[cursec].base >= 0) die("%s with a fill or a maximum in a subsection: unsupported", d);
 		if (secs[cursec].base >= 0 && secs[cursec].len > 0 && bytes > secs[cursec].pad_align) secs[cursec].pad_align = bytes;
 		if (secs[cursec].base >= 0 && secs[cursec].len == 0 && bytes > secs[cursec].first_align) secs[cursec].first_align = bytes, secs[cursec].first_align_mode = frag_mode(cursec);   /* padded where
 		                                                           * the subsection lands (merge_subsections) */
-		sec_align_at_least(bytes ? bytes : 1);
-		u32 pad = bytes ? (bytes - (u32)(secs[cursec].len % bytes)) % bytes : 0;
-		if (secs[cursec].type == SHT_NOBITS) { map_frag_data(); secs[cursec].len += pad; return; }
+		sec_align_at_least(bytes);
+		if (bytes == 1) return;   /* (GAS: no frag) */
+		u32 pad = (bytes - (u32)(secs[cursec].len % bytes)) % bytes;
+		if (max && pad > (u32)max) pad = 0;
+		if (secs[cursec].type == SHT_NOBITS) { map_frag_data(); secs[cursec].len += pad; return; }   /* (a fill ignored) */
+		if (fill_p) {   /* a data alignment frag even in code (arm_init_frag: rs_align is $d) */
+			map_frag_data();
+			if (pad % fill_len) die("%s: alignment padding (%u bytes) not a multiple of %u", d, pad, fill_len);
+			for (u32 k = 0; k < pad; k++) { u8 b = (u8)((unsigned long)fill >> (8 * (k % fill_len))); emit(&b, 1); }
+			new_frag();
+			return;
+		}
 		int nb = nsym, fm = frag_mode(cursec);
 		if (secs[cursec].flags & SHF_EXECINSTR) map_to(fm ? MAP_THUMB : MAP_ARM, 0);   /* rs_align_code: the frag's code state at
 		                                                  * parse time (may add $d@0 + $a/$t), not an instruction's alignment */
 		else map_frag_data();
 		if (secs[cursec].base >= 0 && secs[cursec].len == 0 && secs[cursec].lead < 0)
 			for (int k = nb; k < nsym; k++) if (is_mapsym(k) && syms[k].sec == cursec) secs[cursec].lead = k;
-		if (secs[cursec].flags & SHF_EXECINSTR) code_pad(bytes, fm);
+		if (secs[cursec].flags & SHF_EXECINSTR) { if (pad) code_pad(bytes, fm); }
 		else for (u32 k = 0; k < pad; k++) { u8 zb = 0; emit(&zb, 1); }
 		new_frag();
 	} else if ((!strcmp(d, ".inst") && thumb_mode) || !strcmp(d, ".inst.n") || !strcmp(d, ".inst.w")) {

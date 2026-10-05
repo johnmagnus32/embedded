@@ -1055,9 +1055,12 @@ static int asm_regnum(const char *s) {   /* a pinned register var's name ("r7"/"
 	if (!strcmp(s, "fp")) return 11;
 	if (!strcmp(s, "ip")) return 12;
 	if (!strcmp(s, "pc")) return 15;
+	if (!strcmp(s, "sl")) return 10;
+	if (!strcmp(s, "sb")) return 9;
 	if (s[0] == 'r' && s[1]) { int n = atoi(s + 1); if (n >= 0 && n <= 15) return n; }
 	return -1;
 }
+int fixed_reg_number(const char *s) { return asm_regnum(s); }   /* (cc.c: -ffixed-REG) */
 static const char *asm_regname(int n) {   /* constant strings: safe to use twice in one printf */
 	static const char *const nm[16] = { "r0","r1","r2","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12","sp","lr","pc" };
 	if (n < 0 || n > 15) die("cc: bad register number %d", n);
@@ -1146,6 +1149,7 @@ static void gen_asm_ops(Node *n) {
 	}
 	#define ASM_VFP(i) (vfp[i] >= 0)
 	int hireg[16]; for (int i = 0; i < nops; i++) hireg[i] = -1;
+	unsigned pinned = used; used |= fixed_regs;   /* -ffixed-REG: never handed to an unpinned operand */
 	for (int i = 0; i < nops; i++) if (regof[i] >= -1 && !ASM_MEM(i) && !ASM_VFP(i) && is64(ops[i]->type)) {   /* 64-bit value: an EVEN/ODD pair (ldrexd/strexd need it) */
 		if (regof[i] >= 0) { hireg[i] = regof[i] + 1; used |= 1 << hireg[i]; continue; }   /* pinned: low reg given, high follows */
 		int lo = -1;
@@ -1167,7 +1171,9 @@ static void gen_asm_ops(Node *n) {
 	}
 	/* AAPCS: r4-r10 are callee-saved. Our stack-machine code never keeps values in them, but GCC-built callers
 	 * (the rest of the kernel) do, so any we hand to the asm block must be restored afterwards. */
-	char csave[48] = ""; for (int r = 4; r <= 10; r++) if ((used | n->asm_clobber) & (1 << r)) {   /* allocated OR clobbered callee-saved */ if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
+	used &= ~fixed_regs | pinned;
+	/* (a -ffixed register is the program's — U-Boot's r9 gd pointer: what an asm writes there must stay) */
+	char csave[48] = ""; for (int r = 4; r <= 10; r++) if (((used | n->asm_clobber) & ~fixed_regs) & (1 << r)) {   /* allocated OR clobbered callee-saved */ if (csave[0]) strcat(csave, ", "); strcat(csave, asm_regname(r)); }
 	if (csave[0]) fprintf(o, "\tpush {%s}\n", csave);
 	/* an "m" operand references memory: hold its ADDRESS in the reg and substitute "[reg]" */
 	for (int i = 0; i < nops; i++) if (regof[i] >= 0) snprintf(subst[i], sizeof subst[i], ASM_MEM(i) ? "[%s]" : "%s", asm_regname(regof[i]));

@@ -32,10 +32,14 @@ extern int bsymbolic;           /* -Bsymbolic: a .so's own definitions bind loca
 extern const char *interp_path; /* --dynamic-linker (default /lib/ld.so.1) */
 extern int stack_override;      /* -z [no]execstack: PT_GNU_STACK flags (0 = decide from the inputs' .note.GNU-stack) */
 extern int norelro;             /* -z norelro: no PT_GNU_RELRO */
+extern int combreloc;           /* -z combreloc (default): one sorted .rel.dyn; nocombreloc: a .rel<section> each */
+extern int ztext;               /* -z text: a text relocation (dynamic relocation in read-only code) is an error */
 extern int warn_rwx;            /* warn about a read-write-execute PT_LOAD */
 extern int orphan_mode;         /* --orphan-handling: 0 place, 1 discard, 2 warn, 3 error */
 extern int strip_all;           /* -s / --strip-all: no .symtab */
 extern int no_undefined;        /* --no-undefined / -z defs: a .so's unresolved references are errors too */
+extern const char **libdirs; extern int nlibdir, script_ndirs;   /* -L dirs; those before the -T (script + INCLUDE search) */
+char *script_find(const char *name);            /* script.c: a script's text — as named, else in those dirs */
 extern const char **defsyms; extern int ndefsym;   /* --defsym SYM=EXPR: script assignments ahead of the script */
 extern const char *build_id_style;                 /* --build-id[=STYLE] (buildid.c); NULL: none */
 u32  build_id_size(void);                          /* its descriptor's bytes (0: no note) */

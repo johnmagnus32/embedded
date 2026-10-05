@@ -867,8 +867,8 @@ static Type *enum_decl(void) {
 /* ---- file-scope objects: globals + string literals ----------------------------------------------- */
 Gvar *globals; static Gvar *gtail; static int str_id;
 /* File-scope register variables (`register T x asm("rN");`) — x aliases a hard register everywhere. */
-static struct { char name[IDMAX]; char reg[8]; } gregs[16]; static int ngregs;
-static const char *greg_find(const char *name) { for (int i = 0; i < ngregs; i++) if (!strcmp(gregs[i].name, name)) return gregs[i].reg; return NULL; }
+static struct { char name[IDMAX]; char reg[8]; Type *type; } gregs[16]; static int ngregs;
+static int greg_index(const char *name) { for (int i = 0; i < ngregs; i++) if (!strcmp(gregs[i].name, name)) return i; return -1; }
 static StrMap global_map;                                /* name -> its Gvar (strings and file-scope asm have none) */
 static Gvar *add_global(void) { Gvar *g = calloc(1, sizeof *g); if (gtail) gtail->next = g; else globals = g; gtail = g; return g; }
 static Gvar *new_global(const char *name) { Gvar *g = add_global(); idcpy(g->name, name); strmap_put(&global_map, g->name, g); return g; }
@@ -1644,6 +1644,13 @@ static Node *builtin_lower(char *name) {
 			Node hd = {0}, **t = &hd.next, *v = bind(&t, NULL, e); *t = unary(ND_EXPRSTMT, h);
 			return stmtexpr_of(hd.next, ref(v));
 		}
+		if (!strcmp(name, "__builtin_assume_aligned")) {   /* (p, align[, misalign]) -> p as a void *: a hint only */
+			expect("("); Node *e = assign(); Node hd = {0}, **t = &hd.next, *v = NULL;
+			while (consume(",")) { Node *h = assign(); int ok = 1; eval_try(h, &ok);   /* (constants, as GCC wants: nothing to run) */
+				if (!ok) { if (!v) v = bind(&t, NULL, e); *t = unary(ND_EXPRSTMT, h); t = &(*t)->next; } }
+			expect(")");
+			return cast_to(pointer_to(ty_char), v ? stmtexpr_of(hd.next, ref(v)) : e);   /* (void * is char * here) */
+		}
 		if (!strcmp(name, "__builtin_constant_p")) {   /* 1 iff the arg folds to an integer constant, or is a string literal (GCC) */
 			expect("("); KvSave ks = kv_arm(0); Node *e = assign(); kv_end(ks); expect(")");   /* (its operand isn't evaluated) */
 			if (e->kind == ND_GVAR && !strncmp(e->name, ".LSTR", 5)) return num(1);
@@ -1663,7 +1670,7 @@ static Node *builtin_lower(char *name) {
 			expect("("); char d[IDMAX]; Type *ta = declarator(declspec(NULL, NULL), d); expect(","); Type *tb = declarator(declspec(NULL, NULL), d); expect(")");
 			return num(types_match(ta, tb) ? 1 : 0);
 		}
-		{ const char *rg = greg_find(name); if (rg) { Node *n = node(ND_REGVAR); strncpy(n->reg, rg, 7); n->type = ty_uint; return n; } }   /* global register variable */
+		{ int gi = greg_index(name); if (gi >= 0) { Node *n = node(ND_REGVAR); strncpy(n->reg, gregs[gi].reg, 7); n->type = gregs[gi].type; return n; } }   /* global register variable (its declared type: U-Boot's gd_t *gd) */
 		if (!strcmp(name, "__builtin_offsetof")) {   /* constant byte offset of a member designator within a type */
 			expect("("); char d[IDMAX]; Type *t = declarator(declspec(NULL, NULL), d); expect(",");
 			long off = 0; char mn[IDMAX]; ident(mn);
@@ -3346,11 +3353,12 @@ static int proto_params(Type ***ptsp, int *np) {   /* *ptsp: a fresh array of th
 /* ---- functions ----------------------------------------------------------------------------------- */
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
 /* `register T x asm("rN")` at file scope (the `asm` consumed): a global register variable. */
-static void global_register(const char *name) {
+static void global_register(const char *name, Type *ty) {
 	expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind != TK_STR) die("parse: a register variable needs a register name (line %d)", tk->line);
 	tk = tk->next; expect(")");
 	if (ngregs == 16) die("parse: too many global register variables (line %d)", tk->line);
-	idcpy(gregs[ngregs].name, name); strncpy(gregs[ngregs].reg, s, 7); ngregs++;
+	if (ty->size != 4 || is_aggr(ty) || is_fp(ty)) die("parse: register variable %s: only a 32-bit integer or pointer fits a core register (line %d)", name, tk->line);
+	idcpy(gregs[ngregs].name, name); strncpy(gregs[ngregs].reg, s, 7); gregs[ngregs].type = ty; ngregs++;
 }
 /* The name + return type have been read; `params` is the parameter list — NULL: at the cursor; else one a grouped
  * declarator already passed (`void (*f(void))(float) {`: the cursor is at the body). */
@@ -4402,7 +4410,7 @@ Func *parse(Token *tok) {
 			Token *fparams = NULL;
 			if (is("asm")) {   /* an asm label (a symbol rename), or a global register variable's register */
 				tk = tk->next;
-				if (sc & SC_REGISTER) { global_register(name); if (!consume(",")) break; decl_attr = battr; ty = declarator(base, name); continue; }
+				if (sc & SC_REGISTER) { global_register(name, ty); if (!consume(",")) break; decl_attr = battr; ty = declarator(base, name); continue; }
 				asm_label_for(name);
 			}
 			if (ty->fn_ret && decl_fparams && (is("{") || (is_typename() && !is("__attribute__")))) { fparams = decl_fparams; ty = ty->fn_ret; }   /* a

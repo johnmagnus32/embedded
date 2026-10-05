@@ -19,8 +19,8 @@
  *                          to addresses mod the page size, as the ELF loader requires. SIZEOF_HEADERS depends on
  *                          the program-header count, so the layout reruns until that count is stable.
  *
- * Not modelled (each an error, never silently ignored): OVERLAY, PHDRS, VERSION, INCLUDE, GROUP/INPUT, data
- * statements (BYTE/LONG/…), FILL, EXCLUDE_FILE, forward references to later sections, relocatable output.
+ * Not modelled (each an error, never silently ignored): GROUP/INPUT, INSERT, CREATE_OBJECT_SYMBOLS, EXCLUDE_FILE,
+ * SORT_BY_ALIGNMENT/SORT_BY_INIT_PRIORITY/SORT_NONE, an ASSERT in an output section, compound assignments (+= -=).
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -46,17 +46,40 @@ static const char *script_name;
 static char **tok; static int ntok, tokcap;
 static int is_punct(char c) { return strchr("{}():;=+?,<>&|^%~!", c) != NULL; }   /* '*' '/' '-' are name chars:
                                                                                   * *(.text*), /DISCARD/, .note.GNU-stack */
-typedef struct { const char *b, *e; } Span;
-static Span *span; static int spancap;                 /* each token's source text (quotes included) */
+typedef struct { const char *b, *e; int file; } Span;
+static Span *span; static int spancap;                 /* each token's source text (quotes included); file: which
+                                                        * script text (the -T one 0, an INCLUDEd one 1, 2, …) */
+static int tok_file, nfile;
 static void push_tok(const char *b, int n) {
 	tok = grow(tok, ntok, &tokcap, sizeof *tok);
 	char *t = malloc(n + 1); memcpy(t, b, n); t[n] = 0; tok[ntok++] = t;
 }
-static void push_span(const char *b, const char *e) { span = grow(span, ntok - 1, &spancap, sizeof *span); span[ntok - 1] = (Span){ b, e }; }
+static void push_span(const char *b, const char *e) { span = grow(span, ntok - 1, &spancap, sizeof *span); span[ntok - 1] = (Span){ b, e, tok_file }; }
 static char *span_text(int lo, int hi) {   /* the source text of tokens [lo, hi) */
 	if (lo >= hi) return strdup("");
+	if (span[lo].file != span[hi - 1].file) die("linker script %s: an INCLUDE inside a VERSION block is not supported", script_name);
 	size_t n = (size_t)(span[hi - 1].e - span[lo].b); char *t = malloc(n + 1); memcpy(t, span[lo].b, n); t[n] = 0;
 	return t;
+}
+/* A script file by name: as given, else in the -L directories that came before the -T (GNU ld reads a -T script as it
+ * parses the command line; INCLUDE and -T search alike). NULL: not found. */
+char *script_find(const char *name) {
+	FILE *f = fopen(name, "rb"); char path[4096];
+	for (int d = 0; !f && name[0] != '/' && d < script_ndirs; d++) { snprintf(path, sizeof path, "%s/%s", libdirs[d], name); f = fopen(path, "rb"); name = f ? path : name; }
+	if (!f) return NULL;
+	fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+	char *text = malloc(n + 1); if (fread(text, 1, n, f) != (size_t)n) die("read %s failed", name);
+	text[n] = 0; fclose(f); return text;
+}
+static void tokenize(const char *s);
+static void include_file(const char *name) {   /* INCLUDE FILE: its tokens in place of the directive */
+	static int depth;
+	if (++depth > 32) die("linker script %s: INCLUDE nested over 32 deep (a loop?)", script_name);
+	char *text = script_find(name);
+	if (!text) die("linker script %s: INCLUDE %s: cannot find it (searched . and %d -L dir(s))", script_name, name, script_ndirs);
+	int saved = tok_file; tok_file = ++nfile;
+	tokenize(text);                                    /* (kept: tokens' spans point into it) */
+	tok_file = saved; depth--;
 }
 static void tokenize(const char *s) {
 	static const char *const two[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||", "+=", "-=", 0 };
@@ -69,6 +92,17 @@ static void tokenize(const char *s) {
 		if (is_punct(*s)) { push_tok(s, 1); push_span(s, s + 1); s++; continue; }
 		const char *b = s;
 		while (*s && !is_punct(*s) && *s != ' ' && *s != '\t' && *s != '\n' && *s != '\r' && *s != '"') s++;
+		if (s - b == 7 && !strncmp(b, "INCLUDE", 7)) {   /* INCLUDE FILE (anywhere: top level, MEMORY, SECTIONS, an output section) */
+			while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+			const char *f = s; char name[4096];
+			if (*s == '"') { f = ++s; while (*s && *s != '"') s++; }
+			else while (*s && !strchr(" \t\n\r;", *s)) s++;
+			if (s == f || s - f >= (long)sizeof name) die("linker script %s: INCLUDE: expected a file name", script_name);
+			memcpy(name, f, s - f); name[s - f] = 0;
+			if (*s == '"') s++;
+			include_file(name);
+			continue;
+		}
 		push_tok(b, (int)(s - b)); push_span(b, s);
 	}
 }
@@ -196,7 +230,7 @@ static void parse_memory(void) {
 	expect("}");
 }
 static void unsupported(const char *what) {
-	die("linker script %s: '%s' is not supported (subset: no OVERLAY/PHDRS/VERSION/INCLUDE/GROUP/data statements/FILL)", script_name, what);
+	die("linker script %s: '%s' is not supported", script_name, what);
 }
 /* One input spec: FILEGLOB ( SECGLOB... ) with SORT_BY_NAME(...) inside, or KEEP( that ) around it. */
 /* A section/file name pattern: the tokens that touch in the source, joined — GNU's lexer takes `___ksymtab+*`, `.text.*`
@@ -269,7 +303,7 @@ static void parse_outsec_body(Stmt *s, const char *name) {   /* `{ inputs and as
 			p += 2; if (!s->os) die("linker script %s: FILL in /DISCARD/", script_name);
 			parse_fill(s); expect(")"); continue;
 		}
-		if (is("CREATE_OBJECT_SYMBOLS") || is("INCLUDE") || is("ASSERT")) unsupported(peek(0));
+		if (is("CREATE_OBJECT_SYMBOLS") || is("ASSERT")) unsupported(peek(0));
 		parse_input(s);
 	}
 	expect("}");
@@ -390,7 +424,7 @@ static void parse_sections(void) {
 		if (at_assignment()) { parse_assignment(&new_stmt(S_ASSIGN)->a, 1); continue; }
 		if (is("ASSERT")) { parse_assert(); continue; }
 		if (is("OVERLAY")) { parse_overlay(); continue; }
-		if (is("INCLUDE") || is("INSERT")) unsupported(peek(0));
+		if (is("INSERT")) unsupported(peek(0));
 		parse_outsec();
 	}
 	expect("}");
@@ -437,10 +471,8 @@ static const char default_script[] =
 void script_read(const char *path) {
 	char *text;
 	if (path) {
-		FILE *f = fopen(path, "rb"); if (!f) die("cannot open linker script %s", path);
-		fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
-		text = malloc(n + 1); if (fread(text, 1, n, f) != (size_t)n) die("read %s failed", path);
-		text[n] = 0; fclose(f); script_name = path;
+		script_name = path;
+		text = script_find(path); if (!text) die("cannot open linker script %s (searched . and %d -L dir(s))", path, script_ndirs);
 	} else {
 		relro = !norelro && (shared || pie || nshlib);     /* a loader will apply it: a dynamic output */
 		text = malloc(sizeof default_script + 64); sprintf(text, default_script, load_base, relro ? ". = ALIGN(0x1000);" : "");
@@ -527,7 +559,7 @@ void layout_match(Obj *o) {
 
 /* An orphan, as GNU ld places it (ldelf_place_orphan): it joins the output section of its name; else a new one goes
  * after the statement GNU anchors its kind to — notes after .interp, NOBITS after .bss, TLS after .tdata, writable
- * data after .data, dynamic relocations after .rel.dyn, read-only data after .rodata, code after .text — even an empty
+ * data after .data, relocations where output_rel_find puts them, read-only data after .rodata, code after .text — even an empty
  * one, behind the orphans already put there; with no such statement, after the last non-empty output section whose
  * flags match (lang_output_section_find_by_flags), else first. */
 enum { O_CONTENTS = 1, O_ALLOC = 2, O_LOAD = 4, O_READONLY = 8, O_CODE = 16, O_TLS = 32 };
@@ -544,7 +576,7 @@ static int stmt_bflags(const Stmt *s) {   /* its inputs' (the first one's, as a 
 	for (int k = 0; k < s->nitem; k++) if (s->items[k].nin) return sec_bflags(&s->items[k].in[0].obj->sh[s->items[k].in[0].shndx]);
 	return -1;
 }
-static const char *const anchor_name[] = { ".interp", ".bss", ".tdata", ".data", ".rel.dyn", ".rodata", ".text" };
+static const char *const anchor_name[] = { ".interp", ".bss", ".tdata", ".data", NULL /* rel_after */, ".rodata", ".text" };
 static const char *anchor_last[7];   /* the orphan last put after each anchor (by name: statements move) */
 static int stmt_named(const char *n) { for (int i = 0; i < nst; i++) if (st[i].kind == S_OUTSEC && !st[i].discard && !strcmp(st[i].os->name, n)) return i; return -1; }
 static int by_flags(int f) {   /* lang_output_section_find_by_flags: the last statement with these flags, then looser */
@@ -560,16 +592,38 @@ static int by_flags(int f) {   /* lang_output_section_find_by_flags: the last st
 	for (int i = 0; i < nst; i++) { if (st[i].kind != S_OUTSEC || st[i].discard) continue; int g = stmt_bflags(&st[i]); if (g >= 0 && !((g ^ f) & m)) found = i; }
 	return found;
 }
+/* GNU output_rel_find: where a relocation section orphan goes with no anchor yet — a dynamic one (-z combreloc: a
+ * .rel.dyn) before every other .rel statement, after the last allocated (read-only first) one ahead of them; another
+ * after the last .rel statement short of .rel.plt (allocated first), else the same fallbacks. */
+static int rel_after(int isdyn) {
+	int last = -1, last_alloc = -1, last_ro_alloc = -1, last_rel = -1, last_rel_alloc = -1;
+	for (int i = 0; i < nst; i++) {
+		if (st[i].kind != S_OUTSEC || st[i].discard) continue;
+		const char *n = st[i].os->name; int g = stmt_bflags(&st[i]);
+		if (!strncmp(n, ".rel", 4)) {
+			int lookrela = n[4] == 'a';
+			if (isdyn || !strcmp(n + 4 + lookrela, ".plt")) break;
+			if (!lookrela || last_rel < 0) last_rel = i;
+			if ((!lookrela || last_rel_alloc < 0) && g >= 0 && (g & O_ALLOC)) last_rel_alloc = i;
+		}
+		last = i;
+		if (g >= 0 && (g & O_ALLOC)) { last_alloc = i; if (g & O_READONLY) last_ro_alloc = i; }
+	}
+	return last_rel_alloc >= 0 ? last_rel_alloc : last_rel >= 0 ? last_rel : last_ro_alloc >= 0 ? last_ro_alloc : last_alloc >= 0 ? last_alloc : last;
+}
 static void place_orphan(Obj *o, int j) {
 	const char *name = sec_name(o, j);
+	const Elf32_Shdr *h = &o->sh[j];
+	int isdyn = combreloc && h->sh_type == SHT_REL && (h->sh_flags & SHF_ALLOC);
+	if (isdyn) name = ".rel.dyn";                       /* (GNU: every dynamic relocation orphan joins one .rel.dyn) */
 	int at = stmt_named(name);
 	if (at < 0) {
-		const Elf32_Shdr *h = &o->sh[j]; int f = sec_bflags(h), a;
+		int f = sec_bflags(h), a;
 		a = (f & O_LOAD) && h->sh_type == 7 /* NOTE */ ? 0 : !(f & (O_LOAD | O_CONTENTS | O_TLS)) ? 1 : f & O_TLS ? 2 : !(f & O_READONLY) ? 3
 		  : (f & O_LOAD) && h->sh_type == SHT_REL ? 4 : !(f & O_CODE) ? 5 : 6;
 		int after = anchor_last[a] ? stmt_named(anchor_last[a]) : -1;
-		if (after < 0) after = stmt_named(anchor_name[a]);
-		if (after < 0) after = by_flags(f);
+		if (after < 0) after = a == 4 ? rel_after(isdyn) : stmt_named(anchor_name[a]);
+		if (after < 0 && a != 4) after = by_flags(f);
 		at = after + 1;                                 /* (none: first) */
 		new_stmt(S_OUTSEC);                             /* make room, then shift the tail down by one */
 		memmove(&st[at + 1], &st[at], (nst - 1 - at) * sizeof *st);
@@ -879,6 +933,8 @@ static void build_segments_phdrs(void) {
 		segs = grow(segs, nseg, &segcap, sizeof *segs); segs[nseg] = (Seg){ 0 }; seg_of[d] = nseg++;
 	}
 	int *used = calloc(nseg + 1, sizeof *used);
+	for (int i = 0; i < nst; i++)   /* sections before the first `:phdr` take ITS headers (GNU lang_record_phdrs) */
+		if (st[i].kind == S_OUTSEC && !st[i].discard && st[i].nphname) { cur = phmask_of(&st[i]); break; }
 	for (int i = 0; i < nst; i++) {
 		if (st[i].kind != S_OUTSEC || st[i].discard) continue;
 		if (st[i].nphname) cur = phmask_of(&st[i]);

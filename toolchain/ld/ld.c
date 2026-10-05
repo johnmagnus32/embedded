@@ -416,6 +416,10 @@ static void z_option(const char *k) {
 	else if (!strcmp(k, "norelro")) norelro = 1;
 	else if (!strcmp(k, "now")) ;
 	else if (!strcmp(k, "defs")) no_undefined = 1;                        /* our loader always binds at startup (eager) */
+	else if (!strcmp(k, "combreloc")) combreloc = 1;
+	else if (!strcmp(k, "nocombreloc")) combreloc = 0;
+	else if (!strcmp(k, "text")) ztext = 1;
+	else if (!strcmp(k, "notext") || !strcmp(k, "textoff")) ztext = 0;
 	else if (!strcmp(k, "noexecstack")) stack_override = PF_R | PF_W;
 	else if (!strcmp(k, "execstack")) stack_override = PF_R | PF_W | PF_X;
 	else if (!strncmp(k, "max-page-size=", 14) || !strncmp(k, "common-page-size=", 17)) {
@@ -423,20 +427,22 @@ static void z_option(const char *k) {
 	} else die("unsupported -z %s", k);
 }
 
+const char **libdirs; int nlibdir;                     /* -L, in order */
+int script_ndirs;                                       /* the -L dirs before the -T (a script searches those) */
 int main(int argc, char **argv) {
 	const char *out = "a.out", *script_path = NULL, *map_path = NULL;
 	/* Inputs are processed in command-line order once every option is read (-L applies to every -l, wherever it
 	 * appears, as in GNU ld): a file, or -l<name> searched per -L dir as lib<name>.so then lib<name>.a — .a only
 	 * under -Bstatic/-static. */
 	struct { const char *name; int lib, bstatic, whole; } *in = NULL; int nin = 0, incap = 0;
-	const char **libdirs = NULL; int nlibdir = 0, dircap = 0;
+	int dircap = 0;
 	int ttext = 0, bstatic = 0, relocatable = 0, whole = 0, version = 0;
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "-o") && i + 1 < argc) out = argv[++i];
-		else if ((!strcmp(a, "-T") || !strcmp(a, "--script")) && i + 1 < argc) script_path = argv[++i];
-		else if (!strncmp(a, "--script=", 9)) script_path = a + 9;
-		else if (!strncmp(a, "-T", 2) && a[2] && strncmp(a, "-Ttext", 6) && strncmp(a, "-Tdata", 6) && strncmp(a, "-Tbss", 5)) script_path = a + 2;
+		else if ((!strcmp(a, "-T") || !strcmp(a, "--script")) && i + 1 < argc) script_path = argv[++i], script_ndirs = nlibdir;
+		else if (!strncmp(a, "--script=", 9)) script_path = a + 9, script_ndirs = nlibdir;
+		else if (!strncmp(a, "-T", 2) && a[2] && strncmp(a, "-Ttext", 6) && strncmp(a, "-Tdata", 6) && strncmp(a, "-Tbss", 5)) script_path = a + 2, script_ndirs = nlibdir;
 		else if (!strcmp(a, "-S") || !strcmp(a, "--strip-debug")) ;   /* debug sections never reach our output */
 		else if (!strcmp(a, "-s") || !strcmp(a, "--strip-all")) strip_all = 1;
 		else if (!strcmp(a, "-Ttext") && i + 1 < argc) { load_base = strtoul(argv[++i], NULL, 0); ttext = 1; }

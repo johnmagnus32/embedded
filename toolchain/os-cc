@@ -21,6 +21,9 @@
 # The real tools are installed BESIDE this script (os-cpp/os-cc1/os-as/os-ld); a link ends with our compiler runtime
 # ../lib/libosrt.a (toolchain/rt — the libgcc analogue), exactly as gcc appends libgcc.
 #
+# The compiler's own headers (cc/include, installed as ../lib/os-cc/include) come after the -I dirs, before a sysroot's
+# (-print-file-name=include names them, as gcc's).
+#
 # A SYSROOT (--sysroot=DIR, else ../sysroot beside bin/ when it exists — gcc's --with-sysroot) is a C library to build
 # against, as gcc uses one: its headers after the -I dirs (-isystem DIR/usr/include, unless -nostdinc), and a program
 # link gets its start files (crt1.o crti.o ... crtn.o; Scrt1.o for -pie, none for -shared) unless -nostdlib /
@@ -31,6 +34,8 @@ set -eo pipefail
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 CPP="${here}/os-cpp"; CC1="${here}/os-cc1"; AS="${here}/os-as"; LD="${here}/os-ld"
 RTLIB="${here}/../lib/libosrt.a"   # the compiler runtime (64-bit division, int64<->FP, ...)
+CCINC="${here}/../lib/os-cc/include"; [ -d "${CCINC}" ] || CCINC="${here}/cc/include"   # the compiler's own headers (stddef.h,
+                                   # stdarg.h, stdint.h, …: gcc's include/), installed beside lib/; in the source tree, cc/include
 TRIPLE=arm-os-custom-linux-gnueabihf
 GCCVER=13.3.0                      # the GCC we are interchangeable with (cpp's predefines say __GNUC__ 13)
 
@@ -44,6 +49,7 @@ cppargs=()           # -> cpp: include paths, macros, and the flags that shape t
 cc1args=()           # -> cc1: code generation (float ABI, target, PIC, unwind tables, ...)
 asargs=()            # -> as: -Wa,... and the target flags gcc hands its assembler
 deps=()              # -> cpp: -MD/-MMD/-MF/-MT/-MP
+depsonly=""          # -M/-MM: only the dependency rule
 depmode=""; depfile=""; deptarget=""
 inputs=()            # sources: "lang:path"
 linkobjs=()          # .o/.a already built, passed straight to ld
@@ -89,11 +95,12 @@ while [ $# -gt 0 ]; do
     -fmacro-prefix-map=*|-ffile-prefix-map=*) cppargs+=("$a") ;;
     -dM) cppargs+=("$a") ;;
     -C) cppargs+=("$a") ;;                             # (our cpp drops comments either way: the same tokens)
-    -CC|-H|-M|-MM|-MG) unsupported "$a" ;;
+    -CC|-H|-MG) unsupported "$a" ;;
     # dependency output: -Wp,-MD,file / -Wp,-MMD,file (Kbuild), or -MD/-MMD [-MF file] [-MT target] [-MP]
     -Wp,-MD,*|-Wp,-MMD,*) w="${a#-Wp,}"; depmode="${w%%,*}"; depfile="${w#*,}" ;;
     -Wp,*) unsupported "$a" "only -Wp,-MD,<file> / -Wp,-MMD,<file>" ;;
     -MD|-MMD) depmode="$a" ;;
+    -M|-MM) depmode="-M${a#-M}D"; depsonly=1; mode=preprocess ;;   # deps only (gcc -M: implies -E; the rule, not the text)
     -MF) need "$@"; depfile="$2"; shift ;;
     -MT|-MQ) need "$@"; deptarget="$2"; shift ;;
     -MP) deps+=(-MP) ;;
@@ -129,6 +136,7 @@ while [ $# -gt 0 ]; do
     -fno-gnu89-inline) gnu89=0 ;;
     -fno-stack-protector) ;;                           # no canaries: what we do
     -ffunction-sections|-fdata-sections|-fno-function-sections|-fno-data-sections) cc1args+=("$a") ;;   # a section per function / object
+    -ffixed-*) cc1args+=("$a") ;;                       # a register the code leaves alone (U-Boot's r9: gd)
     -fno-common) ;;                                    # tentative definitions are definitions: what we do
     -fwrapv|-fno-strict-overflow) ;;                   # signed overflow wraps: what our cc does
     # ---- optimizer latitude / diagnostics (no effect on our output) ----------------------------------------------
@@ -182,11 +190,14 @@ case "${query}" in
   machine) echo "${TRIPLE}"; exit 0 ;;
   dumpversion) echo "${GCCVER%%.*}"; exit 0 ;;
   fullversion) echo "${GCCVER}"; exit 0 ;;
-  file:*) n="${query#file:}"; [ "${n}" = libgcc.a ] || [ "${n}" = libosrt.a ] && { echo "$(readlink -f "${RTLIB}")"; exit 0; }; echo "${n}"; exit 0 ;;   # (gcc: the name itself when not found)
+  file:*) n="${query#file:}"; [ "${n}" = libgcc.a ] || [ "${n}" = libosrt.a ] && { echo "$(readlink -f "${RTLIB}")"; exit 0; }
+          [ "${n}" = include ] && [ -d "${CCINC}" ] && { readlink -f "${CCINC}"; exit 0; }   # (Kbuild/U-Boot: -nostdinc -isystem this)
+          echo "${n}"; exit 0 ;;   # (gcc: the name itself when not found)
   prog:*) n="${query#prog:}"; case "${n}" in as) echo "${AS}" ;; ld) echo "${LD}" ;; cpp) echo "${CPP}" ;; *) echo "${n}" ;; esac; exit 0 ;;
   libgcc) echo "$(readlink -f "${RTLIB}")"; exit 0 ;;
 esac
 
+[ -n "${nostdinc}" ] || [ ! -d "${CCINC}" ] || cppargs+=(-isystem "${CCINC}")   # the compiler's headers, then the C library's: gcc's order
 if [ -n "${sysroot}" ]; then
   [ -d "${sysroot}" ] || die "--sysroot ${sysroot}: not a directory"
   [ -n "${nostdinc}" ] || cppargs+=(-isystem "${sysroot}/usr/include")   # (after every -I: gcc's order)
@@ -201,8 +212,17 @@ tmp="$(mktemp -d)"; trap 'rm -rf "${tmp}"' EXIT
 depflags() {   # depflags <object>
   [ -n "${depmode}" ] || return 0
   local f="${depfile}"
+  if [ -n "${depsonly}" ]; then   # -M/-MM: cpp's own default target (the source's .o) unless -MT; the rule to a file of ours
+    [ -n "${f}" ] || f="${tmp}/deps.d"
+    printf '%s\n' "${depmode}" -MF "${f}" "${deps[@]}"; [ -n "${deptarget}" ] && printf '%s\n' -MT "${deptarget}"
+    return 0
+  fi
   [ -n "${f}" ] || { f="${1%.o}.d"; }
   printf '%s\n' "${depmode}" -MF "${f}" -MT "${deptarget:-$1}" "${deps[@]}"
+}
+deps_out() {   # deps_out <dst>: -M/-MM's rule — to stdout (or -o), unless -MF named its file
+  [ -n "${depfile}" ] && return 0
+  if [ "$1" = - ]; then cat "${tmp}/deps.d"; else cp "${tmp}/deps.d" "$1"; fi
 }
 
 # compile_one <lang:src> <dst|-> : one source through cpp[/cc]/as, honoring the stop mode (-E/-S: dst "-" = stdout)
@@ -220,6 +240,7 @@ compile_one() {
   case "${kind}" in
     c)
       "${CPP}" "${cppargs[@]}" "${df[@]}" -o "${i}" "${src}"
+      [ -n "${depsonly}" ] && { deps_out "${dst}"; return 0; }
       [ "${mode}" = preprocess ] && { if [ "${dst}" = - ]; then cat "${i}"; else cp "${i}" "${dst}"; fi; return 0; }
       "${CC1}" "${cc1args[@]}" -o "${s}" "${i}"
       ;;
@@ -229,6 +250,7 @@ compile_one() {
       ;;
     assembler-with-cpp)
       "${CPP}" -x assembler-with-cpp "${cppargs[@]}" "${df[@]}" -o "${s}" "${src}"
+      [ -n "${depsonly}" ] && { deps_out "${dst}"; return 0; }
       [ "${mode}" = preprocess ] && { if [ "${dst}" = - ]; then cat "${s}"; else cp "${s}" "${dst}"; fi; return 0; }
       ;;
     assembler)

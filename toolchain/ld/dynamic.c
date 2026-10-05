@@ -52,10 +52,13 @@ typedef struct { const char *name; int lib, is_data, canon; u32 copy_off, copy_s
  * module's (module, 0) pair (G_TLS_LDM). dyn = the loader fills it; ext = through the symbol (another module's). */
 enum { G_ADDR, G_TLS_IE, G_TLS_GD, G_TLS_LDM };
 typedef struct { const char *name; Obj *obj; int symidx, dyn, what, part, ext; } Got;
-/* A dynamic relocation at (obj's section shndx + off) against symbol `sym` (NULL: none, e.g. RELATIVE). */
-typedef struct { Obj *obj; int shndx; u32 off, type; const char *sym; } DynRel;
+/* A dynamic relocation at (obj's section shndx + off) against symbol `sym` (NULL: none, e.g. RELATIVE); seq: the
+ * order the scan made it (-z nocombreloc writes them in it). */
+typedef struct { Obj *obj; int shndx; u32 off, type; const char *sym; int seq; } DynRel;
 typedef struct { Obj *obj; int symidx; u32 stroff; } Export;
-typedef struct { u32 tag; int what, sec; u32 val; } DynEnt;   /* what: 0 = val, 1 = sec's address, 2 = sec's size */
+typedef struct { u32 tag; int what, sec; u32 val; } DynEnt;   /* what: 0 = val, 1 = sec's address, 2 = sec's size,
+                                                                * 3/4 = the lowest address / total size of the
+                                                                * output's dynamic relocation sections */
 
 static Import *imports; static int nimport, impcap; static StrMap import_map;
 static Got *got;        static int ngot, gotcap;      static StrMap got_map;
@@ -66,6 +69,21 @@ static StrMap dynsym_map;                                /* name -> its .dynsym 
 static DynEnt *dyn;     static int ndyn, dyncap;
 static Strtab dynstr; static u32 *needed_off, soname_off;
 static u32 dynbss_size;
+int combreloc = 1;                                       /* -z combreloc (GNU's default) / nocombreloc */
+int ztext;                                               /* -z text: a dynamic relocation in read-only code is an error */
+static int textrel;                                      /* one is: DT_TEXTREL */
+static int nrelseq;
+/* -z nocombreloc (GNU): no one sorted .rel.dyn — each section's dynamic relocations in a .rel<its name> of their own
+ * (a GOT slot's in .rel.got, a copy's in .rel.bss), in the order they were made, placed by the script or as orphans;
+ * DT_REL/DT_RELSZ span them all, and there's no DT_RELCOUNT. They're linker_obj's sections from L_NSEC on. */
+typedef struct { const char *name; DynRel *v; int n, cap; } RelSec;
+static RelSec *relsecs; static int nrelsec, relseccap;
+static Strtab lnames;                                    /* linker_obj's section names */
+/* The GOT's header (GNU's ARM got_header_size): .got.plt opens with three words — the link-time address of _DYNAMIC
+ * (0 without one), and two the loader may use — wherever GNU creates a GOT: a dynamic output (its dynamic sections
+ * make one), or any GOT reference; _GLOBAL_OFFSET_TABLE_ names its start. PLT slot k follows it at 12 + 4k. */
+#define GOT_HEADER 12u
+static int got_header, gotsym_ref;
 
 static int dynamic_image(void) { return pie || shared; }   /* loaded at a bias: its absolute words need fixups */
 
@@ -75,13 +93,15 @@ void dyn_init(void) {
 	o->sh = calloc(L_NSEC, sizeof *o->sh);
 	o->sec_vaddr = calloc(L_NSEC, sizeof(u32)); o->sec_lma = calloc(L_NSEC, sizeof(u32));
 	o->sec_out = calloc(L_NSEC, sizeof *o->sec_out);
-	Strtab names = {0}; str_add(&names, "");
+	str_add(&lnames, "");
 	for (int i = 1; i < L_NSEC; i++)
-		o->sh[i] = (Elf32_Shdr){ .sh_name = str_add(&names, L_def[i].name), .sh_type = L_def[i].type, .sh_flags = L_def[i].flags,
+		o->sh[i] = (Elf32_Shdr){ .sh_name = str_add(&lnames, L_def[i].name), .sh_type = L_def[i].type, .sh_flags = L_def[i].flags,
 		    .sh_addralign = L_def[i].align, .sh_entsize = L_def[i].entsize, .sh_link = L_def[i].link, .sh_info = L_def[i].info };
-	o->shstr = names.b;
+	o->shstr = lnames.b;
 	GSym *d = gsym_find("_DYNAMIC");                     /* linker-provided: the .dynamic array, if there is one */
 	if (d && !d->defined) d->linker = 1;
+	GSym *g = gsym_find("_GLOBAL_OFFSET_TABLE_");        /* ... and the GOT (a reference creates one) */
+	if (g && !g->defined && !g->linker) g->linker = 1, gotsym_ref = 1;
 }
 
 /* ---- provider exports ------------------------------------------------------------------------------ */
@@ -107,14 +127,17 @@ static int import_of(const char *name, int lib) {
 }
 static void add_rel(DynRel **v, int *n, int *cap, Obj *o, int shndx, u32 off, u32 type, const char *sym) {
 	*v = grow(*v, *n, cap, sizeof **v);
-	(*v)[(*n)++] = (DynRel){ o, shndx, off, type, sym };
+	(*v)[(*n)++] = (DynRel){ o, shndx, off, type, sym, nrelseq++ };
 }
-/* A runtime fixup of a word inside an input section: that section must be writable. We emit no DT_TEXTREL (and
- * our loader maps code read-only), so a fixup in code is a link error, not a crash at load time — as in lld. */
+/* A runtime fixup of a word inside an input section. In a read-only one it's a TEXT RELOCATION: the loader must make
+ * the code writable to apply it (DT_TEXTREL) — GNU's default (-z notext) for ARM; -z text makes it an error. (Which
+ * sections are read-only is decided by the output section, GNU's rule: dyn_fill checks the two agree.) */
 static void runtime_fixup(DynRel **v, int *n, int *cap, Obj *o, int t, u32 off, u32 type, const char *sym, const char *what) {
-	if (!(o->sh[t].sh_flags & SHF_WRITE))
-		die("%s: absolute reference to '%s' in read-only section %s needs a runtime fixup (a text relocation) — "
-		    "make it position-independent (-fPIC / PC-relative)", o->path, what, sec_name(o, t));
+	if (!(o->sh[t].sh_flags & SHF_WRITE)) {
+		if (ztext) die("%s: absolute reference to '%s' in read-only section %s needs a runtime fixup (a text relocation; "
+		               "-z text) — make it position-independent (-fPIC / PC-relative)", o->path, what, sec_name(o, t));
+		textrel = 1;
+	}
 	add_rel(v, n, cap, o, t, off, type, sym);
 }
 static int import_if_external(const char *name) {        /* -1: not an import (defined here / undefined) */
@@ -138,7 +161,7 @@ static int plt_slot(const char *name) {                  /* the PLT entry callin
 	if (hit) return (int)hit - 1;
 	pltsym = grow(pltsym, nplt, &pltsymcap, sizeof *pltsym);
 	pltsym[nplt] = name; strmap_put(&plt_map, name, (void *)(long)(nplt + 1));
-	add_rel(&relplt, &nrelplt, &pltcap, linker_obj, L_GOTPLT, 4u * (u32)nplt, md_r_jump_slot, name);
+	add_rel(&relplt, &nrelplt, &pltcap, linker_obj, L_GOTPLT, GOT_HEADER + 4u * (u32)nplt, md_r_jump_slot, name);
 	return nplt++;
 }
 
@@ -326,7 +349,7 @@ int dyn_target(Obj *o, int symidx, u32 type, u32 *S) {
 static void set_size(int sec, u32 size) { linker_obj->sh[sec].sh_size = size; }
 static void place_contents(void) {   /* the linker-made sections' bytes, one buffer */
 	u32 total = 0;
-	for (int i = 1; i < L_NSEC; i++) {
+	for (int i = 1; i < linker_obj->nsh; i++) {
 		Elf32_Shdr *s = &linker_obj->sh[i];
 		if (s->sh_type == SHT_NOBITS) continue;
 		total = alignup(total, s->sh_addralign); s->sh_offset = total; total += s->sh_size;
@@ -364,11 +387,44 @@ static void collect_exports(void) {
 	}
 }
 
+static const char *relsec_name(const DynRel *r) {
+	if (r->obj == linker_obj) return r->shndx == L_GOT ? ".rel.got" : r->shndx == L_DYNBSS ? ".rel.bss" : NULL;
+	const char *n = sec_name(r->obj, r->shndx); char *b = malloc(strlen(n) + 5); sprintf(b, ".rel%s", n); return b;
+}
+static void split_relocs(void) {   /* -z nocombreloc: the dynamic relocations into a .rel<section> each, in scan order */
+	StrMap at = {0};
+	for (int a = 0, b = 0; a < nrelative || b < nsymrel; ) {
+		DynRel *r = b >= nsymrel || (a < nrelative && relative[a].seq < symrel[b].seq) ? &relative[a++] : &symrel[b++];
+		const char *nm = relsec_name(r);
+		if (!nm) die("internal: a dynamic relocation in linker section %s", sec_name(linker_obj, r->shndx));
+		long k = (long)strmap_get(&at, nm);
+		if (!k) {
+			relsecs = grow(relsecs, nrelsec, &relseccap, sizeof *relsecs);
+			relsecs[nrelsec] = (RelSec){ .name = nm }; strmap_put(&at, nm, (void *)(long)(k = ++nrelsec));
+		}
+		RelSec *g = &relsecs[k - 1];
+		g->v = grow(g->v, g->n, &g->cap, sizeof *g->v); g->v[g->n++] = *r;
+	}
+	Obj *o = linker_obj; int n = L_NSEC + nrelsec;
+	o->sh = realloc(o->sh, n * sizeof *o->sh);
+	o->sec_vaddr = realloc(o->sec_vaddr, n * sizeof(u32)); o->sec_lma = realloc(o->sec_lma, n * sizeof(u32));
+	o->sec_out = realloc(o->sec_out, n * sizeof *o->sec_out);
+	for (int k = 0; k < nrelsec; k++) {
+		int i = L_NSEC + k;
+		o->sh[i] = (Elf32_Shdr){ .sh_name = str_add(&lnames, relsecs[k].name), .sh_type = SHT_REL, .sh_flags = SHF_ALLOC,
+		    .sh_addralign = 4, .sh_entsize = sizeof(Elf32_Rel), .sh_link = L_DYNSYM, .sh_size = (u32)relsecs[k].n * sizeof(Elf32_Rel) };
+		o->sec_vaddr[i] = o->sec_lma[i] = 0; o->sec_out[i] = NULL;
+	}
+	o->nsh = n; o->shstr = lnames.b;
+}
+
 void dyn_size(void) {
 	int has_dynsym = shared || nimport;
 	int has_dynamic = dynamic_image() || nimport;
 	set_size(L_BUILDID, build_id_size() ? 16 + build_id_size() : 0);
+	got_header = has_dynamic || ngot || gotsym_ref;
 	if (!has_dynamic) {                                  /* a static image: only the GOT (filled with final addresses) */
+		set_size(L_GOTPLT, got_header ? GOT_HEADER : 0);
 		set_size(L_GOT, 4u * (u32)ngot);
 		place_contents();
 		return;
@@ -401,10 +457,11 @@ void dyn_size(void) {
 		dyn_add(DT_PLTGOT, 1, L_GOTPLT, 0); dyn_add(DT_PLTRELSZ, 2, L_RELPLT, 0);
 		dyn_add(DT_PLTREL, 0, 0, DT_REL);   dyn_add(DT_JMPREL, 1, L_RELPLT, 0);
 	}
-	if (nrelative + nsymrel) {
-		dyn_add(DT_REL, 1, L_RELDYN, 0);    dyn_add(DT_RELSZ, 2, L_RELDYN, 0);
-		dyn_add(DT_RELENT, 0, 0, sizeof(Elf32_Rel)); dyn_add(DT_RELCOUNT, 0, 0, (u32)nrelative);   /* RELATIVE entries lead */
-	}
+	if (nrelative + nsymrel && combreloc) { dyn_add(DT_REL, 1, L_RELDYN, 0); dyn_add(DT_RELSZ, 2, L_RELDYN, 0); }
+	if (nrelative + nsymrel && !combreloc) { dyn_add(DT_REL, 3, 0, 0); dyn_add(DT_RELSZ, 4, 0, 0); }
+	if (nrelative + nsymrel) dyn_add(DT_RELENT, 0, 0, sizeof(Elf32_Rel));
+	if (textrel) dyn_add(DT_TEXTREL, 0, 0, 0);
+	if (nrelative && combreloc) dyn_add(DT_RELCOUNT, 0, 0, (u32)nrelative);   /* RELATIVE entries lead (GNU: sorted) */
 	dyn_add(DT_NULL, 0, 0, 0);
 
 	if (nimport && !shared) set_size(L_INTERP, (u32)strlen(interp_path) + 1);
@@ -418,11 +475,12 @@ void dyn_size(void) {
 		set_size(L_VERDEF, (1u + (u32)nver) * 20 + naux * 8);   /* Elf32_Verdef 20 bytes, Elf32_Verdaux 8 */
 		linker_obj->sh[L_VERDEF].sh_info = 1u + (u32)nver;
 	}
-	set_size(L_RELDYN, (u32)(nrelative + nsymrel) * sizeof(Elf32_Rel));
+	if (combreloc) set_size(L_RELDYN, (u32)(nrelative + nsymrel) * sizeof(Elf32_Rel));
+	else split_relocs();
 	set_size(L_RELPLT, (u32)nrelplt * sizeof(Elf32_Rel));
 	set_size(L_PLT, (u32)nplt * md_plt_entsize);
 	set_size(L_DYNAMIC, (u32)ndyn * sizeof(Elf32_Dyn));
-	set_size(L_GOTPLT, 4u * (u32)nplt);
+	set_size(L_GOTPLT, GOT_HEADER + 4u * (u32)nplt);
 	set_size(L_GOT, 4u * (u32)ngot);
 	set_size(L_DYNBSS, dynbss_size);
 	place_contents();
@@ -457,7 +515,10 @@ void dyn_fill(void) {
 	if (linker_obj->sh[L_BUILDID].sh_size) build_id_note(sec_bytes(L_BUILDID), build_id_size());
 	for (int k = 0; k < nplt; k++)
 		md_plt_entry(sec_bytes(L_PLT) + md_plt_entsize * k, linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)k,
-		             linker_obj->sec_vaddr[L_GOTPLT] + 4u * (u32)k);
+		             linker_obj->sec_vaddr[L_GOTPLT] + GOT_HEADER + 4u * (u32)k);
+	if (got_header && linker_obj->sh[L_DYNAMIC].sh_size) wr32(sec_bytes(L_GOTPLT), linker_obj->sec_vaddr[L_DYNAMIC]);
+	GSym *g = gsym_find("_GLOBAL_OFFSET_TABLE_");
+	if (g && gotsym_ref) { g->defined = 1; g->vaddr = linker_obj->sec_vaddr[L_GOTPLT]; g->os = linker_obj->sec_out[L_GOTPLT]; }
 	for (int i = 0; i < ngot; i++) {                     /* a definition's address (loader adds the bias); a GLOB_DAT's 0 */
 		Got *g = &got[i]; u32 v = 0, a = 0;
 		if (g->what != G_ADDR && !g->ext && g->what != G_TLS_LDM) {   /* a TLS symbol this module defines: its template address */
@@ -472,8 +533,24 @@ void dyn_fill(void) {
 		else if (!g->dyn) { GSym *s = gsym_find(g->name); v = s && s->defined ? s->vaddr : 0; }
 		wr32(sec_bytes(L_GOT) + 4 * i, v);
 	}
-	put_rels(sec_bytes(L_RELDYN), relative, nrelative);
-	put_rels(sec_bytes(L_RELDYN) + 8 * nrelative, symrel, nsymrel);
+	if (combreloc) {
+		put_rels(sec_bytes(L_RELDYN), relative, nrelative);
+		put_rels(sec_bytes(L_RELDYN) + 8 * nrelative, symrel, nsymrel);
+	} else for (int k = 0; k < nrelsec; k++) put_rels(sec_bytes(L_NSEC + k), relsecs[k].v, relsecs[k].n);
+	int ro = 0;                                          /* GNU's DT_TEXTREL rule: a fixup in a read-only OUTPUT section */
+	for (int pass = 0; pass < 2; pass++) for (int i = 0; i < (pass ? nsymrel : nrelative); i++) {
+		DynRel *r = pass ? &symrel[i] : &relative[i]; OutSec *os = r->obj->sec_out[r->shndx];
+		if (os && os != &os_discard && !(os->flags & SHF_WRITE)) ro = 1;
+	}
+	if (ro != textrel) die("a runtime fixup in a read-only input section placed in a writable output section (or the "
+	                       "reverse): GNU decides DT_TEXTREL by the output section — unsupported");
+	u32 rel_lo = 0, rel_sz = 0; OutSec *pltos = nrelplt ? linker_obj->sec_out[L_RELPLT] : NULL;
+	for (int i = 0; i < noutsec; i++) {                  /* (GNU bfd_elf_final_link: every allocated SHT_REL but .rel.plt's) */
+		OutSec *os = outsecs[i];
+		if (os->type != SHT_REL || !(os->flags & SHF_ALLOC) || os == pltos || !os->index) continue;
+		if (!rel_sz || os->vaddr < rel_lo) rel_lo = os->vaddr;
+		rel_sz += os->size;
+	}
 	put_rels(sec_bytes(L_RELPLT), relplt, nrelplt);
 	if (linker_obj->sh[L_DYNSYM].sh_size) {
 		memcpy(sec_bytes(L_DYNSTR), dynstr.b, dynstr.len);
@@ -535,7 +612,8 @@ void dyn_fill(void) {
 		}
 	}
 	for (int i = 0; i < ndyn; i++) {
-		u32 v = dyn[i].what == 1 ? linker_obj->sec_vaddr[dyn[i].sec] : dyn[i].what == 2 ? linker_obj->sh[dyn[i].sec].sh_size : dyn[i].val;
+		u32 v = dyn[i].what == 1 ? linker_obj->sec_vaddr[dyn[i].sec] : dyn[i].what == 2 ? linker_obj->sh[dyn[i].sec].sh_size
+		      : dyn[i].what == 3 ? rel_lo : dyn[i].what == 4 ? rel_sz : dyn[i].val;
 		wr32(sec_bytes(L_DYNAMIC) + 8 * i, dyn[i].tag); wr32(sec_bytes(L_DYNAMIC) + 8 * i + 4, v);
 	}
 }

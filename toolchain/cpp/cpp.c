@@ -59,6 +59,11 @@ static Hide *hide_union(Hide *a, Hide *b) {
 	for (; b; b = b->next) if (!hide_has(a, b->name)) a = hide_add(a, b->name);
 	return a;
 }
+static Hide *hide_inter(Hide *a, Hide *b) {
+	Hide *r = NULL;
+	for (; a; a = a->next) if (hide_has(b, a->name)) r = hide_add(r, a->name);
+	return r;
+}
 
 static Tok *newtok(Kind k, const char *s, size_t n) {
 	Tok *t = calloc(1, sizeof *t);
@@ -305,8 +310,9 @@ static Tok *copy_body(Tok *body, Hide *hs) {
 
 /* ------------------------------------------------------------------ function-macro args ----------- */
 /* Read one macro invocation's arguments starting just after the name. `tok` points at "("; on return it
- * points just past the matching ")". args[i] is a NUL(EOF)-terminated token list for the i-th argument. */
-static int read_args(Tok **tok, Tok **args, int max, int variadic, int nparams) {
+ * points just past the matching ")", and *rparen at it. args[i] is a NUL(EOF)-terminated token list for the i-th
+ * argument. */
+static int read_args(Tok **tok, Tok **rparen, Tok **args, int max, int variadic, int nparams) {
 	Tok *t = (*tok)->next;   /* skip "(" */
 	int n = 0, depth = 0;
 	Tok head = {0}, *cur = &head;
@@ -327,7 +333,7 @@ static int read_args(Tok **tok, Tok **args, int max, int variadic, int nparams) 
 	cur->next = newtok(TEOF, "", 0);                                    /* the final argument */
 	if (n < max) args[n] = head.next;
 	n++;
-	*tok = t->next;   /* past ")" */
+	*rparen = t; *tok = t->next;   /* past ")" */
 	return n;
 }
 
@@ -539,17 +545,18 @@ static Tok *expand(Tok *tok) {
 				continue;
 			}
 			if (m && m->func && tok->next && tok->next->text[0] == '(' && !tok->next->text[1]) {   /* function-like */
-				Tok *args[64]; Tok *open = tok->next; (void)open;
-				Tok *after = tok; Tok *paren = tok->next;
-				int nargs = read_args(&paren, args, 64, m->variadic, m->nparams);
+				Tok *args[64], *paren = tok->next, *rparen;
+				int nargs = read_args(&paren, &rparen, args, 64, m->variadic, m->nparams);
 				if (nargs > 64) die("macro \"%s\": too many arguments (%d)", m->name, nargs);
 				if (m->variadic ? nargs < m->nparams - 1 : nargs != m->nparams && !(m->nparams == 0 && nargs == 1 && args[0]->kind == TEOF)) {
 					if (nargs > m->nparams && !m->variadic) die("macro \"%s\" passed %d arguments, but takes just %d", m->name, nargs, m->nparams);
 					die("macro \"%s\" requires %d arguments, but only %d given", m->name, m->variadic ? m->nparams - 1 : m->nparams, nargs);
 				}
-				(void)nargs; (void)after;
 				Tok *rep = subst(m, args, nargs, tok->line);
-				Hide *hs = hide_add(tok->hide, m->name);
+				/* Prosser's rule: the name's hide set meets the ')''s — a ')' from past the end of the expansion
+				 * that produced the name (the source's) re-enables what it hid, as GCC: `__concat(F, 1) (x)` where
+				 * F1's body is `__concat(G, x)` expands both; `f(2)(9)` with f(a) a*g, g(a) f(a) is 2*9*g. */
+				Hide *hs = hide_add(hide_inter(tok->hide, rparen->hide), m->name);
 				rep = copy_body(rep, hs);
 				if (rep) { rep->space = tok->space; rep->bol = tok->bol; last(rep)->next = paren; tok = rep; } else tok = paren;
 				continue;

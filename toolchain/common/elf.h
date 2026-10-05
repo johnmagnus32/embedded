@@ -96,6 +96,7 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 #define DT_SYMENT   11           /* size of one Elf32_Sym (16 bytes)              */
 #define DT_SONAME   14           /* .dynstr offset of this object's soname        */
 #define DT_SYMBOLIC 16           /* its own definitions bind locally (-Bsymbolic) */
+#define DT_TEXTREL  22           /* a dynamic relocation patches read-only code: the loader makes it writable */
 /* .dynamic tags a dynamically-linked CONSUMER carries: its dependencies + PLT relocations */
 #define DT_NEEDED   1            /* .dynstr offset of a needed library's soname   */
 #define DT_PLTGOT   3            /* address of the PLT's GOT (.got.plt)           */
