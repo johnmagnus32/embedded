@@ -986,8 +986,12 @@ static void gen_expr1(Node *n) {
 		else        fprintf(o, "\tbl %s\n", asm_name(n->name));   /* result in r0(:r1); an asm label renames it */
 		if (twice) { fp_mem("ldr", "ip", n->offset); fprintf(o, "\tmov sp, ip\n"); }
 		else {
-			mem_op("ldr", "ip", "sp", spslot - 4 * regw); fprintf(o, "\tadd sp, sp, ip\n");   /* back to the caller's (possibly 4-aligned) sp */
-			if (regw) fprintf(o, "\tsub sp, sp, #16\n");   /* the distance was measured from the area base, below the popped r0-r3 */
+			/* back to the caller's (possibly 4-aligned) sp in ONE move: the distance was measured from the area base, below the
+			 * popped r0-r3, so take those 16 off it first — sp must never pass above a live word, even for an instruction
+			 * (an interrupt or a signal pushes its frame below sp: it would overwrite the caller's pushed operands) */
+			mem_op("ldr", "ip", "sp", spslot - 4 * regw);
+			if (regw) fprintf(o, "\tsub ip, ip, #16\n");
+			fprintf(o, "\tadd sp, sp, ip\n");
 		}
 		if (pre >= 0) fprintf(o, "\tadd sp, sp, #%d\n", is64(at[pre]) ? 8 : 4);   /* the pre-evaluated argument */
 		int rnel, rk = vfp ? vfp_class(n->type, &rnel) : 0;   /* a float/double/HFA result comes back in s0../d0.. */
@@ -1456,8 +1460,9 @@ static void gen_func(Func *f) {
  * write-protect it); anything else .data. */
 static const char *data_section(Gvar *g) {
 	if (g->is_tls) return ".section .tdata,\"awT\",%progbits";   /* a thread-local object's initial image */
-	Type *t = g->type; while (t->kind == TY_ARRAY) t = t->base;
-	if (!((t->quals & 1) || g->const_obj) || (t->quals & 2)) return ".data";   /* (a struct's const: on the object) */
+	int q = 0;   /* an array's qualifiers are its elements' (C11 6.7.3p9): `const T` with T an array typedef is read-only too */
+	for (Type *t = g->type; ; t = t->base) { q |= t->quals; if (t->kind != TY_ARRAY) break; }
+	if (!((q & 1) || g->const_obj) || (q & 2)) return ".data";   /* (a struct's const: on the object) */
 	if (pic) for (Init *it = g->init; it; it = it->next) if (it->kind == INIT_SYM) return ".section .data.rel.ro,\"aw\",%progbits";
 	return ".section .rodata";
 }
@@ -1475,7 +1480,13 @@ static void own_section(Gvar *g, const char *deflt) {
 	die("cc: internal: no -fdata-sections name for section '%s'", deflt);
 }
 static void gvar_head(Gvar *g, const char *deflt) {
-	if (g->attr.section[0]) fprintf(o, "\t.section %s,\"aw\",%s\n", g->attr.section, strncmp(g->attr.section, ".bss", 4) ? "%progbits" : "%nobits");
+	if (g->attr.section[0]) {   /* GCC's directive: a BSS-named section %nobits, TLS "awT"; plain data no type at all — the assembler
+		                         * types it by name (.note* NOTE, .init_array INIT_ARRAY) — read-only ("a") where it'd be .rodata */
+		const char *nm = g->attr.section;
+		if (g->is_tls) fprintf(o, "\t.section %s,\"awT\",%s\n", nm, strncmp(nm, ".tbss", 5) ? "%progbits" : "%nobits");
+		else if (!strncmp(nm, ".bss", 4) || !strncmp(nm, ".sbss", 5)) fprintf(o, "\t.section %s,\"aw\",%%nobits\n", nm);
+		else fprintf(o, "\t.section %s,\"%s\"\n", nm, !strcmp(deflt, ".section .rodata") ? "a" : "aw");
+	}
 	else if (data_sections) own_section(g, deflt);
 	else fprintf(o, "\t%s\n", deflt);
 	if (g->attr.weak || name_is_weak(g->name)) fprintf(o, "\t.weak %s\n", asm_name(g->name));

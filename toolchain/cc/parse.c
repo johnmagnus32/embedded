@@ -3438,7 +3438,11 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 	cp_np = np; cp_pname = malloc((np ? np : 1) * sizeof *cp_pname); cp_ptype = malloc((np ? np : 1) * sizeof *cp_ptype);
 	for (int i = 0; i < np; i++) { cp_pname[i] = strdup(prm[i].name); cp_ptype[i] = prm[i].ty; }
 	free(prm);
-	f->attr = decl_attr;                                     /* the function's own; the body's declarations reset decl_attr */
+	{   /* the function's own attributes over its earlier declarations' (GCC merges them: a prototype's section(".init.text")
+	     * places the definition); taken now — the body's declarations reset decl_attr */
+		const Attr *prev = decl_attrs_of(name);
+		Attr m = prev ? *prev : (Attr){0}; attr_merge(&m, &decl_attr); f->attr = m;
+	}
 	f->attr.align = sig_align(name, 0);                      /* ...its alignment: the largest any declaration asked for */
 	if (is(";") || is(",")) { in_func = 0; fn_depth--; scope_pop(); for (int i = 0; i < cp_np; i++) free(cp_pname[i]); free(cp_pname); free(cp_ptype); cp_np = 0; cp_pname = NULL; cp_ptype = NULL; return NULL; }   /* a prototype (the declaration may go on) — no body to compile */
 	Token *body_tk = tk;

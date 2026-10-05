@@ -63,6 +63,15 @@ test: $(BUILD)/cc
 	$(BUILD)/cc -o $$t/vis.s tests/visibility.c; vis=$$(grep -oE '\.(hidden|protected|internal) [a-z_]+' $$t/vis.s | sort | tr '\n' ' '); \
 	case "$$vis" in ".hidden hidden_fn .protected prot_var ") echo "PASS visibility: .hidden / .protected emitted (none for an unused declaration, as GCC)"; pass=$$((pass+1));; \
 	  *) echo "FAIL visibility directives: '$$vis'"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -o $$t/pa.s tests/proto_attrs.c; sec=$$(awk '/^\t\.section/{s=$$2} /^in_init:/{print s}' $$t/pa.s); \
+	case "$$sec" in .text.proto_init*) echo "PASS prototype attributes: a prototype's section() places the definition"; pass=$$((pass+1));; \
+	  *) echo "FAIL prototype section(): in_init is in '$$sec'"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -o $$t/ca.s tests/const_array_typedef.c; sec=$$(awk '/^\t\.section|^\t\.data$$|^\t\.text$$/{s=$$1 == ".section" ? $$2 : $$1} /^table:/{print s}' $$t/ca.s); \
+	case "$$sec" in .rodata*) echo "PASS const array typedef: in .rodata"; pass=$$((pass+1));; \
+	  *) echo "FAIL const array typedef: table is in '$$sec'"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -o $$t/rz.s tests/returns_twice.c; rz=$$(awk 'prev ~ /add sp, sp, ip/ && /sub sp, sp, #16/ {n++} {prev = $$0} END {print n + 0}' $$t/rz.s); \
+	[ "$$rz" = 0 ] && { echo "PASS call return: sp comes back in one move (never above a live word: an interrupt pushes below sp)"; pass=$$((pass+1)); } \
+	  || { echo "FAIL call return: $$rz 'add sp, sp, ip; sub sp, sp, #16' windows"; fail=$$((fail+1)); }; \
 	$(BUILD)/cc -o $$t/u.s tests/uart.c && $(OURAS) -o $$t/u.o $$t/u.s && $(OURLD) -Ttext 0x40000000 -o $$t/u.elf $$t/crt.o $$t/u.o $(RTLIB); \
 	out=$$(timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/u.elf 2>/dev/null); \
 	case "$$out" in *"cc UART works"*) echo "PASS uart: cc program printed via PL011 (real I/O)"; pass=$$((pass+1));; \
