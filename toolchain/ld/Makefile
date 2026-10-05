@@ -14,7 +14,7 @@ QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
 # backend (arm.c). A new arch swaps arm.c; a new object format swaps elf.c.
-OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/reloc.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/reloc.o $(BUILD)/buildid.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o
 
 $(BUILD)/ld: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
@@ -40,7 +40,12 @@ $(BUILD):
 # split W^X (seg0 R-X, seg1 R-W, never R-W-X), a .bss whose memsz exceeds its filesz, and the R_ARM_CALL
 # placeholder (0xebfffffe) relocated to a real branch. Entry = _start = the first byte after the headers
 # (LOAD_BASE + ehdr + phdrs: two PT_LOADs + PT_GNU_STACK, since both inputs carry .note.GNU-stack) = 0x10094.
-test: test-static test-pie test-script
+test: test-static test-pie test-script test-options
+
+# GNU ld's command-line behaviors (tests/options.sh).
+test-options: $(BUILD)/ld
+	@if [ ! -x "$(GNU)as" ]; then echo "SKIP: GNU as not found at '$(GNU)as'"; exit 0; fi
+	@GNU=$(abspath $(GNU)) LD=$(abspath $(BUILD)/ld) bash tests/options.sh
 
 test-static: $(BUILD)/ld
 	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc' (set GNU=<prefix>)"; exit 0; fi
@@ -156,4 +161,4 @@ test-script: $(BUILD)/ld
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: clean test test-static test-pie test-script
+.PHONY: test-options clean test test-static test-pie test-script

@@ -264,6 +264,7 @@ static const char default_script[] =
 	"ENTRY(_start)\n"
 	"SECTIONS {\n"
 	"  . = %#x + SIZEOF_HEADERS;\n"
+	"  .note.gnu.build-id : { *(.note.gnu.build-id) }\n"   /* (only with --build-id) */
 	"  .init     : { KEEP(*(.init)) }\n"
 	"  .text     : { *(.text .text.*) }\n"
 	"  .fini     : { KEEP(*(.fini)) }\n"
@@ -308,6 +309,12 @@ void script_read(const char *path) {
 		relro = !norelro && (shared || pie || nshlib);     /* a loader will apply it: a dynamic output */
 		text = malloc(sizeof default_script + 64); sprintf(text, default_script, load_base, relro ? ". = ALIGN(0x1000);" : "");
 		script_name = "(default)";
+	}
+	if (ndefsym) {   /* --defsym SYM=EXPR: assignments ahead of the script (absolute, as GNU's) */
+		size_t n = strlen(text) + 1; for (int k = 0; k < ndefsym; k++) n += strlen(defsyms[k]) + 3;
+		char *all = malloc(n), *q = all;
+		for (int k = 0; k < ndefsym; k++) q += sprintf(q, "%s;\n", defsyms[k]);
+		strcpy(q, text); text = all;
 	}
 	tokenize(text);
 	for (p = 0; p < ntok; ) {
@@ -694,10 +701,19 @@ static void decide_stack(void) {
 }
 
 void layout_run(void) {
-	for (int i = 0; i < nobj; i++) {
+	int unplaced = 0;
+	for (int i = 0; i < nobj; i++) {   /* the orphans: --orphan-handling decides (GNU's messages) */
 		Obj *o = objs[i];
-		if (o->active) for (int j = 1; j < o->nsh; j++) if (placeable(o, j)) place_orphan(o, j);
+		if (o->active) for (int j = 1; j < o->nsh; j++) {
+			if (!placeable(o, j)) continue;
+			const char *from = o == linker_obj ? "linker stubs" : o->path;
+			if (orphan_mode == 1) { o->sec_out[j] = &os_discard; continue; }
+			if (orphan_mode == 3) { fprintf(stderr, "ld: error: unplaced orphan section `%s' from `%s'\n", sec_name(o, j), from); unplaced = 1; continue; }
+			if (orphan_mode == 2) fprintf(stderr, "ld: warning: orphan section `%s' from `%s' being placed in section `%s'\n", sec_name(o, j), from, sec_name(o, j));
+			place_orphan(o, j);
+		}
 	}
+	if (unplaced) die("unplaced orphan sections (--orphan-handling=error)");
 	for (int i = 0; i < nst; i++) {                     /* each output section's type/flags from its inputs */
 		if (st[i].kind != S_OUTSEC || st[i].discard) continue;
 		OutSec *os = st[i].os; int first = 1, nobits = 1;

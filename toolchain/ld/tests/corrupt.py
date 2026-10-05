@@ -15,6 +15,7 @@ def armap(ar, out):
     b = bytearray(open(ar, 'rb').read())
     assert b[8:10] == b'/ ', 'no index member first'
     size = int(b[8 + 48:8 + 58]); end = 8 + 60 + size
-    k = b.rindex(0, 0, end); b[k] = ord('X')                # the index's final NUL
+    k = end - 1
+    while b[k] == 0: b[k] = ord('X'); k -= 1                # the final name's NUL (and the NUL pad GNU's index ends with)
     open(out, 'wb').write(b)
 {'shrink': lambda: shrink(*sys.argv[2:6]), 'armap': lambda: armap(*sys.argv[2:4])}[sys.argv[1]]()

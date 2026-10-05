@@ -32,6 +32,7 @@ static const struct { const char *name; u32 type, flags, align, entsize; int lin
 	[L_GOTPLT]  = { ".got.plt", SHT_PROGBITS, SHF_ALLOC|SHF_WRITE,     4, 4,                 0,        0 },
 	[L_GOT]     = { ".got",     SHT_PROGBITS, SHF_ALLOC|SHF_WRITE,     4, 4,                 0,        0 },
 	[L_DYNBSS]  = { ".dynbss",  SHT_NOBITS,   SHF_ALLOC|SHF_WRITE,     4, 0,                 0,        0 },
+	[L_BUILDID] = { ".note.gnu.build-id", 7 /* NOTE */, SHF_ALLOC,   4, 0,                 0,        0 },
 };
 
 /* An IMPORT: an undefined symbol a provider (or, for a .so, the run time) resolves. In a PROGRAM an absolute
@@ -112,7 +113,7 @@ static void runtime_fixup(DynRel **v, int *n, int *cap, Obj *o, int t, u32 off, 
 static int import_if_external(const char *name) {        /* -1: not an import (defined here / undefined) */
 	if (defined_locally(name)) return -1;
 	ShExport *e = shexport_of(name);
-	if (!e && !shared) return -1;                        /* a .so may import with no known provider; a program may not */
+	if (!e && (!shared || no_undefined)) return -1;      /* a .so may import with no known provider (unless --no-undefined); a program may not */
 	return import_of(name, e ? e->lib : -1);
 }
 /* PREEMPTIBLE: a definition in a .so that a program or an earlier library may interpose on — global/weak, default
@@ -316,6 +317,15 @@ int dyn_target(Obj *o, int symidx, u32 type, u32 *S) {
 
 /* ---- sizing ------------------------------------------------------------------------------------------ */
 static void set_size(int sec, u32 size) { linker_obj->sh[sec].sh_size = size; }
+static void place_contents(void) {   /* the linker-made sections' bytes, one buffer */
+	u32 total = 0;
+	for (int i = 1; i < L_NSEC; i++) {
+		Elf32_Shdr *s = &linker_obj->sh[i];
+		if (s->sh_type == SHT_NOBITS) continue;
+		total = alignup(total, s->sh_addralign); s->sh_offset = total; total += s->sh_size;
+	}
+	linker_obj->data = calloc(1, total + 1);
+}
 static void dyn_add(u32 tag, int what, int sec, u32 val) {
 	dyn = grow(dyn, ndyn, &dyncap, sizeof *dyn);
 	dyn[ndyn++] = (DynEnt){ tag, what, sec, val };
@@ -349,10 +359,10 @@ static void collect_exports(void) {
 void dyn_size(void) {
 	int has_dynsym = shared || nimport;
 	int has_dynamic = dynamic_image() || nimport;
+	set_size(L_BUILDID, build_id_size() ? 16 + build_id_size() : 0);
 	if (!has_dynamic) {                                  /* a static image: only the GOT (filled with final addresses) */
 		set_size(L_GOT, 4u * (u32)ngot);
-		linker_obj->data = calloc(1, 4u * (u32)ngot + 1);
-		linker_obj->sh[L_GOT].sh_offset = 0;
+		place_contents();
 		return;
 	}
 	if (shared && !soname) die("internal: -shared without a soname");
@@ -398,13 +408,7 @@ void dyn_size(void) {
 	set_size(L_GOTPLT, 4u * (u32)nplt);
 	set_size(L_GOT, 4u * (u32)ngot);
 	set_size(L_DYNBSS, dynbss_size);
-	u32 total = 0;
-	for (int i = 1; i < L_NSEC; i++) {
-		Elf32_Shdr *s = &linker_obj->sh[i];
-		if (s->sh_type == SHT_NOBITS) continue;
-		total = alignup(total, s->sh_addralign); s->sh_offset = total; total += s->sh_size;
-	}
-	linker_obj->data = calloc(1, total + 1);
+	place_contents();
 }
 
 /* ---- contents (after layout) ------------------------------------------------------------------------- */
@@ -433,6 +437,7 @@ void dyn_fill(void) {
 		else d->linker = 0;                              /* no .dynamic: a weak reference is 0, a strong one undefined */
 	}
 	if (linker_obj->sh[L_INTERP].sh_size) memcpy(sec_bytes(L_INTERP), interp_path, strlen(interp_path) + 1);
+	if (linker_obj->sh[L_BUILDID].sh_size) build_id_note(sec_bytes(L_BUILDID), build_id_size());
 	for (int k = 0; k < nplt; k++)
 		md_plt_entry(sec_bytes(L_PLT) + md_plt_entsize * k, linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)k,
 		             linker_obj->sec_vaddr[L_GOTPLT] + 4u * (u32)k);

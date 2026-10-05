@@ -22,6 +22,7 @@ const u32 md_r_jump_slot = 22;     /* R_ARM_JUMP_SLOT: loader writes the resolve
 const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported variable into the exe's .dynbss slot */
 
 #define R_ARM_NONE     0
+#define R_ARM_V4BX     40   /* marks a BX for --fix-v4bx (ARMv4 has no BX); without it, nothing to do */
 #define R_ARM_ABS32    2
 #define R_ARM_REL32    3
 #define R_ARM_MOVW_ABS_NC 43
@@ -72,7 +73,7 @@ int md_is_abs_nonword(u32 type) { return type == R_ARM_MOVW_ABS_NC || type == R_
 int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP24; }
 /* Is this a PIC GOT-entry reference? The front-end resolves it to (GOT_slot - P) — S is the slot addr. */
 int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL; }
-int md_is_marker(u32 type) { return type == R_ARM_NONE; }
+int md_is_marker(u32 type) { return type == R_ARM_NONE || type == R_ARM_V4BX; }
 
 static s32 movw_addend(u32 w) { return (int16_t)(((w >> 4) & 0xf000u) | (w & 0xfffu)); }   /* imm4:imm12, signed */
 static u32 movw_set(u32 w, u32 v) { return (w & ~0x000f0fffu) | (((v >> 12) & 0xfu) << 16) | (v & 0xfffu); }
@@ -80,6 +81,7 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	u32 w = rd32(loc);
 	switch (type) {
 	case R_ARM_NONE:        /* a dependency marker only (e.g. .ARM.exidx -> its personality routine) */
+	case R_ARM_V4BX:        /* (GNU ld without --fix-v4bx: the BX stays) */
 		break;
 	case R_ARM_ABS32:
 	case R_ARM_TARGET1:
@@ -128,7 +130,7 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 int md_rel_adjust(u32 type, u8 *loc, u32 delta) {
 	u32 w = rd32(loc);
 	switch (type) {
-	case R_ARM_NONE: return 1;
+	case R_ARM_NONE: case R_ARM_V4BX: return 1;
 	case R_ARM_ABS32: case R_ARM_TARGET1: case R_ARM_REL32: case R_ARM_GOT_PREL:
 	case R_ARM_TLS_LE32: case R_ARM_TLS_LDO32: case R_ARM_TLS_GD32: case R_ARM_TLS_LDM32: case R_ARM_TLS_IE32:
 		wr32(loc, w + delta); return 1;

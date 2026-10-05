@@ -37,6 +37,9 @@ const char *interp_path = "/lib/ld.so.1";  /* --dynamic-linker: the PT_INTERP a 
 int stack_override;                        /* -z noexecstack / execstack: PT_GNU_STACK's flags, else from the inputs */
 int norelro;                               /* -z norelro */
 int warn_rwx = 1;                          /* --no-warn-rwx-segments turns the RWX-segment warning off */
+int orphan_mode;                           /* --orphan-handling=place|discard|warn|error */
+int no_undefined;                          /* --no-undefined, -z defs */
+const char **defsyms; int ndefsym;         /* --defsym */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
 void die(const char *fmt, ...) {
@@ -161,6 +164,7 @@ static void relocate(void) {
 				u32 type = ELF32_R_TYPE(rel[r].r_info); int sidx = (int)ELF32_R_SYM(rel[r].r_info);
 				if (!md_is_marker(type) && (rel[r].r_offset > ts->sh_size || ts->sh_size - rel[r].r_offset < 4))   /* a 4-byte field (no underflow) */
 					die("%s: relocation offset %#x outside %s", o->path, rel[r].r_offset, sec_name(o, t));
+				if (md_is_marker(type) && !sidx) continue;   /* (R_ARM_V4BX: against no symbol at all) */
 				u32 S; int tk = md_tls_kind(type);
 				if (tk == TLS_LE) S = tls_tpoff(resolve(o, sidx));                 /* from the thread pointer */
 				else if (tk == TLS_LDO) S = resolve(o, sidx) - tls_vaddr;          /* inside this module's block */
@@ -245,7 +249,8 @@ static void load_input(const char *path, int kind, int whole) {
 static void z_option(const char *k) {
 	if (!strcmp(k, "relro")) norelro = 0;
 	else if (!strcmp(k, "norelro")) norelro = 1;
-	else if (!strcmp(k, "now")) ;                        /* our loader always binds at startup (eager) */
+	else if (!strcmp(k, "now")) ;
+	else if (!strcmp(k, "defs")) no_undefined = 1;                        /* our loader always binds at startup (eager) */
 	else if (!strcmp(k, "noexecstack")) stack_override = PF_R | PF_W;
 	else if (!strcmp(k, "execstack")) stack_override = PF_R | PF_W | PF_X;
 	else if (!strncmp(k, "max-page-size=", 14) || !strncmp(k, "common-page-size=", 17)) {
@@ -260,7 +265,7 @@ int main(int argc, char **argv) {
 	 * under -Bstatic/-static. */
 	struct { const char *name; int lib, bstatic, whole; } *in = NULL; int nin = 0, incap = 0;
 	const char **libdirs = NULL; int nlibdir = 0, dircap = 0;
-	int ttext = 0, bstatic = 0, relocatable = 0, whole = 0;
+	int ttext = 0, bstatic = 0, relocatable = 0, whole = 0, version = 0;
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "-o") && i + 1 < argc) out = argv[++i];
@@ -276,6 +281,21 @@ int main(int argc, char **argv) {
 		else if (!strcmp(a, "--no-whole-archive")) whole = 0;
 		else if (!strcmp(a, "-EL") || !strcmp(a, "-nostdlib")) ;   /* little-endian: the only kind; no default library dirs: we have none */
 		else if (!strcmp(a, "-X") || !strcmp(a, "--discard-locals")) ;   /* .L temporaries: our objects' are the ones relocations name */
+		else if (!strcmp(a, "-v") || !strcmp(a, "-V") || !strcmp(a, "--version")) version = 1;   /* after the other options parse (ld-option) */
+		else if (!strncmp(a, "--orphan-handling=", 18)) {
+			const char *m = a + 18;
+			orphan_mode = !strcmp(m, "place") ? 0 : !strcmp(m, "discard") ? 1 : !strcmp(m, "warn") ? 2 : !strcmp(m, "error") ? 3
+			            : (die("--orphan-handling=%s: place, discard, warn or error", m), 0);
+		}
+		else if (!strcmp(a, "--no-undefined")) no_undefined = 1;
+		else if (!strcmp(a, "--build-id")) build_id_style = "sha1";
+		else if (!strncmp(a, "--build-id=", 11)) build_id_style = a + 11;
+		else if (!strcmp(a, "--hash-style=sysv")) ;   /* the only one we emit (.hash) */
+		else if ((!strcmp(a, "--defsym") && i + 1 < argc) || !strncmp(a, "--defsym=", 9)) {
+			const char *d = a[8] ? a + 9 : argv[++i];
+			if (!strchr(d, '=')) die("--defsym %s: SYMBOL=EXPRESSION", d);
+			defsyms = realloc(defsyms, (ndefsym + 1) * sizeof *defsyms); defsyms[ndefsym++] = d;
+		}
 		else if (!strcmp(a, "--warn-common")) ;   /* nothing to warn of: a COMMON symbol is an error here (see resolve) */
 		else if ((!strcmp(a, "-Map") || !strcmp(a, "--Map")) && i + 1 < argc) map_path = argv[++i];
 		else if (!strncmp(a, "-Map=", 5) || !strncmp(a, "--Map=", 6)) map_path = strchr(a, '=') + 1;
@@ -303,6 +323,12 @@ int main(int argc, char **argv) {
 		else if (a[0] == '-') die("unknown option '%s'", a);
 		else { in = grow(in, nin, &incap, sizeof *in); in[nin].name = a; in[nin].lib = 0; in[nin].whole = whole; in[nin++].bstatic = bstatic; }
 	}
+	/* -v: GNU ld's first line, as build systems parse it ("GNU ld ... VERSION": the kernel's ld-version.sh); then the
+	 * link, if there is anything to link. Any option we don't take failed above (the kernel's ld-option probes). */
+	if (version) {
+		printf("GNU ld (os toolchain: our ld, GNU ld compatible) 2.42\n");
+		if (!nin) return 0;
+	}
 	for (int k = 0; k < nin; k++) {
 		if (!in[k].lib) { load_input(in[k].name, input_kind(in[k].name), in[k].whole); continue; }
 		char path[512]; int found = 0;
@@ -317,6 +343,7 @@ int main(int argc, char **argv) {
 	if (script_path && ttext) die("-Ttext and -T both place the image: use one");
 	if (relocatable && (script_path || ttext || pie || shared || entry_sym)) die("-r makes an object: no -T, -Ttext, -pie, -shared or -e");
 	if (relocatable && nshlib) die("-r with a shared library: unsupported");
+	if (relocatable && (build_id_size() || ndefsym)) die("-r with --build-id or --defsym: unsupported");
 	if (relocatable && map_path) die("-Map with -r: unsupported (a relocatable object has no addresses yet)");
 
 	resolve_symbols();
@@ -340,6 +367,11 @@ int main(int argc, char **argv) {
 	if (start && start->defined) entry = start->vaddr;
 	else if (!shared) die("no '%s' symbol (entry point)", entry_sym);
 	elf_write(out, entry);
+	if (linker_obj->sh[L_BUILDID].sh_size) {   /* the note's file offset: its output section's, plus its place in it */
+		OutSec *os = linker_obj->sec_out[L_BUILDID];
+		if (!os || os == &os_discard) die("--build-id: the .note.gnu.build-id section was discarded");
+		build_id_write(out, os->off + (linker_obj->sec_vaddr[L_BUILDID] - os->vaddr));
+	}
 	if (map_path) write_map(map_path);
 	return 0;
 }

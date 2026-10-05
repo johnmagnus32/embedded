@@ -33,6 +33,13 @@ extern const char *interp_path; /* --dynamic-linker (default /lib/ld.so.1) */
 extern int stack_override;      /* -z [no]execstack: PT_GNU_STACK flags (0 = decide from the inputs' .note.GNU-stack) */
 extern int norelro;             /* -z norelro: no PT_GNU_RELRO */
 extern int warn_rwx;            /* warn about a read-write-execute PT_LOAD */
+extern int orphan_mode;         /* --orphan-handling: 0 place, 1 discard, 2 warn, 3 error */
+extern int no_undefined;        /* --no-undefined / -z defs: a .so's unresolved references are errors too */
+extern const char **defsyms; extern int ndefsym;   /* --defsym SYM=EXPR: script assignments ahead of the script */
+extern const char *build_id_style;                 /* --build-id[=STYLE] (buildid.c); NULL: none */
+u32  build_id_size(void);                          /* its descriptor's bytes (0: no note) */
+void build_id_note(u8 *p, u32 descsz);             /* the note, descriptor zero */
+void build_id_write(const char *path, u32 note_off);   /* after the write: the descriptor, hashed over the output */
 #define PAGE 0x1000u            /* segment alignment: each PT_LOAD maps on its own pages => W^X enforceable */
 
 void  die(const char *fmt, ...) __attribute__((noreturn));
@@ -105,7 +112,7 @@ OutSec *outsec_named(const char *name);          /* an emitted output section by
 
 /* ---- dynamic linking (dynamic.c) ---------------------------------------------------------------- */
 extern Obj *linker_obj;                          /* the linker-made sections (.got, .plt, .dynamic, …)  */
-enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELDYN, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_NSEC };
+enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELDYN, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_BUILDID, L_NSEC };
 void dyn_init(void);                             /* create linker_obj (its sections empty)             */
 void dyn_scan(void);                             /* ONE relocation scan -> imports / PLT / GOT / dynamic relocs */
 void dyn_size(void);                             /* size linker_obj's sections from the tables built    */
