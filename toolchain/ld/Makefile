@@ -14,7 +14,7 @@ QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
 # backend (arm.c). A new arch swaps arm.c; a new object format swaps elf.c.
-OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/reloc.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o
 
 $(BUILD)/ld: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)

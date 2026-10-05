@@ -28,7 +28,9 @@ def cstr(s):
 DELTAS = ["-O1", "-O2", "-O3", "-Os", "-Oz", "-Og", "-ffast-math",
           "-fpic", "-fPIC", "-fpie", "-fPIE", "-ffreestanding", "-pthread", "-mfloat-abi=soft", "-mfloat-abi=softfp",
           "-std=c89", "-std=gnu89", "-std=iso9899:199409", "-std=c99", "-std=gnu99", "-std=c11", "-std=gnu11",
-          "-std=c17", "-std=c2x", "-std=gnu2x", "-x assembler-with-cpp", "-fsigned-char"]
+          "-std=c17", "-std=c2x", "-std=gnu2x", "-x assembler-with-cpp", "-fsigned-char",
+          "-fshort-wchar", "-march=armv7-a", "-mfpu=vfp", "-mno-unaligned-access", "-mthumb",
+          "-fstack-protector", "-fstack-protector-strong", "-fstack-protector-all", "-fstack-protector-explicit"]
 base = dump([])
 version = subprocess.run([gnu + "gcc", "-dumpfullversion"], capture_output=True, text=True).stdout.strip()
 target = subprocess.run([gnu + "gcc", "-dumpmachine"], capture_output=True, text=True).stdout.strip()

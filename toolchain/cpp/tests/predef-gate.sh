@@ -38,6 +38,22 @@ done <<'LIST'
 -mfloat-abi=soft -ffast-math
 -ffast-math
 -ffast-math -fno-fast-math
+-fshort-wchar
+-fshort-wchar -fno-short-wchar
+-march=armv7-a
+-mfpu=vfp
+-msoft-float
+-mfpu=vfp -msoft-float
+-mfpu=vfp -mfloat-abi=softfp
+-mno-unaligned-access
+-mthumb
+-mthumb -marm
+-fstack-protector
+-fstack-protector-strong
+-fstack-protector-all
+-fstack-protector-strong -fno-stack-protector
+-march=armv7-a -mfpu=vfp -msoft-float -fshort-wchar -O2 -std=gnu11 -fstack-protector-strong -marm
+-march=armv7-a -mfpu=vfp -msoft-float -fshort-wchar -O2 -std=gnu11 -fpic -ffreestanding -fno-stack-protector
 -pthread
 -fsigned-char
 -undef

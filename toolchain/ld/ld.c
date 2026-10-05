@@ -177,14 +177,65 @@ enum { IN_OBJECT, IN_ARCHIVE, IN_SHARED };
 static int input_kind(const char *path) {
 	FILE *f = fopen(path, "rb"); if (!f) die("cannot open %s", path);
 	u8 h[18]; size_t n = fread(h, 1, sizeof h, f); fclose(f);
-	if (n >= 8 && !memcmp(h, "!<arch>\n", 8)) return IN_ARCHIVE;
+	if (n >= 8 && (!memcmp(h, "!<arch>\n", 8) || !memcmp(h, "!<thin>\n", 8))) return IN_ARCHIVE;   /* (thin: GNU ar T) */
 	if (n >= 18 && !memcmp(h, "\177ELF", 4) && (h[16] | h[17] << 8) == ET_DYN) return IN_SHARED;
 	return IN_OBJECT;
 }
+/* -Map FILE: where everything went — each output section, the input sections in it (by address), and the global
+ * symbols each defines; then the linker-script symbols. GNU's memory-map layout, without its script echo. */
+typedef struct { u32 vaddr; int os, obj, j, seq; const char *name; } MapEnt;
+static int map_cmp(const void *x, const void *y) {
+	const MapEnt *a = x, *b = y;
+	if (a->os != b->os) return a->os < b->os ? -1 : 1;
+	if (a->vaddr != b->vaddr) return a->vaddr < b->vaddr ? -1 : 1;
+	return a->seq - b->seq;
+}
+static void write_map(const char *path) {
+	FILE *f = fopen(path, "w"); if (!f) die("cannot write %s", path);
+	MapEnt *e = NULL; int n = 0, cap = 0;
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i]; if (!o->active) continue;
+		for (int j = 1; j < o->nsh; j++) {   /* pieces (name == NULL), then the symbols placed in them */
+			OutSec *os = o->sec_out[j]; if (!os || os == &os_discard || !os->index) continue;
+			e = grow(e, n, &cap, sizeof *e); e[n] = (MapEnt){ o->sec_vaddr[j], os->index, i, j, n, NULL }; n++;
+		}
+		for (int k = 1; k < o->nsym; k++) {
+			Elf32_Sym *s = &o->sym[k]; int b = ELF32_ST_BIND(s->st_info);
+			if ((b != STB_GLOBAL && b != STB_WEAK) || !s->st_shndx || s->st_shndx >= o->nsh) continue;   /* ABS, COMMON, …: no input section */
+			OutSec *os = o->sec_out[s->st_shndx]; if (!os || os == &os_discard || !os->index) continue;
+			GSym *g = gsym_find(o->strtab + s->st_name);
+			if (!g || g->obj != o || g->symidx != k) continue;   /* not the definition that won */
+			e = grow(e, n, &cap, sizeof *e); e[n] = (MapEnt){ g->vaddr, os->index, i, s->st_shndx, n, g->name }; n++;
+		}
+	}
+	qsort(e, n, sizeof *e, map_cmp);
+	fprintf(f, "Memory map\n\n");
+	for (int s = 0, k = 0; s < noutsec; s++) {
+		OutSec *os = outsecs[s];
+		fprintf(f, "%-15s 0x%08x %#10x", os->name, os->vaddr, os->size);
+		if (os->lma != os->vaddr) fprintf(f, " load address 0x%08x", os->lma);
+		fputc('\n', f);
+		for (; k < n && e[k].os == os->index; k++) {
+			Obj *o = objs[e[k].obj];
+			if (e[k].name) fprintf(f, "                0x%08x                %s\n", e[k].vaddr, e[k].name);
+			else fprintf(f, " %-14s 0x%08x %#10x %s\n", sec_name(o, e[k].j), e[k].vaddr, o->sh[e[k].j].sh_size, o->path);
+		}
+		fputc('\n', f);
+	}
+	if (ndeclared) fprintf(f, "Linker script symbols\n\n");
+	for (int d = 0; d < ndeclared; d++)
+		if (declared[d]->defined) fprintf(f, "                0x%08x                %s\n", declared[d]->vaddr, declared[d]->name);
+	if (fclose(f)) die("%s: write failed", path);
+	free(e);
+}
+
 static int file_exists(const char *p) { FILE *f = fopen(p, "rb"); if (f) { fclose(f); return 1; } return 0; }
 static int link_static;                                   /* -static: no shared objects at all */
-static void load_input(const char *path, int kind) {
-	if (kind == IN_ARCHIVE) ar_load(path);               /* lazy members, pulled on demand */
+static int verbose;                                       /* --verbose: name each input as it is opened */
+static void load_input(const char *path, int kind, int whole) {
+	if (verbose) printf("ld: opened %s\n", path);
+	if (kind == IN_ARCHIVE && whole) ar_load_whole(path);   /* --whole-archive: every member */
+	else if (kind == IN_ARCHIVE) ar_load(path);          /* lazy members, pulled on demand */
 	else if (kind == IN_SHARED) {
 		if (link_static) die("%s: a shared object in a -static link", path);
 		load_shared(path);                               /* a provider: its exports, not its sections */
@@ -203,13 +254,13 @@ static void z_option(const char *k) {
 }
 
 int main(int argc, char **argv) {
-	const char *out = "a.out", *script_path = NULL;
+	const char *out = "a.out", *script_path = NULL, *map_path = NULL;
 	/* Inputs are processed in command-line order once every option is read (-L applies to every -l, wherever it
 	 * appears, as in GNU ld): a file, or -l<name> searched per -L dir as lib<name>.so then lib<name>.a — .a only
 	 * under -Bstatic/-static. */
-	struct { const char *name; int lib, bstatic; } *in = NULL; int nin = 0, incap = 0;
+	struct { const char *name; int lib, bstatic, whole; } *in = NULL; int nin = 0, incap = 0;
 	const char **libdirs = NULL; int nlibdir = 0, dircap = 0;
-	int ttext = 0, bstatic = 0;
+	int ttext = 0, bstatic = 0, relocatable = 0, whole = 0;
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "-o") && i + 1 < argc) out = argv[++i];
@@ -220,6 +271,15 @@ int main(int argc, char **argv) {
 		else if (!strcmp(a, "-pie") || !strcmp(a, "--pie")) { pie = 1; load_base = 0; }
 		else if (!strcmp(a, "-shared") || !strcmp(a, "--shared")) { shared = 1; load_base = 0; }
 		else if (!strcmp(a, "-Bsymbolic")) bsymbolic = 1;
+		else if (!strcmp(a, "-r") || !strcmp(a, "-i") || !strcmp(a, "--relocatable")) relocatable = 1;   /* one object out (reloc.c) */
+		else if (!strcmp(a, "--whole-archive")) whole = 1;
+		else if (!strcmp(a, "--no-whole-archive")) whole = 0;
+		else if (!strcmp(a, "-EL") || !strcmp(a, "-nostdlib")) ;   /* little-endian: the only kind; no default library dirs: we have none */
+		else if (!strcmp(a, "-X") || !strcmp(a, "--discard-locals")) ;   /* .L temporaries: our objects' are the ones relocations name */
+		else if (!strcmp(a, "--warn-common")) ;   /* nothing to warn of: a COMMON symbol is an error here (see resolve) */
+		else if ((!strcmp(a, "-Map") || !strcmp(a, "--Map")) && i + 1 < argc) map_path = argv[++i];
+		else if (!strncmp(a, "-Map=", 5) || !strncmp(a, "--Map=", 6)) map_path = strchr(a, '=') + 1;
+		else if (!strcmp(a, "--verbose")) { verbose = 1; printf("ld: the os toolchain's linker (ELF32 ARM, built-in default script)\n"); }
 		else if (!strcmp(a, "--no-warn-rwx-segments")) warn_rwx = 0;
 		else if (!strcmp(a, "--warn-rwx-segments")) warn_rwx = 1;
 		else if (!strcmp(a, "--build-id=none") || !strcmp(a, "--start-group") || !strcmp(a, "--end-group")) ;   /* we emit no build-id;
@@ -235,28 +295,32 @@ int main(int argc, char **argv) {
 		else if (!strcmp(a, "-Bdynamic") || !strcmp(a, "-dy") || !strcmp(a, "-call_shared")) { if (link_static) die("-Bdynamic after -static"); bstatic = 0; }
 		else if (!strncmp(a, "-l", 2)) {
 			if (!a[2] && i + 1 == argc) die("-l needs a name");
-			in = grow(in, nin, &incap, sizeof *in); in[nin].name = a[2] ? a + 2 : argv[++i]; in[nin].lib = 1; in[nin++].bstatic = bstatic;
+			in = grow(in, nin, &incap, sizeof *in); in[nin].name = a[2] ? a + 2 : argv[++i]; in[nin].lib = 1; in[nin].whole = whole; in[nin++].bstatic = bstatic;
 		} else if (!strncmp(a, "-L", 2)) {
 			if (!a[2] && i + 1 == argc) die("-L needs a directory");
 			libdirs = grow(libdirs, nlibdir, &dircap, sizeof *libdirs); libdirs[nlibdir++] = a[2] ? a + 2 : argv[++i];
 		}
 		else if (a[0] == '-') die("unknown option '%s'", a);
-		else { in = grow(in, nin, &incap, sizeof *in); in[nin].name = a; in[nin].lib = 0; in[nin++].bstatic = bstatic; }
+		else { in = grow(in, nin, &incap, sizeof *in); in[nin].name = a; in[nin].lib = 0; in[nin].whole = whole; in[nin++].bstatic = bstatic; }
 	}
 	for (int k = 0; k < nin; k++) {
-		if (!in[k].lib) { load_input(in[k].name, input_kind(in[k].name)); continue; }
+		if (!in[k].lib) { load_input(in[k].name, input_kind(in[k].name), in[k].whole); continue; }
 		char path[512]; int found = 0;
 		for (int d = 0; d < nlibdir && !found; d++)
 			for (int t = in[k].bstatic; t < 2 && !found; t++) {   /* lib<name>.so (unless static), then lib<name>.a */
 				snprintf(path, sizeof path, "%s/lib%s.%s", libdirs[d], in[k].name, t ? "a" : "so");
-				if (file_exists(path)) { load_input(strdup(path), t ? IN_ARCHIVE : IN_SHARED); found = 1; }
+				if (file_exists(path)) { load_input(strdup(path), t ? IN_ARCHIVE : IN_SHARED, in[k].whole); found = 1; }
 			}
 		if (!found) die("cannot find -l%s (searched %d -L dir(s) for lib%s%s.a)", in[k].name, nlibdir, in[k].name, in[k].bstatic ? "" : ".so / lib");
 	}
 	if (!nobj) die("usage: ld [-o out] [-T script | -Ttext addr] [-e sym] [-pie | -shared [-soname name] [-Bsymbolic]] [-z kw] [--dynamic-linker path] [-L dir] [-l name] obj.o|lib.a ...");
 	if (script_path && ttext) die("-Ttext and -T both place the image: use one");
+	if (relocatable && (script_path || ttext || pie || shared || entry_sym)) die("-r makes an object: no -T, -Ttext, -pie, -shared or -e");
+	if (relocatable && nshlib) die("-r with a shared library: unsupported");
+	if (relocatable && map_path) die("-Map with -r: unsupported (a relocatable object has no addresses yet)");
 
 	resolve_symbols();
+	if (relocatable) { reloc_link(out); return 0; }
 	if (shared && !soname) { const char *b = strrchr(out, '/'); soname = b ? b + 1 : out; }
 
 	script_read(script_path);                            /* declares the script's symbols */
@@ -276,5 +340,6 @@ int main(int argc, char **argv) {
 	if (start && start->defined) entry = start->vaddr;
 	else if (!shared) die("no '%s' symbol (entry point)", entry_sym);
 	elf_write(out, entry);
+	if (map_path) write_map(map_path);
 	return 0;
 }

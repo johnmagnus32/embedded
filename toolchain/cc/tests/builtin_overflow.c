@@ -1,6 +1,6 @@
 // expect: 0
 /* __builtin_{add,sub,mul}_overflow (kernel check_*_overflow / size_mul): result wrapped into *res's type,
- * value = whether it overflowed. Plus object_size (unknown -> -1/0), isdigit, va_copy, libc aliases. */
+ * value = whether it overflowed. Plus object_size (a named object's size; unknown -> -1/0), isdigit, va_copy, libc aliases. */
 typedef unsigned long long u64; typedef long long s64; typedef unsigned long size_t;
 static unsigned rt(unsigned x) { return x; }
 int main(void) {
@@ -20,7 +20,9 @@ int main(void) {
 	if (__builtin_mul_overflow((s64)rt(3000000), (s64)-(s64)rt(3000000), &sq) != 0 || sq != -9000000000000LL) return 15;
 	if (__builtin_mul_overflow((s64)1 << 62, (s64)-2, &sq) != 0 || sq != (s64)0x8000000000000000ULL) return 16;   /* exactly INT64_MIN: fits */
 	if (__builtin_mul_overflow((s64)1 << 62, (s64)2, &sq) != 1) return 17;                                      /* 2^63: doesn't */
-	if (__builtin_object_size(&z, 0) != (size_t)-1 || __builtin_object_size(&z, 2) != 0) return 12;
+	char *unk = (char *)rt((unsigned)&z);   /* a pointer the compiler can't see through: unknown (-1 / 0) */
+	if (__builtin_object_size(&z, 0) != sizeof z || __builtin_object_size(&z, 2) != sizeof z ||
+	    __builtin_object_size(unk, 0) != (size_t)-1 || __builtin_object_size(unk, 2) != 0) return 12;
 	if (!__builtin_isdigit(rt('7')) || __builtin_isdigit(rt('a'))) return 13;
 	if (__x != 7) return 14;
 	return 0;

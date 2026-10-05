@@ -56,6 +56,7 @@ static inline const char *sec_name(const Obj *o, int j) { return o->shstr + o->s
 Obj *elf_load(const char *path);                 /* elf.c: an always-linked object file            */
 void ar_load(const char *path);                  /* elf.c: register an archive's symbol index      */
 Obj *ar_pull(const char *sym);                   /* elf.c: load the member defining sym, or NULL    */
+void ar_load_whole(const char *path);            /* elf.c: --whole-archive: every member, in order   */
 void load_shared(const char *path);              /* elf.c: read a .so's exports + soname (a provider) */
 
 /* -l: a shared library we link AGAINST (a provider): its exports + soname; its sections are not laid out. */
@@ -113,6 +114,7 @@ int  dyn_target(Obj *o, int symidx, u32 type, u32 *S);   /* relocation target in
 
 /* ---- output (elf.c) ------------------------------------------------------------------------------ */
 void elf_write(const char *out, u32 entry);
+void reloc_link(const char *out);                /* reloc.c: -r — one relocatable object out */
 
 /* ---- MACHINE-DEPENDENT backend (arm.c) ----------------------------------------------------------- */
 extern const u16 md_e_machine;                   /* EM_ARM — checked on load, stamped on write */
@@ -125,6 +127,7 @@ int  md_is_abs_nonword(u32 type);                /* movw/movt absolute halves: n
 int  md_is_call_reloc(u32 type);                 /* a call (routed via the PLT when imported)          */
 int  md_is_got_reloc(u32 type);                  /* a PIC GOT-entry reference (S = the symbol's GOT slot) */
 int  md_is_marker(u32 type);                     /* a dependency marker only (R_ARM_NONE): patches nothing */
+int  md_rel_adjust(u32 type, u8 *loc, u32 delta);  /* -r: move a REL addend by delta (0 = can't, for this type) */
 enum { TLS_NONE, TLS_GD, TLS_LDM, TLS_LDO, TLS_IE, TLS_LE };   /* thread-local access models, by relocation */
 int  md_tls_kind(u32 type);
 extern const u32 md_r_tls_dtpmod32, md_r_tls_dtpoff32, md_r_tls_tpoff32, md_tcb_size;

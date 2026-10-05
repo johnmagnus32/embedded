@@ -10,7 +10,7 @@ G=${GNU:?}; C=${CC:?}
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 cases=(
   'inline int f(void){return 1;} int g(void){return f();}'
-  'static inline int f(void){return 1;} int g(void){return f();}'
+  'static inline int f(int x){return x;} int g(int y){return f(y);}'
   'extern int f(void); inline int f(void){return 1;} int g(void){return f();}'
   'inline int f(void){return 1;} extern int f(void);'
   'inline int f(void); int f(void){return 1;}'
@@ -19,7 +19,7 @@ cases=(
   'extern __inline __attribute__((__gnu_inline__)) int f(void){return 1;} int g(void){return f();}'
   '__inline __attribute__((__gnu_inline__)) int f(void){return 1;} int g(void){return f();}'
   'inline __attribute__((used)) int f(void){return 1;}'
-  'static int f(void){return 1;} int g(void){return f();}'
+  'static int f(int x){return x;} int g(int y){return f(y);}'
 )
 pass=0; fail=0
 for std in "" "-std=gnu89" "-std=c99" "-std=gnu11"; do

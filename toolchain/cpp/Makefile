@@ -10,8 +10,8 @@ OURLD := ../ld/build/ld
 GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 QEMU  ?= qemu-system-arm
 
-$(BUILD)/cpp: cpp.c predef.h | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ cpp.c
+$(BUILD)/cpp: cpp.c predef.h has.h ../common/strmap.c ../common/strmap.h | $(BUILD)
+	$(CC) $(CFLAGS) -I../common -o $@ cpp.c ../common/strmap.c
 
 $(BUILD):
 	mkdir -p $(BUILD)

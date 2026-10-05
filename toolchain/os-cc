@@ -1,152 +1,273 @@
 #!/usr/bin/env bash
 # os-cc — the DRIVER for our from-scratch toolchain (the gcc-front-end analogue).
 #
-# Our toolchain is five separate programs (cpp, cc, as, ar, ld); a build system expects ONE
-# compiler command that behaves like `gcc`: take a .c/.S/.s (+ -I/-D/-o/-c/-E/-S), run the right
-# stages, and emit a .o or a linked ELF. This script is that front end. It parses the subset of the
-# gcc CLI that the os build's compile classes and our libc's build.sh actually use, ignores the codegen/
-# warning/arch flags our tools don't need, and chains the stages:
+# Our toolchain is separate programs (cpp, cc, as, ld + the runtime); a build system expects ONE compiler command that
+# behaves like `gcc`. This is that front end, and it speaks gcc's command line — including the parts a build system
+# PROBES with (Kbuild's cc-option / as-instr, cc-version.sh, autoconf's tryflag):
 #
 #     .c  --cpp-->  .i  --cc-->  .s  --as-->  .o   [ --ld-->  ELF ]
 #     .S  --cpp-->  .s  --as-->  .o                (preprocessed assembly)
 #     .s            --as-->  .o
 #
-# Modes: -E (preprocess only), -S (stop at asm), -c (stop at .o), default (compile+link).
-# The real tools are installed BESIDE this script (os-cpp/os-cc1/os-as/os-ld); we find
-# them by our own location so the driver is relocatable. A link always ends with our compiler
-# runtime ../lib/libosrt.a (toolchain/rt — the libgcc analogue), exactly as gcc appends libgcc.
-# (No `set -u`: several arg arrays are legitimately empty — e.g. a source with no -I — and expanding
-#  an empty array under nounset aborts on older bash. Every scalar below is explicitly initialized.)
+# Modes: -E (preprocess), -S (stop at asm), -c (stop at .o), default (compile + link). `-` reads stdin (with -x);
+# --version / -dumpmachine / -dumpversion / -print-file-name= / -print-libgcc-file-name answer as gcc does.
+#
+# THE OPTION POLICY is the point: a flag is accepted only if our tools honor it, or if it cannot change the output
+# (warnings, diagnostics, optimizer latitude we don't take). Anything else — a code-generation feature we don't
+# implement (-fstack-protector*, -fsanitize=, -pg, -mthumb, -g ...) — is REJECTED, so a probe
+# (`cc -Werror -fstack-protector-strong -c -x c /dev/null`) fails and the build system turns the feature off, instead
+# of us silently producing code without it.
+#
+# The real tools are installed BESIDE this script (os-cpp/os-cc1/os-as/os-ld); a link ends with our compiler runtime
+# ../lib/libosrt.a (toolchain/rt — the libgcc analogue), exactly as gcc appends libgcc.
+#
+# A SYSROOT (--sysroot=DIR, else ../sysroot beside bin/ when it exists — gcc's --with-sysroot) is a C library to build
+# against, as gcc uses one: its headers after the -I dirs (-isystem DIR/usr/include, unless -nostdinc), and a program
+# link gets its start files (crt1.o crti.o ... crtn.o; Scrt1.o for -pie, none for -shared) unless -nostdlib /
+# -nostartfiles, and -lc from DIR/lib, DIR/usr/lib unless -nostdlib / -nodefaultlibs. No sysroot: nothing is added but
+# the runtime (the os build's own libc passes its crt and archive itself).
 set -eo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 CPP="${here}/os-cpp"; CC1="${here}/os-cc1"; AS="${here}/os-as"; LD="${here}/os-ld"
 RTLIB="${here}/../lib/libosrt.a"   # the compiler runtime (64-bit division, int64<->FP, ...)
+TRIPLE=arm-os-custom-linux-gnueabihf
+GCCVER=13.3.0                      # the GCC we are interchangeable with (cpp's predefines say __GNUC__ 13)
+
+die() { echo "os-cc: $*" >&2; exit 1; }
+unsupported() { die "unsupported option '$1'${2:+ ($2)}"; }
 
 mode=link            # link | compile | asm | preprocess
 out=""
-cppargs=()           # -I/-D/-U/-isystem + the flags that shape the PREDEFINED macros -> forwarded to cpp
-inputs=()            # .c/.S/.s/.i sources to run through the pipeline
-linkobjs=()          # .o/.a already-built, passed straight to ld
-ttext=""             # -Ttext <addr> forwarded to ld
-entry=""             # -e <sym> forwarded to ld
-picflag=""           # -fPIC -> forwarded to cc1 (position-independent codegen)
-visflag=""           # -fvisibility=X -> forwarded to cc1 (definitions' default symbol visibility)
-floatabi=""          # -mfloat-abi=soft|hard -> forwarded to cc1 (the kernel is soft: no VFP ABI/attributes)
-shared=""            # -shared -> build a .so (ld -shared; no -Ttext/-e)
-soname=""            # -soname NAME -> ld -soname
-libargs=()           # -l<name> / -L<dir> -> forwarded to ld (dynamic link against a .so)
-ldextra=()           # -Wl,a,b,... -> forwarded to ld as its arguments a b ... (ld rejects what it doesn't know)
+lang=""              # -x: c | assembler | assembler-with-cpp | "" (by extension)
+cppargs=()           # -> cpp: include paths, macros, and the flags that shape the predefined macros
+cc1args=()           # -> cc1: code generation (float ABI, target, PIC, unwind tables, ...)
+asargs=()            # -> as: -Wa,... and the target flags gcc hands its assembler
+deps=()              # -> cpp: -MD/-MMD/-MF/-MT/-MP
+depmode=""; depfile=""; deptarget=""
+inputs=()            # sources: "lang:path"
+linkobjs=()          # .o/.a already built, passed straight to ld
+ttext=""; entry=""; shared=""; soname=""; linkpie=""; relocatable=""
+libargs=()           # -l<name> / -L<dir>
+ldextra=()           # -Wl,a,b,... -> ld
+gnu89=""             # -std=gnu89/c89: `inline` is gnu89's (cc1 -fgnu89-inline)
+query=""
+sysroot=""; [ -d "${here}/../sysroot" ] && sysroot="$(readlink -f "${here}/../sysroot")"
+nostdinc=""; nostdlib=""; nostartfiles=""; nodefaultlibs=""
 
-die() { echo "os-cc: $*" >&2; exit 1; }
+need() { [ $# -ge 2 ] || die "option '$1' needs an argument"; }
 
 while [ $# -gt 0 ]; do
-  case "$1" in
+  a="$1"
+  case "$a" in
+    # ---- mode, output, language --------------------------------------------------------------------------------
     -c) mode=compile ;;
     -E) mode=preprocess ;;
     -S) mode=asm ;;
-    -o) out="$2"; shift ;;
-    -o*) out="${1#-o}" ;;
-    -I) cppargs+=("-I$2"); shift ;;          # attached form (-Idir): the unambiguous gcc-driver convention
-    -I*) cppargs+=("$1") ;;
-    -isystem) cppargs+=("-I$2"); shift ;;    # our cpp has one include path kind
-    -D*|-U*) cppargs+=("$1") ;;
-    -Ttext) ttext="$2"; shift ;;
-    -Ttext=*) ttext="${1#-Ttext=}" ;;
-    -e|--entry) entry="$2"; shift ;;
-    -shared) shared=1 ;;                     # build a shared object (ld -shared)
-    -soname) soname="$2"; shift ;;
-    -soname=*) soname="${1#-soname=}" ;;
-    -l) libargs+=("-l$2"); shift ;;          # dynamic link: -l<name> / -L<dir> forwarded to ld
-    -l*) libargs+=("$1") ;;
-    -L) libargs+=("-L$2"); shift ;;
-    -L*) libargs+=("$1") ;;
-    # Flags our tools neither need nor understand — accept and ignore, like a lenient driver:
-    # optimization, warnings, dialect, arch/ABI tuning, and freestanding/link toggles handled
-    # implicitly by our tools (static ELF, no host libc, no PIC unless -pie is passed to ld).
-    -Wl,*) IFS=, read -r -a wl <<< "${1#-Wl,}"; ldextra+=("${wl[@]}") ;;   # linker options, as gcc passes them
-    -Wa,*|-Wp,*) ;;                          # assembler/preprocessor passthrough we don't forward
-    -fPIC|-fpic|-fPIE|-fpie) picflag="-fPIC"; cppargs+=("$1") ;;   # position-independent codegen -> cc1 (and __PIC__/__PIE__ -> cpp)
-    -fno-pic|-fno-PIC|-fno-pie|-fno-PIE) picflag=""; cppargs+=("$1") ;;
-    -fvisibility=*) visflag="$1" ;;          # default symbol visibility -> forwarded to cc1
-    -mfloat-abi=*) floatabi="$1"; cppargs+=("$1") ;;   # float ABI -> cc1 (and __ARM_PCS_VFP / __SOFTFP__ -> cpp)
-    # Flags that change cpp's predefined macros must reach it (musl's setjmp needs __VFP_FP__, its `_Noreturn`
-    # needs __STDC_VERSION__): cpp knows this set and errors on anything else, so it's listed, not passed blind.
-    -std=*|-ansi|-undef|-trigraphs|-pthread) cppargs+=("$1") ;;
-    -O|-O[0-9]|-Os|-Oz|-Og|-Ofast) cppargs+=("$1") ;;
-    -ffreestanding|-fhosted|-ffast-math|-fno-fast-math|-fsigned-char|-funsigned-char|-fno-signed-char|-fno-unsigned-char) cppargs+=("$1") ;;
-    -O*|-g*|-W*|-f*|-m*|-pipe|-pedantic) ;;
-    -static) ldextra+=(-static) ;;           # a static link: ld takes no shared objects, -l finds lib<name>.a
-    -nostdlib|-nostartfiles|-nostdinc|-fno-builtin|-no-pie|-s) ;;
+    -o) need "$@"; out="$2"; shift ;;
+    -o*) out="${a#-o}" ;;
+    -x) need "$@"; case "$2" in c|assembler|assembler-with-cpp) lang="$2" ;; none) lang="" ;; *) unsupported "-x $2" "language" ;; esac; shift ;;
+    -x*) case "${a#-x}" in c|assembler|assembler-with-cpp) lang="${a#-x}" ;; none) lang="" ;; *) unsupported "$a" "language" ;; esac ;;
+    -) inputs+=("${lang:-stdin}:-") ;;
+    -pipe|-v|-Q) ;;                                    # (we use temporary files; -v prints nothing extra)
+    # ---- queries --------------------------------------------------------------------------------------------
+    --version) query=version ;;
+    -dumpmachine) query=machine ;;
+    -dumpversion) query=dumpversion ;;
+    -dumpfullversion) query=fullversion ;;
+    -print-file-name=*) query="file:${a#-print-file-name=}" ;;
+    -print-prog-name=*) query="prog:${a#-print-prog-name=}" ;;
+    -print-libgcc-file-name) query=libgcc ;;
+    # ---- the preprocessor --------------------------------------------------------------------------------------
+    -I|-isystem|-idirafter|-include) need "$@"; cppargs+=("$a" "$2"); shift ;;
+    -I*|-D*|-U*) cppargs+=("$a") ;;
+    -iquote) need "$@"; cppargs+=("-I$2"); shift ;;    # (our cpp: one quote/angle chain)
+    -nostdinc|-undef|-trigraphs|-P|-pthread|-ansi) cppargs+=("$a"); [ "$a" = -ansi ] && gnu89=1; [ "$a" = -nostdinc ] && nostdinc=1 ;;
+    --sysroot=*) sysroot="${a#--sysroot=}" ;;
+    --sysroot) need "$@"; sysroot="$2"; shift ;;
+    -std=*) cppargs+=("$a"); case "${a#-std=}" in c89|c90|gnu89|gnu90|iso9899:1990|iso9899:199409) gnu89=1 ;; *) gnu89="" ;; esac ;;
+    -fmacro-prefix-map=*|-ffile-prefix-map=*) cppargs+=("$a") ;;
+    -dM) cppargs+=("$a") ;;
+    -C) cppargs+=("$a") ;;                             # (our cpp drops comments either way: the same tokens)
+    -CC|-H|-M|-MM|-MG) unsupported "$a" ;;
+    # dependency output: -Wp,-MD,file / -Wp,-MMD,file (Kbuild), or -MD/-MMD [-MF file] [-MT target] [-MP]
+    -Wp,-MD,*|-Wp,-MMD,*) w="${a#-Wp,}"; depmode="${w%%,*}"; depfile="${w#*,}" ;;
+    -Wp,*) unsupported "$a" "only -Wp,-MD,<file> / -Wp,-MMD,<file>" ;;
+    -MD|-MMD) depmode="$a" ;;
+    -MF) need "$@"; depfile="$2"; shift ;;
+    -MT|-MQ) need "$@"; deptarget="$2"; shift ;;
+    -MP) deps+=(-MP) ;;
+    # ---- target: preprocessor + compiler + assembler agree ------------------------------------------------------
+    -march=armv7-a|-mcpu=cortex-a7) cppargs+=("$a"); cc1args+=("$a"); asargs+=("$a") ;;
+    -march=*|-mcpu=*) unsupported "$a" "ARMv7-A: -march=armv7-a or -mcpu=cortex-a7" ;;
+    -mfpu=vfp|-mfpu=neon-vfpv4) cppargs+=("$a"); cc1args+=("$a"); asargs+=("$a") ;;
+    -mfpu=*) unsupported "$a" ;;
+    -mfloat-abi=soft|-mfloat-abi=hard|-msoft-float) cppargs+=("$a"); cc1args+=("$a"); asargs+=("${a/-msoft-float/-mfloat-abi=soft}") ;;
+    -mfloat-abi=*) unsupported "$a" ;;
+    -mno-unaligned-access) unsupported "$a" "our cc may use unaligned word accesses" ;;
+    -munaligned-access) cppargs+=("$a"); cc1args+=("$a") ;;
+    -marm) cppargs+=("$a"); cc1args+=("$a") ;;
+    -mthumb) unsupported "$a" "our cc generates ARM code" ;;
+    -mabi=aapcs-linux) ;;                              # the ABI we implement (int-sized enums, 4-byte wchar_t)
+    -mabi=*) unsupported "$a" ;;
+    -mlittle-endian|-EL|-mno-thumb-interwork|-mthumb-interwork|-mno-fdpic|-mno-single-pic-base|-mno-long-calls|-mtp=cp15|-mtp=auto) ;;
+    -mtune=*) ;;                                       # scheduling for a core: no semantic effect
+    -m*) unsupported "$a" ;;
+    # ---- code generation we implement --------------------------------------------------------------------------
+    -O|-O[0-9]|-Os|-Oz|-Og|-Ofast) cppargs+=("$a"); cc1args+=("$a") ;;
+    -O*) unsupported "$a" ;;
+    -fPIC|-fpic|-fPIE|-fpie) cppargs+=("$a"); cc1args+=(-fPIC) ;;
+    -fno-pic|-fno-PIC|-fno-pie|-fno-PIE) cppargs+=("$a") ;;
+    -fvisibility=*) cc1args+=("$a") ;;
+    -fshort-wchar|-fno-short-wchar) cppargs+=("$a"); cc1args+=("$a") ;;
+    -funwind-tables|-fasynchronous-unwind-tables|-fno-unwind-tables|-fno-asynchronous-unwind-tables) cc1args+=("$a") ;;
+    -ffreestanding|-fhosted) cppargs+=("$a") ;;
+    -ffast-math|-fno-fast-math) cppargs+=("$a"); cc1args+=("$a") ;;
+    -funsigned-char|-fno-signed-char) cppargs+=("$a") ;;   # ARM's plain char is unsigned: what our cc does
+    -fsigned-char|-fno-unsigned-char) unsupported "$a" "our cc's plain char is unsigned (ARM)" ;;
+    -fgnu89-inline) gnu89=1 ;;
+    -fno-gnu89-inline) gnu89=0 ;;
+    -fno-stack-protector) ;;                           # no canaries: what we do
+    -ffunction-sections|-fdata-sections|-fno-function-sections|-fno-data-sections) cc1args+=("$a") ;;   # a section per function / object
+    -fno-common) ;;                                    # tentative definitions are definitions: what we do
+    -fwrapv|-fno-strict-overflow) ;;                   # signed overflow wraps: what our cc does
+    # ---- optimizer latitude / diagnostics (no effect on our output) ----------------------------------------------
+    -fno-strict-aliasing|-fstrict-aliasing|-fno-delete-null-pointer-checks|-fno-allow-store-data-races|-fno-ipa-sra|\
+    -fconserve-stack|-fno-stack-check|-fno-stack-clash-protection|-fomit-frame-pointer|-fno-omit-frame-pointer|\
+    -fno-optimize-sibling-calls|-fno-inline|-fno-inline-functions-called-once|-fno-inline-small-functions|\
+    -fno-reorder-blocks|-fno-reorder-functions|-fno-jump-tables|-fno-gcse|-fno-crossjumping|-fno-merge-all-constants|\
+    -fmerge-constants|-fno-var-tracking|-fno-var-tracking-assignments|-fno-dwarf2-cfi-asm|-fno-tree-loop-distribute-patterns|\
+    -fno-semantic-interposition|-fno-exceptions|-fexcess-precision=standard|-frounding-math|-fno-math-errno|\
+    -fno-builtin|-fno-builtin-*|-fno-ident|-fverbose-asm|-fno-stack-limit|-fno-plt|-fno-asm|-fno-strict-flex-arrays|\
+    -fdiagnostics-*|-fmessage-length=*|-fmax-errors=*|-fno-diagnostics-*|-fno-show-column|-ftrack-macro-expansion*|\
+    -fdollars-in-identifiers|--param=*|-finline-limit=*|-fno-guess-branch-probability) ;;   # (-finline-limit: how much to inline — we inline only where required)
+    -falign-functions=1|-falign-functions=2|-falign-functions=4|-falign-jumps=1|-falign-labels=1|-falign-loops=1) ;;   # no padding past the
+                                                       # minimum: functions are 4-aligned (ARM code), jumps/labels/loops never padded
+    -falign-*) unsupported "$a" "we align functions to 4 and pad nothing else" ;;
+    -f*) unsupported "$a" ;;
+    -Wa,*) IFS=, read -r -a wa <<< "${a#-Wa,}"; asargs+=("${wa[@]}") ;;   # the assembler rejects what it doesn't know
+    -Wl,*) IFS=, read -r -a wl <<< "${a#-Wl,}"; ldextra+=("${wl[@]}") ;;
+    -W|-w|-W[a-z]*|-Werror|-Werror=*|-pedantic|-pedantic-errors) ;;   # (after -Wa, / -Wl, / -Wp,: we emit no warnings)
+    -g0) ;;
+    -g*) unsupported "$a" "we emit no debug information" ;;
+    -pg|-p) unsupported "$a" ;;
+    # ---- linking ---------------------------------------------------------------------------------------------
+    -Ttext) need "$@"; ttext="$2"; shift ;;
+    -Ttext=*) ttext="${a#-Ttext=}" ;;
+    -e|--entry) need "$@"; entry="$2"; shift ;;
+    -shared) shared=1 ;;
+    -r|--relocatable) relocatable=1 ;;                 # one relocatable object out (ld -r): no runtime, no entry
+    -static-libgcc) ;;                                 # our compiler runtime is always a static archive
+    -soname) need "$@"; soname="$2"; shift ;;
+    -soname=*) soname="${a#-soname=}" ;;
+    -l) need "$@"; libargs+=("-l$2"); shift ;;
+    -l*|-L*) libargs+=("$a") ;;
+    -L) need "$@"; libargs+=("-L$2"); shift ;;
+    -static) ldextra+=(-static) ;;
+    -nostdlib) nostdlib=1 ;;                           # no start files, no libraries (not even the runtime)
+    -nostartfiles) nostartfiles=1 ;;
+    -nodefaultlibs) nodefaultlibs=1 ;;
+    -no-pie|-s) ;;
     -pie|--pie) linkpie=1 ;;
-    -*.o|-*.a) die "unexpected option '$1'" ;;
-    *.c|*.i) inputs+=("$1") ;;
-    *.S|*.s) inputs+=("$1") ;;
-    *.o|*.a) linkobjs+=("$1") ;;
-    *) inputs+=("$1") ;;                     # treat any other bare arg as a source
+    -*) unsupported "$a" ;;
+    # ---- inputs ----------------------------------------------------------------------------------------------
+    *.o|*.a) linkobjs+=("$a") ;;
+    *) inputs+=("${lang:-ext}:$a") ;;
   esac
   shift
 done
-linkpie="${linkpie:-}"
 
+case "${query}" in
+  version) echo "${TRIPLE}-gcc (os toolchain: our cpp/cc/as/ld) ${GCCVER}"; exit 0 ;;
+  machine) echo "${TRIPLE}"; exit 0 ;;
+  dumpversion) echo "${GCCVER%%.*}"; exit 0 ;;
+  fullversion) echo "${GCCVER}"; exit 0 ;;
+  file:*) n="${query#file:}"; [ "${n}" = libgcc.a ] || [ "${n}" = libosrt.a ] && { echo "$(readlink -f "${RTLIB}")"; exit 0; }; echo "${n}"; exit 0 ;;   # (gcc: the name itself when not found)
+  prog:*) n="${query#prog:}"; case "${n}" in as) echo "${AS}" ;; ld) echo "${LD}" ;; cpp) echo "${CPP}" ;; *) echo "${n}" ;; esac; exit 0 ;;
+  libgcc) echo "$(readlink -f "${RTLIB}")"; exit 0 ;;
+esac
+
+if [ -n "${sysroot}" ]; then
+  [ -d "${sysroot}" ] || die "--sysroot ${sysroot}: not a directory"
+  [ -n "${nostdinc}" ] || cppargs+=(-isystem "${sysroot}/usr/include")   # (after every -I: gcc's order)
+fi
 [ ${#inputs[@]} -gt 0 ] || [ ${#linkobjs[@]} -gt 0 ] || die "no input files"
+[ "${gnu89}" = 1 ] && cc1args+=(-fgnu89-inline)
+asargs=(-meabi=5 "${asargs[@]}")                       # what gcc tells its assembler (EABI 5, then the target, then -Wa)
 
 tmp="$(mktemp -d)"; trap 'rm -rf "${tmp}"' EXIT
 
-# compile_one <src> <dstobj|-> : run a single source through cpp[/cc]/as, honoring the stop mode.
-# For -E/-S with -o unset, output goes to stdout / <base>.s per gcc convention.
-compile_one() {
-  local src="$1" dst="$2" ext="${src##*.}" i="${tmp}/u.i" s="${tmp}/u.s"
-  case "${ext}" in
-    c)
-      "${CPP}" "${cppargs[@]}" "${src}" > "${i}"
-      [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${i}" "${out}"; else cat "${i}"; fi; return 0; }
-      "${CC1}" ${picflag} ${visflag} ${floatabi} -o "${s}" "${i}"
-      ;;
-    i)
-      [ "${mode}" = preprocess ] && { cat "${src}"; return 0; }
-      "${CC1}" ${picflag} ${visflag} ${floatabi} -o "${s}" "${src}"
-      ;;
-    S)
-      "${CPP}" -x assembler-with-cpp "${cppargs[@]}" "${src}" > "${s}"
-      [ "${mode}" = preprocess ] && { if [ -n "${out}" ]; then cp "${s}" "${out}"; else cat "${s}"; fi; return 0; }
-      ;;
-    s)
-      cp "${src}" "${s}"
-      ;;
-    *) die "don't know how to compile '${src}'" ;;
-  esac
-  if [ "${mode}" = asm ]; then                       # stop at assembly
-    cp "${s}" "${dst}"; return 0
-  fi
-  "${AS}" -o "${dst}" "${s}"                          # assemble to object
+# the dependency file cpp writes (Kbuild's fixdep reads it); its target: the object
+depflags() {   # depflags <object>
+  [ -n "${depmode}" ] || return 0
+  local f="${depfile}"
+  [ -n "${f}" ] || { f="${1%.o}.d"; }
+  printf '%s\n' "${depmode}" -MF "${f}" -MT "${deptarget:-$1}" "${deps[@]}"
 }
 
-# --- non-link modes: transform each input independently -------------------------------------------
+# compile_one <lang:src> <dst|-> : one source through cpp[/cc]/as, honoring the stop mode (-E/-S: dst "-" = stdout)
+compile_one() {
+  local spec="$1" dst="$2" kind="${1%%:*}" src="${1#*:}" i="${tmp}/u.i" s="${tmp}/u.s"
+  if [ "${src}" = - ]; then                            # stdin: needs -x (gcc: "-E or -x required when input is from stdin")
+    case "${kind}" in c) cat > "${tmp}/stdin.c"; src="${tmp}/stdin.c" ;; assembler-with-cpp) cat > "${tmp}/stdin.S"; src="${tmp}/stdin.S" ;;
+      assembler) cat > "${tmp}/stdin.s"; src="${tmp}/stdin.s" ;; stdin) [ "${mode}" = preprocess ] || die "-x required when input is from standard input"; cat > "${tmp}/stdin.c"; src="${tmp}/stdin.c" ;; esac
+    kind=ext
+  fi
+  if [ "${kind}" = ext ]; then
+    case "${src}" in *.c) kind=c ;; *.i) kind=i ;; *.S|*.sx) kind=assembler-with-cpp ;; *.s) kind=assembler ;; *) kind=c ;; esac
+  fi
+  local df=(); mapfile -t df < <(depflags "${dst}")
+  case "${kind}" in
+    c)
+      "${CPP}" "${cppargs[@]}" "${df[@]}" -o "${i}" "${src}"
+      [ "${mode}" = preprocess ] && { if [ "${dst}" = - ]; then cat "${i}"; else cp "${i}" "${dst}"; fi; return 0; }
+      "${CC1}" "${cc1args[@]}" -o "${s}" "${i}"
+      ;;
+    i)
+      [ "${mode}" = preprocess ] && { if [ "${dst}" = - ]; then cat "${src}"; else cp "${src}" "${dst}"; fi; return 0; }
+      "${CC1}" "${cc1args[@]}" -o "${s}" "${src}"
+      ;;
+    assembler-with-cpp)
+      "${CPP}" -x assembler-with-cpp "${cppargs[@]}" "${df[@]}" -o "${s}" "${src}"
+      [ "${mode}" = preprocess ] && { if [ "${dst}" = - ]; then cat "${s}"; else cp "${s}" "${dst}"; fi; return 0; }
+      ;;
+    assembler)
+      [ "${mode}" = preprocess ] && { if [ "${dst}" = - ]; then cat "${src}"; else cp "${src}" "${dst}"; fi; return 0; }
+      cp "${src}" "${s}"
+      ;;
+  esac
+  if [ "${mode}" = asm ]; then                         # stop at assembly
+    if [ "${dst}" = - ]; then cat "${s}"; else cp "${s}" "${dst}"; fi; return 0
+  fi
+  "${AS}" "${asargs[@]}" -o "${dst}" "${s}"
+}
+
+# --- non-link modes: each input on its own ---------------------------------------------------------------------
 if [ "${mode}" != link ]; then
-  for src in "${inputs[@]}"; do
-    if [ -n "${out}" ]; then
-      compile_one "${src}" "${out}"
-    else
-      base="$(basename "${src}")"; base="${base%.*}"
-      case "${mode}" in
-        compile) compile_one "${src}" "${base}.o" ;;
-        asm)     compile_one "${src}" "${base}.s" ;;
-        preprocess) compile_one "${src}" "-" ;;
-      esac
+  [ -z "${out}" ] || [ ${#inputs[@]} -le 1 ] || die "cannot specify -o with -c, -S or -E with multiple files"
+  for spec in "${inputs[@]}"; do
+    src="${spec#*:}"
+    if [ -n "${out}" ]; then d="${out}"; [ "${mode}" = preprocess ] && [ "${out}" = - ] && d=-
+    elif [ "${mode}" = preprocess ]; then d=-
+    else base="$(basename "${src}")"; [ "${src}" = - ] && base=stdin; base="${base%.*}"; [ "${mode}" = compile ] && d="${base}.o" || d="${base}.s"
     fi
+    compile_one "${spec}" "${d}"
   done
   exit 0
 fi
 
-# --- link mode: compile every source to a temp .o, then ld everything into one ELF ----------------
-objs=()
-n=0
-for src in "${inputs[@]}"; do
-  o="${tmp}/obj${n}.o"; compile_one "${src}" "${o}"; objs+=("${o}"); n=$((n + 1))
+# --- link mode: every source to a temp .o, then ld everything into one ELF --------------------------------------
+objs=(); n=0
+for spec in "${inputs[@]}"; do
+  o="${tmp}/obj${n}.o"; compile_one "${spec}" "${o}"; objs+=("${o}"); n=$((n + 1))
 done
 : "${out:=a.out}"
 ldflags=()
+if [ -n "${relocatable}" ]; then                     # a partial link: the objects merged, nothing resolved or added
+  [ -z "${shared}${linkpie}${ttext}${entry}" ] || die "-r makes an object: no -shared, -pie, -Ttext or -e"
+  "${LD}" -r "${ldextra[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}"
+  exit 0
+fi
 if [ -n "${shared}" ]; then                  # a .so: ET_DYN, base 0, no entry — -Ttext/-e don't apply
   ldflags+=(-shared)
   [ -n "${soname}" ] && ldflags+=(-soname "${soname}")
@@ -155,5 +276,20 @@ else
   [ -n "${ttext}" ] && ldflags+=(-Ttext "${ttext}")
   [ -n "${entry}" ] && ldflags+=(-e "${entry}")
 fi
-[ -f "${RTLIB}" ] || die "compiler runtime ${RTLIB} missing (build toolchain/rt and install it beside bin/)"
-"${LD}" "${ldflags[@]}" "${ldextra[@]}" -o "${out}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${RTLIB}"
+start=(); finish=(); libs=()
+if [ -n "${sysroot}" ]; then                         # gcc's link line against a C library
+  sysfile() { local f; for f in "${sysroot}/usr/lib/$1" "${sysroot}/lib/$1"; do [ -f "${f}" ] && { echo "${f}"; return; }; done; die "--sysroot ${sysroot}: no $1"; }
+  if [ -z "${nostdlib}${nostartfiles}" ]; then
+    if [ -n "${shared}" ]; then start=("$(sysfile crti.o)")
+    elif [ -n "${linkpie}" ]; then start=("$(sysfile Scrt1.o)" "$(sysfile crti.o)")
+    else start=("$(sysfile crt1.o)" "$(sysfile crti.o)"); fi
+    finish=("$(sysfile crtn.o)")
+  fi
+  ldflags+=(-L "${sysroot}/lib" -L "${sysroot}/usr/lib")
+  [ -n "${nostdlib}${nodefaultlibs}" ] || libs+=(-lc)
+fi
+if [ -z "${nostdlib}${nodefaultlibs}" ]; then          # the compiler runtime, last (gcc's libgcc)
+  [ -f "${RTLIB}" ] || die "compiler runtime ${RTLIB} missing (build toolchain/rt and install it beside bin/)"
+  libs+=("${RTLIB}")
+fi
+"${LD}" "${ldflags[@]}" "${ldextra[@]}" -o "${out}" "${start[@]}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${libs[@]}" "${finish[@]}"

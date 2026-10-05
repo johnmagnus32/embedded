@@ -16,6 +16,8 @@
  * active region is an error, as in GCC. A few predefined macros.
  */
 #define _POSIX_C_SOURCE 200809L
+#include "strmap.h"
+#define PATHMAX 4096   /* a file path (include search builds them: too long is an error, never a truncation) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +39,8 @@ typedef struct Hide { char *name; struct Hide *next; } Hide;
 typedef struct Tok {
 	Kind kind; char *text;
 	int bol;              /* first token on its source line (=> a '#' here starts a directive) */
+	int cbol;             /* ...but only because a comment spanning lines came before it: that does NOT end a directive
+	                       * line (GCC: a #define whose body has a two-line comment in it is one definition) */
 	int space;            /* had leading whitespace (for readable output)                      */
 	int line;             /* its physical line in its file (0: not from a file)                */
 	Hide *hide;           /* macros this token must NOT be expanded by                          */
@@ -172,19 +176,20 @@ static Tok *tokenize_lines(const char *src, const int *lines);
 static Tok *tokenize(const char *src) { return tokenize_lines(src, NULL); }
 static Tok *tokenize_lines(const char *src, const int *lines) {
 	Tok head = {0}, *cur = &head;
-	int bol = 1, space = 0;
+	int bol = 1, cbol = 0, space = 0;
 	for (const char *p = src; *p; ) {
-		if (*p == '\n') { p++; bol = 1; space = 0; continue; }
+		if (*p == '\n') { p++; bol = 1; cbol = 0; space = 0; continue; }
 		if (*p == ' ' || *p == '\t' || *p == '\f' || *p == '\v') { p++; space = 1; continue; }
 		if (lx.cxx_comments && p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; space = 1; continue; }
 		if (p[0] == '/' && p[1] == '*') {
 			const char *e = strstr(p + 2, "*/"); if (!e) die("unterminated comment");
-			for (const char *q = p; q < e; q++) if (*q == '\n') { bol = 1; }   /* a comment spanning lines ends the line */
+			for (const char *q = p; q < e; q++) if (*q == '\n' && !bol) { bol = 1; cbol = 1; }   /* a comment spanning lines: a new
+			                                                                              * line for text, not for a directive */
 			p = e + 2; space = 1; continue;
 		}
 		Kind k; size_t l = lex_len(p, &k);
 		Tok *t = newtok(k, p, l); t->line = lines ? lines[p - src] : 0; p += l;
-		t->bol = bol; t->space = space; bol = 0; space = 0;
+		t->bol = bol; t->cbol = cbol; t->space = space; bol = 0; cbol = 0; space = 0;
 		cur = cur->next = t;
 	}
 	cur->next = newtok(TEOF, "", 0); cur->next->bol = 1;
@@ -208,23 +213,55 @@ typedef struct Macro {
 	Tok *body;
 	struct Macro *next;
 } Macro;
-static Macro *macros;
-static Macro *macro_find(const char *n) {
-	for (Macro *m = macros; m; m = m->next) if (!strcmp(m->name, n)) return m;
-	return NULL;
-}
+/* The defined macros: a hash table by name (a kernel translation unit defines ~20K — every identifier the
+ * preprocessor sees is a lookup), and a list in definition order (newest first) for -dM. */
+static Macro *macros; static StrMap macro_map;
+static Macro *macro_find(const char *n) { return strmap_get(&macro_map, n); }
 static void macro_undef(const char *n) {
-	for (Macro **p = &macros; *p; p = &(*p)->next)
-		if (!strcmp((*p)->name, n)) { *p = (*p)->next; return; }
+	Macro *m = strmap_get(&macro_map, n); if (!m) return;
+	strmap_put(&macro_map, m->name, NULL);
+	for (Macro **p = &macros; *p; p = &(*p)->next) if (*p == m) { *p = m->next; return; }
 }
 static Macro *macro_add(const char *n) {
 	macro_undef(n);                                          /* a redefinition replaces the old one */
 	Macro *m = calloc(1, sizeof *m); m->name = xstrdup(n); m->next = macros; macros = m;
+	strmap_put(&macro_map, m->name, m);
 	return m;
 }
 
 /* ------------------------------------------------------------------ include paths ----------------- */
-static char *inc_dirs[64]; static int n_inc_dirs;
+static char *inc_dirs[64]; static int n_inc_dirs; static char inc_sys[64];   /* inc_sys: an -isystem/-idirafter dir */
+/* Dependency output (-MD / -MMD, -MF file, -MT target, -MP): the main file and every header read, in first-read order
+ * — for -MMD without the ones found in system directories — in make's syntax, as GCC writes it. */
+static int dep_mode;                   /* 0 none, 1 -MD (all), 2 -MMD (user headers) */
+static const char *dep_file, *dep_target; static int dep_phony;
+static char **deps; static int ndeps, depcap;
+static void add_dep(const char *path, int sys) {
+	if (!dep_mode || (dep_mode == 2 && sys)) return;
+	for (int i = 0; i < ndeps; i++) if (!strcmp(deps[i], path)) return;
+	if (ndeps == depcap) { depcap = depcap ? 2 * depcap : 64; deps = realloc(deps, depcap * sizeof *deps); }
+	deps[ndeps++] = strdup(path);
+}
+static void write_deps(const char *main_in, const char *outpath) {
+	if (!dep_mode) return;
+	char tgt[PATHMAX];
+	if (dep_target) snprintf(tgt, sizeof tgt, "%s", dep_target);
+	else {   /* GCC: the source's basename with .o */
+		const char *b = strrchr(main_in, '/'); b = b ? b + 1 : main_in;
+		snprintf(tgt, sizeof tgt, "%s", b); char *dot = strrchr(tgt, '.'); if (dot) strcpy(dot, ".o"); else strcat(tgt, ".o");
+	}
+	(void)outpath;
+	FILE *f = fopen(dep_file, "w"); if (!f) die("cannot write dependency file %s", dep_file);
+	int col = fprintf(f, "%s:", tgt);
+	for (int i = 0; i < ndeps; i++) {
+		int n = (int)strlen(deps[i]);
+		if (i && col + 1 + n > 75) { fputs(" \\\n", f); col = 0; }
+		col += fprintf(f, " %s", deps[i]);
+	}
+	fputc('\n', f);
+	if (dep_phony) for (int i = 1; i < ndeps; i++) fprintf(f, "%s:\n", deps[i]);
+	if (fclose(f)) die("cannot write dependency file %s", dep_file);
+}
 
 /* ------------------------------------------------------------------ output ------------------------ */
 static FILE *out;
@@ -297,23 +334,34 @@ static int read_args(Tok **tok, Tok **args, int max, int variadic, int nparams) 
 static Tok *expand(Tok *tok);   /* fwd */
 
 /* Turn a token list into a single string literal (the # operator). */
-static Tok *stringize(Tok *arg) {
-	char buf[4096]; size_t k = 0; buf[k++] = '"';
+static Tok *stringize(Tok *arg) {   /* C11 6.10.3.2: spaces between tokens become one; a \ or " inside a string or
+	                                    * character literal gets a \ (only there: a stray \ is spelled as is) */
+	size_t cap = 64, k = 0; char *buf = malloc(cap);
+	#define PUT(ch) do { if (k + 2 >= cap) { cap *= 2; buf = realloc(buf, cap); } buf[k++] = (ch); } while (0)
+	PUT('"');
 	for (Tok *t = arg; t && t->kind != TEOF; t = t->next) {
-		if (t->space && k > 1) buf[k++] = ' ';
-		for (char *c = t->text; *c && k < sizeof buf - 2; c++) { if (*c == '"' || *c == '\\') buf[k++] = '\\'; buf[k++] = *c; }
+		if (t->space && k > 1) PUT(' ');
+		int lit = t->kind == TSTR || t->kind == TCHAR;
+		for (const char *c = t->text; *c; c++) { if (lit && (*c == '"' || *c == '\\')) PUT('\\'); PUT(*c); }
 	}
-	buf[k++] = '"'; buf[k] = 0;
-	return newtok(TSTR, buf, k);
+	PUT('"'); buf[k] = 0;
+	#undef PUT
+	Tok *r = newtok(TSTR, buf, k); free(buf); return r;
 }
 /* Paste two tokens' spellings into one new token (the ## operator). Either side may be NULL (an empty
  * macro argument acts as a placemarker); if both are empty the result is nothing (NULL). The spelling must be
  * exactly one preprocessing token (GCC: "pasting X and Y does not give a valid preprocessing token"). */
+static int asm_mode;   /* -x assembler-with-cpp (set from po before preprocessing) */
 static Tok *paste(Tok *a, Tok *b) {
 	if (!a || !b) return a ? a : b;
 	size_t n = strlen(a->text) + strlen(b->text) + 1; char *buf = malloc(n); snprintf(buf, n, "%s%s", a->text, b->text);
 	Tok *r = tokenize(buf);
-	if (r->kind == TEOF || r->next->kind != TEOF) die("pasting \"%s\" and \"%s\" does not give a valid preprocessing token", a->text, b->text);
+	if (r->kind == TEOF || r->next->kind != TEOF) {
+		/* GCC's assembler mode lets it be: the two stay separate tokens, written side by side (a linker script's
+		 * `.initcall##level##.init` -> `.initcall0.init`) — a list of two, the caller emits the first */
+		if (asm_mode) { free(buf); Tok *x = copytok(a), *y = copytok(b); x->next = y; y->next = NULL; y->space = 0; y->bol = 0; x->bol = 0; return x; }
+		die("pasting \"%s\" and \"%s\" does not give a valid preprocessing token", a->text, b->text);
+	}
 	free(buf); r->next = NULL; r->bol = 0; r->space = a->space;   /* where the left operand was */
 	return r;
 }
@@ -338,6 +386,8 @@ static Tok *operand(const Macro *m, const Tok *t, Tok **args, int nargs) {
 /* Substitute args into a function-macro body, handling # and ##; params expanded unless adjacent to #/##. */
 static Tok *subst(Macro *m, Tok **args, int nargs, int line) {   /* line: the invocation's (its body's tokens take it) */
 	Tok head = {0}, *cur = &head;
+	Tok *pre[64] = {0}; char have[64] = {0};   /* each argument macro-expanded ONCE, when first needed (GCC): a parameter
+	                                              * used twice must not expand its argument twice (__COUNTER__ would tick) */
 	for (Tok *t = m->body; t; ) {
 		int pi = -1;
 		if (t->kind == TIDENT) for (int i = 0; i < m->nparams; i++) if (!strcmp(t->text, m->params[i])) pi = i;
@@ -371,6 +421,7 @@ static Tok *subst(Macro *m, Tok **args, int nargs, int line) {   /* line: the in
 				} else {
 					Tok *rest = r ? r->next : NULL; if (r) r->next = NULL;
 					Tok *p = paste(acc, r);
+					if (p && p->next) { Tok *second = p->next; p->next = NULL; EMIT(p); p = second; }   /* (assembler mode: not one token) */
 					if (!rest) acc = p;
 					else { if (p) EMIT(p); acc = NULL; for (Tok *x = rest; x; ) { Tok *nx = x->next; x->next = NULL; if (nx) EMIT(x); else acc = x; x = nx; } }
 				}
@@ -383,7 +434,9 @@ static Tok *subst(Macro *m, Tok **args, int nargs, int line) {   /* line: the in
 		}
 		if (pi >= 0 && pi < nargs) {                                 /* a parameter: splice its EXPANDED argument, */
 			int firsttok = 1;                                       /* spaced where the parameter is in the body */
-			for (Tok *a = expand(copy_body(args[pi], NULL)); a && a->kind != TEOF; a = a->next) {
+			if (pi >= 64) die("macro '%s': too many parameters", m->name);
+			if (!have[pi]) { pre[pi] = expand(copy_body(args[pi], NULL)); have[pi] = 1; }
+			for (Tok *a = pre[pi]; a && a->kind != TEOF; a = a->next) {
 				cur = cur->next = copytok(a);
 				if (firsttok) { cur->space = t->space; firsttok = 0; }
 			}
@@ -401,18 +454,79 @@ static Tok *do_pragma(Tok *line);
 static Tok *destringize_pragma(const Tok *s);
 static char **poisoned; static int npoisoned;             /* #pragma GCC poison */
 static int is_poisoned(const char *n) { for (int i = 0; i < npoisoned; i++) if (!strcmp(poisoned[i], n)) return 1; return 0; }
+/* __has_attribute / __has_c_attribute / __has_builtin (anywhere; the operand is macro-expanded, as GCC does) and
+ * __has_include / __has_include_next (#if only): GCC's answers — the first three from has.h, measured from GCC by
+ * gen-has.py (a name it doesn't hold is an error: regenerate, never a silent 0); the includes by searching. */
+#include "has.h"
+static int in_if;                                      /* evaluating a #if / #elif line */
+static char *find_include_from(const char *name, int angle, int from);
+static int cur_inc_idx = -1;                           /* the include dir the current file came from (-1: none) */
+static int has_kind(const char *n) {
+	return !strcmp(n, "__has_attribute") ? 1 : !strcmp(n, "__has_c_attribute") ? 2 : !strcmp(n, "__has_builtin") ? 3
+	     : !strcmp(n, "__has_include") ? 4 : !strcmp(n, "__has_include_next") ? 5 : 0;
+}
+static long has_lookup(int kind, const char *raw) {
+	char n[256]; size_t L = strlen(raw);
+	if (kind != 3 && L > 4 && raw[0] == '_' && raw[1] == '_' && raw[L - 1] == '_' && raw[L - 2] == '_') snprintf(n, sizeof n, "%.*s", (int)(L - 4), raw + 2);
+	else snprintf(n, sizeof n, "%s", raw);
+	#define LOOK(tab) for (unsigned i = 0; i < sizeof tab / sizeof *tab; i++) if (!strcmp(tab[i].name, n)) return tab[i].val;
+	if (kind == 1) { LOOK(has_attr_tab) } else if (kind == 2) { LOOK(has_c_attr_tab) } else { LOOK(has_builtin_tab) }
+	#undef LOOK
+	die("%s(%s): not in has.h — regenerate it with gen-has.py (add the name) so the answer is GCC's",
+	    kind == 1 ? "__has_attribute" : kind == 2 ? "__has_c_attribute" : "__has_builtin", raw);
+	return 0;
+}
+static Tok *expand(Tok *tok);
+static long has_eval(int kind, const char *op, Tok *arg) {   /* arg: the tokens between the parentheses */
+	if (kind >= 4) {
+		if (!in_if) die("\"%s\" used outside of preprocessing directive", op);
+		if (arg->kind != TSTR && !is_p(arg, "<")) arg = expand(arg);   /* a macro naming the header */
+		char fn[PATHMAX] = ""; int angle = 0;
+		if (arg->kind == TSTR) { size_t n = strlen(arg->text); if (n < 2 || n - 2 >= sizeof fn) die("%s: bad file name", op); memcpy(fn, arg->text + 1, n - 2); fn[n - 2] = 0; }
+		else if (is_p(arg, "<")) { angle = 1; for (Tok *t = arg->next; t && !is_p(t, ">") && t->kind != TEOF; t = t->next) strncat(fn, t->text, sizeof fn - strlen(fn) - 1); }
+		else die("operator \"%s\" requires a header-name", op);
+		return find_include_from(fn, angle, kind == 5 ? cur_inc_idx + 1 : -1) != NULL;
+	}
+	Tok *x = expand(arg);
+	if (x->kind != TIDENT) die("macro \"%s\" requires an identifier", op);
+	if (x->next && x->next->kind != TEOF) {   /* a scoped name: gnu::X is X (GCC); other scopes it doesn't know */
+		if (kind == 3 || !is_p(x->next, ":") || !x->next->next || !is_p(x->next->next, ":") || !x->next->next->next || x->next->next->next->kind != TIDENT)
+			die("%s: unsupported operand", op);
+		if (strcmp(x->text, "gnu") && strcmp(x->text, "__gnu__")) die("%s(%s::...): only the gnu:: scope is supported", op, x->text);
+		return has_lookup(kind, x->next->next->next->text);
+	}
+	return has_lookup(kind, x->text);
+}
 static Tok *expand(Tok *tok) {
 	Tok head = {0}, *cur = &head;
 	while (tok && tok->kind != TEOF) {
 		if (tok->kind == TIDENT && !hide_has(tok->hide, tok->text)) {
 			if (npoisoned && is_poisoned(tok->text)) die("attempt to use poisoned \"%s\"", tok->text);
-			if (!strcmp(tok->text, "_Pragma")) {
-				Tok *o = tok->next, *st = o ? o->next : NULL;
-				if (!o || !is_p(o, "(") || !st || st->kind != TSTR || !st->next || !is_p(st->next, ")")) die("_Pragma takes a parenthesized string literal");
+			if (!strcmp(tok->text, "_Pragma")) {   /* its operand is macro-expanded (GCC): `_Pragma(STR(GCC diagnostic s))` */
+				Tok *o = tok->next;
+				if (!o || !is_p(o, "(")) die("_Pragma takes a parenthesized string literal");
+				Tok ah = {0}, *ac = &ah, *e = o->next; int depth = 0;
+				while (e && e->kind != TEOF && !(depth == 0 && is_p(e, ")"))) { if (is_p(e, "(")) depth++; else if (is_p(e, ")")) depth--; ac = ac->next = copytok(e); e = e->next; }
+				if (!e || e->kind == TEOF) die("_Pragma takes a parenthesized string literal");
+				ac->next = newtok(TEOF, "", 0);
+				Tok *st = expand(ah.next);
+				if (st->kind != TSTR || (st->next && st->next->kind != TEOF)) die("_Pragma takes a parenthesized string literal");
 				Tok *pl = do_pragma(destringize_pragma(st));
-				tok = st->next->next;
+				tok = e->next;
 				if (pl) cur = cur->next = pl;
 				continue;
+			}
+			int hk = has_kind(tok->text);
+			if (hk && !macro_find(tok->text)) {   /* __has_*(...) -> its value */
+				Tok *o = tok->next;
+				if (!o || !is_p(o, "(")) die("missing '(' after \"%s\"", tok->text);
+				Tok ah = {0}, *ac = &ah, *e = o->next; int depth = 0;
+				while (e && e->kind != TEOF && !(depth == 0 && is_p(e, ")"))) { if (is_p(e, "(")) depth++; else if (is_p(e, ")")) depth--; ac = ac->next = copytok(e); e = e->next; }
+				if (!e || e->kind == TEOF) die("unterminated \"%s\"", tok->text);
+				ac->next = newtok(TEOF, "", 0);
+				char b[32]; snprintf(b, sizeof b, "%ld", has_eval(hk, tok->text, ah.next));
+				Tok *r = newtok(TNUM, b, strlen(b)); r->space = tok->space; r->bol = tok->bol; r->next = e->next;
+				cur = cur->next = r; tok = e->next; continue;
 			}
 			Macro *m = macro_find(tok->text);
 			Tok *b = m ? NULL : builtin_tok(tok);
@@ -428,6 +542,11 @@ static Tok *expand(Tok *tok) {
 				Tok *args[64]; Tok *open = tok->next; (void)open;
 				Tok *after = tok; Tok *paren = tok->next;
 				int nargs = read_args(&paren, args, 64, m->variadic, m->nparams);
+				if (nargs > 64) die("macro \"%s\": too many arguments (%d)", m->name, nargs);
+				if (m->variadic ? nargs < m->nparams - 1 : nargs != m->nparams && !(m->nparams == 0 && nargs == 1 && args[0]->kind == TEOF)) {
+					if (nargs > m->nparams && !m->variadic) die("macro \"%s\" passed %d arguments, but takes just %d", m->name, nargs, m->nparams);
+					die("macro \"%s\" requires %d arguments, but only %d given", m->name, m->variadic ? m->nparams - 1 : m->nparams, nargs);
+				}
 				(void)nargs; (void)after;
 				Tok *rep = subst(m, args, nargs, tok->line);
 				Hide *hs = hide_add(tok->hide, m->name);
@@ -448,12 +567,23 @@ static Tok *expand(Tok *tok) {
  * counter, and when (__DATE__ / __TIME__ from SOURCE_DATE_EPOCH when set, as GCC; __TIMESTAMP__ = the file's mtime). */
 static int line_delta;                 /* presumed line = physical + line_delta (this file; #line / markers move it) */
 static const char *presumed = "";      /* presumed file name (__FILE__) */
+/* -fmacro-prefix-map=OLD=NEW (or -ffile-prefix-map): __FILE__ / __BASE_FILE__ with a leading OLD spelled NEW; the last
+ * matching option wins (GCC remap_filename). The kernel passes -fmacro-prefix-map=./= for reproducible paths. */
+static struct PrefixMap { const char *old, *new_; struct PrefixMap *next; } *prefix_maps;
+static const char *prefix_mapped(const char *f) {
+	for (struct PrefixMap *m = prefix_maps; m; m = m->next) {
+		size_t n = strlen(m->old);
+		if (!strncmp(f, m->old, n)) { size_t k = strlen(m->new_) + strlen(f + n) + 1; char *r = malloc(k); snprintf(r, k, "%s%s", m->new_, f + n); return r; }
+	}
+	return f;
+}
 static const char *base_file = "";     /* the main file, as named on the command line */
 static int include_level, counter;
 static time_t file_mtime;              /* the current file's (for __TIMESTAMP__) */
 static char *builtin_off[16]; static int nbuiltin_off;   /* #undef'd builtins (GCC allows it, with a warning) */
 static const char *const builtins[] = { "__LINE__", "__FILE__", "__FILE_NAME__", "__BASE_FILE__", "__INCLUDE_LEVEL__",
-	"__COUNTER__", "__DATE__", "__TIME__", "__TIMESTAMP__", NULL };
+	"__COUNTER__", "__DATE__", "__TIME__", "__TIMESTAMP__",
+	"__has_attribute", "__has_c_attribute", "__has_builtin", "__has_include", "__has_include_next", NULL };   /* (defined: 1) */
 static int is_builtin(const char *n) {
 	for (int i = 0; i < nbuiltin_off; i++) if (!strcmp(builtin_off[i], n)) return 0;
 	for (int i = 0; builtins[i]; i++) if (!strcmp(builtins[i], n)) return 1;
@@ -470,9 +600,9 @@ static Tok *builtin_tok(const Tok *t) {
 	static const char *const mon[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 	static const char *const day[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
 	if (!strcmp(n, "__LINE__")) { snprintf(b, sizeof b, "%d", t->line + line_delta); r = newtok(TNUM, b, strlen(b)); }
-	else if (!strcmp(n, "__FILE__")) r = str_tok(presumed);
+	else if (!strcmp(n, "__FILE__")) r = str_tok(prefix_mapped(presumed));
 	else if (!strcmp(n, "__FILE_NAME__")) { const char *s = strrchr(presumed, '/'); r = str_tok(s ? s + 1 : presumed); }
-	else if (!strcmp(n, "__BASE_FILE__")) r = str_tok(base_file);
+	else if (!strcmp(n, "__BASE_FILE__")) r = str_tok(prefix_mapped(base_file));
 	else if (!strcmp(n, "__INCLUDE_LEVEL__")) { snprintf(b, sizeof b, "%d", include_level); r = newtok(TNUM, b, strlen(b)); }
 	else if (!strcmp(n, "__COUNTER__")) { snprintf(b, sizeof b, "%d", counter++); r = newtok(TNUM, b, strlen(b)); }
 	else if (!strcmp(n, "__TIMESTAMP__")) {
@@ -583,12 +713,12 @@ static long eval_if(Tok *line) {
 		cur = cur->next = copytok(t); t = t->next;
 	}
 	cur->next = newtok(TEOF, "", 0);
-	Tok *ex = expand(head.next);                           /* pass 2: expand macros */
+	in_if = 1; Tok *ex = expand(head.next); in_if = 0;     /* pass 2: expand macros (and the __has_* operators) */
 	Tok *c = ex; long v = ev_ternary(&c); return v;        /* leftover idents evaluate to 0 in ev_primary */
 }
 
 /* ------------------------------------------------------------------ include search ---------------- */
-static char cur_dir[512];
+static char cur_dir[PATHMAX];
 /* #pragma once: the files that asked, by identity (device + inode: `a.h` and `../inc/a.h` are one file). */
 static struct stat cur_file;                           /* the file being driven */
 static struct stat *once; static int nonce, oncecap;
@@ -601,12 +731,19 @@ static void mark_once(void) {
 	if (nonce == oncecap) { oncecap = oncecap ? 2 * oncecap : 32; once = realloc(once, oncecap * sizeof *once); if (!once) die("out of memory"); }
 	once[nonce++] = cur_file;
 }
-static char *find_include(const char *name, int angle) {
-	static char path[1024]; FILE *f;
-	if (!angle) { snprintf(path, sizeof path, "%s%s%s", cur_dir, cur_dir[0] ? "/" : "", name); if ((f = fopen(path, "rb"))) { fclose(f); return path; } }
-	for (int i = 0; i < n_inc_dirs; i++) { snprintf(path, sizeof path, "%s/%s", inc_dirs[i], name); if ((f = fopen(path, "rb"))) { fclose(f); return path; } }
+/* A header: "" first beside the current file, then the include dirs in order. from >= 0 (#include_next): only the
+ * dirs after the one the current file was found in. found_idx: where it was found (-1: beside the file). */
+static int found_idx;
+static char *find_include_from(const char *name, int angle, int from) {
+	static char path[PATHMAX]; FILE *f;
+	#define MKPATH(...) do { if (snprintf(path, sizeof path, __VA_ARGS__) >= (int)sizeof path) die("include path too long: %s", name); } while (0)
+	if (name[0] == '/') { found_idx = -1; MKPATH("%s", name); if ((f = fopen(path, "rb"))) { fclose(f); return path; } return NULL; }
+	if (!angle && from < 0) { found_idx = -1; MKPATH("%s%s%s", cur_dir, cur_dir[0] ? "/" : "", name); if ((f = fopen(path, "rb"))) { fclose(f); return path; } }
+	for (int i = from < 0 ? 0 : from; i < n_inc_dirs; i++) { MKPATH("%s/%s", inc_dirs[i], name); if ((f = fopen(path, "rb"))) { fclose(f); found_idx = i; return path; } }
+	#undef MKPATH
 	return NULL;
 }
+static char *find_include(const char *name, int angle) { return find_include_from(name, angle, -1); }
 
 /* ------------------------------------------------------------------ conditional stack ------------- */
 static struct { int active, taken, parent; } cond[256]; static int ncond;
@@ -675,7 +812,7 @@ static Tok *do_pragma(Tok *line) {
 		if (!strcmp(p1, "system_header")) return NULL;       /* (its effect: warnings off in the rest of the file) */
 		if (!strcmp(p1, "dependency")) {
 			if (!a || a->kind != TSTR) die("#pragma GCC dependency: expected a file name");
-			char fn[512]; size_t l = strlen(a->text); if (l < 2 || l - 2 >= sizeof fn) die("#pragma GCC dependency: bad file name");
+			char fn[PATHMAX]; size_t l = strlen(a->text); if (l < 2 || l - 2 >= sizeof fn) die("#pragma GCC dependency: bad file name");
 			memcpy(fn, a->text + 1, l - 2); fn[l - 2] = 0;
 			char *path = find_include(fn, 0); struct stat st;
 			if (!path || stat(path, &st)) die("#pragma GCC dependency: cannot find %s", fn);
@@ -750,7 +887,7 @@ static Tok *directive(Tok *hash) {
 	Tok *name = hash->next;
 	/* the directive's argument line = tokens after the name, up to the next bol/EOF */
 	Tok *linestart = name ? name->next : NULL;
-	Tok *end = linestart; while (end && end->kind != TEOF && !end->bol) end = end->next;   /* one past the line */
+	Tok *end = linestart; while (end && end->kind != TEOF && (!end->bol || end->cbol)) end = end->next;   /* one past the line */
 	/* build a NUL(EOF)-terminated copy of the line for handlers that consume it */
 	Tok lh = {0}, *lc = &lh; for (Tok *t = linestart; t && t != end && t->kind != TEOF; t = t->next) lc = lc->next = copytok(t); lc->next = newtok(TEOF, "", 0);
 	Tok *line = lh.next;
@@ -784,9 +921,11 @@ static Tok *directive(Tok *hash) {
 		} else if (!strcmp(d, "undef")) {
 			if (is_builtin(line->text) && !macro_find(line->text) && nbuiltin_off < 16) builtin_off[nbuiltin_off++] = strdup(line->text);
 			macro_undef(line->text);
-		} else if (!strcmp(d, "include")) {
-			/* filename: a "..." string token, or the tokens between < and > concatenated */
-			char fn[512]; int angle = 0;
+		} else if (!strcmp(d, "include") || !strcmp(d, "include_next")) {
+			/* filename: a "..." string token, or the tokens between < and > concatenated — or macros that expand to one
+			 * (a computed include: the kernel's `#include TRACE_INCLUDE(TRACE_INCLUDE_FILE)`) */
+			char fn[PATHMAX]; int angle = 0, next = d[7] == '_';
+			if (line->kind != TSTR && !is_p(line, "<")) line = expand(line);
 			if (line->kind == TSTR) {
 				size_t n = strlen(line->text); memcpy(fn, line->text + 1, n - 2); fn[n - 2] = 0;
 			} else if (is_p(line, "<")) {
@@ -794,22 +933,28 @@ static Tok *directive(Tok *hash) {
 				for (Tok *t = line->next; t && !is_p(t, ">") && t->kind != TEOF; t = t->next)
 					strncat(fn, t->text, sizeof fn - strlen(fn) - 1);
 			}
-			char *path = find_include(fn, angle);
-			if (!path) die("#include: cannot find '%s'", fn);
+			else die("#%s expects \"FILENAME\" or <FILENAME>", d);
+			char *path = find_include_from(fn, angle, next && cur_inc_idx >= 0 ? cur_inc_idx + 1 : -1);   /* (#include_next in the main
+			                                                                                                 * file: a plain #include, as GCC) */
+			if (!path) die("#%s: cannot find '%s'", d, fn);
+			int idx = found_idx;
+			add_dep(path, idx >= 0 && inc_sys[idx]);
 			struct stat st;
 			if (stat(path, &st)) die("#include: cannot stat '%s'", path);
 			if (is_once(&st)) return end;                  /* #pragma once: already included */
 			/* the included file's directory becomes cur_dir for its own "" includes; restore after */
-			char full[512]; strcpy(full, path);
-			char saved[512]; strcpy(saved, cur_dir);
-			char ndir[512]; char *slash = strrchr(full, '/');
+			char full[PATHMAX]; snprintf(full, sizeof full, "%s", path);
+			char saved[PATHMAX]; snprintf(saved, sizeof saved, "%s", cur_dir);
+			char ndir[PATHMAX]; char *slash = strrchr(full, '/');
 			if (slash) { size_t k = slash - full; memcpy(ndir, full, k); ndir[k] = 0; } else ndir[0] = 0;   /* "": the working directory */
 			Tok *sub = slurp_tokens(full);
 			if (!sub) die("#include: cannot open '%s'", full);
 			struct stat outer = cur_file; cur_file = st;
 			const char *opres = presumed; int odelta = line_delta; time_t omt = file_mtime;
 			presumed = strdup(full); line_delta = 0; file_mtime = st.st_mtime; include_level++;
+			int oidx = cur_inc_idx; cur_inc_idx = idx;
 			drive(sub, ndir);
+			cur_inc_idx = oidx;
 			include_level--; presumed = opres; line_delta = odelta; file_mtime = omt;
 			cur_file = outer;
 			strcpy(cur_dir, saved);
@@ -834,23 +979,54 @@ static Tok *directive(Tok *hash) {
 			Tok *mk = NULL; if (name->kind == TNUM) { mk = copytok(name); mk->next = line; }   /* `# N "file" flags` */
 			line_control(mk ? mk : expand(line), mk != NULL, hash, end);
 		} else if (d[0]) {   /* `#` alone is the null directive */
-			die("invalid preprocessing directive #%s", d);
+			if (!asm_mode) die("invalid preprocessing directive #%s", d);
+			/* GCC's assembler mode: not a directive but a line of text (the assembler takes a leading # as a comment),
+			 * macro-expanded like any other */
+			Tok th = {0}, *tc = &th; tc = tc->next = copytok(hash);
+			for (Tok *t = name; t && t != end && t->kind != TEOF; t = t->next) tc = tc->next = copytok(t);
+			tc->next = newtok(TEOF, "", 0);
+			emit(expand(th.next));
 		}
 	}
 	return end;
 }
 
 /* Process a token list: run directives, skip inactive regions, macro-expand + emit active text runs. */
+/* A function-like macro call whose argument list is still open at the end of a run of text (its arguments go on
+ * past a directive: `F(a,\n#ifdef X\n b\n#endif\n)` — GCC collects them across it, running the directive). Returns
+ * the link that points at the macro's name, or NULL. The outermost open call wins. */
+static Tok **open_call(Tok **head) {
+	Tok **st[256]; int sp = 0; Tok **prevlink = NULL;
+	for (Tok **l = head; *l && (*l)->kind != TEOF; l = &(*l)->next) {
+		Tok *t = *l;
+		if (is_p(t, "(")) { if (sp < 256) st[sp] = prevlink; sp++; }
+		else if (is_p(t, ")") && sp) sp--;
+		prevlink = l;
+	}
+	for (int i = 0; i < sp && i < 256; i++) {
+		Tok **nl = st[i]; if (!nl) continue;
+		Macro *m = (*nl)->kind == TIDENT ? macro_find((*nl)->text) : NULL;
+		if (m && m->func) return nl;
+	}
+	return NULL;
+}
 static void drive(Tok *tok, const char *dir) {
-	char saved[512]; strcpy(saved, cur_dir); strncpy(cur_dir, dir, sizeof cur_dir - 1);
+	char saved[PATHMAX]; snprintf(saved, sizeof saved, "%s", cur_dir); strncpy(cur_dir, dir, sizeof cur_dir - 1);
+	Tok *carry = NULL, **carry_end = &carry;   /* an open macro call, continued in the next active run */
 	while (tok && tok->kind != TEOF) {
 		if (tok->bol && is_p(tok, "#")) { tok = directive(tok); continue; }
 		/* a run of ordinary tokens up to the next directive line / EOF */
 		Tok rh = {0}, *rc = &rh;
 		while (tok && tok->kind != TEOF && !(tok->bol && is_p(tok, "#"))) { rc = rc->next = copytok(tok); tok = tok->next; }
-		rc->next = newtok(TEOF, "", 0);
-		if (active_now()) emit(expand(rh.next));
+		rc->next = NULL;
+		if (!active_now()) continue;
+		*carry_end = rh.next; Tok *run = carry; carry = NULL; carry_end = &carry;
+		Tok **oc = (tok && tok->kind != TEOF) ? open_call(&run) : NULL;
+		if (oc) { carry = *oc; *oc = NULL; Tok **e = &carry; while (*e) e = &(*e)->next; carry_end = e; }
+		Tok **te = &run; while (*te) te = &(*te)->next; *te = newtok(TEOF, "", 0);
+		emit(expand(run));
 	}
+	if (carry) { *carry_end = newtok(TEOF, "", 0); emit(expand(carry)); }   /* (still open at the end: expand reports it) */
 	strcpy(cur_dir, saved);
 }
 
@@ -881,7 +1057,10 @@ static struct {
 	const char *std;       /* its predef.h key; NULL: gnu17, the default */
 	int freestanding, pthread, undef, assembler, signed_char, trigraphs;
 	const char *float_abi; /* NULL (hard) | "soft" | "softfp" */
-} po = { '0', -1, 0, 0, NULL, 0, 0, 0, 0, 0, 0, NULL };
+	int short_wchar, thumb, no_unaligned;
+	const char *march, *mfpu;   /* NULL: the target's own (cortex-a7, neon-vfpv4); else a predef.h key */
+	const char *ssp;            /* NULL | "-fstack-protector[-strong|-all|-explicit]" */
+} po = { '0', -1, 0, 0, NULL, 0, 0, 0, 0, 0, 0, NULL, 0, 0, 0, NULL, NULL, NULL };
 static const char *std_key(const char *v) {                 /* -std=VALUE -> its key in predef_delta */
 	static const struct { const char *v, *key; } m[] = {
 		{"c89","-std=c89"},{"c90","-std=c89"},{"iso9899:1990","-std=c89"},{"gnu89","-std=gnu89"},{"gnu90","-std=gnu89"},
@@ -902,15 +1081,22 @@ static void predefines(void) {
 	if (po.pie) apply_delta(po.pie == 2 ? "-fPIE" : "-fpie"); else if (pic) apply_delta(pic == 2 ? "-fPIC" : "-fpic");
 	if (po.std) apply_delta(po.std);
 	if (po.freestanding) apply_delta("-ffreestanding");
-	if (po.float_abi) apply_delta(!strcmp(po.float_abi, "soft") ? "-mfloat-abi=soft" : "-mfloat-abi=softfp");
 	if (po.signed_char) apply_delta("-fsigned-char");
 	if (po.pthread) apply_delta("-pthread");
+	if (po.short_wchar) apply_delta("-fshort-wchar");
+	if (po.march) apply_delta(po.march);
+	if (po.mfpu) apply_delta(po.mfpu);
+	if (po.float_abi) apply_delta(!strcmp(po.float_abi, "soft") ? "-mfloat-abi=soft" : "-mfloat-abi=softfp");   /* after the FPU's:
+	                                                           * soft float takes back the __ARM_FP it defined */
+	if (po.no_unaligned) apply_delta("-mno-unaligned-access");
+	if (po.thumb) apply_delta("-mthumb");
+	if (po.ssp) apply_delta(po.ssp);
 	if (po.assembler) apply_delta("-x assembler-with-cpp");
 	if (po.undef) {                                          /* -undef: only the standard's own (and -D's, after) */
 		static const char *const keep[] = { "__STDC__", "__STDC_VERSION__", "__STDC_HOSTED__", "__STDC_UTF_16__", "__STDC_UTF_32__", "_REENTRANT", "__ASSEMBLER__" };
 		for (Macro **p = &macros; *p; ) {
 			int k = 0; for (unsigned i = 0; i < sizeof keep / sizeof *keep; i++) k |= !strcmp((*p)->name, keep[i]);
-			if (k) p = &(*p)->next; else *p = (*p)->next;
+			if (k) p = &(*p)->next; else { strmap_put(&macro_map, (*p)->name, NULL); *p = (*p)->next; }
 		}
 	}
 }
@@ -936,6 +1122,8 @@ static void dump_all(void) {
 
 int main(int argc, char **argv) {
 	const char *in = NULL, *outpath = NULL;
+	const char *forced[16]; int nforced = 0;               /* -include FILE: as if #include "FILE" opened the main file */
+	char *quote_dirs[64], *sys_dirs[64]; int nquote = 0, nsys = 0; char sys_after[64];   /* -I, then -isystem, then -idirafter (GCC) */
 	struct { char kind; const char *arg; } *cmd = malloc(argc * sizeof *cmd); int ncmd = 0;   /* -D / -U, in order */
 	#define ARG() (argv[i][2] ? argv[i] + 2 : (i + 1 < argc ? argv[++i] : (die("%s needs an argument", argv[i]), "")))
 	#define IS(o) (!strcmp(a, o))
@@ -943,11 +1131,19 @@ int main(int argc, char **argv) {
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (a[0] != '-' || !a[1]) { if (in) die("more than one input file ('%s', '%s')", in, a); in = a; continue; }
-		if (PRE("-I")) { if (n_inc_dirs >= 64) die("too many include directories (>64)"); inc_dirs[n_inc_dirs++] = (char *)ARG(); }
-		else if (IS("-isystem") || IS("-idirafter")) { if (i + 1 >= argc) die("%s needs a directory", a); if (n_inc_dirs >= 64) die("too many include directories (>64)"); inc_dirs[n_inc_dirs++] = argv[++i]; }
+		if (PRE("-I")) { if (nquote >= 64) die("too many include directories (>64)"); quote_dirs[nquote++] = (char *)ARG(); }
+		else if (IS("-include")) { if (i + 1 >= argc) die("-include needs a file"); if (nforced >= 16) die("too many -include files"); forced[nforced++] = argv[++i]; }
+		else if (IS("-imacros")) die("unsupported option '-imacros'");
+		else if (IS("-isystem") || IS("-idirafter")) { if (i + 1 >= argc) die("%s needs a directory", a); if (nsys >= 64) die("too many include directories (>64)");
+			sys_dirs[nsys] = argv[++i]; sys_after[nsys++] = a[2] == 'd'; }
+		else if (IS("-MD")) dep_mode = 1; else if (IS("-MMD")) dep_mode = 2; else if (IS("-MP")) dep_phony = 1;
+		else if (IS("-MF")) { if (i + 1 >= argc) die("-MF needs a file"); dep_file = argv[++i]; }
+		else if (IS("-MT") || IS("-MQ")) { if (i + 1 >= argc) die("%s needs a target", a); dep_target = argv[++i]; }
+		else if (IS("-M") || IS("-MM") || IS("-MG")) die("unsupported option '%s' (use -MD/-MMD with -MF)", a);
 		else if (PRE("-D") || PRE("-U")) { char k = a[1]; cmd[ncmd].kind = k; cmd[ncmd++].arg = ARG(); }
 		else if (IS("-o")) { if (i + 1 >= argc) die("-o needs a file"); outpath = argv[++i]; }
-		else if (IS("-E") || IS("-P") || IS("-nostdinc")) ;   /* preprocess only; we emit no line markers; no default dirs */
+		else if (IS("-E") || IS("-P") || IS("-nostdinc")) ;
+		else if (IS("-C")) ;   /* keep comments: ours are always dropped (the tokens — all a compiler or ld sees — are the same) */   /* preprocess only; we emit no line markers; no default dirs */
 		else if (IS("-undef")) po.undef = 1;
 		else if (IS("-trigraphs")) po.trigraphs = 1;
 		else if (IS("-dM")) dump_macros = 1;
@@ -972,7 +1168,22 @@ int main(int argc, char **argv) {
 		else if (IS("-pthread")) po.pthread = 1;
 		else if (PRE("-mfloat-abi=")) { const char *v = a + 12;
 			if (!strcmp(v, "hard")) po.float_abi = NULL; else if (!strcmp(v, "soft") || !strcmp(v, "softfp")) po.float_abi = v; else die("unsupported option '%s'", a); }
-		else if (IS("-marm") || IS("-mcpu=cortex-a7") || IS("-mfpu=neon-vfpv4")) ;   /* the target's own defaults */
+		else if (IS("-marm")) po.thumb = 0; else if (IS("-mthumb")) po.thumb = 1;
+		else if (IS("-mcpu=cortex-a7")) po.march = NULL;          /* the target's own */
+		else if (IS("-march=armv7-a")) po.march = "-march=armv7-a";
+		else if (PRE("-march=") || PRE("-mcpu=")) die("unsupported option '%s' (its predefines aren't in predef.h: add it to gen-predef.py)", a);
+		else if (IS("-mfpu=neon-vfpv4")) po.mfpu = NULL; else if (IS("-mfpu=vfp")) po.mfpu = "-mfpu=vfp";
+		else if (PRE("-mfpu=")) die("unsupported option '%s' (its predefines aren't in predef.h: add it to gen-predef.py)", a);
+		else if (IS("-msoft-float")) po.float_abi = "soft";      /* = -mfloat-abi=soft (the same predefines) */
+		else if (IS("-mno-unaligned-access")) po.no_unaligned = 1; else if (IS("-munaligned-access")) po.no_unaligned = 0;
+		else if (IS("-fshort-wchar")) po.short_wchar = 1; else if (IS("-fno-short-wchar")) po.short_wchar = 0;
+		else if (IS("-fstack-protector") || IS("-fstack-protector-strong") || IS("-fstack-protector-all") || IS("-fstack-protector-explicit")) po.ssp = a;
+		else if (IS("-fno-stack-protector")) po.ssp = NULL;
+		else if (PRE("-fmacro-prefix-map=") || PRE("-ffile-prefix-map=")) {
+			const char *v = strchr(a, '=') + 1, *eq = strchr(v, '=');
+			if (!eq) die("%s: expected OLD=NEW", a);
+			struct PrefixMap *m = malloc(sizeof *m); m->old = strndup(v, (size_t)(eq - v)); m->new_ = eq + 1; m->next = prefix_maps; prefix_maps = m;
+		}
 		else if (IS("-w") || IS("-pedantic") || IS("-Wpedantic") || (PRE("-W") && !PRE("-Werror") && !PRE("-Wp,")) || PRE("-g")
 		         || PRE("-fdiagnostics-") || IS("-fno-show-column") || PRE("-fmessage-length=") || PRE("-ftrack-macro-expansion")
 		         || IS("-fdollars-in-identifiers")) ;   /* diagnostics / debug info: no effect on the output */
@@ -981,9 +1192,13 @@ int main(int argc, char **argv) {
 	#undef ARG
 	#undef IS
 	#undef PRE
+	for (int k = 0; k < nquote; k++) { inc_dirs[n_inc_dirs] = quote_dirs[k]; inc_sys[n_inc_dirs++] = 0; }
+	for (int pass = 0; pass < 2; pass++) for (int k = 0; k < nsys; k++) if (sys_after[k] == pass) { if (n_inc_dirs >= 64) die("too many include directories (>64)"); inc_dirs[n_inc_dirs] = sys_dirs[k]; inc_sys[n_inc_dirs++] = 1; }
+	if (dep_mode && !dep_file) die("-MD/-MMD needs -MF <file>");
 	if (!in) die("usage: cpp [-Idir] [-isystem dir] [-Dmacro[=val]] [-Umacro] [-std=...] [-O...] [-f[no-]pic...] [-undef] [-dM] [-o out] in.c");
 	if (!po.assembler) { size_t l = strlen(in); if (l > 2 && (!strcmp(in + l - 2, ".S") || (l > 3 && !strcmp(in + l - 3, ".sx")))) po.assembler = 1; }
 	lang_for(po.std); if (po.trigraphs) lx.trigraphs = 1;
+	asm_mode = po.assembler;
 	predefines();
 	for (int k = 0; k < ncmd; k++) {                         /* -D NAME[(params)][=val] (val: 1 when absent), -U NAME */
 		if (cmd[k].kind == 'U') { macro_undef(cmd[k].arg); continue; }
@@ -991,11 +1206,26 @@ int main(int argc, char **argv) {
 		if (eq) { *eq = 0; define_line(s, eq + 1); } else define_line(s, "1");
 	}
 	out = outpath ? fopen(outpath, "w") : stdout; if (!out) die("cannot open %s", outpath);
-	char dir[512]; snprintf(dir, sizeof dir, "%s", in); char *slash = strrchr(dir, '/'); if (slash) *slash = 0; else dir[0] = 0;
+	char dir[PATHMAX]; snprintf(dir, sizeof dir, "%s", in); char *slash = strrchr(dir, '/'); if (slash) *slash = 0; else dir[0] = 0;
 	Tok *toks = slurp_tokens(in); if (!toks) die("cannot open %s", in);
+	if (stat(in, &cur_file)) die("cannot stat %s", in);
+	add_dep(in, 0);
+	for (int k = 0; k < nforced; k++) {                   /* GCC: looked up in the working directory first, then the "" chain */
+		cur_dir[0] = 0;
+		char *p = find_include(forced[k], 0); if (!p) die("-include: cannot find '%s'", forced[k]);
+		char full[PATHMAX]; snprintf(full, sizeof full, "%s", p);
+		struct stat st; if (stat(full, &st)) die("-include: cannot stat '%s'", full);
+		add_dep(full, found_idx >= 0 && inc_sys[found_idx]);
+		Tok *sub = slurp_tokens(full); if (!sub) die("-include: cannot open '%s'", full);
+		char ndir[PATHMAX]; snprintf(ndir, sizeof ndir, "%s", full); char *sl = strrchr(ndir, '/'); if (sl) *sl = 0; else ndir[0] = 0;
+		struct stat outer = cur_file; cur_file = st; presumed = strdup(full); line_delta = 0; file_mtime = st.st_mtime; cur_inc_idx = found_idx;
+		drive(sub, ndir);
+		cur_file = outer; cur_inc_idx = -1;
+	}
 	if (stat(in, &cur_file)) die("cannot stat %s", in);
 	presumed = base_file = in; file_mtime = cur_file.st_mtime;
 	drive(toks, dir);
 	if (dump_macros) dump_all();
+	write_deps(in, outpath);
 	return 0;
 }

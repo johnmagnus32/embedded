@@ -61,7 +61,7 @@ test: $(BUILD)/cc
 	  echo "PASS const data: .rodata / .data.rel.ro (-fPIC, addresses) / .data (volatile, non-const)"; pass=$$((pass+1));; \
 	  *) echo "FAIL const data placement: $$secs"; fail=$$((fail+1));; esac; \
 	$(BUILD)/cc -o $$t/vis.s tests/visibility.c; vis=$$(grep -oE '\.(hidden|protected|internal) [a-z_]+' $$t/vis.s | sort | tr '\n' ' '); \
-	case "$$vis" in ".hidden hidden_ext .hidden hidden_fn .protected prot_var ") echo "PASS visibility: .hidden / .protected emitted"; pass=$$((pass+1));; \
+	case "$$vis" in ".hidden hidden_fn .protected prot_var ") echo "PASS visibility: .hidden / .protected emitted (none for an unused declaration, as GCC)"; pass=$$((pass+1));; \
 	  *) echo "FAIL visibility directives: '$$vis'"; fail=$$((fail+1));; esac; \
 	$(BUILD)/cc -o $$t/u.s tests/uart.c && $(OURAS) -o $$t/u.o $$t/u.s && $(OURLD) -Ttext 0x40000000 -o $$t/u.elf $$t/crt.o $$t/u.o $(RTLIB); \
 	out=$$(timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/u.elf 2>/dev/null); \

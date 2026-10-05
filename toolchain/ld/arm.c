@@ -10,7 +10,10 @@
  *   R_ARM_CALL/JUMP24     imm24 = (S + A - P) >> 2 (A = sign-extended imm24 * 4; P = the bl/b address)
  *   R_ARM_PREL31          31 bits = S + A - P, bit 31 kept   (.ARM.exidx: the offset to the function)
  *   R_ARM_TARGET1         as R_ARM_ABS32 (the Linux/EABI choice; GCC's .init_array entries use it)
+ *   R_ARM_MOVW/MOVT_*     imm16 = lower/upper 16 bits of S + A (- P for _PREL); A = the imm16 field, SIGNED (AAELF:
+ *                         the same 16-bit addend in both halves of a movw/movt pair)
  */
+#include <stdint.h>
 #include "ld.h"
 
 const u16 md_e_machine = EM_ARM;
@@ -23,6 +26,8 @@ const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported va
 #define R_ARM_REL32    3
 #define R_ARM_MOVW_ABS_NC 43
 #define R_ARM_MOVT_ABS    44
+#define R_ARM_MOVW_PREL_NC 45
+#define R_ARM_MOVT_PREL    46
 #define R_ARM_CALL     28
 #define R_ARM_JUMP24   29
 #define R_ARM_TLS_GD32  104   /* GOT(S) + A - P: a (module, offset) GOT pair for __tls_get_addr */
@@ -69,6 +74,8 @@ int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP
 int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL; }
 int md_is_marker(u32 type) { return type == R_ARM_NONE; }
 
+static s32 movw_addend(u32 w) { return (int16_t)(((w >> 4) & 0xf000u) | (w & 0xfffu)); }   /* imm4:imm12, signed */
+static u32 movw_set(u32 w, u32 v) { return (w & ~0x000f0fffu) | (((v >> 12) & 0xfu) << 16) | (v & 0xfffu); }
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	u32 w = rd32(loc);
 	switch (type) {
@@ -88,8 +95,10 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 		wr32(loc, (w & 0xff000000u) | ((X >> 2) & 0x00ffffffu));
 		break;
 	}
-	case R_ARM_MOVW_ABS_NC: { u32 v = S & 0xffffu;         wr32(loc, (w & ~0x000f0fffu) | ((v >> 12) << 16) | (v & 0xfff)); break; }   /* imm16 = lower16(S) */
-	case R_ARM_MOVT_ABS:    { u32 v = (S >> 16) & 0xffffu; wr32(loc, (w & ~0x000f0fffu) | ((v >> 12) << 16) | (v & 0xfff)); break; }   /* imm16 = upper16(S) */
+	case R_ARM_MOVW_ABS_NC:  wr32(loc, movw_set(w, (S + (u32)movw_addend(w)) & 0xffffu)); break;          /* lower16(S + A) */
+	case R_ARM_MOVT_ABS:     wr32(loc, movw_set(w, (S + (u32)movw_addend(w)) >> 16)); break;              /* upper16(S + A) */
+	case R_ARM_MOVW_PREL_NC: wr32(loc, movw_set(w, (S + (u32)movw_addend(w) - P) & 0xffffu)); break;      /* lower16(S + A - P) */
+	case R_ARM_MOVT_PREL:    wr32(loc, movw_set(w, (S + (u32)movw_addend(w) - P) >> 16)); break;          /* upper16(S + A - P) */
 	case R_ARM_TLS_LE32:    /* S = the thread-pointer offset / the module offset (the front-end computes it) */
 	case R_ARM_TLS_LDO32:
 		wr32(loc, S + w);
@@ -109,5 +118,32 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 		break;
 	default:
 		die("%s: unsupported relocation type %u", o->path, type);
+	}
+}
+
+/* A relocatable link (-r) moves input sections into merged output sections: a relocation against an input
+ * SECTION symbol becomes one against the output section's, so its addend grows by where that input section
+ * landed (delta). ARM's addends live in the patched field itself, each type its own encoding. 0 = this type's
+ * addend can't be moved here (the caller fails loudly). */
+int md_rel_adjust(u32 type, u8 *loc, u32 delta) {
+	u32 w = rd32(loc);
+	switch (type) {
+	case R_ARM_NONE: return 1;
+	case R_ARM_ABS32: case R_ARM_TARGET1: case R_ARM_REL32: case R_ARM_GOT_PREL:
+	case R_ARM_TLS_LE32: case R_ARM_TLS_LDO32: case R_ARM_TLS_GD32: case R_ARM_TLS_LDM32: case R_ARM_TLS_IE32:
+		wr32(loc, w + delta); return 1;
+	case R_ARM_PREL31: {
+		s32 A = (s32)(w << 1) >> 1; int64_t n = (int64_t)A + delta;
+		if (n < -(1LL << 30) || n >= (1LL << 30)) return 0;
+		wr32(loc, (w & 0x80000000u) | ((u32)n & 0x7fffffffu)); return 1; }
+	case R_ARM_CALL: case R_ARM_JUMP24: {
+		s32 A = (s32)(w << 8) >> 6; int64_t n = (int64_t)A + delta;
+		if (n & 3 || n < -(1LL << 25) || n >= (1LL << 25)) return 0;
+		wr32(loc, (w & 0xff000000u) | ((u32)(n >> 2) & 0x00ffffffu)); return 1; }
+	case R_ARM_MOVW_ABS_NC: case R_ARM_MOVT_ABS: case R_ARM_MOVW_PREL_NC: case R_ARM_MOVT_PREL: {
+		int64_t n = (int64_t)movw_addend(w) + delta;
+		if (n < -32768 || n > 32767) return 0;   /* (a REL movw/movt addend is a signed 16 bits) */
+		wr32(loc, movw_set(w, (u32)n & 0xffffu)); return 1; }
+	default: return 0;
 	}
 }

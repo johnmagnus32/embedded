@@ -1,0 +1,65 @@
+/* div32const.c — 32-bit division and remainder by constants (each a compile-time constant: our cc multiplies by the
+ * divisor's reciprocal, as GCC does, instead of dividing): unsigned and signed, powers of two, negative divisors, the
+ * extremes. The hashes must be what GCC's build prints. */
+int printf(const char *, ...);
+static unsigned un[] = { 0, 1, 2, 3, 7, 9, 99, 1000, 65535, 65536, 0x7fffffffu, 0x80000000u, 0x80000001u, 0xfffffffeu, 0xffffffffu, 123456789u, 3000000000u, 999999999u, 4294967295u, 2654435769u };
+static int sn[] = { 0, 1, -1, 2, -2, 7, -7, 99, -99, 1000, -1000, 2147483647, -2147483647, (int)0x80000000, 123456789, -123456789, 65536, -65536, 1999999999, -1999999999 };
+int main(void) {
+	unsigned h;
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 2u; h = h * 31 + x % 2u; } printf("u2 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 3u; h = h * 31 + x % 3u; } printf("u3 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 5u; h = h * 31 + x % 5u; } printf("u5 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 7u; h = h * 31 + x % 7u; } printf("u7 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 10u; h = h * 31 + x % 10u; } printf("u10 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 11u; h = h * 31 + x % 11u; } printf("u11 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 13u; h = h * 31 + x % 13u; } printf("u13 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 60u; h = h * 31 + x % 60u; } printf("u60 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 100u; h = h * 31 + x % 100u; } printf("u100 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 125u; h = h * 31 + x % 125u; } printf("u125 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 641u; h = h * 31 + x % 641u; } printf("u641 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 1000u; h = h * 31 + x % 1000u; } printf("u1000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 1024u; h = h * 31 + x % 1024u; } printf("u1024 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 4096u; h = h * 31 + x % 4096u; } printf("u4096 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 10000u; h = h * 31 + x % 10000u; } printf("u10000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 65535u; h = h * 31 + x % 65535u; } printf("u65535 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 65536u; h = h * 31 + x % 65536u; } printf("u65536 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 100000u; h = h * 31 + x % 100000u; } printf("u100000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 1000000u; h = h * 31 + x % 1000000u; } printf("u1000000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 1000000000u; h = h * 31 + x % 1000000000u; } printf("u1000000000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 2147483647u; h = h * 31 + x % 2147483647u; } printf("u2147483647 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 2147483648u; h = h * 31 + x % 2147483648u; } printf("u2147483648 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 2147483649u; h = h * 31 + x % 2147483649u; } printf("u2147483649 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 4000000000u; h = h * 31 + x % 4000000000u; } printf("u4000000000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 4294967295u; h = h * 31 + x % 4294967295u; } printf("u4294967295 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 6700417u; h = h * 31 + x % 6700417u; } printf("u6700417 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 24u; h = h * 31 + x % 24u; } printf("u24 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 3600u; h = h * 31 + x % 3600u; } printf("u3600 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 86400u; h = h * 31 + x % 86400u; } printf("u86400 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { unsigned x = un[i]; h = h * 31 + x / 4295u; h = h * 31 + x % 4295u; } printf("u4295 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (2) == -1) continue; h = h * 31 + (unsigned)(x / (2)); h = h * 31 + (unsigned)(x % (2)); } printf("s2 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-2) == -1) continue; h = h * 31 + (unsigned)(x / (-2)); h = h * 31 + (unsigned)(x % (-2)); } printf("s-2 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (3) == -1) continue; h = h * 31 + (unsigned)(x / (3)); h = h * 31 + (unsigned)(x % (3)); } printf("s3 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-3) == -1) continue; h = h * 31 + (unsigned)(x / (-3)); h = h * 31 + (unsigned)(x % (-3)); } printf("s-3 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (5) == -1) continue; h = h * 31 + (unsigned)(x / (5)); h = h * 31 + (unsigned)(x % (5)); } printf("s5 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (7) == -1) continue; h = h * 31 + (unsigned)(x / (7)); h = h * 31 + (unsigned)(x % (7)); } printf("s7 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-7) == -1) continue; h = h * 31 + (unsigned)(x / (-7)); h = h * 31 + (unsigned)(x % (-7)); } printf("s-7 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (10) == -1) continue; h = h * 31 + (unsigned)(x / (10)); h = h * 31 + (unsigned)(x % (10)); } printf("s10 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-10) == -1) continue; h = h * 31 + (unsigned)(x / (-10)); h = h * 31 + (unsigned)(x % (-10)); } printf("s-10 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (100) == -1) continue; h = h * 31 + (unsigned)(x / (100)); h = h * 31 + (unsigned)(x % (100)); } printf("s100 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (1000) == -1) continue; h = h * 31 + (unsigned)(x / (1000)); h = h * 31 + (unsigned)(x % (1000)); } printf("s1000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-1000) == -1) continue; h = h * 31 + (unsigned)(x / (-1000)); h = h * 31 + (unsigned)(x % (-1000)); } printf("s-1000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (1024) == -1) continue; h = h * 31 + (unsigned)(x / (1024)); h = h * 31 + (unsigned)(x % (1024)); } printf("s1024 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-1024) == -1) continue; h = h * 31 + (unsigned)(x / (-1024)); h = h * 31 + (unsigned)(x % (-1024)); } printf("s-1024 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (641) == -1) continue; h = h * 31 + (unsigned)(x / (641)); h = h * 31 + (unsigned)(x % (641)); } printf("s641 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (65537) == -1) continue; h = h * 31 + (unsigned)(x / (65537)); h = h * 31 + (unsigned)(x % (65537)); } printf("s65537 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (1000000) == -1) continue; h = h * 31 + (unsigned)(x / (1000000)); h = h * 31 + (unsigned)(x % (1000000)); } printf("s1000000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-1000000) == -1) continue; h = h * 31 + (unsigned)(x / (-1000000)); h = h * 31 + (unsigned)(x % (-1000000)); } printf("s-1000000 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (2147483647) == -1) continue; h = h * 31 + (unsigned)(x / (2147483647)); h = h * 31 + (unsigned)(x % (2147483647)); } printf("s2147483647 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-2147483647) == -1) continue; h = h * 31 + (unsigned)(x / (-2147483647)); h = h * 31 + (unsigned)(x % (-2147483647)); } printf("s-2147483647 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-2147483647 - 1) == -1) continue; h = h * 31 + (unsigned)(x / (-2147483647 - 1)); h = h * 31 + (unsigned)(x % (-2147483647 - 1)); } printf("s-2147483648 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (60) == -1) continue; h = h * 31 + (unsigned)(x / (60)); h = h * 31 + (unsigned)(x % (60)); } printf("s60 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (-60) == -1) continue; h = h * 31 + (unsigned)(x / (-60)); h = h * 31 + (unsigned)(x % (-60)); } printf("s-60 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (3600) == -1) continue; h = h * 31 + (unsigned)(x / (3600)); h = h * 31 + (unsigned)(x % (3600)); } printf("s3600 %08x\n", h);
+	h = 0; for (int i = 0; i < 20; i++) { int x = sn[i]; if (x == (int)0x80000000 && (86400) == -1) continue; h = h * 31 + (unsigned)(x / (86400)); h = h * 31 + (unsigned)(x % (86400)); } printf("s86400 %08x\n", h);
+	return 0;
+}

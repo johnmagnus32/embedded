@@ -8,6 +8,7 @@
  */
 #include <stdlib.h>
 #include "cc.h"
+const char *typing_func;   /* the function whose body is being typed (diagnostics) */
 
 static Type int_ty    = { .kind = TY_INT,    .size = 4 };
 static Type uint_ty   = { .kind = TY_INT,    .size = 4, .is_unsigned = 1 };
@@ -142,6 +143,10 @@ void type_node(Node *n) {
 	                 * 32/64 ?: is 64-bit and each arm gets widened in codegen); else the `then` arm's type. */
 		if (n->then->type && n->els->type && n->then->type->kind < TY_PTR && n->els->type->kind < TY_PTR)
 			n->type = usual_arith(n->then->type, n->els->type);
+		else if (is_ptr_like(n->then->type) && is_ptr_like(n->els->type) && null_ptr_const(n->then))   /* C11 6.5.15p6: a null */
+			n->type = n->els->type->kind == TY_ARRAY ? pointer_to(n->els->type->base) : n->els->type;   /* pointer constant arm takes */
+		else if (is_ptr_like(n->then->type) && is_ptr_like(n->els->type) && null_ptr_const(n->els))    /* the other arm's type */
+			n->type = n->then->type->kind == TY_ARRAY ? pointer_to(n->then->type->base) : n->then->type;
 		else if (is_ptr_like(n->els->type) && !is_ptr_like(n->then->type)) n->type = n->els->type->kind == TY_ARRAY ? pointer_to(n->els->type->base) : n->els->type;   /* c ? 0 : p */
 		else n->type = n->then->type->kind == TY_ARRAY ? pointer_to(n->then->type->base) : n->then->type;
 		return;
@@ -154,7 +159,7 @@ void type_node(Node *n) {
 	case ND_ADDR:   n->type = pointer_to(n->lhs->type); return;
 	case ND_LABELADDR: n->type = pointer_to(ty_char); return;   /* &&label : a code address (void*-like) */
 	case ND_DEREF:
-		if (!is_ptr_like(n->lhs->type)) die("cc: cannot dereference a non-pointer");
+		if (!is_ptr_like(n->lhs->type)) die("cc: cannot dereference a non-pointer%s%s (near line %d)", typing_func ? " in " : "", typing_func ? typing_func : "", parse_cur_line());
 		n->type = n->lhs->type->base; return;
 	default: n->type = ty_int; return;                /* statements: type unused */
 	}

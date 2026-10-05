@@ -151,8 +151,14 @@ static const char *directive(const char *p, int line) {   /* p just past the '#'
 	die("lex: unexpected #%.*s directive in preprocessed input (line %d)", (int)(n ? n : 1), n ? w : p, line);
 	return eol;
 }
+/* Token lexemes: copied whole into an append-only arena (tokens live as long as the compile) */
+static char *tx_arena; static size_t tx_left;
+static const char *tok_text(const char *s, size_t n) {
+	if (n + 1 > tx_left) { tx_left = n + 1 > (1u << 20) ? n + 1 : (1u << 20); tx_arena = malloc(tx_left); if (!tx_arena) die("lex: out of memory"); }
+	char *d = tx_arena; memcpy(d, s, n); d[n] = 0; tx_arena += n + 1; tx_left -= n + 1; return d;
+}
 static Token *new_tok(TokKind kind, int line) {
-	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line;
+	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line; t->text = "";
 	t->pack = (unsigned char)pack_cur; t->vis = nvis ? (unsigned char)vis_stack[nvis - 1] : 0;
 	return t;
 }
@@ -169,7 +175,7 @@ Token *lex(const char *src) {
 		if (p[0] == '/' && p[1] == '*') { p += 2; while (*p && !(p[0]=='*'&&p[1]=='/')) { if(*p=='\n')line++; p++; } if(*p) p+=2; continue; }
 
 		int wide = 0;                                                                    /* literal prefix: L/U (4-byte), u (2), u8 (plain) */
-		if ((p[0] == 'L' || p[0] == 'U') && (p[1] == '\'' || p[1] == '"')) { wide = 4; p++; }
+		if ((p[0] == 'L' || p[0] == 'U') && (p[1] == '\'' || p[1] == '"')) { wide = p[0] == 'L' && short_wchar ? 2 : 4; p++; }   /* L: wchar_t */
 		else if (p[0] == 'u' && p[1] == '8' && p[2] == '"') p += 2;
 		else if (p[0] == 'u' && (p[1] == '\'' || p[1] == '"')) { wide = 2; p++; }
 		if (*p == '\'') {                                                                /* char literal 'x' / '\n' / '\001' / '\xff' */
@@ -191,7 +197,7 @@ Token *lex(const char *src) {
 			else { v = (unsigned char)*p; p++; }
 			if (*p != '\'') die("lex: unterminated char literal on line %d", line);
 			p++;
-			Token *t = new_tok(TK_NUM, line); t->val = v; cur = cur->next = t; continue;
+			Token *t = new_tok(TK_NUM, line); t->val = v; t->wide = wide; t->text = "'"; cur = cur->next = t; continue;   /* (text: a char constant) */
 		}
 		if (*p == '"') {                                                                 /* string literal */
 			const char *s = ++p;                                                         /* skip opening quote */
@@ -199,8 +205,7 @@ Token *lex(const char *src) {
 			Token *t = new_tok(TK_STR, line); t->wide = wide;
 			size_t full = p - s;
 			t->sval = malloc(full + 1); memcpy(t->sval, s, full); t->sval[full] = 0;     /* full raw text (as spelled) — unbounded */
-			size_t n = full; if (n >= sizeof t->text) n = sizeof t->text - 1;
-			memcpy(t->text, s, n); t->text[n] = 0;                                       /* truncated preview */
+			t->text = t->sval;
 			if (*p == '"') p++;                                                          /* skip closing quote */
 			cur = cur->next = t; continue;
 		}
@@ -208,6 +213,8 @@ Token *lex(const char *src) {
 			Token *t = new_tok(TK_NUM, line);
 			char *end, *fend; t->val = (long)strtoull(p, &end, 0);                     /* 0x.. / 0.. / dec; strtoull: literals > LONG_MAX (e.g. 64-bit hash primes) must wrap, not saturate */
 			double fv = strtod(p, &fend);
+			if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B') && (p[2] == '0' || p[2] == '1')) {   /* 0b101: GNU (and C23) binary */
+				t->val = (long)strtoull(p + 2, &end, 2); fend = end; }
 			if (fend > end || *p == '.') {   /* floating: a '.', an exponent (1e5), or a hex float (0x1p3) goes past the integer */
 				t->fval = fv; t->fp = 2; end = fend;
 				for (;; end++) {   /* f / l (long double == double), and GNU i / j (imaginary), in either order */
@@ -215,33 +222,30 @@ Token *lex(const char *src) {
 					else if (*end == 'i' || *end == 'I' || *end == 'j' || *end == 'J') t->imag = 1;
 					else if (*end != 'l' && *end != 'L') break;
 				}
-				size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
-				memcpy(t->text, p, n); t->text[n] = 0; p = end;
+				t->text = tok_text(p, (size_t)(end - p)); p = end;
 				cur = cur->next = t; continue;
 			}
 			for (; *end == 'u' || *end == 'U' || *end == 'l' || *end == 'L' || *end == 'i' || *end == 'I' || *end == 'j' || *end == 'J'; end++)   /* UL, LL, …; GNU i / j */
 				if (*end == 'i' || *end == 'I' || *end == 'j' || *end == 'J') t->imag = 1;
-			size_t n = end - p; if (n >= sizeof t->text) n = sizeof t->text - 1;
-			memcpy(t->text, p, n); t->text[n] = 0; p = end;
+			t->text = tok_text(p, (size_t)(end - p)); p = end;
 			cur = cur->next = t; continue;
 		}
 		if (isalpha((unsigned char)*p) || *p == '_' || *p == '$') {                      /* ident / keyword ($: GCC allows it) */
 			const char *s = p; while (isalnum((unsigned char)*p) || *p == '_' || *p == '$') p++;
 			Token *t = new_tok(TK_IDENT, line);
-			size_t n = p - s; if (n >= sizeof t->text) n = sizeof t->text - 1;
-			memcpy(t->text, s, n); t->text[n] = 0;
-			for (int i = 0; GNU_SPELLING[i][0][0]; i++) if (!strcmp(t->text, GNU_SPELLING[i][0])) { strcpy(t->text, GNU_SPELLING[i][1]); break; }   /* one canonical keyword */
+			t->text = tok_text(s, (size_t)(p - s));
+			for (int i = 0; GNU_SPELLING[i][0][0]; i++) if (!strcmp(t->text, GNU_SPELLING[i][0])) { t->text = GNU_SPELLING[i][1]; break; }   /* one canonical keyword */
 			for (int i = 0; KEYWORDS[i]; i++) if (!strcmp(t->text, KEYWORDS[i])) { t->kind = TK_KW; break; }
 			cur = cur->next = t; continue;
 		}
 		{   /* digraphs (cpp keeps their spelling): <: :> <% %> are [ ] { } */
 			static const char dg[][2][3] = { {"<:", "["}, {":>", "]"}, {"<%", "{"}, {"%>", "}"} };
 			int d = -1; for (int i = 0; i < 4; i++) if (p[0] == dg[i][0][0] && p[1] == dg[i][0][1]) d = i;
-			if (d >= 0) { Token *t = new_tok(TK_PUNCT, line); strcpy(t->text, dg[d][1]); cur = cur->next = t; p += 2; continue; }
+			if (d >= 0) { Token *t = new_tok(TK_PUNCT, line); t->text = dg[d][1]; cur = cur->next = t; p += 2; continue; }
 		}
 		int matched = 0;                                                                 /* punctuator */
 		for (int i = 0; PUNCT[i]; i++) { size_t l = strlen(PUNCT[i]);
-			if (!strncmp(p, PUNCT[i], l)) { Token *t = new_tok(TK_PUNCT, line); memcpy(t->text, PUNCT[i], l); t->text[l]=0; cur = cur->next = t; p += l; matched = 1; break; } }
+			if (!strncmp(p, PUNCT[i], l)) { Token *t = new_tok(TK_PUNCT, line); t->text = PUNCT[i]; cur = cur->next = t; p += l; matched = 1; break; } }
 		if (!matched) die("lex: unexpected character '%c' on line %d", *p, line);
 	}
 	cur->next = new_tok(TK_EOF, line);

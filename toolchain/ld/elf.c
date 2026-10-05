@@ -42,28 +42,47 @@ Obj *elf_load(const char *path) { long n; u8 *d = slurp(path, &n); return elf_pa
  * only when a symbol they define is needed (ar_pull), so a 1400-member libc.a costs a few pulled members, not
  * 1400 parses. "//" holds long member names ("/off" references it). An archive without an index is an error,
  * as in GNU ld ("run ranlib"). */
-typedef struct { const char *path; u8 *data; long size; const char *longtab; long longsz; StrMap loaded; } Archive;
+typedef struct { const char *path; u8 *data; long size; const char *longtab; long longsz; StrMap loaded;
+                 int thin; const u8 *index; long index_size; } Archive;   /* thin: GNU `ar T` — members are paths, not bytes */
 typedef struct { Archive *ar; long off; } ArSym;
 static StrMap arsyms;                                  /* symbol -> its first defining member (command-line order) */
 
 static long ar_field(const char *h, int at, int len) { char b[16]; memcpy(b, h + at, len); b[len] = 0; return strtol(b, NULL, 10); }
 static u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3]; }
 
-void ar_load(const char *path) {
+/* A member header's DATA size in the archive: a thin archive's members are files elsewhere (only the index and the
+ * long-name table are stored inline). */
+static long ar_stored(const Archive *ar, const char *h) {
+	if (!ar->thin || !memcmp(h, "/ ", 2) || !memcmp(h, "//", 2)) return ar_field(h, 48, 10);
+	return 0;
+}
+static Archive *ar_open(const char *path) {
 	long size; u8 *d = slurp(path, &size);
-	if (size < 8 || memcmp(d, "!<arch>\n", 8)) die("%s: not an archive", path);
-	Archive *ar = calloc(1, sizeof *ar); ar->path = path; ar->data = d; ar->size = size;
-	const u8 *index = NULL; long index_size = 0;
+	int thin = size >= 8 && !memcmp(d, "!<thin>\n", 8);
+	if (size < 8 || (memcmp(d, "!<arch>\n", 8) && !thin)) die("%s: not an archive", path);
+	Archive *ar = calloc(1, sizeof *ar); ar->path = path; ar->data = d; ar->size = size; ar->thin = thin;
 	for (long p = 8; p + 60 <= size; ) {
 		const char *h = (const char *)(d + p);
-		long msize = ar_field(h, 48, 10);
+		long msize = ar_stored(ar, h);
 		if (memcmp(h + 58, "`\n", 2) || msize < 0 || p + 60 + msize > size) die("%s: corrupt archive member header at %ld", path, p);
-		if (!memcmp(h, "/ ", 2)) { index = d + p + 60; index_size = msize; }
+		if (!memcmp(h, "/ ", 2)) { ar->index = d + p + 60; ar->index_size = msize; }
 		else if (!memcmp(h, "//", 2)) { ar->longtab = (const char *)(d + p + 60); ar->longsz = msize; }
 		else if (!memcmp(h, "/SYM64/", 7) || !memcmp(h, "__.SYMDEF", 9)) die("%s: unsupported archive index format", path);
 		p += 60 + msize + (msize & 1);                 /* members are padded to even length */
 	}
-	if (!index) die("%s: archive has no index; run ranlib (or ar s) to add one", path);
+	return ar;
+}
+void ar_load(const char *path) {
+	Archive *ar = ar_open(path); long size = ar->size;
+	const u8 *index = ar->index; long index_size = ar->index_size;
+	if (!index) {   /* no index: fine for an archive with no members (musl's empty libm.a), an error otherwise */
+		for (long p = 8; p + 60 <= ar->size; ) {
+			const char *h = (const char *)(ar->data + p); long msize = ar_stored(ar, h);
+			if (memcmp(h, "//", 2)) die("%s: archive has no index; run ranlib (or ar s) to add one", path);
+			p += 60 + msize + (msize & 1);
+		}
+		return;
+	}
 	if (index_size < 4) die("%s: corrupt archive index", path);
 	u32 n = be32(index);
 	if (4 + 4 * (long)n > index_size) die("%s: corrupt archive index", path);
@@ -78,6 +97,31 @@ void ar_load(const char *path) {
 	}
 }
 
+/* The member at header offset `off`, parsed (and active). A long name is "/off" into the // table, ending at "/\n" —
+ * in a thin archive it's the member's PATH (relative to the archive's directory), which may itself contain '/'. */
+static Obj *ar_member(Archive *ar, long off) {
+	const char *h = (const char *)(ar->data + off);
+	char mname[1024]; int k = 0;
+	if (h[0] == '/' && h[1] >= '0' && h[1] <= '9') {   /* "/off": long name */
+		long at = atol(h + 1);
+		if (!ar->longtab || at < 0 || at >= ar->longsz) die("%s: member name outside the // table", ar->path);
+		const char *nm = ar->longtab + at;
+		while (k < (int)sizeof mname - 1 && at + k < ar->longsz && nm[k] != '\n' && !(nm[k] == '/' && (at + k + 1 >= ar->longsz || nm[k + 1] == '\n'))) { mname[k] = nm[k]; k++; }
+	} else while (k < 16 && h[k] != '/' && h[k] != ' ') { mname[k] = h[k]; k++; }
+	mname[k] = 0;
+	if (ar->thin) {   /* the member is a file of its own, beside the archive */
+		const char *slash = strrchr(ar->path, '/');
+		char *fp = malloc(strlen(ar->path) + strlen(mname) + 2);
+		if (mname[0] == '/' || !slash) strcpy(fp, mname); else sprintf(fp, "%.*s/%s", (int)(slash - ar->path), ar->path, mname);
+		long size; u8 *d = slurp(fp, &size);
+		if (size != ar_field(h, 48, 10)) die("%s: thin member %s changed size since the archive was made", ar->path, fp);
+		return elf_parse(fp, d, size, 1);
+	}
+	char *path = malloc(strlen(ar->path) + strlen(mname) + 3); sprintf(path, "%s(%s)", ar->path, mname);
+	long size = ar_field(h, 48, 10);                   /* the header was bounds-checked by ar_open */
+	u8 *copy = malloc(size ? size : 1); memcpy(copy, ar->data + off + 60, size);   /* an aligned image of its own */
+	return elf_parse(path, copy, size, 1);
+}
 Obj *ar_pull(const char *sym) {
 	ArSym *as = strmap_get(&arsyms, sym);
 	if (!as) return NULL;
@@ -85,19 +129,18 @@ Obj *ar_pull(const char *sym) {
 	char key[24]; snprintf(key, sizeof key, "%ld", as->off);
 	if (strmap_get(&ar->loaded, key)) return NULL;     /* that member is already in (its definition didn't take) */
 	strmap_put(&ar->loaded, strdup(key), (void *)1);
-	const char *h = (const char *)(ar->data + as->off);
-	char mname[256]; int k = 0;
-	if (h[0] == '/' && h[1] >= '0' && h[1] <= '9') {   /* "/off": long name */
-		long at = atol(h + 1);
-		if (!ar->longtab || at < 0 || at >= ar->longsz) die("%s: member name outside the // table", ar->path);
-		const char *nm = ar->longtab + at;
-		while (k < 255 && at + k < ar->longsz && nm[k] != '/' && nm[k] != '\n') { mname[k] = nm[k]; k++; }
-	} else while (k < 16 && h[k] != '/' && h[k] != ' ') { mname[k] = h[k]; k++; }
-	mname[k] = 0;
-	char *path = malloc(strlen(ar->path) + strlen(mname) + 3); sprintf(path, "%s(%s)", ar->path, mname);
-	long size = ar_field(h, 48, 10);                   /* the header was bounds-checked by ar_load */
-	u8 *copy = malloc(size ? size : 1); memcpy(copy, ar->data + as->off + 60, size);   /* an aligned image of its own */
-	return elf_parse(path, copy, size, 1);
+	return ar_member(ar, as->off);
+}
+/* --whole-archive: EVERY member, in archive order, as if each were named on the command line (the kernel's vmlinux.o
+ * is `ld -r --whole-archive vmlinux.a`). No index needed. */
+void ar_load_whole(const char *path) {
+	Archive *ar = ar_open(path);
+	for (long p = 8; p + 60 <= ar->size; ) {
+		const char *h = (const char *)(ar->data + p);
+		long msize = ar_stored(ar, h);
+		if (memcmp(h, "/ ", 2) && memcmp(h, "//", 2)) ar_member(ar, p);
+		p += 60 + msize + (msize & 1);
+	}
 }
 
 /* Read a shared library (-l) as a PROVIDER: register the symbols it EXPORTS + its soname, without laying
