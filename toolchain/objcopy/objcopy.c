@@ -58,6 +58,27 @@ static int pat_match(const char *name, int kind) {
 	}
 	return 0;
 }
+/* --rename-section OLD=NEW[,FLAGS] / --set-section-flags PAT=FLAGS: GNU's section flags (BFD's SEC_*), which a flag
+ * list REPLACES (--set-section-flags keeps contents and relocations); a section keeps its bytes only with `contents`. */
+enum { F_ALLOC = 1, F_LOAD = 2, F_NOLOAD = 4, F_READONLY = 8, F_DEBUG = 16, F_CODE = 32, F_DATA = 64, F_ROM = 128,
+       F_EXCLUDE = 256, F_SHARE = 512, F_CONTENTS = 1024, F_MERGE = 2048, F_STRINGS = 4096, F_RELOC = 8192, F_TLS = 16384 };
+typedef struct { const char *from, *to; int flags; } Rename;   /* flags -1: unchanged */
+static Rename *renames; static int nrename;
+typedef struct { const char *pat; int flags; } SetFlags;
+static SetFlags *setflags; static int nsetflags;
+static int parse_flags(const char *s) {
+	static const struct { const char *n; int f; } t[] = { {"alloc", F_ALLOC}, {"load", F_LOAD}, {"noload", F_NOLOAD}, {"readonly", F_READONLY},
+		{"debug", F_DEBUG}, {"code", F_CODE}, {"data", F_DATA}, {"rom", F_ROM}, {"exclude", F_EXCLUDE}, {"share", F_SHARE},
+		{"contents", F_CONTENTS}, {"merge", F_MERGE}, {"strings", F_STRINGS} };
+	int f = 0;
+	while (*s) {
+		const char *e = strchr(s, ','); size_t n = e ? (size_t)(e - s) : strlen(s); int k;
+		for (k = 0; k < (int)(sizeof t / sizeof *t); k++) if (strlen(t[k].n) == n && !strncmp(t[k].n, s, n)) break;
+		if (k == (int)(sizeof t / sizeof *t)) die("unrecognized section flag `%.*s'", (int)n, s);
+		f |= t[k].f; s += n + (e != NULL);
+	}
+	return f;
+}
 static int any_pat(int kind) { for (int i = 0; i < npat; i++) if (pats[i].kind == kind) return 1; return 0; }
 static int named(const char *n, const char **list, int k) { for (int i = 0; i < k; i++) if (!strcmp(list[i], n)) return 1; return 0; }
 
@@ -114,6 +135,20 @@ static int is_debug(const ElfFile *f, int j) {   /* SEC_DEBUGGING: by name, for 
 	    || starts(nm, ".line") || starts(nm, ".stab") || !strcmp(nm, ".gdb_index");
 }
 #define PT_TLS_ 7
+static int bfd_flags(const ElfFile *f, int j, int has_relocs) {   /* _bfd_elf_make_section_from_shdr's SEC_* for section j */
+	const Elf32_Shdr *s = &f->sh[j]; int fl = 0;
+	if (s->sh_type != SHT_NOBITS) fl |= F_CONTENTS;
+	if (s->sh_flags & SHF_ALLOC) { fl |= F_ALLOC; if (s->sh_type != SHT_NOBITS) fl |= F_LOAD; }
+	if (!(s->sh_flags & SHF_WRITE)) fl |= F_READONLY;
+	if (s->sh_flags & SHF_EXECINSTR) fl |= F_CODE; else if (fl & F_LOAD) fl |= F_DATA;
+	if (s->sh_flags & SHF_MERGE) fl |= F_MERGE;
+	if (s->sh_flags & SHF_STRINGS) fl |= F_STRINGS;
+	if (s->sh_flags & SHF_TLS) fl |= F_TLS;
+	if (s->sh_flags & 0x80000000u) fl |= F_EXCLUDE;
+	if (is_debug(f, j)) fl |= F_DEBUG;
+	if (has_relocs) fl |= F_RELOC;
+	return fl;
+}
 /* ELF_SECTION_IN_SEGMENT (binutils include/elf/internal.h), check_vma = 1, strict = 0. */
 static int in_segment(const Elf32_Shdr *s, const Elf32_Phdr *p) {
 	int tls = (s->sh_flags & SHF_TLS) != 0;
@@ -209,6 +244,11 @@ static int reloc_target(const ElfFile *f, int j) {
 	nm += 4;
 	if (!strcmp(nm, ".plt")) { int g = section_named(f, ".got.plt"); return g ? g : section_named(f, ".got"); }
 	return section_named(f, nm);
+}
+static const char *out_name(const ElfFile *f, int j) {   /* a section's output name (--rename-section) */
+	const char *nm = f->shstr + f->sh[j].sh_name;
+	for (int k = 0; k < nrename; k++) if (!strcmp(renames[k].from, nm)) return renames[k].to;
+	return nm;
 }
 typedef struct { int in; } Out;   /* an output section: its input index, or a made one (-1 .symtab, -2 .strtab, -3 .shstrtab) */
 static void copy_elf(const char *in) {
@@ -326,7 +366,10 @@ static void copy_elf(const char *in) {
 	shs.e[n_symtab].ref = need_symtab; shs.e[n_strtab].ref = need_symtab;
 	for (int i = 1; i < nos; i++) {
 		if (os[i].in == -1) nmi[i] = n_symtab; else if (os[i].in == -2) nmi[i] = n_strtab; else if (os[i].in == -3) nmi[i] = n_shstr;
-		else nmi[i] = st_add(&shs, f.shstr + f.sh[os[i].in].sh_name);
+		else if (relof[os[i].in]) {   /* BFD names a relocation section after its section: ".rel" + that name */
+			const char *t = out_name(&f, relof[os[i].in]); char *rn = malloc(strlen(t) + 5); sprintf(rn, ".rel%s", t);
+			nmi[i] = st_add(&shs, rn);
+		} else nmi[i] = st_add(&shs, out_name(&f, os[i].in));
 	}
 	u32 shs_size; u8 *shs_data = st_finish(&shs, &shs_size);
 
@@ -353,6 +396,21 @@ static void copy_elf(const char *in) {
 		int j = os[i].in;
 		if (j > 0) {
 			sh[i] = f.sh[j]; body[i] = data + f.sh[j].sh_offset;
+			int nf = -1; const char *nm = f.shstr + f.sh[j].sh_name;
+			for (int k = 0; k < nrename; k++) if (!strcmp(renames[k].from, nm) && renames[k].flags >= 0) nf = renames[k].flags;
+			for (int k = nsetflags - 1; k >= 0 && nf < 0 && !relof[j]; k--)
+				if (!fnmatch(setflags[k].pat, nm, 0)) nf = setflags[k].flags | (bfd_flags(&f, j, relsec[j] != 0) & (F_CONTENTS | F_RELOC));
+			if (nf >= 0 && !relof[j] && nf != bfd_flags(&f, j, relsec[j] != 0)) {   /* BFD: new flags -> sh_flags, and sh_type anew */
+				if (sh[i].sh_type != SHT_PROGBITS && sh[i].sh_type != SHT_NOBITS) die("%s: new flags for section %s (type %u): unsupported", in, nm, sh[i].sh_type);
+				if (!rel_obj && f.sh[j].sh_flags & SHF_ALLOC) die("%s: new flags for the allocated section %s of an executable: unsupported", in, nm);
+				u32 keepf = sh[i].sh_flags & (SHF_LINK_ORDER | 0x40 /* INFO_LINK */ | 0x200 /* GROUP */);
+				sh[i].sh_flags = keepf | (nf & F_ALLOC ? SHF_ALLOC : 0) | (nf & F_READONLY ? 0 : SHF_WRITE) | (nf & F_CODE ? SHF_EXECINSTR : 0)
+				               | (nf & F_MERGE ? SHF_MERGE : 0) | (nf & F_STRINGS ? SHF_STRINGS : 0) | (nf & F_EXCLUDE ? 0x80000000u : 0);
+				u32 type = (nf & F_ALLOC) && (!(nf & (F_LOAD | F_CONTENTS)) || (nf & F_NOLOAD)) ? SHT_NOBITS : SHT_PROGBITS;
+				if (type == SHT_PROGBITS && (sh[i].sh_type == SHT_NOBITS || !(nf & F_CONTENTS)))   /* bytes copied only with `contents` */
+					body[i] = owned[i] = xcalloc(sh[i].sh_size, 1);
+				sh[i].sh_type = type;
+			}
 			if (relof[j]) {   /* renumbered against the new symbol table */
 				u32 n = f.sh[j].sh_size / sizeof(Elf32_Rel);
 				Elf32_Rel *r = xcalloc(n, sizeof *r); memcpy(r, data + f.sh[j].sh_offset, n * sizeof *r);
@@ -508,6 +566,18 @@ int main(int argc, char **argv) {
 			continue;
 		}
 		if ((v = optval(argc, argv, &i, a, "--only-section", "-j"))) add_pat(v, 'j');
+		else if ((v = optval(argc, argv, &i, a, "--rename-section", NULL))) {
+			const char *eq = strchr(v, '='); if (!eq || eq == v || !eq[1]) die("bad format for --rename-section: argument needed");
+			const char *cm = strchr(eq + 1, ',');
+			renames = realloc(renames, (nrename + 1) * sizeof *renames);
+			renames[nrename].from = strndup(v, eq - v); renames[nrename].to = cm ? strndup(eq + 1, cm - eq - 1) : eq + 1;
+			renames[nrename++].flags = cm ? parse_flags(cm + 1) : -1;
+		}
+		else if ((v = optval(argc, argv, &i, a, "--set-section-flags", NULL))) {
+			const char *eq = strchr(v, '='); if (!eq || eq == v) die("bad format for --set-section-flags: argument needed");
+			setflags = realloc(setflags, (nsetflags + 1) * sizeof *setflags);
+			setflags[nsetflags].pat = strndup(v, eq - v); setflags[nsetflags++].flags = parse_flags(eq + 1);
+		}
 		else if ((v = optval(argc, argv, &i, a, "--output-target", "-O"))) check_target(v, 1);
 		else if ((v = optval(argc, argv, &i, a, "--input-target", "-I"))) check_target(v, 0);
 		else if ((v = optval(argc, argv, &i, a, "--target", "-F"))) { check_target(v, 1); }

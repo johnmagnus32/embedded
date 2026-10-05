@@ -51,7 +51,13 @@ for f in "${objs[@]}" "${execs[@]}"; do
   oc "$f" -x @in @out;  oc "$f" -X @in @out;  oc "$f" -g @in;  oc "$f" -K main -K api --strip-unneeded @in @out
   st "$f" -g @in;  st "$f" --strip-unneeded @in -o @out;  st "$f" -g -o @out @in
 done
-for f in "${objs[@]}"; do oc "$f" -j .text @in @out; oc "$f" -O binary -j .text @in @out; oc "$f" -N helper @in @out; done
+for f in "${objs[@]}"; do
+  oc "$f" -j .text @in @out; oc "$f" -O binary -j .text @in @out; oc "$f" -N helper @in @out
+  oc "$f" --remove-section=.note.gnu.property --rename-section .data=.data.efistub --rename-section .bss=.bss.efistub,load,alloc @in @out   # the EFI stub's
+  for fl in alloc readonly alloc,code contents,alloc,load noload alloc,load,readonly,data debug contents merge,strings; do
+    oc "$f" --rename-section .data=.d2,$fl --rename-section .text=.t2 @in @out; oc "$f" --set-section-flags .bss=$fl @in @out
+  done
+done
 for f in "${execs[@]}"; do
   oc "$f" -O binary -R .comment -S @in @out;  oc "$f" -S @in @out;  st "$f" @in;  st "$f" -s -R .note -R .comment @in -o @out
   oc "$f" -O binary --gap-fill=0xff @in @out;  oc "$f" -O binary --pad-to=0x400000 --gap-fill=0x5a @in @out
