@@ -214,7 +214,7 @@ static void add_syms(int locals) {
 		if (!o->active || o == linker_obj) continue;
 		for (int k = 1; k < o->nsym; k++) {
 			Elf32_Sym *s = &o->sym[k]; int b = ELF32_ST_BIND(s->st_info), t = ELF32_ST_TYPE(s->st_info);
-			int hidden = ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT;
+			int hidden = ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT || (b != STB_LOCAL && s->st_name && version_hidden(o->strtab + s->st_name));   /* a version script's local: */
 			if (!s->st_name || t == STT_SECTION || s->st_shndx == SHN_UNDEF) continue;
 			if (b == STB_LOCAL ? !locals : (!winner(o, k) || hidden != locals)) continue;
 			if (t == STT_FILE) { add_sym(o->strtab + s->st_name, 0, 0, s->st_info, 0, SHN_ABS); continue; }
@@ -224,13 +224,14 @@ static void add_syms(int locals) {
 			        s->st_other, out_shndx(o, s->st_shndx));
 		}
 	}
-	GSym **ls = malloc((ndeclared + 1) * sizeof *ls); int n = 0;
+	GSym **ls = malloc((ndeclared + nstartstop + 1) * sizeof *ls); int n = 0;
 	for (int i = 0; i < ndeclared; i++) if (declared[i]->defined && !declared[i]->obj && !!declared[i]->hidden == locals) ls[n++] = declared[i];
+	for (int i = 0; i < nstartstop && !locals; i++) if (startstops[i]->defined) ls[n++] = startstops[i];   /* (protected) */
 	GSym *d = gsym_find("_DYNAMIC");
 	if (locals && d && d->defined && !d->obj) ls[n++] = d;                /* hidden, as in GNU ld */
 	qsort(ls, n, sizeof *ls, by_name);
 	for (int i = 0; i < n; i++)
-		add_sym(ls[i]->name, ls[i]->vaddr, 0, ELF32_ST_INFO(locals ? STB_LOCAL : STB_GLOBAL, STT_NOTYPE), ls[i]->hidden ? STV_HIDDEN : 0, near_shndx(ls[i]));
+		add_sym(ls[i]->name, ls[i]->vaddr, 0, ELF32_ST_INFO(locals ? STB_LOCAL : STB_GLOBAL, STT_NOTYPE), ls[i]->hidden ? STV_HIDDEN : ls[i]->startstop ? STV_PROTECTED : 0, near_shndx(ls[i]));
 	free(ls);
 }
 
@@ -244,8 +245,9 @@ void elf_write(const char *out, u32 entry) {
 	u32 content = hdrsz;                                 /* end of the loadable bytes in the file */
 	for (int i = 0; i < noutsec; i++) if (outsecs[i]->type != SHT_NOBITS && outsecs[i]->off + outsecs[i]->size > content)
 		content = outsecs[i]->off + outsecs[i]->size;
-	u32 symoff = alignup(content, 4), stroff = symoff + (u32)nsyms * sizeof(Elf32_Sym), shstroff = stroff + (u32)strtab.len;
-	int nsh = 1 + noutsec + 3, isym = 1 + noutsec;       /* null, output sections, .symtab .strtab .shstrtab */
+	if (strip_all) { nsyms = 0; strtab.len = 0; }        /* -s: no .symtab / .strtab */
+	u32 symoff = alignup(content, 4), stroff = symoff + (u32)nsyms * sizeof(Elf32_Sym), shstroff = strip_all ? content : stroff + (u32)strtab.len;
+	int isym = 1 + noutsec, ishstr = strip_all ? isym : isym + 2, nsh = ishstr + 1;   /* null, output sections, [.symtab .strtab] .shstrtab */
 	Elf32_Shdr *sh = calloc(nsh, sizeof *sh);
 	for (int i = 0; i < noutsec; i++) {
 		OutSec *os = outsecs[i]; Obj *fo = os->first.obj; Elf32_Shdr *fs = fo ? &fo->sh[os->first.shndx] : NULL;
@@ -255,23 +257,28 @@ void elf_write(const char *out, u32 entry) {
 		sh[1 + i] = (Elf32_Shdr){ .sh_name = str_add(&shstr, os->name), .sh_type = os->type, .sh_flags = os->flags,
 		    .sh_addr = os->vaddr, .sh_offset = os->off, .sh_size = os->size, .sh_addralign = align, .sh_entsize = os->entsize,
 		    .sh_link = fs && fs->sh_link ? out_shndx(fo, fs->sh_link) % SHN_ABS : 0,
-		    .sh_info = !fs ? 0 : os->type == SHT_REL ? (fs->sh_info ? out_shndx(fo, fs->sh_info) % SHN_ABS : 0) : os->type == SHT_DYNSYM ? fs->sh_info : 0 };
+		    .sh_info = !fs ? 0 : os->type == SHT_REL ? (fs->sh_info ? out_shndx(fo, fs->sh_info) % SHN_ABS : 0) : os->type == SHT_DYNSYM || os->type == 0x6ffffffdu /* VERDEF: definitions */ ? fs->sh_info : 0 };
 	}
-	sh[isym]     = (Elf32_Shdr){ .sh_name = str_add(&shstr, ".symtab"), .sh_type = SHT_SYMTAB, .sh_offset = symoff,
-	    .sh_size = (u32)nsyms * sizeof(Elf32_Sym), .sh_link = isym + 1, .sh_info = first_global, .sh_addralign = 4, .sh_entsize = sizeof(Elf32_Sym) };
-	sh[isym + 1] = (Elf32_Shdr){ .sh_name = str_add(&shstr, ".strtab"), .sh_type = SHT_STRTAB, .sh_offset = stroff, .sh_size = (u32)strtab.len, .sh_addralign = 1 };
-	sh[isym + 2] = (Elf32_Shdr){ .sh_name = str_add(&shstr, ".shstrtab"), .sh_type = SHT_STRTAB, .sh_offset = shstroff, .sh_addralign = 1 };
-	sh[isym + 2].sh_size = (u32)shstr.len;
+	if (!strip_all) {
+		sh[isym]     = (Elf32_Shdr){ .sh_name = str_add(&shstr, ".symtab"), .sh_type = SHT_SYMTAB, .sh_offset = symoff,
+		    .sh_size = (u32)nsyms * sizeof(Elf32_Sym), .sh_link = isym + 1, .sh_info = first_global, .sh_addralign = 4, .sh_entsize = sizeof(Elf32_Sym) };
+		sh[isym + 1] = (Elf32_Shdr){ .sh_name = str_add(&shstr, ".strtab"), .sh_type = SHT_STRTAB, .sh_offset = stroff, .sh_size = (u32)strtab.len, .sh_addralign = 1 };
+	}
+	sh[ishstr] = (Elf32_Shdr){ .sh_name = str_add(&shstr, ".shstrtab"), .sh_type = SHT_STRTAB, .sh_offset = shstroff, .sh_addralign = 1 };
+	sh[ishstr].sh_size = (u32)shstr.len;
 	u32 shoff = alignup(shstroff + (u32)shstr.len, 4), total = shoff + (u32)nsh * sizeof(Elf32_Shdr);
 
 	u8 *buf = calloc(1, total);
 	if (sizeof(Elf32_Ehdr) + (u32)nphdr * sizeof(Elf32_Phdr) != hdrsz) die("internal: program header table size changed after layout");
 	Elf32_Ehdr eh = { .e_type = (pie || shared) ? ET_DYN : ET_EXEC, .e_machine = md_e_machine, .e_version = 1, .e_entry = entry,
 	    .e_phoff = nphdr ? sizeof(Elf32_Ehdr) : 0, .e_shoff = shoff, .e_flags = 0x05000000 /* EABI5 */, .e_ehsize = sizeof(Elf32_Ehdr),
-	    .e_phentsize = sizeof(Elf32_Phdr), .e_phnum = (u16)nphdr, .e_shentsize = sizeof(Elf32_Shdr), .e_shnum = (u16)nsh, .e_shstrndx = (u16)(isym + 2) };
+	    .e_phentsize = sizeof(Elf32_Phdr), .e_phnum = (u16)nphdr, .e_shentsize = sizeof(Elf32_Shdr), .e_shnum = (u16)nsh, .e_shstrndx = (u16)ishstr };
 	memcpy(eh.e_ident, "\177ELF\1\1\1", 7);              /* MAG + ELFCLASS32 + ELFDATA2LSB + EV_CURRENT */
 	memcpy(buf, &eh, sizeof eh);
 	memcpy(buf + sizeof eh, phdrs, (size_t)nphdr * sizeof(Elf32_Phdr));
+	for (int i = 0; i < noutsec; i++)                    /* an `=FILL` section's gaps: its pattern, repeated */
+		if (outsecs[i]->nfill && outsecs[i]->type != SHT_NOBITS)
+			for (u32 k = 0; k < outsecs[i]->size; k++) buf[outsecs[i]->off + k] = outsecs[i]->fill[k % (u32)outsecs[i]->nfill];
 	for (int i = 0; i < nobj; i++) {                     /* every placed input section's (relocated) bytes */
 		Obj *o = objs[i];
 		if (!o->active) continue;
@@ -281,6 +288,7 @@ void elf_write(const char *out, u32 entry) {
 			memcpy(buf + os->off + (o->sec_vaddr[j] - os->vaddr), o->data + o->sh[j].sh_offset, o->sh[j].sh_size);
 		}
 	}
+	layout_data(buf);
 	memcpy(buf + symoff, syms, (size_t)nsyms * sizeof *syms);
 	memcpy(buf + stroff, strtab.b, strtab.len);
 	memcpy(buf + shstroff, shstr.b, shstr.len);

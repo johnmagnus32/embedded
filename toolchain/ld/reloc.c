@@ -237,6 +237,30 @@ void reloc_link(const char *out) {
 		rsec[r].link = l;
 	}
 
+	/* A relocation against a piece's section symbol takes the piece's offset into its addend; where that field can't
+	 * hold it (a branch's 24 bits, past 32MB into a huge merged .text), the relocation goes against an ANCHOR instead —
+	 * a local symbol at the piece's start — with its addend untouched: the same final address. (GNU's arm_add_to_rel
+	 * truncates the addend there, unchecked.) */
+	int **anchor = calloc(nobj, sizeof *anchor), nanchor = 0;
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i]; if (!o->active) continue;
+		for (int j = 1; j < o->nsh; j++) {
+			Elf32_Shdr *rs = &o->sh[j];
+			if (rs->sh_type != SHT_REL || !rs->sh_info || rs->sh_info >= (u32)o->nsh || rmap[i][rs->sh_info] < 0) continue;
+			Elf32_Shdr *ts = &o->sh[rs->sh_info]; Elf32_Rel *rel = (Elf32_Rel *)(o->data + rs->sh_offset);
+			for (u32 n = 0; n < rs->sh_size / sizeof *rel; n++) {
+				int sidx = (int)ELF32_R_SYM(rel[n].r_info); if (!sidx || sidx >= o->nsym) continue;
+				Elf32_Sym *s = &o->sym[sidx]; u8 w[4];
+				if (ELF32_ST_TYPE(s->st_info) != STT_SECTION || s->st_shndx >= o->nsh || !o->sec_vaddr[s->st_shndx]) continue;
+				if (ts->sh_type == SHT_NOBITS || rel[n].r_offset + 4 > ts->sh_size) continue;   /* (step 3 reports it) */
+				memcpy(w, o->data + ts->sh_offset + rel[n].r_offset, 4);
+				if (md_rel_adjust(ELF32_R_TYPE(rel[n].r_info), w, o->sec_vaddr[s->st_shndx])) continue;
+				if (!anchor[i]) anchor[i] = calloc(o->nsh, sizeof **anchor);
+				anchor[i][s->st_shndx] = -1;   /* wanted (its symbol index comes with the locals) */
+			}
+		}
+	}
+
 	/* 2. symbols: null, section symbols, each object's locals, then the globals */
 	str_add(&ostr, ""); add_osym(NULL, 0, 0, 0, 0, SHN_UNDEF);
 	int *secsym = malloc((nrsec ? nrsec : 1) * sizeof *secsym);
@@ -256,6 +280,10 @@ void reloc_link(const char *out) {
 			if (t == STT_FILE) { smap[i][k] = add_osym(o->strtab + s->st_name, 0, 0, s->st_info, 0, SHN_ABS); continue; }
 			u32 v; u16 sx;
 			if (sym_place(o, i, s, &v, &sx)) smap[i][k] = add_osym(s->st_name ? o->strtab + s->st_name : NULL, v, s->st_size, s->st_info, s->st_other, sx);
+		}
+		for (int j = 1; anchor[i] && j < o->nsh; j++) if (anchor[i][j]) {   /* this object's anchors (.L names: kallsyms skips them) */
+			char nm[48]; snprintf(nm, sizeof nm, ".L.ld-r.anchor.%d", nanchor++);
+			anchor[i][j] = add_osym(strdup(nm), o->sec_vaddr[j], 0, ELF32_ST_INFO(STB_LOCAL, STT_NOTYPE), 0, (u16)rsec[rmap[i][j]].index);
 		}
 		char *mapped = calloc(o->nsh, 1);   /* the pieces that have mapping symbols ($a $t $d, or $x.name) */
 		for (int k = 1; k < o->nsym; k++) {
@@ -312,8 +340,14 @@ void reloc_link(const char *out) {
 			for (u32 n = 0; n < rs->sh_size / sizeof *rel; n++) {
 				u32 type = ELF32_R_TYPE(rel[n].r_info); int sidx = (int)ELF32_R_SYM(rel[n].r_info);
 				if (sidx >= o->nsym || smap[i][sidx] < 0) die("%s: a relocation in %s refers to a symbol that isn't carried", o->path, sec_name(o, t));
-				Elf32_Sym *s = &o->sym[sidx];
-				if (sidx && ELF32_ST_TYPE(s->st_info) == STT_SECTION && o->sec_vaddr[s->st_shndx]) {   /* move the addend */
+				Elf32_Sym *s = &o->sym[sidx]; int osym = smap[i][sidx];
+				u8 w[4]; int anchored = 0;
+				if (sidx && ELF32_ST_TYPE(s->st_info) == STT_SECTION && anchor[i] && s->st_shndx < o->nsh && anchor[i][s->st_shndx] > 0
+				    && rel[n].r_offset + 4 <= ts->sh_size && ts->sh_type != SHT_NOBITS) {   /* this one's addend can't move: its anchor */
+					memcpy(w, o->data + ts->sh_offset + rel[n].r_offset, 4);
+					if (!md_rel_adjust(type, w, o->sec_vaddr[s->st_shndx])) { osym = anchor[i][s->st_shndx]; anchored = 1; }
+				}
+				if (!anchored && sidx && ELF32_ST_TYPE(s->st_info) == STT_SECTION && o->sec_vaddr[s->st_shndx]) {   /* move the addend */
 					if (ts->sh_type == SHT_NOBITS || rel[n].r_offset + 4 > ts->sh_size) die("%s: relocation offset %#x outside %s", o->path, rel[n].r_offset, sec_name(o, t));
 					if (!md_rel_adjust(type, o->data + ts->sh_offset + rel[n].r_offset, o->sec_vaddr[s->st_shndx]))
 						die("%s: relocation type %u against section %s in %s: its addend can't be moved in a relocatable link",
@@ -321,7 +355,7 @@ void reloc_link(const char *out) {
 				}
 				RSec *R = &rsec[r];
 				R->rel = grow(R->rel, R->nrel, &R->relcap, sizeof *R->rel);
-				R->rel[R->nrel++] = (Elf32_Rel){ rel[n].r_offset + o->sec_vaddr[t], ELF32_R_INFO((u32)smap[i][sidx], type) };
+				R->rel[R->nrel++] = (Elf32_Rel){ rel[n].r_offset + o->sec_vaddr[t], ELF32_R_INFO((u32)osym, type) };
 			}
 		}
 	}

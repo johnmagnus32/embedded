@@ -40,6 +40,7 @@ int warn_rwx = 1;                          /* --no-warn-rwx-segments turns the R
 int orphan_mode;                           /* --orphan-handling=place|discard|warn|error */
 int no_undefined;                          /* --no-undefined, -z defs */
 const char **defsyms; int ndefsym;         /* --defsym */
+static const char *version_files[8]; static int nversion_file;   /* --version-script */
 
 /* die() is tool-specific (its own "ld:" prefix); rd32/wr32/alignup/Strtab are shared (common/elfutil). */
 void die(const char *fmt, ...) {
@@ -147,6 +148,165 @@ static u32 resolve(Obj *o, int symidx) {
 	return sym_addr(o, symidx);
 }
 
+/* ---- long-branch veneers ------------------------------------------------------------------------------- *
+ * An ARM b/bl reaches +-32MB. One farther goes through a VENEER (GNU's long-branch stub): in a stub section after its
+ * caller's STUB GROUP — consecutive input sections of one code output section spanning at most GROUP bytes (GNU's
+ * default 4170000), so every caller in the group reaches it — 12 bytes `ldr ip, [pc]; add pc, pc, ip; .word dest-.-12`
+ * (--pic-veneer, -pie, -shared: position-independent) or 8 `ldr pc, [pc, #-4]; .word dest`, named __<target>_veneer.
+ * Stubs move what follows them: scan, lay out again, until none is new. */
+#define VENEER_GROUP 4170000u
+int pic_veneer;                                          /* --pic-veneer */
+int strip_all;                                           /* -s: no .symtab/.strtab */
+typedef struct { Obj *stub; int n; } VGroup;             /* the group's stub section: a linker object of one section */
+typedef struct { int g; u32 off; Obj *o; int sidx; s32 A; u32 type; const char *name; } Veneer;   /* its target: o's symbol sidx, + A */
+static VGroup *vgrp; static int nvgrp, vgrpcap;
+static Veneer *ven; static int nven, vencap;
+static StrMap ven_map;                                   /* "group:target" -> veneer + 1 (the target by identity: addresses move) */
+static int **vgrp_of;                                    /* [obj][section] -> its group + 1 (0: none yet) */
+static u32 veneer_size(void) { return pic_veneer || pie || shared ? 12 : 8; }
+static int branch_reloc(u32 type) { return type == 28 /* CALL */ || type == 29 /* JUMP24 */ || type == 1 /* PC24 */ || type == 27 /* PLT32 */; }
+static u32 resolve(Obj *o, int symidx);
+static int branch_target(Obj *o, int t, Elf32_Rel *r, u32 *dest, u32 *P, s32 *A) {   /* 0: not a branch to resolve here */
+	u32 type = ELF32_R_TYPE(r->r_info); int sidx = (int)ELF32_R_SYM(r->r_info);
+	if (!branch_reloc(type) || !sidx) return 0;
+	u32 w = rd32(o->data + o->sh[t].sh_offset + r->r_offset), S;
+	if (!dyn_target(o, sidx, type, &S)) S = resolve(o, sidx);
+	*A = (s32)(w << 8) >> 6; *P = o->sec_vaddr[t] + r->r_offset; *dest = S + (u32)*A + 8;
+	return 1;
+}
+static int in_reach(u32 dest, u32 P) { s32 d = (s32)(dest - (P + 8)); return d >= -0x2000000 && d <= 0x1fffffc; }
+static void target_key(char *key, size_t n, int g, Obj *o, int sidx, s32 A) {   /* a global by name, else this object's symbol */
+	Elf32_Sym *s = &o->sym[sidx];
+	if (s->st_name && ELF32_ST_BIND(s->st_info) != STB_LOCAL) snprintf(key, n, "%d:%s%+d", g, o->strtab + s->st_name, A);
+	else snprintf(key, n, "%d:%p:%d%+d", g, (void *)o, sidx, A);
+}
+static const char *branch_name(Obj *o, int sidx) {
+	Elf32_Sym *s = &o->sym[sidx];
+	return s->st_name ? o->strtab + s->st_name : ELF32_ST_TYPE(s->st_info) == STT_SECTION ? sec_name(o, s->st_shndx) : "local";
+}
+static int vgroup_of(Obj *o, int t) { int i = 0; while (objs[i] != o) i++; return vgrp_of[i] ? vgrp_of[i][t] - 1 : -1; }
+static void form_groups(void) {   /* every code output section's inputs, in address order, cut into groups of <= GROUP bytes */
+	vgrp_of = calloc(nobj, sizeof *vgrp_of);
+	typedef struct { Obj *o; int j, oi; } Piece;
+	for (int s = 0; s < noutsec; s++) {
+		OutSec *os = outsecs[s];
+		if (!(os->flags & SHF_EXECINSTR) || os->type == SHT_NOBITS) continue;
+		Piece *pc = NULL; int np = 0, cap = 0;
+		for (int i = 0; i < nobj; i++) for (int j = 1; j < objs[i]->nsh; j++)
+			if (objs[i]->sec_out && objs[i]->sec_out[j] == os && objs[i]->sh[j].sh_size) { pc = grow(pc, np, &cap, sizeof *pc); pc[np++] = (Piece){ objs[i], j, i }; }
+		for (int a = 1; a < np; a++) for (int b = a; b > 0 && pc[b - 1].o->sec_vaddr[pc[b - 1].j] > pc[b].o->sec_vaddr[pc[b].j]; b--) { Piece x = pc[b]; pc[b] = pc[b - 1]; pc[b - 1] = x; }
+		for (int a = 0; a < np; ) {
+			u32 start = pc[a].o->sec_vaddr[pc[a].j]; int b = a;
+			while (b + 1 < np && pc[b + 1].o->sec_vaddr[pc[b + 1].j] + pc[b + 1].o->sh[pc[b + 1].j].sh_size - start <= VENEER_GROUP) b++;
+			Obj *st = obj_new();                     /* the group's stub section, after its last input */
+			st->path = "<veneers>"; st->active = 1; st->nsh = 2;
+			st->sh = calloc(2, sizeof *st->sh); st->sec_vaddr = calloc(2, sizeof(u32)); st->sec_lma = calloc(2, sizeof(u32)); st->sec_out = calloc(2, sizeof *st->sec_out);
+			st->sh[1] = (Elf32_Shdr){ .sh_name = 1, .sh_type = SHT_PROGBITS, .sh_flags = SHF_ALLOC | SHF_EXECINSTR, .sh_addralign = 4 };
+			st->shstr = "\0.stub";
+			vgrp = grow(vgrp, nvgrp, &vgrpcap, sizeof *vgrp); vgrp[nvgrp++] = (VGroup){ st, 0 };
+			for (int k = a; k <= b; k++) { if (!vgrp_of[pc[k].oi]) vgrp_of[pc[k].oi] = calloc(pc[k].o->nsh, sizeof **vgrp_of); vgrp_of[pc[k].oi][pc[k].j] = nvgrp; }
+			layout_insert_after(pc[b].o, pc[b].j, st, 1);
+			a = b + 1;
+		}
+		free(pc);
+	}
+}
+static int veneer_scan(int add) {   /* the out-of-reach branches: count them (add: give each its group's veneer) */
+	int fresh = 0;
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i];
+		if (!o->active || o == linker_obj || !o->nsym) continue;
+		for (int j = 1; j < o->nsh; j++) {
+			Elf32_Shdr *rs = &o->sh[j]; int t = (int)rs->sh_info;
+			if (rs->sh_type != SHT_REL || !(o->sh[t].sh_flags & SHF_EXECINSTR) || !o->sec_out[t] || o->sec_out[t] == &os_discard) continue;
+			Elf32_Rel *rel = (Elf32_Rel *)(o->data + rs->sh_offset);
+			for (u32 r = 0; r < rs->sh_size / sizeof *rel; r++) {
+				u32 dest, P; s32 A;
+				if (!branch_target(o, t, &rel[r], &dest, &P, &A) || in_reach(dest, P)) continue;
+				if (dest & 3) die("%s: a branch in %s to Thumb code out of reach: an interworking veneer is unsupported", o->path, sec_name(o, t));
+				if (!add) { fresh++; continue; }
+				int g = vgroup_of(o, t);
+				if (g < 0) die("internal: %s(%s) is in no stub group", o->path, sec_name(o, t));
+				char key[600]; int sidx = (int)ELF32_R_SYM(rel[r].r_info); target_key(key, sizeof key, g, o, sidx, A);
+				if (strmap_get(&ven_map, key)) continue;
+				ven = grow(ven, nven, &vencap, sizeof *ven);
+				ven[nven] = (Veneer){ g, (u32)vgrp[g].n * veneer_size(), o, sidx, A, ELF32_R_TYPE(rel[r].r_info), branch_name(o, sidx) };
+				strmap_put(&ven_map, strdup(key), (void *)(long)(++nven));
+				vgrp[g].n++; vgrp[g].stub->sh[1].sh_size = (u32)vgrp[g].n * veneer_size(); fresh++;
+			}
+		}
+	}
+	return fresh;
+}
+static void build_globals(void);
+static void startstop_define(void);
+static void veneers(void) {
+	if (!veneer_scan(0)) return;
+	form_groups();
+	for (int pass = 0; veneer_scan(1); pass++) {
+		if (pass == 16) die("internal: veneers do not settle");
+		layout_addresses(); build_globals(); startstop_define();
+	}
+	for (int g = 0; g < nvgrp; g++) {   /* the stubs' bytes and symbols: __X_veneer, $a, $d (as GNU's) */
+		Obj *st = vgrp[g].stub; u32 size = st->sh[1].sh_size;
+		st->data = calloc(1, size + 1);
+		int nsym = 1 + 3 * vgrp[g].n; st->sym = calloc(nsym, sizeof *st->sym); st->nsym = nsym;
+		Strtab names = {0}; str_add(&names, "");
+		u32 a = str_add(&names, "$a"), d = str_add(&names, "$d"); int k = 1;
+		for (int v = 0; v < nven; v++) {
+			if (ven[v].g != g) continue;
+			u8 *p = st->data + ven[v].off; u32 at = st->sec_vaddr[1] + ven[v].off, S;
+			if (!dyn_target(ven[v].o, ven[v].sidx, ven[v].type, &S)) S = resolve(ven[v].o, ven[v].sidx);
+			u32 dest = S + (u32)ven[v].A + 8;
+			if (veneer_size() == 12) { wr32(p, 0xe59fc000); wr32(p + 4, 0xe08ff00c); wr32(p + 8, dest - at - 12); }   /* ldr ip, [pc]; add pc, pc, ip */
+			else { wr32(p, 0xe51ff004); wr32(p + 4, dest); }                                                              /* ldr pc, [pc, #-4] */
+			char *nm = malloc(strlen(ven[v].name) + 12); sprintf(nm, "__%s_veneer", ven[v].name);
+			st->sym[k++] = (Elf32_Sym){ str_add(&names, nm), ven[v].off, veneer_size(), ELF32_ST_INFO(STB_LOCAL, STT_FUNC), 0, 1 };
+			st->sym[k++] = (Elf32_Sym){ a, ven[v].off, 0, ELF32_ST_INFO(STB_LOCAL, STT_NOTYPE), 0, 1 };
+			st->sym[k++] = (Elf32_Sym){ d, ven[v].off + veneer_size() - 4, 0, ELF32_ST_INFO(STB_LOCAL, STT_NOTYPE), 0, 1 };
+			free(nm);
+		}
+		st->strtab = names.b;
+	}
+}
+static u32 veneer_for(Obj *o, int t, int sidx, s32 A) {   /* a branch's veneer address (0: none) */
+	int g = vgroup_of(o, t); if (g < 0) return 0;
+	char key[600]; target_key(key, sizeof key, g, o, sidx, A);
+	long v = (long)strmap_get(&ven_map, key);
+	return v ? vgrp[g].stub->sec_vaddr[1] + ven[v - 1].off : 0;
+}
+
+/* GNU ld's __start_SEC / __stop_SEC: referenced, undefined, and SEC an output section named like a C identifier — its
+ * start and end (protected visibility, as GNU's -z start-stop-visibility default; not exported). Declared before the
+ * relocation scan (they resolve here, never imports), given their values after each layout. */
+GSym **startstops; int nstartstop;
+static const char *startstop_section(const char *n) {
+	const char *s = !strncmp(n, "__start_", 8) ? n + 8 : !strncmp(n, "__stop_", 7) ? n + 7 : NULL;
+	if (!s || !*s || (*s >= '0' && *s <= '9')) return NULL;
+	for (const char *c = s; *c; c++) if (!(*c == '_' || (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9'))) return NULL;
+	return s;
+}
+static void startstop_declare(void) {
+	for (size_t i = 0; i < gsyms.cap; i++) {
+		GSym *g = gsyms.vals[i]; const char *s;
+		if (!g || g->defined || g->linker || !(s = startstop_section(g->name))) continue;
+		int found = 0;
+		for (int k = 0; k < nobj && !found; k++) for (int j = 1; j < objs[k]->nsh && !found; j++)
+			found = objs[k]->active && objs[k]->sec_out && (objs[k]->sec_out[j] ? objs[k]->sec_out[j] != &os_discard && !strcmp(objs[k]->sec_out[j]->name, s)
+			        : (objs[k]->sh[j].sh_flags & SHF_ALLOC) && !strcmp(sec_name(objs[k], j), s));   /* (an orphan: an output section of its name) */
+		if (!found) continue;
+		g->linker = 1; g->startstop = g->name[2] == 's' && g->name[3] == 't' && g->name[4] == 'a' ? 1 : 2;
+		startstops = realloc(startstops, (nstartstop + 1) * sizeof *startstops); startstops[nstartstop++] = g;
+	}
+}
+static void startstop_define(void) {
+	for (int i = 0; i < nstartstop; i++) {
+		GSym *g = startstops[i]; OutSec *os = outsec_named(startstop_section(g->name));
+		if (!os) { g->linker = 0; g->defined = 0; continue; }
+		g->defined = 1; g->os = os; g->vaddr = os->vaddr + (g->startstop == 2 ? os->size : 0);
+	}
+}
+
 /* For each REL section, patch its target section's bytes now that addresses are known. */
 static void relocate(void) {
 	for (int i = 0; i < nobj; i++) {
@@ -169,6 +329,11 @@ static void relocate(void) {
 				if (tk == TLS_LE) S = tls_tpoff(resolve(o, sidx));                 /* from the thread pointer */
 				else if (tk == TLS_LDO) S = resolve(o, sidx) - tls_vaddr;          /* inside this module's block */
 				else if (!dyn_target(o, sidx, type, &S)) S = resolve(o, sidx);   /* GOT slot / PLT stub / copy, else the symbol */
+				if (nven && branch_reloc(type) && sidx) {   /* out of reach: through its group's veneer */
+					u32 dest, Pb; s32 A;
+					branch_target(o, t, &rel[r], &dest, &Pb, &A);
+					if (!in_reach(dest, Pb)) { u32 v = veneer_for(o, t, sidx, A); if (v) S = v - (u32)A - 8; }   /* the branch lands on v */
+				}
 				md_apply_reloc(o, type, o->data + ts->sh_offset + rel[r].r_offset, S, o->sec_vaddr[t] + rel[r].r_offset);
 			}
 		}
@@ -269,7 +434,11 @@ int main(int argc, char **argv) {
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
 		if (!strcmp(a, "-o") && i + 1 < argc) out = argv[++i];
-		else if (!strcmp(a, "-T") && i + 1 < argc) script_path = argv[++i];
+		else if ((!strcmp(a, "-T") || !strcmp(a, "--script")) && i + 1 < argc) script_path = argv[++i];
+		else if (!strncmp(a, "--script=", 9)) script_path = a + 9;
+		else if (!strncmp(a, "-T", 2) && a[2] && strncmp(a, "-Ttext", 6) && strncmp(a, "-Tdata", 6) && strncmp(a, "-Tbss", 5)) script_path = a + 2;
+		else if (!strcmp(a, "-S") || !strcmp(a, "--strip-debug")) ;   /* debug sections never reach our output */
+		else if (!strcmp(a, "-s") || !strcmp(a, "--strip-all")) strip_all = 1;
 		else if (!strcmp(a, "-Ttext") && i + 1 < argc) { load_base = strtoul(argv[++i], NULL, 0); ttext = 1; }
 		else if (!strncmp(a, "-Ttext=", 7)) { load_base = strtoul(a + 7, NULL, 0); ttext = 1; }
 		else if ((!strcmp(a, "-e") || !strcmp(a, "--entry")) && i + 1 < argc) entry_sym = argv[++i];
@@ -288,6 +457,8 @@ int main(int argc, char **argv) {
 			            : (die("--orphan-handling=%s: place, discard, warn or error", m), 0);
 		}
 		else if (!strcmp(a, "--no-undefined")) no_undefined = 1;
+		else if (!strcmp(a, "--pic-veneer")) pic_veneer = 1;
+		else if (!strncmp(a, "--version-script=", 17) || (!strcmp(a, "--version-script") && i + 1 < argc)) version_files[nversion_file++ % 8] = a[16] ? a + 17 : argv[++i];
 		else if (!strcmp(a, "--build-id")) build_id_style = "sha1";
 		else if (!strncmp(a, "--build-id=", 11)) build_id_style = a + 11;
 		else if (!strcmp(a, "--hash-style=sysv")) ;   /* the only one we emit (.hash) */
@@ -350,15 +521,25 @@ int main(int argc, char **argv) {
 	if (relocatable) { reloc_link(out); return 0; }
 	if (shared && !soname) { const char *b = strrchr(out, '/'); soname = b ? b + 1 : out; }
 
+	if (nversion_file > 8) die("more than 8 --version-script files");
+	for (int k = 0; k < nversion_file; k++) {             /* (read before the script: a VERSION block adds to them) */
+		FILE *vf = fopen(version_files[k], "rb"); if (!vf) die("cannot open version script %s", version_files[k]);
+		fseek(vf, 0, SEEK_END); long n = ftell(vf); fseek(vf, 0, SEEK_SET);
+		char *t = malloc(n + 1); if (fread(t, 1, n, vf) != (size_t)n) die("%s: read failed", version_files[k]); t[n] = 0; fclose(vf);
+		version_script(t, version_files[k]);
+	}
 	script_read(script_path);                            /* declares the script's symbols */
 	if (!entry_sym) entry_sym = "_start";
 	dyn_init();
 	for (int i = 0; i < nobj; i++) if (objs[i]->active && objs[i] != linker_obj) layout_match(objs[i]);
+	startstop_declare();
 	dyn_scan();
 	dyn_size();
 	layout_match(linker_obj);
 	layout_run();
-	build_globals();
+	build_globals(); startstop_define();
+	veneers();
+	startstop_define();
 	dyn_fill();
 	relocate();
 

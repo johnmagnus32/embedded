@@ -24,6 +24,8 @@
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
+#include <ctype.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include "ld.h"
@@ -44,26 +46,35 @@ static const char *script_name;
 static char **tok; static int ntok, tokcap;
 static int is_punct(char c) { return strchr("{}():;=+?,<>&|^%~!", c) != NULL; }   /* '*' '/' '-' are name chars:
                                                                                   * *(.text*), /DISCARD/, .note.GNU-stack */
+typedef struct { const char *b, *e; } Span;
+static Span *span; static int spancap;                 /* each token's source text (quotes included) */
 static void push_tok(const char *b, int n) {
 	tok = grow(tok, ntok, &tokcap, sizeof *tok);
 	char *t = malloc(n + 1); memcpy(t, b, n); t[n] = 0; tok[ntok++] = t;
+}
+static void push_span(const char *b, const char *e) { span = grow(span, ntok - 1, &spancap, sizeof *span); span[ntok - 1] = (Span){ b, e }; }
+static char *span_text(int lo, int hi) {   /* the source text of tokens [lo, hi) */
+	if (lo >= hi) return strdup("");
+	size_t n = (size_t)(span[hi - 1].e - span[lo].b); char *t = malloc(n + 1); memcpy(t, span[lo].b, n); t[n] = 0;
+	return t;
 }
 static void tokenize(const char *s) {
 	static const char *const two[] = { "<<", ">>", "==", "!=", "<=", ">=", "&&", "||", "+=", "-=", 0 };
 	while (*s) {
 		if (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') { s++; continue; }
 		if (s[0] == '/' && s[1] == '*') { s += 2; while (*s && !(s[0] == '*' && s[1] == '/')) s++; if (*s) s += 2; continue; }
-		if (*s == '"') { const char *b = ++s; while (*s && *s != '"') s++; push_tok(b, (int)(s - b)); if (*s) s++; continue; }
+		if (*s == '"') { const char *q = s, *b = ++s; while (*s && *s != '"') s++; push_tok(b, (int)(s - b)); if (*s) s++; push_span(q, s); continue; }
 		int k = 0; while (two[k] && strncmp(s, two[k], 2)) k++;
-		if (two[k]) { push_tok(s, 2); s += 2; continue; }
-		if (is_punct(*s)) { push_tok(s, 1); s++; continue; }
+		if (two[k]) { push_tok(s, 2); push_span(s, s + 2); s += 2; continue; }
+		if (is_punct(*s)) { push_tok(s, 1); push_span(s, s + 1); s++; continue; }
 		const char *b = s;
 		while (*s && !is_punct(*s) && *s != ' ' && *s != '\t' && *s != '\n' && *s != '\r' && *s != '"') s++;
-		push_tok(b, (int)(s - b));
+		push_tok(b, (int)(s - b)); push_span(b, s);
 	}
 }
 static int p;                                          /* the parse cursor */
-static const char *peek(int k) { return p + k < ntok ? tok[p + k] : ""; }
+static int nreal;                                      /* the script's own tokens (synthesized ones follow) */
+static const char *peek(int k) { return p + k < nreal ? tok[p + k] : ""; }
 static int is(const char *t) { return !strcmp(peek(0), t); }
 static void expect(const char *t) {
 	if (!is(t)) die("linker script %s: expected '%s', found '%s'", script_name, t, p < ntok ? tok[p] : "end of file");
@@ -77,12 +88,13 @@ typedef struct {                                       /* a symbol assignment ("
 	int live;                                          /* defines the symbol (a PROVIDE nobody needs doesn't)   */
 	int in_sections;                                   /* inside SECTIONS: an image address, else an absolute value */
 } Assign;
-enum { I_INPUT, I_ASSIGN };
+enum { I_INPUT, I_ASSIGN, I_DATA };
 typedef struct {                                       /* an output-section body item */
 	int kind;
 	const char *file; char **pats; int npat, sort;     /* I_INPUT: file glob + section globs (SORT_BY_NAME)     */
 	InSec *in; int nin, cap;                           /* the input sections it took                            */
 	Assign a;                                          /* I_ASSIGN                                              */
+	int dsize, dsigned; Expr de; u32 dva;              /* I_DATA: BYTE/SHORT/LONG/QUAD/SQUAD (1/2/4/8 bytes) of de, at dva */
 } Item;
 enum { S_ASSIGN, S_OUTSEC, S_ASSERT };
 typedef struct {
@@ -93,7 +105,12 @@ typedef struct {
 	Item *items; int nitem, itemcap;
 	Expr addr, at, align;                              /* `name addr :`, AT(lma), ALIGN(n)                      */
 	int vregion, lregion;                              /* `> REGION`, `AT> REGION` (-1: none)                   */
+	const char *phname[8]; int nphname;                /* `:PHDR ...` (NONE: in no segment); none: the previous section's */
 } Stmt;
+/* PHDRS { NAME TYPE [FILEHDR] [PHDRS] [AT(addr)] [FLAGS(n)] ; ... }: the program headers, exactly (GNU adds only
+ * PT_ARM_EXIDX); an allocated output section goes in the segments its `:NAME`s list, or the previous section's. */
+typedef struct { const char *name; u32 type; int filehdr, phdrs; Expr at, flags; } PhDef;
+static PhDef phdef[32]; static int nphdef, have_phdrs;
 static Stmt *st; static int nst, stcap;
 static struct { const char *name; u32 origin, length, cur; } regions[16]; static int nregion;
 GSym **declared; int ndeclared; static int declcap;  /* the script's symbols (their values reset each pass) */
@@ -182,6 +199,13 @@ static void unsupported(const char *what) {
 	die("linker script %s: '%s' is not supported (subset: no OVERLAY/PHDRS/VERSION/INCLUDE/GROUP/data statements/FILL)", script_name, what);
 }
 /* One input spec: FILEGLOB ( SECGLOB... ) with SORT_BY_NAME(...) inside, or KEEP( that ) around it. */
+/* A section/file name pattern: the tokens that touch in the source, joined — GNU's lexer takes `___ksymtab+*`, `.text.*`
+ * as one name where our tokenizer split them at the '+'. */
+static char *pattern_tok(void) {
+	int lo = p++;
+	while (p < nreal && span[p].b == span[p - 1].e && strcmp(tok[p], "(") && strcmp(tok[p], ")") && strcmp(tok[p - 1], "(")) p++;
+	return p - lo == 1 ? (char *)tok[lo] : span_text(lo, p);
+}
 static void parse_input(Stmt *s) {
 	int keep = is("KEEP");
 	if (keep) { p++; expect("("); }
@@ -192,16 +216,19 @@ static void parse_input(Stmt *s) {
 	while (!is(")")) {
 		if (is("SORT") || is("SORT_BY_NAME")) {
 			p++; expect("("); it->sort = 1;
-			while (!is(")")) { it->pats = realloc(it->pats, (it->npat + 1) * sizeof *it->pats); it->pats[it->npat++] = tok[p++]; }
+			while (!is(")")) { it->pats = realloc(it->pats, (it->npat + 1) * sizeof *it->pats); it->pats[it->npat++] = pattern_tok(); }
 			expect(")");
 			continue;
 		}
 		if (is("EXCLUDE_FILE") || is("SORT_BY_ALIGNMENT") || is("SORT_BY_INIT_PRIORITY") || is("SORT_NONE")) unsupported(peek(0));
-		it->pats = realloc(it->pats, (it->npat + 1) * sizeof *it->pats); it->pats[it->npat++] = tok[p++];
+		it->pats = realloc(it->pats, (it->npat + 1) * sizeof *it->pats); it->pats[it->npat++] = pattern_tok();
 	}
 	expect(")");
 	if (keep) expect(")");                              /* KEEP: we don't garbage-collect sections, so it's implied */
 }
+static void parse_fill(Stmt *s);
+static void parse_outsec_body(Stmt *s, const char *name);
+static void parse_outsec_trailer(Stmt *s);
 static void parse_outsec(void) {
 	Stmt *s = new_stmt(S_OUTSEC);
 	const char *name = tok[p++];
@@ -224,23 +251,131 @@ static void parse_outsec(void) {
 		else if (is("ALIGN") && !strcmp(peek(1), "(")) { p += 2; s->align = parse_expr(); expect(")"); }
 		else unsupported(peek(0));
 	}
+	parse_outsec_body(s, name);
+	parse_outsec_trailer(s);
+}
+static void parse_outsec_body(Stmt *s, const char *name) {   /* `{ inputs and assignments }` */
 	expect("{");
 	while (!is("}")) {
-		if (p >= ntok) die("linker script %s: unterminated output section '%s'", script_name, name);
+		if (p >= nreal) die("linker script %s: unterminated output section '%s'", script_name, name);
 		if (is(";")) { p++; continue; }
 		if (at_assignment()) { Item *it = new_item(s, I_ASSIGN); parse_assignment(&it->a, 1); continue; }
-		if (is("BYTE") || is("SHORT") || is("LONG") || is("QUAD") || is("SQUAD") || is("FILL") || is("CONSTRUCTORS") ||
-		    is("CREATE_OBJECT_SYMBOLS") || is("INCLUDE") || is("ASSERT")) unsupported(peek(0));
+		if (is("CONSTRUCTORS")) { p++; continue; }   /* (a.out's; ELF: nothing — GNU ignores it too) */
+		if ((is("BYTE") || is("SHORT") || is("LONG") || is("QUAD") || is("SQUAD")) && !strcmp(peek(1), "(")) {
+			Item *it = new_item(s, I_DATA); it->dsize = is("BYTE") ? 1 : is("SHORT") ? 2 : is("LONG") ? 4 : 8; it->dsigned = is("SQUAD");
+			p += 2; it->de = parse_expr(); expect(")"); continue;
+		}
+		if (is("FILL") && !strcmp(peek(1), "(")) {   /* the gaps' pattern (GNU: from here on; here: the whole section's) */
+			p += 2; if (!s->os) die("linker script %s: FILL in /DISCARD/", script_name);
+			parse_fill(s); expect(")"); continue;
+		}
+		if (is("CREATE_OBJECT_SYMBOLS") || is("INCLUDE") || is("ASSERT")) unsupported(peek(0));
 		parse_input(s);
 	}
 	expect("}");
+}
+static void parse_outsec_trailer(Stmt *s) {   /* `> REGION`, `AT> REGION`, `:PHDR`..., `=FILL`, `,` */
 	for (;;) {
 		if (is(">")) { p++; s->vregion = region_find(tok[p++]); }
 		else if (is("AT") && !strcmp(peek(1), ">")) { p += 2; s->lregion = region_find(tok[p++]); }
-		else if (is(":") || is("=")) unsupported(is(":") ? "PHDRS (:phdr)" : "section fill (=fill)");
+		else if (is(":")) { p++; if (s->nphname == 8) die("linker script %s: more than 8 :PHDRs", script_name); s->phname[s->nphname++] = tok[p++]; }
+		else if (is("=")) { p++; parse_fill(s); }
 		else if (is(",")) p++;
 		else break;
 	}
+}
+/* An expression the linker writes itself: its tokens go past the script's own (nreal), where the parser never reads. */
+static Expr synth(const char *fmt, ...) {
+	char buf[512]; va_list ap; va_start(ap, fmt); vsnprintf(buf, sizeof buf, fmt, ap); va_end(ap);
+	int lo = ntok; tokenize(strdup(buf));
+	return (Expr){ lo, ntok };
+}
+/* OVERLAY [START] : [NOCROSSREFS] [AT(LDADDR)] { SEC { ... } [:PHDR...] [=FILL] ... } [:PHDR...] [=FILL]: the sections
+ * share START as their address and follow each other in load memory from LDADDR; each gets __load_start_SEC and
+ * __load_stop_SEC (SEC's non-identifier characters dropped); after it `.` is START + the largest one's size. */
+static void parse_overlay(void) {
+	p++;
+	Expr start = { -1, -1 }, at = { -1, -1 };
+	if (!is(":")) { int lo = p; while (p < nreal && !is(":")) p++; start = (Expr){ lo, p }; }
+	expect(":");
+	while (!is("{")) {
+		if (is("NOCROSSREFS")) p++;
+		else if (is("AT") && !strcmp(peek(1), "(")) { p += 2; at = parse_expr(); expect(")"); }
+		else unsupported(peek(0));
+	}
+	expect("{");
+	const char *names[32]; int n = 0, first = nst; static int noverlay; noverlay++;
+	while (!is("}")) {
+		if (p >= nreal) die("linker script %s: unterminated OVERLAY", script_name);
+		if (n == 32) die("linker script %s: more than 32 sections in an OVERLAY", script_name);
+		Stmt *s = new_stmt(S_OUTSEC); const char *name = tok[p++];
+		s->os = calloc(1, sizeof *s->os); s->os->name = name; s->os->overlay = noverlay;
+		if (!n) { s->addr = start; s->at = at; }
+		else { s->addr = synth("ADDR(%s)", names[0]); s->at = synth("LOADADDR(%s) + SIZEOF(%s)", names[n - 1], names[n - 1]); }
+		parse_outsec_body(s, name); parse_outsec_trailer(s);
+		char id[256]; int k = 0; for (const char *c = name; *c && k < 255; c++) if (isalnum((unsigned char)*c) || *c == '_') id[k++] = *c; id[k] = 0;
+		for (int stop = 0; stop < 2; stop++) {
+			Stmt *a = new_stmt(S_ASSIGN); char *sym = malloc(strlen(id) + 16);
+			sprintf(sym, stop ? "__load_stop_%s" : "__load_start_%s", id); a->a.sym = sym; a->a.in_sections = 1;
+			a->a.e = stop ? synth("LOADADDR(%s) + SIZEOF(%s)", name, name) : synth("LOADADDR(%s)", name);
+			declare(&a->a, 0, 0, 1);
+		}
+		names[n++] = name;
+	}
+	expect("}");
+	Stmt trailer; memset(&trailer, 0, sizeof trailer); trailer.vregion = trailer.lregion = -1;
+	trailer.os = &(OutSec){ 0 };
+	parse_outsec_trailer(&trailer);
+	if (trailer.vregion >= 0 || trailer.lregion >= 0) unsupported("a MEMORY region for an OVERLAY");
+	for (int i = first; i < nst; i++) if (st[i].kind == S_OUTSEC) {   /* the overlay's :PHDRs and fill: each section's */
+		for (int k = 0; k < trailer.nphname && st[i].nphname < 8; k++) st[i].phname[st[i].nphname++] = trailer.phname[k];
+		if (trailer.os->nfill && !st[i].os->nfill) { memcpy(st[i].os->fill, trailer.os->fill, sizeof trailer.os->fill); st[i].os->nfill = trailer.os->nfill; }
+	}
+	char mx[400] = "0"; for (int i = 0; i < n; i++) { char t[400]; snprintf(t, sizeof t, "MAX(%s, SIZEOF(%s))", mx, names[i]); strcpy(mx, t); }
+	Stmt *d = new_stmt(S_ASSIGN); d->a.sym = "."; d->a.e = synth("ADDR(%s) + %s", names[0], mx); declare(&d->a, 0, 0, 1);
+}
+static u32 eval(Expr e, u32 dot);
+static int hexdigit(char c) { return c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10; }
+static void parse_fill(Stmt *s) {   /* GNU's exp_get_fill: a hex literal is its bytes, as written; else a 4-byte big-endian value */
+	const char *t = tok[p]; OutSec *os = s->os;
+	if (!os) die("linker script %s: a fill for /DISCARD/", script_name);
+	int hex = t[0] == '0' && (t[1] == 'x' || t[1] == 'X') && t[2] && strspn(t + 2, "0123456789abcdefABCDEF") == strlen(t + 2);
+	const char *nx = peek(1);
+	if (hex && strlen(t + 2) <= 2 * sizeof os->fill && !(strchr("+-*/%&|^", nx[0]) && nx[0]) && strcmp(nx, "<<") && strcmp(nx, ">>")) {
+		const char *h = t + 2; size_t n = strlen(h), i = 0; int k = 0;
+		if (n & 1) os->fill[k++] = (u8)hexdigit(h[i++]);   /* an odd count: the first digit alone */
+		for (; i < n; i += 2) os->fill[k++] = (u8)(hexdigit(h[i]) << 4 | hexdigit(h[i + 1]));
+		os->nfill = k; p++;
+		return;
+	}
+	u32 v = eval(parse_expr(), 0);
+	os->fill[0] = (u8)(v >> 24); os->fill[1] = (u8)(v >> 16); os->fill[2] = (u8)(v >> 8); os->fill[3] = (u8)v; os->nfill = 4;
+}
+static void parse_phdrs(void) {
+	static const struct { const char *n; u32 v; } types[] = { {"PT_NULL", 0}, {"PT_LOAD", 1}, {"PT_DYNAMIC", 2}, {"PT_INTERP", 3},
+		{"PT_NOTE", 4}, {"PT_SHLIB", 5}, {"PT_PHDR", 6}, {"PT_TLS", 7}, {"PT_GNU_EH_FRAME", 0x6474e550u}, {"PT_GNU_STACK", 0x6474e551u},
+		{"PT_GNU_RELRO", 0x6474e552u}, {"PT_GNU_PROPERTY", 0x6474e553u} };
+	expect("{"); have_phdrs = 1;
+	while (!is("}")) {
+		if (p >= ntok) die("linker script %s: unterminated PHDRS", script_name);
+		if (is(";")) { p++; continue; }
+		if (nphdef == 32) die("linker script %s: more than 32 PHDRS", script_name);
+		PhDef *d = &phdef[nphdef++]; memset(d, 0, sizeof *d); d->at.lo = d->flags.lo = -1;
+		d->name = tok[p++];
+		const char *t = tok[p++]; int k;
+		for (k = 0; k < (int)(sizeof types / sizeof *types); k++) if (!strcmp(types[k].n, t)) break;
+		if (k < (int)(sizeof types / sizeof *types)) d->type = types[k].v;
+		else { char *e; d->type = (u32)strtoul(t, &e, 0); if (*e) die("linker script %s: PHDRS: unknown type %s", script_name, t); }
+		while (!is(";")) {
+			if (is("FILEHDR")) { d->filehdr = 1; p++; }
+			else if (is("PHDRS")) { d->phdrs = 1; p++; }
+			else if (is("AT") && !strcmp(peek(1), "(")) { p += 2; d->at = parse_expr(); expect(")"); }
+			else if (is("FLAGS") && !strcmp(peek(1), "(")) { p += 2; d->flags = parse_expr(); expect(")"); }
+			else die("linker script %s: PHDRS: unexpected '%s'", script_name, peek(0));
+		}
+		p++;
+	}
+	expect("}");
 }
 static void parse_assert(void) {                       /* ASSERT(expr, "message") — checked on the final layout */
 	Stmt *s = new_stmt(S_ASSERT);
@@ -254,7 +389,8 @@ static void parse_sections(void) {
 		if (is(";")) { p++; continue; }
 		if (at_assignment()) { parse_assignment(&new_stmt(S_ASSIGN)->a, 1); continue; }
 		if (is("ASSERT")) { parse_assert(); continue; }
-		if (is("OVERLAY") || is("INCLUDE") || is("INSERT")) unsupported(peek(0));
+		if (is("OVERLAY")) { parse_overlay(); continue; }
+		if (is("INCLUDE") || is("INSERT")) unsupported(peek(0));
 		parse_outsec();
 	}
 	expect("}");
@@ -316,14 +452,23 @@ void script_read(const char *path) {
 		for (int k = 0; k < ndefsym; k++) q += sprintf(q, "%s;\n", defsyms[k]);
 		strcpy(q, text); text = all;
 	}
-	tokenize(text);
-	for (p = 0; p < ntok; ) {
+	tokenize(text); nreal = ntok;
+	for (p = 0; p < nreal; ) {
 		if (is(";")) { p++; continue; }
 		if (is("ENTRY")) { p++; expect("("); if (!entry_sym) entry_sym = tok[p]; p++; expect(")"); continue; }   /* -e wins */
 		if (is("MEMORY")) { p++; parse_memory(); continue; }
 		if (is("SECTIONS")) { p++; parse_sections(); continue; }
+		if (is("PHDRS")) { p++; parse_phdrs(); continue; }
 		if (at_assignment()) { parse_assignment(&new_stmt(S_ASSIGN)->a, 0); continue; }
 		if (is("ASSERT")) { parse_assert(); continue; }
+		if (is("VERSION")) {   /* the version script, between the braces (version.c reads it from the source text) */
+			p++; if (!is("{")) die("linker script %s: VERSION needs a { block }", script_name);
+			int depth = 0, lo = p;
+			do { if (is("{")) depth++; else if (is("}")) depth--; p++; } while (p < ntok && depth);
+			if (depth) die("linker script %s: unterminated VERSION block", script_name);
+			version_script(span_text(lo + 1, p - 1), script_name);
+			continue;
+		}
 		if (is("OUTPUT_ARCH") || is("OUTPUT_FORMAT") || is("OUTPUT") || is("TARGET") || is("SEARCH_DIR")) {   /* no effect here */
 			p++; expect("("); while (p < ntok && !is(")")) p++; expect(")"); continue;
 		}
@@ -380,34 +525,58 @@ void layout_match(Obj *o) {
 		}
 }
 
-/* An orphan joins the output section of its name, else starts one after the last output section of its kind. */
-static int kind_of(u32 flags, u32 type) { return (flags & (SHF_WRITE | SHF_EXECINSTR)) | (type == SHT_NOBITS ? 8 : 0); }
-static int stmt_kind(const Stmt *s) {
-	u32 flags = 0; int nobits = 1, any = 0;
-	for (int k = 0; k < s->nitem; k++) for (int i = 0; i < s->items[k].nin; i++) {
-		Elf32_Shdr *h = &s->items[k].in[i].obj->sh[s->items[k].in[i].shndx];
-		flags |= h->sh_flags; nobits &= h->sh_type == SHT_NOBITS; any = 1;
-	}
-	return any ? kind_of(flags, nobits ? SHT_NOBITS : SHT_PROGBITS) : -1;
+/* An orphan, as GNU ld places it (ldelf_place_orphan): it joins the output section of its name; else a new one goes
+ * after the statement GNU anchors its kind to — notes after .interp, NOBITS after .bss, TLS after .tdata, writable
+ * data after .data, dynamic relocations after .rel.dyn, read-only data after .rodata, code after .text — even an empty
+ * one, behind the orphans already put there; with no such statement, after the last non-empty output section whose
+ * flags match (lang_output_section_find_by_flags), else first. */
+enum { O_CONTENTS = 1, O_ALLOC = 2, O_LOAD = 4, O_READONLY = 8, O_CODE = 16, O_TLS = 32 };
+static int sec_bflags(const Elf32_Shdr *h) {
+	int f = 0;
+	if (h->sh_type != SHT_NOBITS) f |= O_CONTENTS;
+	if (h->sh_flags & SHF_ALLOC) { f |= O_ALLOC; if (h->sh_type != SHT_NOBITS) f |= O_LOAD; }
+	if (!(h->sh_flags & SHF_WRITE)) f |= O_READONLY;
+	if (h->sh_flags & SHF_EXECINSTR) f |= O_CODE;
+	if (h->sh_flags & SHF_TLS) f |= O_TLS;
+	return f;
+}
+static int stmt_bflags(const Stmt *s) {   /* its inputs' (the first one's, as a BFD output section's), -1: none yet */
+	for (int k = 0; k < s->nitem; k++) if (s->items[k].nin) return sec_bflags(&s->items[k].in[0].obj->sh[s->items[k].in[0].shndx]);
+	return -1;
+}
+static const char *const anchor_name[] = { ".interp", ".bss", ".tdata", ".data", ".rel.dyn", ".rodata", ".text" };
+static const char *anchor_last[7];   /* the orphan last put after each anchor (by name: statements move) */
+static int stmt_named(const char *n) { for (int i = 0; i < nst; i++) if (st[i].kind == S_OUTSEC && !st[i].discard && !strcmp(st[i].os->name, n)) return i; return -1; }
+static int by_flags(int f) {   /* lang_output_section_find_by_flags: the last statement with these flags, then looser */
+	static const int masks[] = { O_CONTENTS | O_ALLOC | O_LOAD | O_READONLY | O_CODE | O_TLS };
+	int found = -1;
+	for (int i = 0; i < nst; i++) { if (st[i].kind != S_OUTSEC || st[i].discard) continue; int g = stmt_bflags(&st[i]); if (g >= 0 && !((g ^ f) & masks[0])) found = i; }
+	if (found >= 0) return found;
+	int m = (f & O_CODE) && (f & O_ALLOC) ? O_CONTENTS | O_ALLOC | O_LOAD | O_CODE | O_TLS
+	      : (f & O_READONLY) && (f & O_ALLOC) ? O_CONTENTS | O_ALLOC | O_LOAD | O_READONLY | O_TLS
+	      : (f & O_TLS) && (f & O_ALLOC) ? O_CONTENTS | O_ALLOC | O_LOAD | O_TLS
+	      : (f & O_CONTENTS) && (f & O_ALLOC) ? O_CONTENTS | O_ALLOC | O_LOAD | O_TLS
+	      : (f & O_ALLOC) ? O_ALLOC : 0;
+	for (int i = 0; i < nst; i++) { if (st[i].kind != S_OUTSEC || st[i].discard) continue; int g = stmt_bflags(&st[i]); if (g >= 0 && !((g ^ f) & m)) found = i; }
+	return found;
 }
 static void place_orphan(Obj *o, int j) {
 	const char *name = sec_name(o, j);
-	int at = -1;
-	for (int i = 0; i < nst; i++) if (st[i].kind == S_OUTSEC && !st[i].discard && !strcmp(st[i].os->name, name)) at = i;
+	int at = stmt_named(name);
 	if (at < 0) {
-		int kind = kind_of(o->sh[j].sh_flags, o->sh[j].sh_type), same = -1, samew = -1;
-		for (int i = 0; i < nst; i++) {
-			if (st[i].kind != S_OUTSEC || st[i].discard) continue;
-			int k = stmt_kind(&st[i]); if (k < 0) continue;
-			if (k == kind) same = i;
-			if ((k & SHF_WRITE) == (kind & SHF_WRITE)) samew = i;
-		}
-		at = (same >= 0 ? same : samew >= 0 ? samew : nst - 1) + 1;
+		const Elf32_Shdr *h = &o->sh[j]; int f = sec_bflags(h), a;
+		a = (f & O_LOAD) && h->sh_type == 7 /* NOTE */ ? 0 : !(f & (O_LOAD | O_CONTENTS | O_TLS)) ? 1 : f & O_TLS ? 2 : !(f & O_READONLY) ? 3
+		  : (f & O_LOAD) && h->sh_type == SHT_REL ? 4 : !(f & O_CODE) ? 5 : 6;
+		int after = anchor_last[a] ? stmt_named(anchor_last[a]) : -1;
+		if (after < 0) after = stmt_named(anchor_name[a]);
+		if (after < 0) after = by_flags(f);
+		at = after + 1;                                 /* (none: first) */
 		new_stmt(S_OUTSEC);                             /* make room, then shift the tail down by one */
 		memmove(&st[at + 1], &st[at], (nst - 1 - at) * sizeof *st);
 		Stmt *s = &st[at]; memset(s, 0, sizeof *s);
 		s->kind = S_OUTSEC; s->addr.lo = s->at.lo = s->align.lo = -1; s->vregion = s->lregion = -1;
 		s->os = calloc(1, sizeof *s->os); s->os->name = name;
+		anchor_last[a] = name;
 	}
 	Stmt *s = &st[at];
 	Item *it = NULL;
@@ -422,10 +591,11 @@ static u32 e_cond(void);
 static const char *etok(void) { return ep < eend ? tok[ep] : ""; }
 static int eis(const char *t) { return !strcmp(etok(), t); }
 static void eexpect(const char *t) { if (!eis(t)) die("linker script %s: expected '%s' in expression, found '%s'", script_name, t, etok()); ep++; }
+static int lo_forward;   /* this pass used an address from a section laid out after it (a link-order sort, a symbol) */
 static OutSec *placed_outsec(const char *name, const char *fn) {
 	for (int i = 0; i < nst; i++)
 		if (st[i].kind == S_OUTSEC && !st[i].discard && !strcmp(st[i].os->name, name)) {
-			if (!st[i].os->done) die("linker script %s: %s(%s) before that section is laid out", script_name, fn, name);
+			if (!st[i].os->done) lo_forward = 1;   /* laid out later: the previous pass's, then a pass more (as GNU's lazy values) */
 			return st[i].os;
 		}
 	die("linker script %s: %s(%s): no such output section", script_name, fn, name);
@@ -436,8 +606,10 @@ static u32 sym_value(const char *name) {
 	if (!g || !g->defined) die("linker script %s: undefined symbol '%s' in an expression", script_name, name);
 	if (g->obj) {
 		Elf32_Sym *s = &g->obj->sym[g->symidx];
-		if (s->st_shndx != SHN_ABS && (!g->obj->sec_out[s->st_shndx] || !g->obj->sec_out[s->st_shndx]->done))
-			die("linker script %s: '%s' used before its section is laid out", script_name, name);
+		if (s->st_shndx != SHN_ABS && (!g->obj->sec_out[s->st_shndx] || g->obj->sec_out[s->st_shndx] == &os_discard))
+			die("linker script %s: '%s' is in no output section", script_name, name);
+		if (s->st_shndx != SHN_ABS && !g->obj->sec_out[s->st_shndx]->done) lo_forward = 1;   /* laid out later (GNU allows it): the
+		                                                                                     * previous pass's address, then a pass more */
 		return sym_addr(g->obj, g->symidx);
 	}
 	return g->vaddr;
@@ -451,11 +623,12 @@ static u32 e_prim(void) {
 	if (!strcmp(t, "!")) return !e_prim();
 	if (!strcmp(t, ".")) return edot;
 	if (!strcmp(t, "SIZEOF_HEADERS")) return hdrsz;
-	if (t[0] >= '0' && t[0] <= '9') {
-		char *end; unsigned long v = strtoul(t, &end, 0);
+	int neg = t[0] == '-' && t[1] >= '0' && t[1] <= '9';   /* `-2`: one token here ('-' is a name character), a negative number */
+	if ((t[0] >= '0' && t[0] <= '9') || neg) {
+		char *end; unsigned long v = strtoul(t + neg, &end, 0);
 		if (*end == 'K' || *end == 'k') v <<= 10, end++; else if (*end == 'M' || *end == 'm') v <<= 20, end++;
 		if (*end) die("linker script %s: bad number '%s'", script_name, t);
-		return (u32)v;
+		return neg ? -(u32)v : (u32)v;
 	}
 	if (eis("(")) {                                     /* a builtin function */
 		ep++;
@@ -547,12 +720,13 @@ static void lay_out(Stmt *s, u32 *dot) {
 	for (int k = 0; k < s->nitem; k++) {
 		Item *it = &s->items[k];
 		if (it->kind == I_ASSIGN) { assign(&it->a, vc, os); continue; }
+		if (it->kind == I_DATA) { it->dva = *vc; *vc += (u32)it->dsize; continue; }
 		for (int i = 0; i < it->nin; i++) {             /* a link-order section sorts by its linked section's address */
 			Obj *o = it->in[i].obj; int j = it->in[i].shndx;
 			if (!(o->sh[j].sh_flags & SHF_LINK_ORDER)) continue;
 			int l = (int)o->sh[j].sh_link;
-			if (!l || !o->sec_out[l] || !o->sec_out[l]->done)
-				die("%s: %s is laid out before the section it describes", o->path, sec_name(o, j));
+			if (!l || !o->sec_out[l] || o->sec_out[l] == &os_discard) die("%s: %s describes no placed section", o->path, sec_name(o, j));
+			if (!o->sec_out[l]->done) lo_forward = 1;   /* laid out later (GNU allows it): the previous pass's address sorts it */
 		}
 		for (int i = 1; i < it->nin; i++) for (int b = i; b > 0; b--) {   /* stable insertion sort */
 			InSec x = it->in[b - 1], y = it->in[b];
@@ -682,6 +856,108 @@ static void build_segments(void) {
 		add_phdr((Elf32_Phdr){ PT_GNU_RELRO, r0->off, r0->vaddr, r0->lma, end - r0->vaddr, end - r0->vaddr, PF_R, 1 });
 	}
 }
+/* With PHDRS: exactly the listed program headers (+ PT_ARM_EXIDX, which GNU's ARM backend adds first when there is
+ * an .ARM.exidx and no PHDRS line for it). Each allocated section goes in the segments of its `:NAME`s — or the
+ * previous section's — and must be in exactly one PT_LOAD; a non-LOAD header spans its sections (none: all zero). */
+static u32 phmask_of(Stmt *s) {
+	u32 m = 0;
+	for (int k = 0; k < s->nphname; k++) {
+		if (!strcmp(s->phname[k], "NONE")) continue;
+		int d; for (d = 0; d < nphdef; d++) if (!strcmp(phdef[d].name, s->phname[k])) break;
+		if (d == nphdef) die("linker script %s: section %s: no PHDRS line named %s", script_name, s->os->name, s->phname[k]);
+		m |= 1u << d;
+	}
+	return m;
+}
+static void build_segments_phdrs(void) {
+	nseg = 0; noutsec = 0; headers_mapped = 0;
+	u32 cur = 0, *mask = calloc(nst + 1, sizeof *mask);
+	int *seg_of = calloc(nphdef, sizeof *seg_of);
+	for (int d = 0; d < nphdef; d++) {
+		seg_of[d] = -1;
+		if (phdef[d].type != PT_LOAD) continue;
+		segs = grow(segs, nseg, &segcap, sizeof *segs); segs[nseg] = (Seg){ 0 }; seg_of[d] = nseg++;
+	}
+	int *used = calloc(nseg + 1, sizeof *used);
+	for (int i = 0; i < nst; i++) {
+		if (st[i].kind != S_OUTSEC || st[i].discard) continue;
+		if (st[i].nphname) cur = phmask_of(&st[i]);
+		OutSec *os = st[i].os;
+		mask[i] = os->flags & SHF_ALLOC ? cur : 0;
+		if (!st[i].nphname) for (int d = 0; d < nphdef; d++) if (phdef[d].type == PT_INTERP) mask[i] &= ~(1u << d);   /* (GNU: not an inherited PT_INTERP) */
+		if (!os->size) continue;
+		outsecs = grow(outsecs, noutsec, &outcap, sizeof *outsecs);
+		outsecs[noutsec++] = os; os->index = noutsec;
+		if (!(os->flags & SHF_ALLOC)) continue;
+		int load = -1;
+		for (int d = 0; d < nphdef; d++) if (mask[i] & 1u << d && seg_of[d] >= 0) { if (load >= 0) die("section %s is in two PT_LOADs: unsupported", os->name); load = d; }
+		if (load < 0) die("linker script %s: allocated section %s is in no PT_LOAD", script_name, os->name);
+		Seg *g = &segs[seg_of[load]]; int prog = os->type != SHT_NOBITS;
+		if (!used[seg_of[load]]++) { g->vaddr = os->vaddr; g->lma = prog ? os->lma : os->vaddr; g->flags = PF_R; }
+		else if (os->vaddr < g->vaddr + g->memsz) die("section %s goes backwards in its segment", os->name);
+		g->memsz = os->vaddr + os->size - g->vaddr;
+		if (prog) g->filesz = g->memsz;
+		if (os->flags & SHF_WRITE) g->flags |= PF_W;
+		if (os->flags & SHF_EXECINSTR) g->flags |= PF_X;
+		os->seg = seg_of[load];
+	}
+	for (int d = 0; d < nphdef; d++)   /* FILEHDR [PHDRS]: the segment starts at the ELF header */
+		if (seg_of[d] >= 0 && phdef[d].filehdr) {
+			Seg *g = &segs[seg_of[d]];
+			if (seg_of[d] || (g->vaddr & (PAGE - 1)) < hdrsz) die("PHDRS %s: FILEHDR needs the first segment, with SIZEOF_HEADERS of room", phdef[d].name);
+			u32 below = g->vaddr & (PAGE - 1);
+			g->vaddr -= below; g->lma -= below; g->filesz += below; g->memsz += below; headers_mapped = 1;
+		}
+	u32 fend = hdrsz;
+	for (int i = 0; i < nseg; i++) {
+		segs[i].off = (i == 0 && headers_mapped) ? 0 : fend + ((segs[i].vaddr - fend) & (PAGE - 1));
+		if (segs[i].filesz) fend = segs[i].off + segs[i].filesz;
+	}
+	for (int i = 0; i < noutsec; i++) outsecs[i]->off = outsecs[i]->flags & SHF_ALLOC ? segs[outsecs[i]->seg].off + (outsecs[i]->vaddr - segs[outsecs[i]->seg].vaddr) : hdrsz;
+
+	nphdr = 0;
+	OutSec *ex = outsec_named(".ARM.exidx"); int has_exidx = 0;
+	for (int d = 0; d < nphdef; d++) has_exidx |= phdef[d].type == PT_ARM_EXIDX;
+	if (ex && !has_exidx) add_phdr((Elf32_Phdr){ PT_ARM_EXIDX, ex->off, ex->vaddr, ex->lma, ex->size, ex->size, PF_R, 4 });
+	for (int d = 0; d < nphdef; d++) {
+		PhDef *pd = &phdef[d]; Elf32_Phdr ph = { .p_type = pd->type };
+		if (seg_of[d] >= 0) { Seg *g = &segs[seg_of[d]]; ph = (Elf32_Phdr){ PT_LOAD, g->off, g->vaddr, g->lma, g->filesz, g->memsz, g->flags, PAGE }; }
+		else if (pd->type == PT_PHDR) {
+			u32 n = hdrsz - sizeof(Elf32_Ehdr);
+			ph = (Elf32_Phdr){ PT_PHDR, sizeof(Elf32_Ehdr), segs[0].vaddr + sizeof(Elf32_Ehdr), segs[0].lma + sizeof(Elf32_Ehdr), n, n, PF_R, 4 };
+		} else {
+			OutSec *f = NULL, *l = NULL; u32 flags = 0, align = 4;
+			for (int i = 0; i < nst; i++) {
+				if (st[i].kind != S_OUTSEC || st[i].discard) continue;
+				OutSec *os = st[i].os;
+				if (!(mask[i] & 1u << d) || !os->size) continue;
+				if (!f) f = os;
+				l = os;
+				flags |= PF_R | (os->flags & SHF_WRITE ? PF_W : 0) | (os->flags & SHF_EXECINSTR ? PF_X : 0);
+			}
+			if (f) {
+				u32 fs = l->type == SHT_NOBITS ? l->off - f->off : l->off + l->size - f->off;
+				ph = (Elf32_Phdr){ pd->type, f->off, f->vaddr, f->lma, fs, l->vaddr + l->size - f->vaddr, flags, align };
+			} else ph.p_align = 4;
+		}
+		if (pd->flags.lo >= 0) ph.p_flags = eval(pd->flags, 0);
+		if (pd->at.lo >= 0) ph.p_paddr = eval(pd->at, 0);
+		add_phdr(ph);
+	}
+	tls_vaddr = tls_align = 0;
+	free(mask); free(seg_of); free(used);
+}
+/* The data statements' bytes (little-endian), now that every value is known: into the output image `buf`. */
+void layout_data(u8 *buf) {
+	for (int i = 0; i < nst; i++) {
+		if (st[i].kind != S_OUTSEC || st[i].discard || !st[i].os->index || st[i].os->type == SHT_NOBITS) continue;
+		for (int k = 0; k < st[i].nitem; k++) {
+			Item *it = &st[i].items[k]; if (it->kind != I_DATA) continue;
+			u32 v = eval(it->de, it->dva); u8 *q = buf + st[i].os->off + (it->dva - st[i].os->vaddr);   /* (values are 32-bit here) */
+			for (int b = 0; b < it->dsize; b++) q[b] = b < 4 ? (u8)(v >> (8 * b)) : it->dsigned && (v & 0x80000000u) ? 0xff : 0;
+		}
+	}
+}
 OutSec *outsec_named(const char *name) {
 	for (int i = 0; i < noutsec; i++) if (!strcmp(outsecs[i]->name, name)) return outsecs[i];
 	return NULL;
@@ -700,6 +976,22 @@ static void decide_stack(void) {
 	gnu_stack = stack_override ? stack_override : notes ? PF_R | PF_W | (exec ? PF_X : 0) : 0;
 }
 
+/* Put section j of o (a veneer stub section) right after (after_o, after_j), in the same output section. */
+void layout_insert_after(Obj *after_o, int after_j, Obj *o, int j) {
+	for (int i = 0; i < nst; i++) {
+		if (st[i].kind != S_OUTSEC || st[i].discard) continue;
+		for (int k = 0; k < st[i].nitem; k++) {
+			Item *it = &st[i].items[k];
+			for (int n = 0; n < it->nin; n++) if (it->in[n].obj == after_o && it->in[n].shndx == after_j) {
+				it->in = grow(it->in, it->nin, &it->cap, sizeof *it->in);
+				memmove(&it->in[n + 2], &it->in[n + 1], (it->nin - n - 1) * sizeof *it->in); it->nin++;
+				it->in[n + 1] = (InSec){ o, j }; o->sec_out[j] = st[i].os;
+				return;
+			}
+		}
+	}
+	die("internal: %s(%s) is in no output section", after_o->path, sec_name(after_o, after_j));
+}
 void layout_run(void) {
 	int unplaced = 0;
 	for (int i = 0; i < nobj; i++) {   /* the orphans: --orphan-handling decides (GNU's messages) */
@@ -719,7 +1011,7 @@ void layout_run(void) {
 		OutSec *os = st[i].os; int first = 1, nobits = 1;
 		for (int k = 0; k < st[i].nitem; k++) for (int n = 0; n < st[i].items[k].nin; n++) {
 			Elf32_Shdr *h = &st[i].items[k].in[n].obj->sh[st[i].items[k].in[n].shndx];
-			os->flags |= h->sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR | SHF_TLS);
+			os->flags |= h->sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR | SHF_TLS | SHF_LINK_ORDER);   /* (.ARM.exidx stays "AL", as GNU's) */
 			nobits &= h->sh_type == SHT_NOBITS;
 			if (first) { os->type = h->sh_type; os->entsize = h->sh_entsize; first = 0; }
 			else { if (os->type != h->sh_type) os->type = SHT_PROGBITS; if (os->entsize != h->sh_entsize) os->entsize = 0; }
@@ -729,13 +1021,21 @@ void layout_run(void) {
 		else if (os->type == SHT_NOBITS) os->type = SHT_PROGBITS;   /* .bss inside a PROGBITS section: file zeros */
 	}
 	decide_stack();
-	int want = 2;                                       /* program headers: a guess, refined until stable */
+	layout_addresses();
+}
+/* Addresses + segments (again after veneers grew): passes until the program header count settles; then the checks. */
+void layout_addresses(void) {
+	static int want = 2;                                /* program headers: a guess, refined until stable */
+	u32 sig = 0, prev = 1;
 	for (int pass = 0; ; pass++) {
 		hdrsz = sizeof(Elf32_Ehdr) + (u32)want * sizeof(Elf32_Phdr);
+		lo_forward = 0;
 		assign_addresses();
-		build_segments();
-		if (nphdr == want) break;
-		if (pass == 8) die("internal: the program header count does not settle");
+		if (have_phdrs) build_segments_phdrs(); else build_segments();
+		sig = 0; for (int i = 0; i < nst; i++) if (st[i].kind == S_OUTSEC && !st[i].discard) sig = sig * 31 + st[i].os->vaddr * 7 + st[i].os->size + st[i].os->lma;
+		if (nphdr == want && (!lo_forward || sig == prev)) break;   /* a forward reference: again, until the layout stops moving */
+		prev = sig;
+		if (pass == 8) die("internal: the layout does not settle (program headers, or a forward reference)");
 		want = nphdr;
 	}
 	for (int i = 0; i < nst; i++)
@@ -747,6 +1047,7 @@ void layout_run(void) {
 	for (int i = 0; i < noutsec; i++) for (int k = i + 1; k < noutsec; k++) {   /* sections may not share addresses */
 		OutSec *a = outsecs[i], *b = outsecs[k];
 		if (tls_bss(a) || tls_bss(b)) continue;         /* .tbss overlaps what follows it, by design */
+		if (a->overlay && a->overlay == b->overlay) continue;   /* (an OVERLAY's, by design: their load addresses differ) */
 		if (a->vaddr < b->vaddr + b->size && b->vaddr < a->vaddr + a->size)
 			die("sections %s [%#x,%#x) and %s [%#x,%#x) overlap", a->name, a->vaddr, a->vaddr + a->size, b->name, b->vaddr, b->vaddr + b->size);
 		if (a->type != SHT_NOBITS && b->type != SHT_NOBITS && a->lma < b->lma + b->size && b->lma < a->lma + a->size)

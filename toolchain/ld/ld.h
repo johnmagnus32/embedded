@@ -34,12 +34,20 @@ extern int stack_override;      /* -z [no]execstack: PT_GNU_STACK flags (0 = dec
 extern int norelro;             /* -z norelro: no PT_GNU_RELRO */
 extern int warn_rwx;            /* warn about a read-write-execute PT_LOAD */
 extern int orphan_mode;         /* --orphan-handling: 0 place, 1 discard, 2 warn, 3 error */
+extern int strip_all;           /* -s / --strip-all: no .symtab */
 extern int no_undefined;        /* --no-undefined / -z defs: a .so's unresolved references are errors too */
 extern const char **defsyms; extern int ndefsym;   /* --defsym SYM=EXPR: script assignments ahead of the script */
 extern const char *build_id_style;                 /* --build-id[=STYLE] (buildid.c); NULL: none */
 u32  build_id_size(void);                          /* its descriptor's bytes (0: no note) */
 void build_id_note(u8 *p, u32 descsz);             /* the note, descriptor zero */
 void build_id_write(const char *path, u32 note_off);   /* after the write: the descriptor, hashed over the output */
+void version_script(const char *text, const char *what);   /* version.c: VERSION { ... } / --version-script */
+int  version_hidden(const char *sym);              /* made local by a version script */
+int  version_of(const char *sym);                  /* an exported symbol's version index (1: unversioned) */
+int  version_count(void);                          /* named versions: definitions 2 .. 1 + count */
+const char *version_name(int i);
+const char **version_deps(int i, int *n);
+int  version_parent(const char *name);
 #define PAGE 0x1000u            /* segment alignment: each PT_LOAD maps on its own pages => W^X enforceable */
 
 void  die(const char *fmt, ...) __attribute__((noreturn));
@@ -76,7 +84,7 @@ extern ShExport *shexports; extern int nshexport;
 /* An object definition records where (obj/symidx) until layout gives it an address. A LINKER-SCRIPT symbol
  * (obj == NULL) is declared when the script is read (linker = 1) and gets its value during layout; abs = it was
  * assigned outside SECTIONS (an absolute value, not an image address); os = the output section it follows. */
-typedef struct { const char *name; u32 vaddr; int defined, weak, strong_ref; Obj *obj; int symidx;
+typedef struct { const char *name; u32 vaddr; int defined, weak, strong_ref; Obj *obj; int symidx; int startstop;
                  int linker, abs, hidden; struct OutSec *os; } GSym;
 GSym *gsym_find(const char *name);
 GSym *gsym_get(const char *name);                /* find or create (an undefined, unreferenced entry) */
@@ -94,6 +102,8 @@ typedef struct OutSec {
 	int index;                                   /* section-header index in the output (0 = not emitted) */
 	int seg;                                     /* its PT_LOAD (segs[] index)                          */
 	int done;                                    /* addresses assigned (this layout pass)               */
+	u8 fill[16]; int nfill;                      /* `=FILL`: the pattern its gaps get (0: zeros)        */
+	int overlay;                                 /* an OVERLAY's sections share addresses (its number; 0: none) */
 } OutSec;
 extern OutSec os_discard;                        /* sec_out marker: matched by /DISCARD/                 */
 extern OutSec **outsecs; extern int noutsec;     /* emitted output sections, in address-assignment order */
@@ -108,11 +118,15 @@ void script_read(const char *path);              /* -T script (NULL = the built-
 extern GSym **declared; extern int ndeclared;    /* the symbols the script defines, in script order     */
 void layout_match(Obj *o);                       /* map o's allocatable sections to output sections   */
 void layout_run(void);                           /* orphans, addresses, segments, output indices       */
+void layout_addresses(void);                     /* addresses + segments again (veneers grew)          */
+void layout_insert_after(Obj *ao, int aj, Obj *o, int j);   /* a veneer section right after an input section */
 OutSec *outsec_named(const char *name);          /* an emitted output section by name, or NULL        */
+void layout_data(u8 *buf);
+extern GSym **startstops; extern int nstartstop;   /* __start_SEC / __stop_SEC the link defines (ld.c) */                       /* BYTE/SHORT/LONG/QUAD statements' bytes, into the image */
 
 /* ---- dynamic linking (dynamic.c) ---------------------------------------------------------------- */
 extern Obj *linker_obj;                          /* the linker-made sections (.got, .plt, .dynamic, …)  */
-enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELDYN, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_BUILDID, L_NSEC };
+enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELDYN, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_BUILDID, L_VERSYM, L_VERDEF, L_NSEC };
 void dyn_init(void);                             /* create linker_obj (its sections empty)             */
 void dyn_scan(void);                             /* ONE relocation scan -> imports / PLT / GOT / dynamic relocs */
 void dyn_size(void);                             /* size linker_obj's sections from the tables built    */

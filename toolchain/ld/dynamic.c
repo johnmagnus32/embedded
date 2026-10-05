@@ -20,6 +20,11 @@
 
 
 Obj *linker_obj;
+#define SHT_GNU_VERSYM 0x6fffffffu
+#define SHT_GNU_VERDEF 0x6ffffffdu
+#define DT_VERSYM      0x6ffffff0u
+#define DT_VERDEF      0x6ffffffcu
+#define DT_VERDEFNUM   0x6ffffffdu
 static const struct { const char *name; u32 type, flags, align, entsize; int link, info; } L_def[L_NSEC] = {
 	[L_INTERP]  = { ".interp",  SHT_PROGBITS, SHF_ALLOC,               1, 0,                 0,        0 },
 	[L_HASH]    = { ".hash",    SHT_HASH,     SHF_ALLOC,               4, 4,                 L_DYNSYM, 0 },
@@ -33,6 +38,8 @@ static const struct { const char *name; u32 type, flags, align, entsize; int lin
 	[L_GOT]     = { ".got",     SHT_PROGBITS, SHF_ALLOC|SHF_WRITE,     4, 4,                 0,        0 },
 	[L_DYNBSS]  = { ".dynbss",  SHT_NOBITS,   SHF_ALLOC|SHF_WRITE,     4, 0,                 0,        0 },
 	[L_BUILDID] = { ".note.gnu.build-id", 7 /* NOTE */, SHF_ALLOC,   4, 0,                 0,        0 },
+	[L_VERSYM]  = { ".gnu.version",   SHT_GNU_VERSYM, SHF_ALLOC,     2, 2,                 L_DYNSYM, 0 },   /* a version per .dynsym entry */
+	[L_VERDEF]  = { ".gnu.version_d", SHT_GNU_VERDEF, SHF_ALLOC,     4, 0,                 L_DYNSTR, 0 },   /* info: definitions */
 };
 
 /* An IMPORT: an undefined symbol a provider (or, for a .so, the run time) resolves. In a PROGRAM an absolute
@@ -122,7 +129,7 @@ static int import_if_external(const char *name) {        /* -1: not an import (d
 static int preemptible(Obj *o, int symidx) {
 	Elf32_Sym *s = &o->sym[symidx];
 	if (!shared || bsymbolic || ELF32_ST_BIND(s->st_info) == STB_LOCAL || !s->st_name) return 0;
-	if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT) return 0;
+	if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT || version_hidden(o->strtab + s->st_name)) return 0;
 	GSym *g = gsym_find(o->strtab + s->st_name);
 	return g && g->defined && g->obj && !g->hidden && g->obj->sym[g->symidx].st_shndx != SHN_ABS;
 }
@@ -330,7 +337,8 @@ static void dyn_add(u32 tag, int what, int sec, u32 val) {
 	dyn = grow(dyn, ndyn, &dyncap, sizeof *dyn);
 	dyn[ndyn++] = (DynEnt){ tag, what, sec, val };
 }
-static u32 dynsym_count(void) { return 1u + (u32)nimport + (u32)nexport; }
+static u32 dynsym_count(void) { return 1u + (u32)nimport + (u32)version_count() + (u32)nexport; }   /* [0], imports, versions, exports */
+static u32 *ver_off;   /* each named version's .dynstr name */
 static u32 hash_nbucket(void) {   /* the largest prime (bfd's table) not above the symbol count: h % nbucket spreads */
 	static const u32 primes[] = { 1,3,17,37,67,97,131,197,263,521,1031,2053,4099,8209,16411,0 };
 	u32 best = 1;
@@ -347,7 +355,7 @@ static void collect_exports(void) {
 		for (int k = 0; k < o->nsym; k++) {
 			Elf32_Sym *s = &o->sym[k]; int b = ELF32_ST_BIND(s->st_info);
 			if ((b != STB_GLOBAL && b != STB_WEAK) || s->st_shndx == SHN_UNDEF || s->st_shndx == SHN_ABS || !s->st_name) continue;
-			if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT) continue;
+			if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT || version_hidden(o->strtab + s->st_name)) continue;
 			GSym *g = gsym_find(o->strtab + s->st_name);
 			if (!g || g->obj != o || g->symidx != k) continue;       /* overridden (a weak def lost to a strong one) */
 			exports = grow(exports, nexport, &expcap, sizeof *exports);
@@ -369,7 +377,7 @@ void dyn_size(void) {
 	if (has_dynsym) collect_exports();
 	for (int i = 0; i < nimport; i++) strmap_put(&dynsym_map, imports[i].name, (void *)(long)(1 + i));   /* [0] = STN_UNDEF */
 	for (int i = 0; i < nexport; i++)
-		strmap_put(&dynsym_map, exports[i].obj->strtab + exports[i].obj->sym[exports[i].symidx].st_name, (void *)(long)(1 + nimport + i));
+		strmap_put(&dynsym_map, exports[i].obj->strtab + exports[i].obj->sym[exports[i].symidx].st_name, (void *)(long)(1 + nimport + version_count() + i));
 
 	str_add(&dynstr, "");
 	for (int i = 0; i < nimport; i++) imports[i].stroff = str_add(&dynstr, imports[i].name);
@@ -377,6 +385,9 @@ void dyn_size(void) {
 	needed_off = calloc(nshlib + 1, sizeof *needed_off);
 	for (int i = 0; i < nshlib; i++) if (shlibs[i].used) needed_off[i] = str_add(&dynstr, shlibs[i].soname);
 	if (shared) soname_off = str_add(&dynstr, soname);
+	int nver = version_count(); u32 naux = 1;          /* version definitions: the base (the soname), then each named one */
+	ver_off = calloc(nver + 1, sizeof *ver_off);
+	for (int i = 0; i < nver; i++) { int nd; version_deps(i, &nd); naux += 1 + (u32)nd; ver_off[i] = str_add(&dynstr, version_name(i)); }
 
 	for (int i = 0; i < nshlib; i++) if (shlibs[i].used) dyn_add(DT_NEEDED, 0, 0, needed_off[i]);
 	if (shared) dyn_add(DT_SONAME, 0, 0, soname_off);
@@ -385,6 +396,7 @@ void dyn_size(void) {
 		dyn_add(DT_HASH, 1, L_HASH, 0);     dyn_add(DT_STRTAB, 1, L_DYNSTR, 0); dyn_add(DT_SYMTAB, 1, L_DYNSYM, 0);
 		dyn_add(DT_STRSZ, 2, L_DYNSTR, 0);  dyn_add(DT_SYMENT, 0, 0, sizeof(Elf32_Sym));
 	}
+	if (nver) { dyn_add(DT_VERDEF, 1, L_VERDEF, 0); dyn_add(DT_VERDEFNUM, 0, 0, 1u + (u32)nver); dyn_add(DT_VERSYM, 1, L_VERSYM, 0); }
 	if (nplt) {
 		dyn_add(DT_PLTGOT, 1, L_GOTPLT, 0); dyn_add(DT_PLTRELSZ, 2, L_RELPLT, 0);
 		dyn_add(DT_PLTREL, 0, 0, DT_REL);   dyn_add(DT_JMPREL, 1, L_RELPLT, 0);
@@ -400,6 +412,11 @@ void dyn_size(void) {
 		set_size(L_HASH, (2 + hash_nbucket() + dynsym_count()) * 4);   /* [nbucket, nchain, bucket[], chain[]] */
 		set_size(L_DYNSYM, dynsym_count() * sizeof(Elf32_Sym));
 		set_size(L_DYNSTR, (u32)dynstr.len);
+	}
+	if (nver) {
+		set_size(L_VERSYM, 2 * dynsym_count());
+		set_size(L_VERDEF, (1u + (u32)nver) * 20 + naux * 8);   /* Elf32_Verdef 20 bytes, Elf32_Verdaux 8 */
+		linker_obj->sh[L_VERDEF].sh_info = 1u + (u32)nver;
 	}
 	set_size(L_RELDYN, (u32)(nrelative + nsymrel) * sizeof(Elf32_Rel));
 	set_size(L_RELPLT, (u32)nrelplt * sizeof(Elf32_Rel));
@@ -473,6 +490,10 @@ void dyn_fill(void) {
 				d.st_value = linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)((long)strmap_get(&plt_map, im->name) - 1);
 			memcpy(p, &d, sizeof d);
 		}
+		for (int i = 0; i < version_count(); i++, p += sizeof(Elf32_Sym)) {   /* each version: an absolute object, as GNU's */
+			Elf32_Sym d = { .st_name = ver_off[i], .st_info = ELF32_ST_INFO(STB_GLOBAL, STT_OBJECT), .st_shndx = SHN_ABS };
+			memcpy(p, &d, sizeof d);
+		}
 		for (int i = 0; i < nexport; i++, p += sizeof(Elf32_Sym)) {
 			Elf32_Sym *s = &exports[i].obj->sym[exports[i].symidx];
 			u32 val = sym_addr(exports[i].obj, exports[i].symidx);
@@ -486,9 +507,31 @@ void dyn_fill(void) {
 		u8 *h = sec_bytes(L_HASH), *bucket = h + 8, *chain = h + 8 + 4 * nbucket;
 		wr32(h, nbucket); wr32(h + 4, nchain);
 		for (u32 y = 1; y < nchain; y++) {               /* prepend: newest at the bucket head */
-			const char *nm = y <= (u32)nimport ? imports[y - 1].name : dynstr.b + exports[y - 1 - nimport].stroff;
+			u32 nv = (u32)version_count();
+			const char *nm = y <= (u32)nimport ? imports[y - 1].name : y <= (u32)nimport + nv ? dynstr.b + ver_off[y - 1 - nimport]
+			               : dynstr.b + exports[y - 1 - nimport - nv].stroff;
 			u32 b = elf_hash(nm) % nbucket;
 			wr32(chain + 4 * y, rd32(bucket + 4 * b)); wr32(bucket + 4 * b, y);
+		}
+	}
+	if (linker_obj->sh[L_VERSYM].sh_size) {               /* 0 for [0], 1 (global) for an import, a version's own index */
+		u8 *vs = sec_bytes(L_VERSYM); int nv = version_count(), y = 1;
+		for (int i = 0; i < nimport; i++, y++) { vs[2 * y] = 1; vs[2 * y + 1] = 0; }
+		for (int i = 0; i < nv; i++, y++) { vs[2 * y] = (u8)(2 + i); vs[2 * y + 1] = (u8)((2 + i) >> 8); }
+		for (int i = 0; i < nexport; i++, y++) { int v = version_of(dynstr.b + exports[i].stroff); vs[2 * y] = (u8)v; vs[2 * y + 1] = (u8)(v >> 8); }
+		u8 *d = sec_bytes(L_VERDEF); u32 off = 0;           /* Elf32_Verdef { version, flags, ndx, cnt, hash, aux, next } + Verdaux { name, next } */
+		for (int i = -1; i < nv; i++) {
+			int nd = 0; const char **deps = i >= 0 ? version_deps(i, &nd) : NULL;
+			u32 name = i < 0 ? soname_off : ver_off[i], size = 20 + 8u * (1 + (u32)nd);
+			const char *nm = dynstr.b + name;
+			wr32(d + off, 1 | (i < 0 ? 1u << 16 : 0));  /* vd_version 1, vd_flags VER_FLG_BASE for the soname */
+			wr32(d + off + 4, (u32)(2 + i) | (u32)(1 + nd) << 16);   /* vd_ndx, vd_cnt */
+			wr32(d + off + 8, elf_hash(nm)); wr32(d + off + 12, 20); wr32(d + off + 16, i + 1 < nv ? size : 0);
+			for (int k = 0; k <= nd; k++) {
+				u32 an = k ? ver_off[version_parent(deps[k - 1]) - 2] : name;   /* its own name, then its parents' */
+				wr32(d + off + 20 + 8 * k, an); wr32(d + off + 24 + 8 * k, k < nd ? 8 : 0);
+			}
+			off += size;
 		}
 	}
 	for (int i = 0; i < ndyn; i++) {

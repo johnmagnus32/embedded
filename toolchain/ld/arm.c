@@ -75,6 +75,41 @@ int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP
 int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL; }
 int md_is_marker(u32 type) { return type == R_ARM_NONE || type == R_ARM_V4BX; }
 
+/* ARM group relocations (AAELF 4.6.1.4): X = S + A - P split into G0, G1, G2 — each the top 8 significant bits (at an
+ * even shift) of what the earlier groups left — for an ADD/SUB immediate (ALU_PC_Gn), then the remainder as an LDR /
+ * LDRS / LDC offset (LDR_PC_Gn: what G0..G(n-1) leave). REL addends come from the instruction: the rotated immediate,
+ * negative for a SUB; the offset, negative without the U bit. As bfd's elf32_arm_final_link_relocate. */
+static u32 group_mask(u32 value, int n, u32 *residual) {   /* bfd's calculate_group_reloc_mask */
+	u32 enc = 0, res = value;
+	for (int k = 0; k <= n; k++) {
+		int shift = 0;
+		if (res) { int msb; for (msb = 30; msb >= 0; msb -= 2) if (res & (3u << msb)) break; shift = msb - 6 < 0 ? 0 : msb - 6; }
+		u32 g = res & (0xffu << shift);
+		enc = (g >> shift) | ((g <= 0xff ? 0 : (u32)(32 - shift) / 2) << 8);
+		res &= ~g;
+	}
+	*residual = res; return enc;
+}
+static void alu_group(Obj *o, u8 *loc, u32 w, u32 S, u32 P, int n, int check) {
+	u32 rot = (w >> 8 & 0xf) * 2, c = w & 0xff, imm = rot ? (c >> rot | c << (32 - rot)) : c;
+	u32 op = w & 0x1e00000;
+	if (op != 1u << 23 && op != 1u << 22) die("%s: an ALU group relocation on an instruction that is neither ADD nor SUB (%#x)", o->path, w);
+	s32 X = (s32)(S - P + (op == 1u << 22 ? -imm : imm)); u32 res;
+	u32 g = group_mask(X < 0 ? (u32)-X : (u32)X, n, &res);
+	if (check && res) die("%s: %#x doesn't split into ALU group G%d (residual %#x)", o->path, (u32)X, n, res);
+	wr32(loc, (w & 0xff1ff000u) | (X < 0 ? 1u << 22 : 1u << 23) | g);
+}
+static void ldr_group(Obj *o, u8 *loc, u32 w, u32 S, u32 P, int n, int kind) {   /* kind: 0 LDR imm12, 1 LDRS imm4:imm4, 2 LDC imm8*4 */
+	u32 a = kind == 0 ? w & 0xfff : kind == 1 ? (w >> 4 & 0xf0) | (w & 0xf) : (w & 0xff) << 2;
+	s32 X = (s32)(S - P + (w & 1u << 23 ? a : -a)); u32 res;
+	group_mask(X < 0 ? (u32)-X : (u32)X, n - 1, &res);
+	u32 lim = kind == 0 ? 0x1000 : kind == 1 ? 0x100 : 0x400;
+	if (res >= lim || (kind == 2 && (res & 3))) die("%s: %#x doesn't fit a group relocation's G%d load offset (residual %#x)", o->path, (u32)X, n, res);
+	u32 u = X >= 0 ? 1u << 23 : 0;
+	if (kind == 0) wr32(loc, (w & 0xff7ff000u) | u | res);
+	else if (kind == 1) wr32(loc, (w & 0xff7ff0f0u) | u | (res & 0xf0) << 4 | (res & 0xf));
+	else wr32(loc, (w & 0xff7fff00u) | u | res >> 2);
+}
 static s32 movw_addend(u32 w) { return (int16_t)(((w >> 4) & 0xf000u) | (w & 0xfffu)); }   /* imm4:imm12, signed */
 static u32 movw_set(u32 w, u32 v) { return (w & ~0x000f0fffu) | (((v >> 12) & 0xfu) << 16) | (v & 0xfffu); }
 void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
@@ -94,9 +129,17 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	case R_ARM_JUMP24: {
 		s32 A = (s32)(w << 8) >> 6;              /* sign-extend the 24-bit field, then *4 */
 		s32 X = (s32)S + A - (s32)P;
+		if (X < -0x2000000 || X > 0x1fffffc) die("%s: branch to %#x out of reach (+-32MB) at %#x (and no veneer)", o->path, S + A + 8, P);
+		if (X & 3) die("%s: branch at %#x to Thumb code (%#x): BLX conversion is unsupported", o->path, P, S + A + 8);
 		wr32(loc, (w & 0xff000000u) | ((X >> 2) & 0x00ffffffu));
 		break;
 	}
+	case 57: case 58: alu_group(o, loc, w, S, P, 0, type == 58); break;   /* R_ARM_ALU_PC_G0_NC, R_ARM_ALU_PC_G0 */
+	case 59: case 60: alu_group(o, loc, w, S, P, 1, type == 60); break;   /* R_ARM_ALU_PC_G1_NC, R_ARM_ALU_PC_G1 */
+	case 61:          alu_group(o, loc, w, S, P, 2, 1); break;             /* R_ARM_ALU_PC_G2 */
+	case 4: case 62: case 63: ldr_group(o, loc, w, S, P, type == 4 ? 0 : type - 61, 0); break;   /* R_ARM_LDR_PC_G0..G2 */
+	case 64: case 65: case 66: ldr_group(o, loc, w, S, P, type - 64, 1); break;                  /* R_ARM_LDRS_PC_G0..G2 */
+	case 67: case 68: case 69: ldr_group(o, loc, w, S, P, type - 67, 2); break;                  /* R_ARM_LDC_PC_G0..G2 */
 	case R_ARM_MOVW_ABS_NC:  wr32(loc, movw_set(w, (S + (u32)movw_addend(w)) & 0xffffu)); break;          /* lower16(S + A) */
 	case R_ARM_MOVT_ABS:     wr32(loc, movw_set(w, (S + (u32)movw_addend(w)) >> 16)); break;              /* upper16(S + A) */
 	case R_ARM_MOVW_PREL_NC: wr32(loc, movw_set(w, (S + (u32)movw_addend(w) - P) & 0xffffu)); break;      /* lower16(S + A - P) */

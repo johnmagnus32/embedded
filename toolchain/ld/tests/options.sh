@@ -47,5 +47,9 @@ printf '.global f\nf: b g\n' | "${GNU}as" -o $t/s.o
 "$LD" -shared -z defs -o $t/s.so $t/s.o 2>/dev/null && no "-z defs accepted an undefined g" || ok
 printf '.global _start\n_start: bx lr\n' | "${GNU}as" -o $t/v.o   # GNU as marks the BX: R_ARM_V4BX against no symbol
 "$LD" -o $t/v.elf $t/v.o && ok || no "R_ARM_V4BX: not linked"
+printf '.global _start\n_start: ldr r0, =__start_myset\nldr r1, =__stop_myset\nbx lr\n.section myset,"a"\n.word 1, 2, 3\n.weak __start_absent\n.word __start_absent\n' | "${GNU}as" -o $t/ss.o
+"$LD" -o $t/ss.elf $t/ss.o && "${GNU}ld" -o $t/ss.g $t/ss.o 2>/dev/null \
+  && [ "$("${GNU}readelf" -sW $t/ss.elf | grep '_myset' | awk '{print $2, $5, $6, $8}' | sort)" = "$("${GNU}readelf" -sW $t/ss.g | grep '_myset' | awk '{print $2, $5, $6, $8}' | sort)" ] \
+  && ok || no "__start_SEC/__stop_SEC differ from GNU ld's: $("${GNU}readelf" -sW $t/ss.elf 2>&1 | grep _myset | tr '\n' ' ')"
 echo "ld options: $pass passed, $fail failed"
 [ $fail = 0 ]
