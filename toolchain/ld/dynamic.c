@@ -4,7 +4,8 @@
  * One scan over the relocations (dyn_scan) decides everything that depends on them: which undefined symbols are
  * IMPORTS resolved at run time (and which of those need a PLT stub or, for an executable's data reference, a COPY
  * slot), which symbols need a GOT slot, and which words need a runtime fixup. Each decision is a list entry. The
- * linker-made sections (.interp .hash .dynsym .dynstr .rel.dyn .rel.plt .plt .dynamic .got.plt .got .dynbss) are
+ * linker-made sections (.interp .hash .dynsym .dynstr .rel.plt .plt .dynamic .got.plt .got .dynbss, and a
+ * .rel<section> per section with dynamic relocations, as GNU's — the default script gathers those in .rel.dyn) are
  * sized from those lists (dyn_size) and, after layout, filled from the SAME lists (dyn_fill) — so no separate
  * counting pass has to agree with a writing pass.
  *
@@ -30,7 +31,6 @@ static const struct { const char *name; u32 type, flags, align, entsize; int lin
 	[L_HASH]    = { ".hash",    SHT_HASH,     SHF_ALLOC,               4, 4,                 L_DYNSYM, 0 },
 	[L_DYNSYM]  = { ".dynsym",  SHT_DYNSYM,   SHF_ALLOC,               4, sizeof(Elf32_Sym), L_DYNSTR, 1 },   /* info: 1st global */
 	[L_DYNSTR]  = { ".dynstr",  SHT_STRTAB,   SHF_ALLOC,               1, 0,                 0,        0 },
-	[L_RELDYN]  = { ".rel.dyn", SHT_REL,      SHF_ALLOC,               4, sizeof(Elf32_Rel), L_DYNSYM, 0 },
 	[L_RELPLT]  = { ".rel.plt", SHT_REL,      SHF_ALLOC,               4, sizeof(Elf32_Rel), L_DYNSYM, L_GOTPLT },
 	[L_PLT]     = { ".plt",     SHT_PROGBITS, SHF_ALLOC|SHF_EXECINSTR, 4, 0,                 0,        0 },
 	[L_DYNAMIC] = { ".dynamic", SHT_DYNAMIC,  SHF_ALLOC,               4, sizeof(Elf32_Dyn), L_DYNSTR, 0 },
@@ -52,13 +52,14 @@ typedef struct { const char *name; int lib, is_data, canon; u32 copy_off, copy_s
  * module's (module, 0) pair (G_TLS_LDM). dyn = the loader fills it; ext = through the symbol (another module's). */
 enum { G_ADDR, G_TLS_IE, G_TLS_GD, G_TLS_LDM };
 typedef struct { const char *name; Obj *obj; int symidx, dyn, what, part, ext; } Got;
-/* A dynamic relocation at (obj's section shndx + off) against symbol `sym` (NULL: none, e.g. RELATIVE); seq: the
- * order the scan made it (-z nocombreloc writes them in it). */
-typedef struct { Obj *obj; int shndx; u32 off, type; const char *sym; int seq; } DynRel;
+/* A dynamic relocation at (obj's section shndx + off) against symbol `sym` (NULL: none, e.g. RELATIVE); src: the
+ * object whose relocation made it, seq: the order the scan made it (together: GNU's emission order). */
+typedef struct { Obj *obj; int shndx; u32 off, type; const char *sym; int seq; Obj *src; } DynRel;
 typedef struct { Obj *obj; int symidx; u32 stroff; } Export;
 typedef struct { u32 tag; int what, sec; u32 val; } DynEnt;   /* what: 0 = val, 1 = sec's address, 2 = sec's size,
                                                                 * 3/4 = the lowest address / total size of the
-                                                                * output's dynamic relocation sections */
+                                                                * output's dynamic relocation sections, 5 = the
+                                                                * RELATIVE count of a sorted .rel.dyn (DT_RELCOUNT) */
 
 static Import *imports; static int nimport, impcap; static StrMap import_map;
 static Got *got;        static int ngot, gotcap;      static StrMap got_map;
@@ -72,10 +73,14 @@ static u32 dynbss_size;
 int combreloc = 1;                                       /* -z combreloc (GNU's default) / nocombreloc */
 int ztext;                                               /* -z text: a dynamic relocation in read-only code is an error */
 static int textrel;                                      /* one is: DT_TEXTREL */
-static int nrelseq;
-/* -z nocombreloc (GNU): no one sorted .rel.dyn — each section's dynamic relocations in a .rel<its name> of their own
- * (a GOT slot's in .rel.got, a copy's in .rel.bss), in the order they were made, placed by the script or as orphans;
- * DT_REL/DT_RELSZ span them all, and there's no DT_RELCOUNT. They're linker_obj's sections from L_NSEC on. */
+static int nrelseq; static Obj *scan_src;
+/* The dynamic relocations, as GNU's: each section's in a .rel<its name> (a GOT slot's in .rel.got, a copy's in
+ * .rel.bss) — linker_obj's sections from L_NSEC on, placed by the script (the default one gathers them in .rel.dyn;
+ * U-Boot's puts .rel*.efi_runtime apart) or as orphans (-z combreloc: renamed .rel.dyn) — in the order GNU emits
+ * them: the objects in the order the output first reaches them, each one's in scan order. With -z combreloc an output
+ * .rel.dyn made only of them is then SORTED (GNU elf_link_sort_relocs: RELATIVE first, by address; then by symbol,
+ * the symbol's first address, address) and its RELATIVE count is DT_RELCOUNT. DT_REL/DT_RELSZ span every allocated
+ * REL output section but .rel.plt's. */
 typedef struct { const char *name; DynRel *v; int n, cap; } RelSec;
 static RelSec *relsecs; static int nrelsec, relseccap;
 static Strtab lnames;                                    /* linker_obj's section names */
@@ -83,7 +88,7 @@ static Strtab lnames;                                    /* linker_obj's section
  * (0 without one), and two the loader may use — wherever GNU creates a GOT: a dynamic output (its dynamic sections
  * make one), or any GOT reference; _GLOBAL_OFFSET_TABLE_ names its start. PLT slot k follows it at 12 + 4k. */
 #define GOT_HEADER 12u
-static int got_header, gotsym_ref;
+static int got_header, gotsym_ref, gotrel_ref;
 
 static int dynamic_image(void) { return pie || shared; }   /* loaded at a bias: its absolute words need fixups */
 
@@ -127,7 +132,7 @@ static int import_of(const char *name, int lib) {
 }
 static void add_rel(DynRel **v, int *n, int *cap, Obj *o, int shndx, u32 off, u32 type, const char *sym) {
 	*v = grow(*v, *n, cap, sizeof **v);
-	(*v)[(*n)++] = (DynRel){ o, shndx, off, type, sym, nrelseq++ };
+	(*v)[(*n)++] = (DynRel){ o, shndx, off, type, sym, nrelseq++, scan_src };
 }
 /* A runtime fixup of a word inside an input section. In a read-only one it's a TEXT RELOCATION: the loader must make
  * the code writable to apply it (DT_TEXTREL) — GNU's default (-z notext) for ARM; -z text makes it an error. (Which
@@ -271,6 +276,7 @@ static void scan_one(Obj *o, int t, u32 off, u32 type, int symidx) {
 	int tk = md_tls_kind(type);
 	if (tk != TLS_NONE) { tls_ref(o, type, tk, symidx); return; }
 	if (md_is_got_reloc(type)) { got_slot(o, symidx); return; }
+	if (md_is_got_relative(type)) { gotrel_ref = 1; return; }   /* (position-independent: no dynamic fixup) */
 	Elf32_Sym *s = &o->sym[symidx];
 	if (!md_is_marker(type) && sym_is_tls(o, symidx))
 		die("%s: relocation type %u against thread-local '%s' (only TLS relocations can address it)", o->path, type,
@@ -299,6 +305,7 @@ void dyn_scan(void) {
 	for (int i = 0; i < nobj; i++) {
 		Obj *o = objs[i];
 		if (!o->active || o == linker_obj) continue;
+		scan_src = o;
 		for (int j = 0; j < o->nsh; j++) {
 			Elf32_Shdr *rs = &o->sh[j];
 			if (rs->sh_type != SHT_REL) continue;
@@ -360,17 +367,22 @@ static void dyn_add(u32 tag, int what, int sec, u32 val) {
 	dyn = grow(dyn, ndyn, &dyncap, sizeof *dyn);
 	dyn[ndyn++] = (DynEnt){ tag, what, sec, val };
 }
-static u32 dynsym_count(void) { return 1u + (u32)nimport + (u32)version_count() + (u32)nexport; }   /* [0], imports, versions, exports */
+/* .dynsym: [0], the section symbols (a PIC output with dynamic relocations: GNU's text and data index sections —
+ * the first read-only and the first writable allocated output section not of the linker's own), the imports, the
+ * versions, the exports. */
+static int nsecsym; static OutSec *secsym_os[2];
+static u32 dynsym_named(void) { return (u32)nimport + (u32)version_count() + (u32)nexport; }   /* (hashed) */
+static u32 dynsym_count(void) { return 1u + (u32)nsecsym + dynsym_named(); }
 static u32 *ver_off;   /* each named version's .dynstr name */
-static u32 hash_nbucket(void) {   /* the largest prime (bfd's table) not above the symbol count: h % nbucket spreads */
-	static const u32 primes[] = { 1,3,17,37,67,97,131,197,263,521,1031,2053,4099,8209,16411,0 };
+static u32 hash_nbucket(void) {   /* bfd's elf_buckets: the largest not above the count of hashed (named) symbols */
+	static const u32 sizes[] = { 1, 3, 17, 37, 67, 97, 131, 197, 263, 521, 1031, 2053, 4099, 8209, 16411, 32771, 0 };
 	u32 best = 1;
-	for (int i = 0; primes[i] && primes[i] <= dynsym_count(); i++) best = primes[i];
+	for (int i = 0; sizes[i]; i++) { best = sizes[i]; if (dynsym_named() < sizes[i + 1]) break; }
 	return best;
 }
 
-/* Exports: the defined, default-visibility globals — for a .so its interface; for a dynamic program what its
- * providers may bind back to (libc's `main`/`environ`), like --export-dynamic. Object order, winning definition only. */
+/* Exports: the defined, default-visibility globals — for a .so its interface; for a dynamic program, as GNU's, those a
+ * provider references (libc's `environ`), or all under -E. Object order, winning definition only. */
 static void collect_exports(void) {
 	for (int i = 0; i < nobj; i++) {
 		Obj *o = objs[i];
@@ -378,6 +390,7 @@ static void collect_exports(void) {
 		for (int k = 0; k < o->nsym; k++) {
 			Elf32_Sym *s = &o->sym[k]; int b = ELF32_ST_BIND(s->st_info);
 			if ((b != STB_GLOBAL && b != STB_WEAK) || s->st_shndx == SHN_UNDEF || s->st_shndx == SHN_ABS || !s->st_name) continue;
+			if (!dyn_exports(o->strtab + s->st_name)) continue;
 			if (ELF32_ST_VISIBILITY(s->st_other) != STV_DEFAULT || version_hidden(o->strtab + s->st_name)) continue;
 			GSym *g = gsym_find(o->strtab + s->st_name);
 			if (!g || g->obj != o || g->symidx != k) continue;       /* overridden (a weak def lost to a strong one) */
@@ -391,7 +404,7 @@ static const char *relsec_name(const DynRel *r) {
 	if (r->obj == linker_obj) return r->shndx == L_GOT ? ".rel.got" : r->shndx == L_DYNBSS ? ".rel.bss" : NULL;
 	const char *n = sec_name(r->obj, r->shndx); char *b = malloc(strlen(n) + 5); sprintf(b, ".rel%s", n); return b;
 }
-static void split_relocs(void) {   /* -z nocombreloc: the dynamic relocations into a .rel<section> each, in scan order */
+static void split_relocs(void) {   /* the dynamic relocations into a .rel<section> each */
 	StrMap at = {0};
 	for (int a = 0, b = 0; a < nrelative || b < nsymrel; ) {
 		DynRel *r = b >= nsymrel || (a < nrelative && relative[a].seq < symrel[b].seq) ? &relative[a++] : &symrel[b++];
@@ -418,11 +431,43 @@ static void split_relocs(void) {   /* -z nocombreloc: the dynamic relocations in
 	o->nsh = n; o->shstr = lnames.b;
 }
 
+static int has_dynsym, nver;
+static void number_dynsyms(void) {   /* the .dynsym indexes, and the sizes that follow from the count */
+	for (int i = 0; i < nimport; i++) strmap_put(&dynsym_map, imports[i].name, (void *)(long)(1 + nsecsym + i));   /* [0] = STN_UNDEF */
+	for (int i = 0; i < nexport; i++)
+		strmap_put(&dynsym_map, exports[i].obj->strtab + exports[i].obj->sym[exports[i].symidx].st_name, (void *)(long)(1 + nsecsym + nimport + version_count() + i));
+	if (has_dynsym) {
+		set_size(L_HASH, (2 + hash_nbucket() + dynsym_count()) * 4);   /* [nbucket, nchain, bucket[], chain[]] */
+		set_size(L_DYNSYM, dynsym_count() * sizeof(Elf32_Sym));
+		linker_obj->sh[L_DYNSYM].sh_info = 1u + (u32)nsecsym;   /* the first global */
+	}
+	if (nver) set_size(L_VERSYM, 2 * dynsym_count());
+}
+/* Once every section has its output section (before addresses): GNU's text and data index sections, the first
+ * read-only and the first writable allocated output section that isn't the linker's own (one holding a linker table
+ * of its name) — each a section symbol in a PIC output's .dynsym when it has dynamic relocations. */
+void dyn_index_sections(void) {
+	if (!has_dynsym || !dynamic_image() || !(nrelative + nsymrel)) return;
+	OutSec *data = NULL, *text = NULL;
+	for (OutSec *os = script_next_outsec(NULL); os; os = script_next_outsec(os)) {
+		int own = 0;
+		if (!(os->flags & SHF_ALLOC)) continue;
+		for (int l = 1; l < linker_obj->nsh && !own; l++) own = linker_obj->sec_out[l] == os && !strcmp(sec_name(linker_obj, l), os->name);
+		if (own) continue;
+		if ((os->flags & SHF_WRITE) && !data) data = os;
+		if (!(os->flags & SHF_WRITE) && !text) text = os;
+	}
+	if (!text) text = data;
+	nsecsym = 0;
+	for (OutSec *os = script_next_outsec(NULL); os; os = script_next_outsec(os)) if (os == data || os == text) secsym_os[nsecsym++] = os;   /* (output order) */
+	number_dynsyms();
+	place_contents();                                   /* (the tables' buffer again: .dynsym/.hash/.gnu.version grew) */
+}
 void dyn_size(void) {
-	int has_dynsym = shared || nimport;
-	int has_dynamic = dynamic_image() || nimport;
+	int has_dynamic = dynamic_image() || nimport;      /* (GNU: a PIC output, or one importing, has the dynamic tables) */
+	has_dynsym = has_dynamic;
 	set_size(L_BUILDID, build_id_size() ? 16 + build_id_size() : 0);
-	got_header = has_dynamic || ngot || gotsym_ref;
+	got_header = has_dynamic || ngot || gotsym_ref || gotrel_ref;
 	if (!has_dynamic) {                                  /* a static image: only the GOT (filled with final addresses) */
 		set_size(L_GOTPLT, got_header ? GOT_HEADER : 0);
 		set_size(L_GOT, 4u * (u32)ngot);
@@ -431,9 +476,6 @@ void dyn_size(void) {
 	}
 	if (shared && !soname) die("internal: -shared without a soname");
 	if (has_dynsym) collect_exports();
-	for (int i = 0; i < nimport; i++) strmap_put(&dynsym_map, imports[i].name, (void *)(long)(1 + i));   /* [0] = STN_UNDEF */
-	for (int i = 0; i < nexport; i++)
-		strmap_put(&dynsym_map, exports[i].obj->strtab + exports[i].obj->sym[exports[i].symidx].st_name, (void *)(long)(1 + nimport + version_count() + i));
 
 	str_add(&dynstr, "");
 	for (int i = 0; i < nimport; i++) imports[i].stroff = str_add(&dynstr, imports[i].name);
@@ -441,7 +483,7 @@ void dyn_size(void) {
 	needed_off = calloc(nshlib + 1, sizeof *needed_off);
 	for (int i = 0; i < nshlib; i++) if (shlibs[i].used) needed_off[i] = str_add(&dynstr, shlibs[i].soname);
 	if (shared) soname_off = str_add(&dynstr, soname);
-	int nver = version_count(); u32 naux = 1;          /* version definitions: the base (the soname), then each named one */
+	nver = version_count(); u32 naux = 1;              /* version definitions: the base (the soname), then each named one */
 	ver_off = calloc(nver + 1, sizeof *ver_off);
 	for (int i = 0; i < nver; i++) { int nd; version_deps(i, &nd); naux += 1 + (u32)nd; ver_off[i] = str_add(&dynstr, version_name(i)); }
 
@@ -457,26 +499,19 @@ void dyn_size(void) {
 		dyn_add(DT_PLTGOT, 1, L_GOTPLT, 0); dyn_add(DT_PLTRELSZ, 2, L_RELPLT, 0);
 		dyn_add(DT_PLTREL, 0, 0, DT_REL);   dyn_add(DT_JMPREL, 1, L_RELPLT, 0);
 	}
-	if (nrelative + nsymrel && combreloc) { dyn_add(DT_REL, 1, L_RELDYN, 0); dyn_add(DT_RELSZ, 2, L_RELDYN, 0); }
-	if (nrelative + nsymrel && !combreloc) { dyn_add(DT_REL, 3, 0, 0); dyn_add(DT_RELSZ, 4, 0, 0); }
-	if (nrelative + nsymrel) dyn_add(DT_RELENT, 0, 0, sizeof(Elf32_Rel));
+	if (nrelative + nsymrel) { dyn_add(DT_REL, 3, 0, 0); dyn_add(DT_RELSZ, 4, 0, 0); dyn_add(DT_RELENT, 0, 0, sizeof(Elf32_Rel)); }
 	if (textrel) dyn_add(DT_TEXTREL, 0, 0, 0);
-	if (nrelative && combreloc) dyn_add(DT_RELCOUNT, 0, 0, (u32)nrelative);   /* RELATIVE entries lead (GNU: sorted) */
+	if (nrelative && combreloc) dyn_add(DT_RELCOUNT, 5, 0, 0);   /* (a DT_NULL when no sorted .rel.dyn holds them) */
 	dyn_add(DT_NULL, 0, 0, 0);
 
-	if (nimport && !shared) set_size(L_INTERP, (u32)strlen(interp_path) + 1);
-	if (has_dynsym) {
-		set_size(L_HASH, (2 + hash_nbucket() + dynsym_count()) * 4);   /* [nbucket, nchain, bucket[], chain[]] */
-		set_size(L_DYNSYM, dynsym_count() * sizeof(Elf32_Sym));
-		set_size(L_DYNSTR, (u32)dynstr.len);
-	}
+	if ((nimport || pie) && !shared && !no_interp) set_size(L_INTERP, (u32)strlen(interp_path) + 1);   /* (GNU: a PIE names one too) */
+	number_dynsyms();                                  /* (again, with the section symbols, once layout knows them) */
+	if (has_dynsym) set_size(L_DYNSTR, (u32)dynstr.len);
 	if (nver) {
-		set_size(L_VERSYM, 2 * dynsym_count());
 		set_size(L_VERDEF, (1u + (u32)nver) * 20 + naux * 8);   /* Elf32_Verdef 20 bytes, Elf32_Verdaux 8 */
 		linker_obj->sh[L_VERDEF].sh_info = 1u + (u32)nver;
 	}
-	if (combreloc) set_size(L_RELDYN, (u32)(nrelative + nsymrel) * sizeof(Elf32_Rel));
-	else split_relocs();
+	split_relocs();
 	set_size(L_RELPLT, (u32)nrelplt * sizeof(Elf32_Rel));
 	set_size(L_PLT, (u32)nplt * md_plt_entsize);
 	set_size(L_DYNAMIC, (u32)ndyn * sizeof(Elf32_Dyn));
@@ -496,6 +531,83 @@ static u32 dynsym_of(const char *name) {
 }
 static void put_rels(u8 *p, const DynRel *v, int n) {
 	for (int i = 0; i < n; i++, p += 8) { wr32(p, at(&v[i])); wr32(p + 4, ELF32_R_INFO(dynsym_of(v[i].sym), v[i].type)); }
+}
+/* GNU's emission order: an object's dynamic relocations are made when bfd_elf_final_link first reaches it (output
+ * sections in order, their pieces by address), in its own order. rank: an object's first piece's place. */
+typedef struct { const Obj *o; u32 os, va; } Rank;
+static Rank *ranks; static int nrank;
+static int rank_cmp(const void *a, const void *b) { const Obj *x = ((const Rank *)a)->o, *y = ((const Rank *)b)->o; return x < y ? -1 : x > y; }
+static const Rank *rank_of(const Obj *o) { Rank k = { o, 0, 0 }; return o ? bsearch(&k, ranks, nrank, sizeof *ranks, rank_cmp) : NULL; }
+static int emit_cmp(const void *a, const void *b) {
+	const DynRel *x = a, *y = b; const Rank *p = rank_of(x->src), *q = rank_of(y->src);
+	u32 po = p ? p->os : ~0u, qo = q ? q->os : ~0u, pv = p ? p->va : ~0u, qv = q ? q->va : ~0u;
+	if (po != qo) return po < qo ? -1 : 1;
+	if (pv != qv) return pv < qv ? -1 : 1;
+	return x->seq - y->seq;
+}
+/* GNU elf_link_sort_relocs (-z combreloc): RELATIVE first by address (cmp1); the rest by class (normal, copy, plt),
+ * then by the first address of their symbol, then address (cmp2). ord: the order before sorting (glibc's qsort is a
+ * stable merge sort). */
+typedef struct { u32 off, info, first; int cls, ord; } SortRel;
+static int rel_class(u32 type) { return type == md_r_relative ? 1 : type == md_r_copy ? 2 : type == md_r_jump_slot ? 4 : 0; }
+static int sort_cmp1(const void *a, const void *b) {
+	const SortRel *x = a, *y = b; int rx = x->cls == 1, ry = y->cls == 1;
+	if (rx != ry) return rx ? -1 : 1;
+	if ((x->info & ~0xffu) != (y->info & ~0xffu)) return (x->info & ~0xffu) < (y->info & ~0xffu) ? -1 : 1;
+	if (x->off != y->off) return x->off < y->off ? -1 : 1;
+	return x->ord - y->ord;
+}
+static int sort_cmp2(const void *a, const void *b) {
+	const SortRel *x = a, *y = b;
+	if (x->cls != y->cls) return x->cls - y->cls;
+	if (x->first != y->first) return x->first < y->first ? -1 : 1;
+	if (x->off != y->off) return x->off < y->off ? -1 : 1;
+	return x->ord - y->ord;
+}
+static u32 write_relocs(void) {   /* the .rel<section> pieces' contents; returns a sorted .rel.dyn's RELATIVE count */
+	nrank = 0; ranks = calloc(nobj + 1, sizeof *ranks);
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i]; Rank r = { o, ~0u, ~0u };
+		if (!o->active || o == linker_obj) continue;
+		for (int j = 1; j < o->nsh; j++) {
+			OutSec *os = o->sec_out[j];
+			if (!(o->sh[j].sh_flags & SHF_ALLOC) || !os || os == &os_discard || !os->index) continue;
+			if ((u32)os->index < r.os || ((u32)os->index == r.os && o->sec_vaddr[j] < r.va)) { r.os = (u32)os->index; r.va = o->sec_vaddr[j]; }
+		}
+		ranks[nrank++] = r;
+	}
+	qsort(ranks, nrank, sizeof *ranks, rank_cmp);
+	for (int k = 0; k < nrelsec; k++) {   /* (seq breaks every tie: qsort needn't be stable) */
+		qsort(relsecs[k].v, relsecs[k].n, sizeof *relsecs[k].v, emit_cmp);
+		put_rels(sec_bytes(L_NSEC + k), relsecs[k].v, relsecs[k].n);
+	}
+	OutSec *rd = combreloc ? outsec_named(".rel.dyn") : NULL;
+	if (!rd) return 0;
+	u32 sum = 0; int n = 0;
+	for (int i = 1; i < linker_obj->nsh; i++)
+		if (linker_obj->sec_out[i] == rd) { sum += linker_obj->sh[i].sh_size; if (i < L_NSEC && i != L_RELPLT) sum = ~0u; }
+	if (sum != rd->size) return 0;                       /* (GNU: more than the pieces in it — not sorted) */
+	if (nrelplt && linker_obj->sec_out[L_RELPLT] == rd) die("-z combreloc: .rel.plt inside the output .rel.dyn: unsupported");
+	int *pieces = malloc((nrelsec + 1) * sizeof *pieces), np = 0;
+	for (int k = 0; k < nrelsec; k++) if (linker_obj->sec_out[L_NSEC + k] == rd) { pieces[np++] = L_NSEC + k; n += relsecs[k].n; }
+	for (int a = 1; a < np; a++) for (int b = a; b > 0 && linker_obj->sec_vaddr[pieces[b]] < linker_obj->sec_vaddr[pieces[b - 1]]; b--) { int t = pieces[b]; pieces[b] = pieces[b - 1]; pieces[b - 1] = t; }
+	SortRel *v = malloc((n + 1) * sizeof *v); int m = 0;
+	for (int q = 0; q < np; q++) {
+		u8 *p = sec_bytes(pieces[q]);
+		for (u32 e = 0; e < linker_obj->sh[pieces[q]].sh_size; e += 8, m++)
+			v[m] = (SortRel){ rd32(p + e), rd32(p + e + 4), 0, rel_class(ELF32_R_TYPE(rd32(p + e + 4))), m };
+	}
+	qsort(v, m, sizeof *v, sort_cmp1);
+	int nrel = 0; while (nrel < m && v[nrel].cls == 1) nrel++;
+	for (int i = nrel, g = nrel; i < m; i++) { if ((v[i].info ^ v[g].info) & ~0xffu) g = i; v[i].first = v[g].off; }
+	for (int i = nrel; i < m; i++) v[i].ord = i;
+	qsort(v + nrel, m - nrel, sizeof *v, sort_cmp2);
+	for (int q = 0, i = 0; q < np; q++) {
+		u8 *p = sec_bytes(pieces[q]);
+		for (u32 e = 0; e < linker_obj->sh[pieces[q]].sh_size; e += 8, i++) { wr32(p + e, v[i].off); wr32(p + e + 4, v[i].info); }
+	}
+	free(v); free(pieces);
+	return (u32)nrel;
 }
 /* SysV ELF hash (System V gABI) — MUST match the runtime loader's elf_hash (libc/ld/src/reloc.h). */
 static u32 elf_hash(const char *s) {
@@ -517,6 +629,9 @@ void dyn_fill(void) {
 		md_plt_entry(sec_bytes(L_PLT) + md_plt_entsize * k, linker_obj->sec_vaddr[L_PLT] + md_plt_entsize * (u32)k,
 		             linker_obj->sec_vaddr[L_GOTPLT] + GOT_HEADER + 4u * (u32)k);
 	if (got_header && linker_obj->sh[L_DYNAMIC].sh_size) wr32(sec_bytes(L_GOTPLT), linker_obj->sec_vaddr[L_DYNAMIC]);
+	OutSec *gos = linker_obj->sec_out[L_GOT] && linker_obj->sec_out[L_GOT] != &os_discard ? linker_obj->sec_out[L_GOT] : linker_obj->sec_out[L_GOTPLT];
+	if (gos && gos != &os_discard) md_got_org = gos->vaddr;   /* (an empty .got isn't placed: .got.plt's output section) */
+	else if (ngot || gotrel_ref) die("GOT-relative relocations, but the GOT was discarded");
 	GSym *g = gsym_find("_GLOBAL_OFFSET_TABLE_");
 	if (g && gotsym_ref) { g->defined = 1; g->vaddr = linker_obj->sec_vaddr[L_GOTPLT]; g->os = linker_obj->sec_out[L_GOTPLT]; }
 	for (int i = 0; i < ngot; i++) {                     /* a definition's address (loader adds the bias); a GLOB_DAT's 0 */
@@ -533,10 +648,7 @@ void dyn_fill(void) {
 		else if (!g->dyn) { GSym *s = gsym_find(g->name); v = s && s->defined ? s->vaddr : 0; }
 		wr32(sec_bytes(L_GOT) + 4 * i, v);
 	}
-	if (combreloc) {
-		put_rels(sec_bytes(L_RELDYN), relative, nrelative);
-		put_rels(sec_bytes(L_RELDYN) + 8 * nrelative, symrel, nsymrel);
-	} else for (int k = 0; k < nrelsec; k++) put_rels(sec_bytes(L_NSEC + k), relsecs[k].v, relsecs[k].n);
+	u32 relcount = write_relocs();
 	int ro = 0;                                          /* GNU's DT_TEXTREL rule: a fixup in a read-only OUTPUT section */
 	for (int pass = 0; pass < 2; pass++) for (int i = 0; i < (pass ? nsymrel : nrelative); i++) {
 		DynRel *r = pass ? &symrel[i] : &relative[i]; OutSec *os = r->obj->sec_out[r->shndx];
@@ -555,6 +667,11 @@ void dyn_fill(void) {
 	if (linker_obj->sh[L_DYNSYM].sh_size) {
 		memcpy(sec_bytes(L_DYNSTR), dynstr.b, dynstr.len);
 		u8 *p = sec_bytes(L_DYNSYM) + sizeof(Elf32_Sym);   /* [0] = STN_UNDEF */
+		for (int i = 0; i < nsecsym; i++, p += sizeof(Elf32_Sym)) {
+			if (!secsym_os[i]->index) die("--gc-sections/layout: the .dynsym section symbol's output section %s is empty: unsupported", secsym_os[i]->name);
+			Elf32_Sym d = { .st_value = secsym_os[i]->vaddr, .st_info = ELF32_ST_INFO(STB_LOCAL, STT_SECTION), .st_shndx = (u16)secsym_os[i]->index };
+			memcpy(p, &d, sizeof d);
+		}
 		for (int i = 0; i < nimport; i++, p += sizeof(Elf32_Sym)) {
 			Import *im = &imports[i];
 			ShExport *e = shexport_of(im->name);
@@ -583,16 +700,16 @@ void dyn_fill(void) {
 		u32 nbucket = hash_nbucket(), nchain = dynsym_count();
 		u8 *h = sec_bytes(L_HASH), *bucket = h + 8, *chain = h + 8 + 4 * nbucket;
 		wr32(h, nbucket); wr32(h + 4, nchain);
-		for (u32 y = 1; y < nchain; y++) {               /* prepend: newest at the bucket head */
-			u32 nv = (u32)version_count();
-			const char *nm = y <= (u32)nimport ? imports[y - 1].name : y <= (u32)nimport + nv ? dynstr.b + ver_off[y - 1 - nimport]
-			               : dynstr.b + exports[y - 1 - nimport - nv].stroff;
+		for (u32 y = 1 + (u32)nsecsym; y < nchain; y++) {   /* prepend: newest at the bucket head (section symbols: none) */
+			u32 nv = (u32)version_count(), z = y - (u32)nsecsym;
+			const char *nm = z <= (u32)nimport ? imports[z - 1].name : z <= (u32)nimport + nv ? dynstr.b + ver_off[z - 1 - nimport]
+			               : dynstr.b + exports[z - 1 - nimport - nv].stroff;
 			u32 b = elf_hash(nm) % nbucket;
 			wr32(chain + 4 * y, rd32(bucket + 4 * b)); wr32(bucket + 4 * b, y);
 		}
 	}
 	if (linker_obj->sh[L_VERSYM].sh_size) {               /* 0 for [0], 1 (global) for an import, a version's own index */
-		u8 *vs = sec_bytes(L_VERSYM); int nv = version_count(), y = 1;
+		u8 *vs = sec_bytes(L_VERSYM); int nv = version_count(), y = 1 + nsecsym;   /* (section symbols: 0, local) */
 		for (int i = 0; i < nimport; i++, y++) { vs[2 * y] = 1; vs[2 * y + 1] = 0; }
 		for (int i = 0; i < nv; i++, y++) { vs[2 * y] = (u8)(2 + i); vs[2 * y + 1] = (u8)((2 + i) >> 8); }
 		for (int i = 0; i < nexport; i++, y++) { int v = version_of(dynstr.b + exports[i].stroff); vs[2 * y] = (u8)v; vs[2 * y + 1] = (u8)(v >> 8); }
@@ -613,7 +730,8 @@ void dyn_fill(void) {
 	}
 	for (int i = 0; i < ndyn; i++) {
 		u32 v = dyn[i].what == 1 ? linker_obj->sec_vaddr[dyn[i].sec] : dyn[i].what == 2 ? linker_obj->sh[dyn[i].sec].sh_size
-		      : dyn[i].what == 3 ? rel_lo : dyn[i].what == 4 ? rel_sz : dyn[i].val;
-		wr32(sec_bytes(L_DYNAMIC) + 8 * i, dyn[i].tag); wr32(sec_bytes(L_DYNAMIC) + 8 * i + 4, v);
+		      : dyn[i].what == 3 ? rel_lo : dyn[i].what == 4 ? rel_sz : dyn[i].what == 5 ? relcount : dyn[i].val;
+		u32 tag = dyn[i].what == 5 && !relcount ? 0 /* DT_NULL */ : dyn[i].tag;
+		wr32(sec_bytes(L_DYNAMIC) + 8 * i, tag); wr32(sec_bytes(L_DYNAMIC) + 8 * i + 4, v);
 	}
 }

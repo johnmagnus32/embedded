@@ -125,6 +125,7 @@ builtin-diff: $(BUILD)/cc
 gnu-diff: $(BUILD)/cc
 	@$(MAKE) -s -C ../as >/dev/null; $(MAKE) -s -C ../ld >/dev/null; $(MAKE) -s -C ../rt >/dev/null
 	@GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/gnu_diff.sh
+	@OPT="-O0 -mword-relocations" GNU=$(abspath $(GNU)) CTORTURE_WORK=$(CTORTURE_WORK) ./torture/gnu_diff.sh
 
 # The compiler's own headers (include/: stddef.h, stdint.h, limits.h, float.h, …) against GCC's — every constant and
 # type, freestanding and hosted (tests/headers-diff.sh).

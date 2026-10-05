@@ -20,6 +20,7 @@ void die(const char *fmt, ...) {
 }
 
 int pic = 0;   /* -fPIC: emit position-independent code (global/string access via the GOT) */
+int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32), never movw/movt halves */
 int default_vis = 0;   /* -fvisibility= */
 const char *vis_directive(int vis) { return vis == VIS_HIDDEN ? ".hidden" : vis == VIS_INTERNAL ? ".internal" : vis == VIS_PROTECTED ? ".protected" : NULL; }
 int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; default hard (gnueabihf) */
@@ -54,6 +55,7 @@ static void *compile(void *unused) {
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
 		else if (!strcmp(argv[i], "-fPIC") || !strcmp(argv[i], "-fpic")) pic = 1;
+		else if (!strcmp(argv[i], "-mword-relocations")) word_relocs = 1;
 		else if (!strncmp(argv[i], "-fvisibility=", 13)) {
 			const char *v = argv[i] + 13;
 			default_vis = !strcmp(v, "default") ? 0 : !strcmp(v, "hidden") ? VIS_HIDDEN : !strcmp(v, "internal") ? VIS_INTERNAL

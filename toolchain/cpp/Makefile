@@ -56,6 +56,11 @@ test: $(BUILD)/cpp
 	  if [ $$? = 0 ]; then echo "PASS $$(basename $$m): token-identical to GNU cpp"; ok=$$((ok+1)); \
 	  else echo "FAIL $$(basename $$m): $$(cat $$t/me $$t/md)"; fail=$$((fail+1)); fi; done; \
 	else echo "SKIP tests/macro: no GNU gcc at $(GNU)gcc"; fi; \
+	if [ -x "$(GNU)gcc" ]; then for m in tests/ptext/*; do x=; case $$m in *.S) x="-x assembler-with-cpp";; esac; \
+	  $(BUILD)/cpp -P -undef $$x $$m > $$t/p.ours 2>$$t/pe && $(GNU)gcc -E -P -undef $$x $$m > $$t/p.gnu 2>/dev/null; \
+	  if cmp -s $$t/p.ours $$t/p.gnu; then echo "PASS $$(basename $$m): -P text byte-identical to GNU cpp"; ok=$$((ok+1)); \
+	  else echo "FAIL $$(basename $$m): -P text differs: $$(cat $$t/pe; diff $$t/p.ours $$t/p.gnu | head -6 | tr '\n' '|')"; fail=$$((fail+1)); fi; done; \
+	else echo "SKIP tests/ptext: no GNU gcc at $(GNU)gcc"; fi; \
 	if [ -x "$(GNU)gcc" ]; then \
 	  if GNU=$(GNU) CPP=$(BUILD)/cpp bash tests/predef-gate.sh > $$t/pg; then echo "PASS $$(tail -1 $$t/pg)"; ok=$$((ok+1)); \
 	  else echo "FAIL $$(cat $$t/pg)"; fail=$$((fail+1)); fi; \

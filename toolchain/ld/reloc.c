@@ -339,8 +339,8 @@ void reloc_link(const char *out) {
 			Elf32_Rel *rel = (Elf32_Rel *)(o->data + rs->sh_offset);
 			for (u32 n = 0; n < rs->sh_size / sizeof *rel; n++) {
 				u32 type = ELF32_R_TYPE(rel[n].r_info); int sidx = (int)ELF32_R_SYM(rel[n].r_info);
-				if (sidx >= o->nsym || smap[i][sidx] < 0) die("%s: a relocation in %s refers to a symbol that isn't carried", o->path, sec_name(o, t));
-				Elf32_Sym *s = &o->sym[sidx]; int osym = smap[i][sidx];
+				if (sidx >= o->nsym || (sidx && smap[i][sidx] < 0)) die("%s: a relocation in %s refers to a symbol that isn't carried", o->path, sec_name(o, t));
+				Elf32_Sym *s = &o->sym[sidx]; int osym = sidx ? smap[i][sidx] : 0;   /* (0: none — R_ARM_V4BX) */
 				u8 w[4]; int anchored = 0;
 				if (sidx && ELF32_ST_TYPE(s->st_info) == STT_SECTION && anchor[i] && s->st_shndx < o->nsh && anchor[i][s->st_shndx] > 0
 				    && rel[n].r_offset + 4 <= ts->sh_size && ts->sh_type != SHT_NOBITS) {   /* this one's addend can't move: its anchor */

@@ -33,6 +33,7 @@ int shared = 0;                            /* -shared: emit a .so — exported .
 const char *soname = NULL;                 /* -soname NAME -> DT_SONAME (default: the output basename) */
 const char *entry_sym = NULL;              /* -e; else the script's ENTRY(); else _start */
 int bsymbolic = 0;                         /* -Bsymbolic */
+int no_interp;                             /* --no-dynamic-linker */
 const char *interp_path = "/lib/ld.so.1";  /* --dynamic-linker: the PT_INTERP a dynamic program names */
 int stack_override;                        /* -z noexecstack / execstack: PT_GNU_STACK's flags, else from the inputs */
 int norelro;                               /* -z norelro */
@@ -94,6 +95,10 @@ static void add_symbols(Obj *o) {
  * still-undefined symbols until nothing new is needed (resolution across all archives at once, like
  * --start-group). Unresolved references are reported when the relocation scan meets them. */
 static void resolve_symbols(void) {
+	for (int k = 0; k < ngc_undef; k++) {               /* -u: undefined references ahead of every input (GNU) */
+		GSym *g = gsym_get(gc_undef[k]); g->strong_ref = 1;
+		pending = grow(pending, npending, &pendcap, sizeof *pending); pending[npending++] = g->name;
+	}
 	for (int i = 0; i < nobj; i++) add_symbols(objs[i]);
 	for (int i = 0; i < npending; i++) {                 /* the list grows as pulled members add references */
 		if (gsym_find(pending[i])->defined) continue;
@@ -280,7 +285,7 @@ static u32 veneer_for(Obj *o, int t, int sidx, s32 A) {   /* a branch's veneer a
  * start and end (protected visibility, as GNU's -z start-stop-visibility default; not exported). Declared before the
  * relocation scan (they resolve here, never imports), given their values after each layout. */
 GSym **startstops; int nstartstop;
-static const char *startstop_section(const char *n) {
+const char *startstop_section(const char *n) {
 	const char *s = !strncmp(n, "__start_", 8) ? n + 8 : !strncmp(n, "__stop_", 7) ? n + 7 : NULL;
 	if (!s || !*s || (*s >= '0' && *s <= '9')) return NULL;
 	for (const char *c = s; *c; c++) if (!(*c == '_' || (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9'))) return NULL;
@@ -322,7 +327,8 @@ static void relocate(void) {
 			Elf32_Rel *rel = (Elf32_Rel *)(o->data + rs->sh_offset);
 			for (u32 r = 0; r < rs->sh_size / sizeof *rel; r++) {
 				u32 type = ELF32_R_TYPE(rel[r].r_info); int sidx = (int)ELF32_R_SYM(rel[r].r_info);
-				if (!md_is_marker(type) && (rel[r].r_offset > ts->sh_size || ts->sh_size - rel[r].r_offset < 4))   /* a 4-byte field (no underflow) */
+				u32 tsize = sec_rawsize(o, t);
+				if (!md_is_marker(type) && (rel[r].r_offset > tsize || tsize - rel[r].r_offset < 4))   /* a 4-byte field (no underflow) */
 					die("%s: relocation offset %#x outside %s", o->path, rel[r].r_offset, sec_name(o, t));
 				if (md_is_marker(type) && !sidx) continue;   /* (R_ARM_V4BX: against no symbol at all) */
 				u32 S; int tk = md_tls_kind(type);
@@ -334,7 +340,7 @@ static void relocate(void) {
 					branch_target(o, t, &rel[r], &dest, &Pb, &A);
 					if (!in_reach(dest, Pb)) { u32 v = veneer_for(o, t, sidx, A); if (v) S = v - (u32)A - 8; }   /* the branch lands on v */
 				}
-				md_apply_reloc(o, type, o->data + ts->sh_offset + rel[r].r_offset, S, o->sec_vaddr[t] + rel[r].r_offset);
+				md_apply_reloc(o, type, sec_data(o, t) + rel[r].r_offset, S, o->sec_vaddr[t] + rel[r].r_offset);
 			}
 		}
 	}
@@ -428,6 +434,15 @@ static void z_option(const char *k) {
 }
 
 const char **libdirs; int nlibdir;                     /* -L, in order */
+static struct { const char *name; u32 addr; } starts[16]; static int nstart;   /* --section-start, -Tdata, -Tbss */
+static void add_start(const char *name, const char *addr) {
+	char *end; u32 v = (u32)strtoul(addr, &end, 16);   /* (GNU: hex, with or without 0x) */
+	if (!*addr || *end) die("--section-start %s=%s: not a hex address", name, addr);
+	if (nstart == 16) die("more than 16 section starts");
+	starts[nstart].name = name; starts[nstart++].addr = v;
+}
+static int undefcap;
+static void add_undef(const char *name) { gc_undef = grow(gc_undef, ngc_undef, &undefcap, sizeof *gc_undef); gc_undef[ngc_undef++] = name; }
 int script_ndirs;                                       /* the -L dirs before the -T (a script searches those) */
 int main(int argc, char **argv) {
 	const char *out = "a.out", *script_path = NULL, *map_path = NULL;
@@ -445,8 +460,25 @@ int main(int argc, char **argv) {
 		else if (!strncmp(a, "-T", 2) && a[2] && strncmp(a, "-Ttext", 6) && strncmp(a, "-Tdata", 6) && strncmp(a, "-Tbss", 5)) script_path = a + 2, script_ndirs = nlibdir;
 		else if (!strcmp(a, "-S") || !strcmp(a, "--strip-debug")) ;   /* debug sections never reach our output */
 		else if (!strcmp(a, "-s") || !strcmp(a, "--strip-all")) strip_all = 1;
-		else if (!strcmp(a, "-Ttext") && i + 1 < argc) { load_base = strtoul(argv[++i], NULL, 0); ttext = 1; }
-		else if (!strncmp(a, "-Ttext=", 7)) { load_base = strtoul(a + 7, NULL, 0); ttext = 1; }
+		else if (!strcmp(a, "-Ttext") && i + 1 < argc) { load_base = strtoul(argv[++i], NULL, 16); ttext = 1; }   /* (GNU: hex, 0x optional) */
+		else if (!strncmp(a, "-Ttext=", 7)) { load_base = strtoul(a + 7, NULL, 16); ttext = 1; }
+		else if ((!strcmp(a, "-Tdata") || !strcmp(a, "-Tbss")) && i + 1 < argc) add_start(a[2] == 'd' ? ".data" : ".bss", argv[++i]);
+		else if (!strncmp(a, "-Tdata=", 7) || !strncmp(a, "-Tbss=", 6)) add_start(a[2] == 'd' ? ".data" : ".bss", strchr(a, '=') + 1);
+		else if (!strncmp(a, "--section-start=", 16) || (!strcmp(a, "--section-start") && i + 1 < argc)) {
+			const char *v = a[15] == '=' ? a + 16 : argv[++i], *eq = strrchr(v, '=');
+			if (!eq || eq == v) die("--section-start %s: expected SECTION=ADDRESS", v);
+			add_start(strndup(v, (size_t)(eq - v)), eq + 1);
+		}
+		else if (!strcmp(a, "--no-merge-exidx-entries")) merge_exidx = 0;
+		else if (!strcmp(a, "-E") || !strcmp(a, "--export-dynamic")) export_dynamic = 1;
+		else if (!strcmp(a, "--no-export-dynamic")) export_dynamic = 0;
+		else if (!strcmp(a, "--gc-sections")) gc_sections = 1;
+		else if (!strcmp(a, "--no-gc-sections")) gc_sections = 0;
+		else if (!strcmp(a, "--print-gc-sections")) print_gc = 1;
+		else if (!strcmp(a, "--no-print-gc-sections")) print_gc = 0;
+		else if ((!strcmp(a, "-u") || !strcmp(a, "--undefined")) && i + 1 < argc) add_undef(argv[++i]);
+		else if (!strncmp(a, "--undefined=", 12)) add_undef(a + 12);
+		else if (!strncmp(a, "-u", 2) && a[2]) add_undef(a + 2);
 		else if ((!strcmp(a, "-e") || !strcmp(a, "--entry")) && i + 1 < argc) entry_sym = argv[++i];
 		else if (!strcmp(a, "-pie") || !strcmp(a, "--pie")) { pie = 1; load_base = 0; }
 		else if (!strcmp(a, "-shared") || !strcmp(a, "--shared")) { shared = 1; load_base = 0; }
@@ -481,6 +513,7 @@ int main(int argc, char **argv) {
 		else if (!strcmp(a, "--warn-rwx-segments")) warn_rwx = 1;
 		else if (!strcmp(a, "--build-id=none") || !strcmp(a, "--start-group") || !strcmp(a, "--end-group")) ;   /* we emit no build-id;
 		                                                     * archives already resolve as one group (see resolve_symbols) */
+		else if (!strcmp(a, "--no-dynamic-linker")) no_interp = 1;   /* (a self-relocating PIE: no PT_INTERP) */
 		else if (!strncmp(a, "--dynamic-linker=", 17)) interp_path = a + 17;
 		else if (!strcmp(a, "--dynamic-linker") && i + 1 < argc) interp_path = argv[++i];
 		else if (!strcmp(a, "-z") && i + 1 < argc) z_option(argv[++i]);
@@ -517,7 +550,8 @@ int main(int argc, char **argv) {
 		if (!found) die("cannot find -l%s (searched %d -L dir(s) for lib%s%s.a)", in[k].name, nlibdir, in[k].name, in[k].bstatic ? "" : ".so / lib");
 	}
 	if (!nobj) die("usage: ld [-o out] [-T script | -Ttext addr] [-e sym] [-pie | -shared [-soname name] [-Bsymbolic]] [-z kw] [--dynamic-linker path] [-L dir] [-l name] obj.o|lib.a ...");
-	if (script_path && ttext) die("-Ttext and -T both place the image: use one");
+	if (!script_path && nstart) die("-Tdata / -Tbss / --section-start without a -T script: unsupported (the default layout places the image by -Ttext)");
+	if (relocatable && gc_sections) die("-r with --gc-sections: unsupported");
 	if (relocatable && (script_path || ttext || pie || shared || entry_sym)) die("-r makes an object: no -T, -Ttext, -pie, -shared or -e");
 	if (relocatable && nshlib) die("-r with a shared library: unsupported");
 	if (relocatable && (build_id_size() || ndefsym)) die("-r with --build-id or --defsym: unsupported");
@@ -536,18 +570,23 @@ int main(int argc, char **argv) {
 	}
 	script_read(script_path);                            /* declares the script's symbols */
 	if (!entry_sym) entry_sym = "_start";
+	if (script_path && ttext) section_start(".text", load_base);   /* -Ttext with -T: .text's address (GNU) */
+	for (int k = 0; k < nstart; k++) section_start(starts[k].name, starts[k].addr);
 	dyn_init();
+	if (gc_sections) gc_run();
 	for (int i = 0; i < nobj; i++) if (objs[i]->active && objs[i] != linker_obj) layout_match(objs[i]);
 	startstop_declare();
 	dyn_scan();
 	dyn_size();
 	layout_match(linker_obj);
 	layout_run();
+	if (md_fix_unwind_index()) layout_addresses();
 	build_globals(); startstop_define();
 	veneers();
 	startstop_define();
 	dyn_fill();
 	relocate();
+	md_write_unwind_index();
 
 	u32 entry = 0;                                       /* a plain .so has none; ld.so IS a .so WITH an entry */
 	GSym *start = gsym_find(entry_sym);

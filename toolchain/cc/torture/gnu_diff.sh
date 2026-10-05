@@ -22,6 +22,9 @@ for src in "$HERE"/diff/*.c; do
 	${X}gcc -E $INC -w -o "$W/$n.i" "$src" && "$T/cc/build/cc" $OPT -o "$W/$n.s" "$W/$n.i" && "$T/as/build/as" -o "$W/$n.o" "$W/$n.s" \
 	  && "$T/ld/build/ld" -Ttext 0x40000000 -o "$W/$n.elf" "$RT/crt.o" "$W/$n.o" $RT/{string,stdlib,stdio,printf,malloc,rt}.ours.o "$T/rt/build/libosrt.a" \
 	  || { echo "FAIL $n: our build"; fail=$((fail+1)); continue; }
+	case "$OPT" in *-mword-relocations*)   # (U-Boot's: only word-sized absolute relocations, which its -pie fixes up)
+	  if ${X}readelf -rW "$W/$n.o" | grep -q 'R_ARM_MOV[WT]_ABS'; then echo "FAIL $n: movw/movt absolute relocations under -mword-relocations"; fail=$((fail+1)); continue; fi ;;
+	esac
 	timeout 20 $QEMU "$W/$n.elf" > "$W/$n.ours.txt" 2>/dev/null
 	if [ -s "$W/$n.gnu.txt" ] && cmp -s "$W/$n.gnu.txt" "$W/$n.ours.txt"; then pass=$((pass+1));
 	else echo "FAIL $n: output differs from GCC's"; diff "$W/$n.gnu.txt" "$W/$n.ours.txt" | head -6 | sed 's/^/    /'; fail=$((fail+1)); fi

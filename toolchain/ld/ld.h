@@ -32,6 +32,7 @@ extern int bsymbolic;           /* -Bsymbolic: a .so's own definitions bind loca
 extern const char *interp_path; /* --dynamic-linker (default /lib/ld.so.1) */
 extern int stack_override;      /* -z [no]execstack: PT_GNU_STACK flags (0 = decide from the inputs' .note.GNU-stack) */
 extern int norelro;             /* -z norelro: no PT_GNU_RELRO */
+extern int no_interp;           /* --no-dynamic-linker: no .interp / PT_INTERP */
 extern int combreloc;           /* -z combreloc (default): one sorted .rel.dyn; nocombreloc: a .rel<section> each */
 extern int ztext;               /* -z text: a text relocation (dynamic relocation in read-only code) is an error */
 extern int warn_rwx;            /* warn about a read-write-execute PT_LOAD */
@@ -67,7 +68,11 @@ typedef struct {
 	u32 *sec_lma;                                /* [nsh] load address (== sec_vaddr unless AT/AT> moves it) */
 	struct OutSec **sec_out;                     /* [nsh] its output section; NULL = unplaced; &os_discard  */
 	int active;                                  /* 1 = contributes to output; archive members join when pulled */
+	u8 **secbuf;                                 /* [nsh] or NULL: a section's bytes moved out of `data` (edited) */
+	u32 *rawsize;                                /* [nsh] or NULL: its size as read, when the link changed it (0: same) */
 } Obj;
+static inline u8 *sec_data(const Obj *o, int j) { return o->secbuf && o->secbuf[j] ? o->secbuf[j] : o->data + o->sh[j].sh_offset; }
+static inline u32 sec_rawsize(const Obj *o, int j) { return o->rawsize && o->rawsize[j] ? o->rawsize[j] : o->sh[j].sh_size; }
 extern Obj **objs; extern int nobj;              /* every loaded object; archive members join when pulled */
 Obj *obj_new(void);
 static inline const char *sec_name(const Obj *o, int j) { return o->shstr + o->sh[j].sh_name; }
@@ -83,6 +88,8 @@ typedef struct { const char *soname; int used; } ShLib;           /* used -> a D
 typedef struct { const char *name; int lib; u32 size; int type; } ShExport;   /* a provider's exported symbol: size, STT_* */
 extern ShLib *shlibs; extern int nshlib;
 extern ShExport *shexports; extern int nshexport;
+extern int export_dynamic;                       /* -E: an executable exports every global          */
+int dyn_exports(const char *name);               /* elf.c: does the output export this definition?  */
 
 /* ---- the global symbol table (hashed) ---------------------------------------------------------- */
 /* An object definition records where (obj/symidx) until layout gives it an address. A LINKER-SCRIPT symbol
@@ -126,14 +133,22 @@ void layout_addresses(void);                     /* addresses + segments again (
 void layout_insert_after(Obj *ao, int aj, Obj *o, int j);   /* a veneer section right after an input section */
 OutSec *outsec_named(const char *name);          /* an emitted output section by name, or NULL        */
 void layout_data(u8 *buf);
+const char *startstop_section(const char *name);  /* __start_SEC / __stop_SEC -> SEC (NULL: not one) */
+extern int gc_sections, print_gc;                /* gc.c: --gc-sections, --print-gc-sections            */
+extern const char **gc_undef; extern int ngc_undef;   /* -u SYM (an undefined reference, and a gc root)     */
+void gc_run(void);                               /* sweep what nothing reaches (before layout_match)    */
+int  script_keeps(Obj *o, int j);                /* script.c: a KEEP() pattern names it                 */
+void section_start(const char *name, u32 addr);  /* script.c: --section-start / -Ttext with -T           */
 extern GSym **startstops; extern int nstartstop;   /* __start_SEC / __stop_SEC the link defines (ld.c) */                       /* BYTE/SHORT/LONG/QUAD statements' bytes, into the image */
 
 /* ---- dynamic linking (dynamic.c) ---------------------------------------------------------------- */
 extern Obj *linker_obj;                          /* the linker-made sections (.got, .plt, .dynamic, …)  */
-enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELDYN, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_BUILDID, L_VERSYM, L_VERDEF, L_NSEC };
+enum { L_NULL, L_INTERP, L_HASH, L_DYNSYM, L_DYNSTR, L_RELPLT, L_PLT, L_DYNAMIC, L_GOTPLT, L_GOT, L_DYNBSS, L_BUILDID, L_VERSYM, L_VERDEF, L_NSEC };
 void dyn_init(void);                             /* create linker_obj (its sections empty)             */
 void dyn_scan(void);                             /* ONE relocation scan -> imports / PLT / GOT / dynamic relocs */
 void dyn_size(void);                             /* size linker_obj's sections from the tables built    */
+void dyn_index_sections(void);                   /* before addresses: .dynsym's section symbols (GNU's index sections) */
+OutSec *script_next_outsec(OutSec *os);          /* script.c: the output sections in order (NULL: the first) */
 void dyn_fill(void);                             /* after layout: their contents                       */
 int  dyn_target(Obj *o, int symidx, u32 type, u32 *S);   /* relocation target inside a linker-made table */
 
@@ -151,7 +166,12 @@ int  md_needs_dynamic_reloc(u32 type);           /* an absolute word: a runtime 
 int  md_is_abs_nonword(u32 type);                /* movw/movt absolute halves: not position-independent */
 int  md_is_call_reloc(u32 type);                 /* a call (routed via the PLT when imported)          */
 int  md_is_got_reloc(u32 type);                  /* a PIC GOT-entry reference (S = the symbol's GOT slot) */
+int  md_is_got_relative(u32 type);               /* relative to the GOT's origin (no slot): a GOT must exist */
+extern u32 md_got_org;                           /* that origin (dynamic.c sets it after layout)          */
 int  md_is_marker(u32 type);                     /* a dependency marker only (R_ARM_NONE): patches nothing */
+int  md_fix_unwind_index(void);                  /* after the first layout: the unwind index's edits (1: sizes changed) */
+void md_write_unwind_index(void);                /* after relocation: apply them                         */
+extern int merge_exidx;                          /* --no-merge-exidx-entries clears it                   */
 int  md_rel_adjust(u32 type, u8 *loc, u32 delta);  /* -r: move a REL addend by delta (0 = can't, for this type) */
 enum { TLS_NONE, TLS_GD, TLS_LDM, TLS_LDO, TLS_IE, TLS_LE };   /* thread-local access models, by relocation */
 int  md_tls_kind(u32 type);

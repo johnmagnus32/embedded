@@ -29,6 +29,7 @@ int wstr_decode(const char *s, unsigned *out, int cap) {
 			switch (*s) {
 			case 'n': v = '\n'; s++; break; case 't': v = '\t'; s++; break; case 'r': v = '\r'; s++; break;
 			case 'a': v = '\a'; s++; break; case 'b': v = '\b'; s++; break; case 'f': v = '\f'; s++; break; case 'v': v = '\v'; s++; break;
+			case 'e': case 'E': v = 27; s++; break;   /* (GNU: ESC) */
 			case 'x': s++; v = 0; while (isxdigit((unsigned char)*s)) { v = v * 16 + (isdigit((unsigned char)*s) ? *s - '0' : (*s | 32) - 'a' + 10); s++; } break;
 			default:
 				if (*s >= '0' && *s <= '7') { v = 0; for (int k = 0; k < 3 && *s >= '0' && *s <= '7'; k++, s++) v = v * 8 + (*s - '0'); }
@@ -185,6 +186,7 @@ Token *lex(const char *src) {
 				case 'n': v='\n'; p++; break; case 't': v='\t'; p++; break; case 'r': v='\r'; p++; break;
 				case 'a': v='\a'; p++; break; case 'b': v='\b'; p++; break; case 'f': v='\f'; p++; break;
 				case 'v': v='\v'; p++; break; case '\\': v='\\'; p++; break; case '\'': v='\''; p++; break;
+				case 'e': case 'E': v = 27; p++; break;   /* (GNU: ESC) */
 				case '"': v='"'; p++; break; case '?': v='?'; p++; break;
 				case 'x': { p++; v = 0;                                          /* \xHH… hex escape */
 					for (int d; (d = (*p>='0'&&*p<='9') ? *p-'0' : (*p|32)>='a'&&(*p|32)<='f' ? (*p|32)-'a'+10 : -1) >= 0; p++) v = v*16 + d;

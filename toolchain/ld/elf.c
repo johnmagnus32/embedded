@@ -146,6 +146,11 @@ void ar_load_whole(const char *path) {
 /* Read a shared library (-l) as a PROVIDER: register the symbols it EXPORTS + its soname, without laying
  * out any of its sections. We read its .dynsym (SHT_DYNSYM) + linked .dynstr for the global/weak DEFINED
  * names, and its DT_SONAME (falling back to the file's basename) for the DT_NEEDED we'll emit if used. */
+StrMap shimports;   /* the names the providers import (GNU's ref_dynamic) */
+int export_dynamic;  /* -E / --export-dynamic */
+/* Does an executable export `name` (GNU: a symbol a shared library references, or every one under -E)? A .so
+ * exports every default-visibility global. */
+int dyn_exports(const char *name) { return shared || export_dynamic || strmap_get(&shimports, name); }
 void load_shared(const char *path) {
 	long size; u8 *d = slurp(path, &size);
 	ElfFile f; elf_open(&f, path, d, size, ET_DYN, md_e_machine);
@@ -174,7 +179,8 @@ void load_shared(const char *path) {
 		if ((b == STB_GLOBAL || b == STB_WEAK) && s->st_shndx != SHN_UNDEF && s->st_name) {
 			shexports = grow(shexports, nshexport, &shexpcap, sizeof *shexports);
 			shexports[nshexport++] = (ShExport){ elf_string(&f, dstr, s->st_name), lib, s->st_size, ELF32_ST_TYPE(s->st_info) };
-		}
+		} else if ((b == STB_GLOBAL || b == STB_WEAK) && s->st_name)   /* what it imports: a program exports those it defines */
+			strmap_put(&shimports, elf_string(&f, dstr, s->st_name), (void *)1);
 	}
 }
 
@@ -285,7 +291,7 @@ void elf_write(const char *out, u32 entry) {
 		for (int j = 1; j < o->nsh; j++) {
 			OutSec *os = o->sec_out[j];
 			if (!os || os == &os_discard || !os->index || os->type == SHT_NOBITS || o->sh[j].sh_type == SHT_NOBITS) continue;
-			memcpy(buf + os->off + (o->sec_vaddr[j] - os->vaddr), o->data + o->sh[j].sh_offset, o->sh[j].sh_size);
+			memcpy(buf + os->off + (o->sec_vaddr[j] - os->vaddr), sec_data(o, j), o->sh[j].sh_size);
 		}
 	}
 	layout_data(buf);

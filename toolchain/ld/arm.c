@@ -14,6 +14,8 @@
  *                         the same 16-bit addend in both halves of a movw/movt pair)
  */
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include "ld.h"
 
 const u16 md_e_machine = EM_ARM;
@@ -39,6 +41,12 @@ const u32 md_r_copy      = 20;     /* R_ARM_COPY: loader memcpy's an imported va
 #define R_ARM_TARGET1  38
 #define R_ARM_PREL31   42
 #define R_ARM_GOT_PREL 96
+#define R_ARM_GOTOFF32 24    /* S + A - GOT_ORG: GCC's -fPIC reach of local data                         */
+#define R_ARM_BASE_PREL 25   /* GOT_ORG + A - P: `.word _GLOBAL_OFFSET_TABLE_-(.LPIC+8)`              */
+#define R_ARM_GOT_BREL 26    /* GOT(S) + A - GOT_ORG: GCC's -fPIC GOT slot offset (R_ARM_GOT32)        */
+/* GOT_ORG: where GNU's GOT-relative relocations count from — the start of the output section holding .got
+ * (bfd: sgot->output_section->vma; with the default script that's .got.plt's start, _GLOBAL_OFFSET_TABLE_). */
+u32 md_got_org;
 
 const u32 md_r_tls_dtpmod32 = 17, md_r_tls_dtpoff32 = 18, md_r_tls_tpoff32 = 19;   /* dynamic TLS relocations */
 const u32 md_tcb_size = 8;      /* ARM (TLS variant I): the thread pointer addresses an 8-byte TCB; the program's block follows */
@@ -72,7 +80,8 @@ int md_is_abs_nonword(u32 type) { return type == R_ARM_MOVW_ABS_NC || type == R_
 /* Does this reloc, against an UNDEFINED symbol, denote a CALL that should be routed through a PLT stub? */
 int md_is_call_reloc(u32 type) { return type == R_ARM_CALL || type == R_ARM_JUMP24; }
 /* Is this a PIC GOT-entry reference? The front-end resolves it to (GOT_slot - P) — S is the slot addr. */
-int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL; }
+int md_is_got_reloc(u32 type) { return type == R_ARM_GOT_PREL || type == R_ARM_GOT_BREL; }
+int md_is_got_relative(u32 type) { return type == R_ARM_GOTOFF32 || type == R_ARM_BASE_PREL; }   /* (needs a GOT, not a slot) */
 int md_is_marker(u32 type) { return type == R_ARM_NONE || type == R_ARM_V4BX; }
 
 /* ARM group relocations (AAELF 4.6.1.4): X = S + A - P split into G0, G1, G2 — each the top 8 significant bits (at an
@@ -161,6 +170,13 @@ void md_apply_reloc(Obj *o, u32 type, u8 *loc, u32 S, u32 P) {
 	case R_ARM_GOT_PREL:                             /* S = the symbol's GOT slot; store its PC-relative offset */
 		wr32(loc, (u32)((s32)S + (s32)w - (s32)P));  /* the `add rN,pc,rN` then yields the slot address */
 		break;
+	case R_ARM_GOT_BREL:                             /* S = the GOT slot: its offset from the GOT origin */
+	case R_ARM_GOTOFF32:                             /* S = the symbol: its offset from the GOT origin */
+		wr32(loc, S + w - md_got_org);
+		break;
+	case R_ARM_BASE_PREL:                            /* the GOT origin, PC-relative (the symbol: just its name) */
+		wr32(loc, md_got_org + w - P);
+		break;
 	default:
 		die("%s: unsupported relocation type %u", o->path, type);
 	}
@@ -174,7 +190,7 @@ int md_rel_adjust(u32 type, u8 *loc, u32 delta) {
 	u32 w = rd32(loc);
 	switch (type) {
 	case R_ARM_NONE: case R_ARM_V4BX: return 1;
-	case R_ARM_ABS32: case R_ARM_TARGET1: case R_ARM_REL32: case R_ARM_GOT_PREL:
+	case R_ARM_ABS32: case R_ARM_TARGET1: case R_ARM_REL32: case R_ARM_GOT_PREL: case R_ARM_GOT_BREL: case R_ARM_GOTOFF32:
 	case R_ARM_TLS_LE32: case R_ARM_TLS_LDO32: case R_ARM_TLS_GD32: case R_ARM_TLS_LDM32: case R_ARM_TLS_IE32:
 		wr32(loc, w + delta); return 1;
 	case R_ARM_PREL31: {
@@ -190,5 +206,95 @@ int md_rel_adjust(u32 type, u8 *loc, u32 delta) {
 		if (n < -32768 || n > 32767) return 0;   /* (a REL movw/movt addend is a signed 16 bits) */
 		wr32(loc, movw_set(w, (u32)n & 0xffffu)); return 1; }
 	default: return 0;
+	}
+}
+
+/* ---- the unwind index (GNU elf32_arm_fix_exidx_coverage + elf32_arm_write_section) ----------------------------- *
+ * After the first layout, the code (allocated PROGBITS+X input sections) in address order: an .ARM.exidx entry equal
+ * to the one before it goes — an EXIDX_CANTUNWIND after another, or the same inline unwind word after itself (unless
+ * --no-merge-exidx-entries) — and code with no table of its own (or whose first entry doesn't start it), after code
+ * that has one, gets an EXIDX_CANTUNWIND appended to the previous table, marking where the previous code ends (the
+ * unwinder's binary search would otherwise credit it with the last function's rules); one more ends the index. The
+ * sizes change now (lay out again); the bytes after relocation: kept entries slide down with their PREL31 words (and
+ * an .ARM.extab offset) re-based, each new entry written for its final address. */
+#define SHT_ARM_EXIDX 0x70000001u
+int merge_exidx = 1;                                     /* --no-merge-exidx-entries clears it */
+typedef struct { Obj *o; int j; u32 raw; u32 *del; int ndel, delcap; Obj *to; int tj; } XEdit;
+static XEdit *xe; static int nxe, xecap;
+typedef struct { Obj *o; int j, seq; u32 va; } Code;
+static int code_cmp(const void *a, const void *b) {
+	const Code *x = a, *y = b;
+	return x->va != y->va ? (x->va < y->va ? -1 : 1) : x->seq - y->seq;   /* (ties: input order — GNU's qsort is glibc's merge sort) */
+}
+static XEdit *xedit(Obj *o, int j) {
+	for (int i = 0; i < nxe; i++) if (xe[i].o == o && xe[i].j == j) return &xe[i];
+	xe = grow(xe, nxe, &xecap, sizeof *xe);
+	xe[nxe] = (XEdit){ .o = o, .j = j, .raw = o->sh[j].sh_size, .tj = -1 };
+	return &xe[nxe++];
+}
+static void cantunwind_after(Obj *eo, int ej, Obj *to, int tj) { XEdit *e = xedit(eo, ej); e->to = to; e->tj = tj; }
+int md_fix_unwind_index(void) {
+	Code *c = NULL; int nc = 0, cap = 0, seq = 0;
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i];
+		if (!o->active) continue;
+		for (int j = 1; j < o->nsh; j++, seq++) {
+			Elf32_Shdr *h = &o->sh[j];
+			if (h->sh_type != SHT_PROGBITS || !(h->sh_flags & SHF_EXECINSTR) || !(h->sh_flags & SHF_ALLOC) || !o->sec_out[j] || o->sec_out[j] == &os_discard) continue;
+			c = grow(c, nc, &cap, sizeof *c); c[nc++] = (Code){ o, j, seq, o->sec_vaddr[j] };
+		}
+	}
+	qsort(c, nc, sizeof *c, code_cmp);
+	int last_type = -1; u32 last_second = 0; Obj *lxo = NULL, *lto = NULL; int lxj = 0, ltj = 0;
+	for (int k = 0; k < nc; k++) {
+		Obj *o = c[k].o; int t = c[k].j, x = 0;
+		for (int j = 1; j < o->nsh; j++) if (o->sh[j].sh_type == SHT_ARM_EXIDX && (int)o->sh[j].sh_link == t) x = j;   /* (the last one: GNU's backlink) */
+		if (!x) {                                        /* no unwind table of its own */
+			if (last_type == 0 || !lxo || !o->sh[t].sh_size) continue;
+			cantunwind_after(lxo, lxj, lto, ltj); last_type = 0; continue;
+		}
+		if (o->sec_out[x] == &os_discard) continue;      /* (/DISCARD/ed: not in the index) */
+		const u8 *e = o->data + o->sh[x].sh_offset; u32 n = o->sh[x].sh_size;
+		if (last_type > 0 && n && rd32(e) != o->sh[t].sh_addr) { cantunwind_after(lxo, lxj, lto, ltj); last_type = 0; }   /* doesn't start the code */
+		for (u32 q = 0; q + 8 <= n; q += 8) {
+			u32 second = rd32(e + q + 4); int type, elide = 0;
+			if (second == 1) { elide = last_type == 0; type = 0; }
+			else if (second & 0x80000000u) { elide = merge_exidx && last_second == second && last_type == 1; type = 1; last_second = second; }
+			else type = 2;
+			if (elide) { XEdit *d = xedit(o, x); d->del = grow(d->del, d->ndel, &d->delcap, sizeof *d->del); d->del[d->ndel++] = q / 8; }
+			last_type = type;
+		}
+		lxo = o; lxj = x; lto = o; ltj = t;
+	}
+	if (lxo && last_type != 0) cantunwind_after(lxo, lxj, lto, ltj);
+	free(c);
+	for (int i = 0; i < nxe; i++) {
+		XEdit *d = &xe[i]; Obj *o = d->o;
+		if (!o->rawsize) o->rawsize = calloc(o->nsh, sizeof *o->rawsize);
+		o->rawsize[d->j] = d->raw;
+		o->sh[d->j].sh_size = d->raw - 8u * (u32)d->ndel + (d->tj >= 0 ? 8u : 0u);
+		if (!o->secbuf) o->secbuf = calloc(o->nsh, sizeof *o->secbuf);
+		u32 n = d->raw > o->sh[d->j].sh_size ? d->raw : o->sh[d->j].sh_size;
+		o->secbuf[d->j] = calloc(1, n + 1); memcpy(o->secbuf[d->j], o->data + o->sh[d->j].sh_offset, d->raw);   /* relocated in place, then edited */
+	}
+	return nxe > 0;
+}
+static u32 prel31_add(u32 w, u32 off) { return (w & 0x80000000u) | ((w + off) & 0x7fffffffu); }
+void md_write_unwind_index(void) {                       /* after relocation: apply the edits (GNU's copy_exidx_entry) */
+	for (int i = 0; i < nxe; i++) {
+		XEdit *d = &xe[i]; Obj *o = d->o; u8 *b = o->secbuf[d->j];
+		u32 in = 0, out = 0, add = 0; int del = 0;
+		for (; in < d->raw / 8; in++) {
+			if (del < d->ndel && d->del[del] == in) { del++; add += 8; continue; }
+			u32 w0 = rd32(b + 8 * in), w1 = rd32(b + 8 * in + 4);
+			if (!(w0 & 0x80000000u)) w0 = prel31_add(w0, add);
+			if (w1 != 1 && !(w1 & 0x80000000u)) w1 = prel31_add(w1, add);   /* an .ARM.extab offset */
+			wr32(b + 8 * out, w0); wr32(b + 8 * out + 4, w1); out++;
+		}
+		if (d->tj >= 0) {                                /* EXIDX_CANTUNWIND from the end of that code */
+			u32 end = d->to->sec_vaddr[d->tj] + d->to->sh[d->tj].sh_size, at = o->sec_vaddr[d->j] + 8 * out;
+			wr32(b + 8 * out, (end - at) & 0x7fffffffu); wr32(b + 8 * out + 4, 1); out++;
+		}
+		if (8 * out != o->sh[d->j].sh_size) die("internal: .ARM.exidx edit of %s in %s: %u entries for %u bytes", sec_name(o, d->j), o->path, out, o->sh[d->j].sh_size);
 	}
 }

@@ -254,6 +254,7 @@ typedef struct Gvar {
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
 extern int pic;                  /* -fPIC: global/string access goes through the GOT (position-independent) */
+extern int word_relocs;          /* -mword-relocations: addresses as literal words (U-Boot relocates only those) */
 
 Func *parse(Token *tok);         /* tokens -> a list of functions (+ fills `globals`) */
 

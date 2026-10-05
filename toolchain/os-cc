@@ -119,6 +119,7 @@ while [ $# -gt 0 ]; do
     -mabi=*) unsupported "$a" ;;
     -mlittle-endian|-EL|-mno-thumb-interwork|-mthumb-interwork|-mno-fdpic|-mno-single-pic-base|-mno-long-calls|-mtp=cp15|-mtp=auto) ;;
     -mtune=*) ;;                                       # scheduling for a core: no semantic effect
+    -mword-relocations) cc1args+=("$a") ;;             # addresses as literal words, never movw/movt (U-Boot's -pie)
     -m*) unsupported "$a" ;;
     # ---- code generation we implement --------------------------------------------------------------------------
     -O|-O[0-9]|-Os|-Oz|-Og|-Ofast) cppargs+=("$a"); cc1args+=("$a") ;;

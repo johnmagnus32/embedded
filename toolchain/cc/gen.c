@@ -41,6 +41,14 @@ static int log2i(int n) { int k = 0; while ((1 << k) < n) k++; return k; }
 static void emit_libcall(const char *fn) {   /* saves the DISTANCE to the old sp (relative: survives an alloca slide) */
 	fprintf(o, "\tmov ip, sp\n\tbic sp, sp, #7\n\tsub sp, sp, #8\n\tsub ip, ip, sp\n\tstr ip, [sp]\n\tbl %s\n\tldr ip, [sp]\n\tadd sp, sp, ip\n", fn);
 }
+/* `reg = &sym`: movw/movt (no literal pool, so no +-4095 range limit) — or under -mword-relocations (GCC: only
+ * word-sized absolute relocations, which is all a self-relocating -pie image like U-Boot fixes up) a literal word
+ * inline, branched over. */
+static void sym_addr(const char *reg, const char *sym) {
+	if (!word_relocs) { fprintf(o, "\tmovw %s, #:lower16:%s\n\tmovt %s, #:upper16:%s\n", reg, sym, reg, sym); return; }
+	int l = uniq();
+	fprintf(o, "\tldr %s, .L%d\n\tb .L%da\n.L%d:\n\t.word %s\n.L%da:\n", reg, l, l, l, sym, l);
+}
 /* Materialize a 32-bit constant into r0 with movw (+movt for the high half) — no literal pool needed. */
 static void load_imm(const char *reg, long v) {
 	unsigned u = (unsigned)v;
@@ -376,7 +384,7 @@ static void gen_addr(Node *n) {
 			    cur_func_id, g, cur_func_id, g, cur_func_id, g, asm_name(n->name), cur_func_id, g);
 			return;
 		}
-		fprintf(o, "\tmovw r0, #:lower16:%s\n\tmovt r0, #:upper16:%s\n", asm_name(n->name), asm_name(n->name));   /* address via movw/movt (no literal pool -> no ±4095 range limit) */
+		sym_addr("r0", asm_name(n->name));
 		return;
 	}
 	case ND_STMTEXPR:   /* ({ ...; lvalue; }) as an lvalue: run the body, take the last expr's address */
@@ -664,8 +672,9 @@ static void gen_builtin(Node *n) {
 		if (!n->args) die("cc: __builtin_setjmp needs a buffer");
 		twice_check(n);
 		gen_expr(n->args);
-		fprintf(o, "\tstr r11, [r0]\n\tstr sp, [r0, #8]\n\tmovw r1, #:lower16:.L%d\n\tmovt r1, #:upper16:.L%d\n\tstr r1, [r0, #4]\n"
-		           "\tmov r0, #0\n\tb .L%d\n.L%d:\n\tmov r0, #1\n.L%d:\n", land, land, done, land, done);
+		char lab[32]; snprintf(lab, sizeof lab, ".L%d", land);
+		fprintf(o, "\tstr r11, [r0]\n\tstr sp, [r0, #8]\n"); sym_addr("r1", lab);
+		fprintf(o, "\tstr r1, [r0, #4]\n\tmov r0, #0\n\tb .L%d\n.L%d:\n\tmov r0, #1\n.L%d:\n", done, land, done);
 		return;
 	}
 	if (!strcmp(b, "longjmp")) {   /* (buf, 1): resume at buf's setjmp with its fp + sp */
@@ -796,7 +805,8 @@ static void gen_expr1(Node *n) {
 	case ND_ADDR: gen_addr(n->lhs); return;                 /* &lvalue -> the address itself */
 	case ND_LABELADDR: {                                    /* &&label -> the label's code address (movw/movt) */
 		const char *fn = n->owner ? n->owner : cur_gen_func;   /* an enclosing function's __label__ (nested functions) */
-		fprintf(o, "\tmovw r0, #:lower16:" CLABEL_FMT "\n\tmovt r0, #:upper16:" CLABEL_FMT "\n", fn, n->name, fn, n->name);
+		char lab[2 * IDMAX + 16]; snprintf(lab, sizeof lab, CLABEL_FMT, fn, n->name);
+		sym_addr("r0", lab);
 		return;
 	}
 	case ND_DEREF: gen_expr(n->lhs);                        /* pointer -> r0, then load the pointee by width */

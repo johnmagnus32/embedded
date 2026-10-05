@@ -43,6 +43,7 @@ typedef struct Tok {
 	                       * line (GCC: a #define whose body has a two-line comment in it is one definition) */
 	int space;            /* had leading whitespace (for readable output)                      */
 	int line;             /* its physical line in its file (0: not from a file)                */
+	int col;              /* its 1-based byte column there (0: none) — output indentation, as GCC's  */
 	Hide *hide;           /* macros this token must NOT be expanded by                          */
 	struct Tok *next;
 } Tok;
@@ -181,19 +182,19 @@ static Tok *tokenize_lines(const char *src, const int *lines);
 static Tok *tokenize(const char *src) { return tokenize_lines(src, NULL); }
 static Tok *tokenize_lines(const char *src, const int *lines) {
 	Tok head = {0}, *cur = &head;
-	int bol = 1, cbol = 0, space = 0;
+	int bol = 1, cbol = 0, space = 0; const char *ls = src;   /* ls: the start of the current line */
 	for (const char *p = src; *p; ) {
-		if (*p == '\n') { p++; bol = 1; cbol = 0; space = 0; continue; }
+		if (*p == '\n') { p++; ls = p; bol = 1; cbol = 0; space = 0; continue; }
 		if (*p == ' ' || *p == '\t' || *p == '\f' || *p == '\v') { p++; space = 1; continue; }
 		if (lx.cxx_comments && p[0] == '/' && p[1] == '/') { while (*p && *p != '\n') p++; space = 1; continue; }
 		if (p[0] == '/' && p[1] == '*') {
 			const char *e = strstr(p + 2, "*/"); if (!e) die("unterminated comment");
-			for (const char *q = p; q < e; q++) if (*q == '\n' && !bol) { bol = 1; cbol = 1; }   /* a comment spanning lines: a new
+			for (const char *q = p; q < e; q++) if (*q == '\n') { ls = q + 1; if (!bol) bol = 1, cbol = 1; }   /* a comment spanning lines: a new
 			                                                                              * line for text, not for a directive */
 			p = e + 2; space = 1; continue;
 		}
 		Kind k; size_t l = lex_len(p, &k);
-		Tok *t = newtok(k, p, l); t->line = lines ? lines[p - src] : 0; p += l;
+		Tok *t = newtok(k, p, l); t->line = lines ? lines[p - src] : 0; t->col = (int)(p - ls) + 1; p += l;
 		t->bol = bol; t->cbol = cbol; t->space = space; bol = 0; cbol = 0; space = 0;
 		cur = cur->next = t;
 	}
@@ -288,8 +289,12 @@ static void emit(Tok *tok) {
 	int line_open = 0; const Tok *prev = NULL;
 	for (; tok && tok->kind != TEOF; tok = tok->next) {
 		if (tok->kind == TLINE) { if (line_open) fputc('\n', out); fprintf(out, "%s\n", tok->text); line_open = 0; prev = NULL; continue; }
-		if (tok->bol && line_open) fputc('\n', out);
-		else if (tok->space || (tok->bol && !line_open) || (prev && would_merge(prev->text, tok->text))) fputc(' ', out);
+		if (tok->bol) {                                /* a source line's first token: in its column (GCC cb_line_change) */
+			if (line_open) fputc('\n', out);
+			for (int c = 1; c < tok->col; c++) fputc(' ', out);
+			if (!tok->col && line_open) fputc(' ', out);
+		}
+		else if (tok->space || (prev && would_merge(prev->text, tok->text))) fputc(' ', out);
 		fputs(tok->text, out); line_open = 1; prev = tok;
 	}
 	if (line_open) fputc('\n', out);
@@ -531,7 +536,7 @@ static Tok *expand(Tok *tok) {
 				if (!e || e->kind == TEOF) die("unterminated \"%s\"", tok->text);
 				ac->next = newtok(TEOF, "", 0);
 				char b[32]; snprintf(b, sizeof b, "%ld", has_eval(hk, tok->text, ah.next));
-				Tok *r = newtok(TNUM, b, strlen(b)); r->space = tok->space; r->bol = tok->bol; r->next = e->next;
+				Tok *r = newtok(TNUM, b, strlen(b)); r->space = tok->space; r->bol = tok->bol; r->col = tok->col; r->next = e->next;
 				cur = cur->next = r; tok = e->next; continue;
 			}
 			Macro *m = macro_find(tok->text);
@@ -540,7 +545,7 @@ static Tok *expand(Tok *tok) {
 			if (m && !m->func) {                                    /* object-like */
 				Hide *hs = hide_add(tok->hide, m->name);
 				Tok *rep = copy_body(subst(m, NULL, 0, tok->line), hs);   /* (its ## pastes) */
-				if (rep) { rep->space = tok->space; rep->bol = tok->bol; last(rep)->next = tok->next; tok = rep; }
+				if (rep) { rep->space = tok->space; rep->bol = tok->bol; rep->col = tok->col; last(rep)->next = tok->next; tok = rep; }
 				else tok = tok->next;
 				continue;
 			}
@@ -558,7 +563,7 @@ static Tok *expand(Tok *tok) {
 				 * F1's body is `__concat(G, x)` expands both; `f(2)(9)` with f(a) a*g, g(a) f(a) is 2*9*g. */
 				Hide *hs = hide_add(hide_inter(tok->hide, rparen->hide), m->name);
 				rep = copy_body(rep, hs);
-				if (rep) { rep->space = tok->space; rep->bol = tok->bol; last(rep)->next = paren; tok = rep; } else tok = paren;
+				if (rep) { rep->space = tok->space; rep->bol = tok->bol; rep->col = tok->col; last(rep)->next = paren; tok = rep; } else tok = paren;
 				continue;
 			}
 		}
@@ -629,7 +634,7 @@ static Tok *builtin_tok(const Tok *t) {
 		else snprintf(b, sizeof b, "\"%02d:%02d:%02d\"", now.tm_hour, now.tm_min, now.tm_sec);
 		r = newtok(TSTR, b, strlen(b));
 	}
-	r->space = t->space; r->bol = t->bol; r->line = t->line;
+	r->space = t->space; r->bol = t->bol; r->col = t->col; r->line = t->line;
 	return r;
 }
 

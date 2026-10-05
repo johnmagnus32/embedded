@@ -3839,6 +3839,7 @@ static int str_decode(const char *s, unsigned char *out, int cap) {
 			case 'n': v = '\n'; s++; break;  case 't': v = '\t'; s++; break;  case 'r': v = '\r'; s++; break;
 			case 'a': v = '\a'; s++; break;  case 'b': v = '\b'; s++; break;  case 'f': v = '\f'; s++; break;
 			case 'v': v = '\v'; s++; break;  case '\\': v = '\\'; s++; break;
+			case 'e': case 'E': v = 27; s++; break;   /* (GNU: ESC) */
 			case '"': v = '"'; s++; break;   case '\'': v = '\''; s++; break; case '?': v = '?'; s++; break;
 			case 'x': { s++; v = 0; while ((*s >= '0' && *s <= '9') || (*s >= 'a' && *s <= 'f') || (*s >= 'A' && *s <= 'F')) {
 				int d = *s <= '9' ? *s - '0' : (*s | 0x20) - 'a' + 10; v = (v << 4) | d; s++; } break; }
