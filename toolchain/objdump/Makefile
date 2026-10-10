@@ -7,8 +7,8 @@ COMMON := ../common
 CFLAGS += -I$(COMMON)
 GNU   ?= ../../projects/gameboy-v3/image/build/qemu/toolchain-gcc/bin/arm-forge-linux-gnueabihf-
 
-$(BUILD)/objdump: objdump.c arm-reloc-names.h $(COMMON)/elfread.c $(COMMON)/elfread.h $(COMMON)/arread.c $(COMMON)/arread.h $(COMMON)/elf.h | $(BUILD)
-	$(CC) $(CFLAGS) -o $@ objdump.c $(COMMON)/elfread.c $(COMMON)/arread.c
+$(BUILD)/objdump: objdump.c arm-reloc-names.h $(COMMON)/elfver.c $(COMMON)/elfver.h $(COMMON)/elfread.c $(COMMON)/elfread.h $(COMMON)/arread.c $(COMMON)/arread.h $(COMMON)/elf.h | $(BUILD)
+	$(CC) $(CFLAGS) -o $@ objdump.c $(COMMON)/elfread.c $(COMMON)/arread.c $(COMMON)/elfver.c
 
 $(BUILD):
 	mkdir -p $(BUILD)
