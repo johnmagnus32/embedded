@@ -396,38 +396,36 @@ static void print_one_reloc_table(const ElfFile *f, const Elf32_Shdr *rs) {
 	int dynsym = 0;
 	for (int i = 1; i < f->nsh; i++) if (f->sh[i].sh_type == SHT_DYNSYM) dynsym = i;
 	if ((int)rs->sh_link != dynsym) vers.active = 0;   /* .gnu.version indexes .dynsym only */
-	{
-		int entsz = rs->sh_type == SHT_RELA ? 12 : 8;
-		u32 count = rs->sh_size / (u32)entsz;
-		int strsec = 0; const Elf32_Sym *sym = NULL; int nsym = 0;
-		if (rs->sh_link > 0 && (int)rs->sh_link < f->nsh) {
-			const Elf32_Shdr *ss = &f->sh[rs->sh_link];
-			sym = (const Elf32_Sym *)(f->data + ss->sh_offset); nsym = (int)(ss->sh_size / sizeof *sym);
-			strsec = (int)ss->sh_link;
+	int entsz = rs->sh_type == SHT_RELA ? 12 : 8;
+	u32 count = rs->sh_size / (u32)entsz;
+	int strsec = 0; const Elf32_Sym *sym = NULL; int nsym = 0;
+	if (rs->sh_link > 0 && (int)rs->sh_link < f->nsh) {
+		const Elf32_Shdr *ss = &f->sh[rs->sh_link];
+		sym = (const Elf32_Sym *)(f->data + ss->sh_offset); nsym = (int)(ss->sh_size / sizeof *sym);
+		strsec = (int)ss->sh_link;
+	}
+	for (u32 k = 0; k < count; k++) {
+		const Elf32_Rel *r = (const Elf32_Rel *)(f->data + rs->sh_offset + k * (u32)entsz);
+		u32 off = r->r_offset, info = r->r_info;
+		int si = (int)ELF32_R_SYM(info); u32 type = ELF32_R_TYPE(info);
+		s32 addend = entsz == 12 ? *(const s32 *)((const u8 *)r + 8) : 0;   /* RELA's r_addend */
+		printf("%08x", off);
+		const char *rn = reloc_name(type);
+		if (rn) printf(" %-16s  ", rn); else printf(" %-16u  ", type);
+		const Elf32_Sym *s = sym && si > 0 && si < nsym ? &sym[si] : NULL;
+		/* No symbol (index 0): BFD hands objdump its absolute-section symbol, named "*ABS*". A section
+		 * symbol is named after its section (sym_name), and printed bare — the "[name]" form is for a
+		 * relocation with no symbol at all, which an ELF file never has. */
+		printf("%s", s ? sym_name(f, s, strsec) : "*ABS*");
+		/* objdump_print_symname appends the version: "@@name", or "@name" when the symbol is bound to an
+		 * old version or is undefined here. Section and synthetic symbols never carry one. */
+		if (s && ELF32_ST_TYPE(s->st_info) != STT_SECTION) {
+			int vhidden = 0; const char *vn = version_of(&vers, si, &vhidden);
+			if (s->st_shndx == SHN_UNDEF) vhidden = 1;
+			if (vn && *vn) printf(vhidden ? "@%s" : "@@%s", vn);
 		}
-		for (u32 k = 0; k < count; k++) {
-			const Elf32_Rel *r = (const Elf32_Rel *)(f->data + rs->sh_offset + k * (u32)entsz);
-			u32 off = r->r_offset, info = r->r_info;
-			int si = (int)ELF32_R_SYM(info); u32 type = ELF32_R_TYPE(info);
-			s32 addend = entsz == 12 ? *(const s32 *)((const u8 *)r + 8) : 0;   /* RELA's r_addend */
-			printf("%08x", off);
-			const char *rn = reloc_name(type);
-			if (rn) printf(" %-16s  ", rn); else printf(" %-16u  ", type);
-			const Elf32_Sym *s = sym && si > 0 && si < nsym ? &sym[si] : NULL;
-			/* No symbol (index 0): BFD hands objdump its absolute-section symbol, named "*ABS*". A section
-			 * symbol is named after its section (sym_name), and printed bare — the "[name]" form is for a
-			 * relocation with no symbol at all, which an ELF file never has. */
-			printf("%s", s ? sym_name(f, s, strsec) : "*ABS*");
-			/* objdump_print_symname appends the version: "@@name", or "@name" when the symbol is bound to an
-			 * old version or is undefined here. Section and synthetic symbols never carry one. */
-			if (s && ELF32_ST_TYPE(s->st_info) != STT_SECTION) {
-				int vhidden = 0; const char *vn = version_of(&vers, si, &vhidden);
-				if (s->st_shndx == SHN_UNDEF) vhidden = 1;
-				if (vn && *vn) printf(vhidden ? "@%s" : "@@%s", vn);
-			}
-			if (addend) printf(addend < 0 ? "-0x%08x" : "+0x%08x", addend < 0 ? (u32)-addend : (u32)addend);
-			printf("\n");
-		}
+		if (addend) printf(addend < 0 ? "-0x%08x" : "+0x%08x", addend < 0 ? (u32)-addend : (u32)addend);
+		printf("\n");
 	}
 }
 
