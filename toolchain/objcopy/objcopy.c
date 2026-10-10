@@ -13,7 +13,8 @@
  *          .strtab, .shstrtab;
  *        - symbols: the kept ones, locals first, in input order (section and file symbols count as debugging ones);
  *        - .strtab / .shstrtab are GNU's suffix-merged string tables (".text" shares ".rel.text"'s bytes).
- *   or -O binary: the loadable sections' bytes laid out by load address from the lowest one, gaps --gap-fill'ed.
+ *   or, with -O, one of the other output formats: `binary` (the loadable sections' bytes laid out by load address
+ *      from the lowest one, gaps --gap-fill'ed), `srec` or `ihex` (the same image as text records, holes skipped).
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
@@ -39,6 +40,9 @@ static void *xcalloc(size_t n, size_t s) { void *p = calloc(n ? n : 1, s); if (!
 enum { STRIP_NONE, STRIP_DEBUG, STRIP_UNNEEDED, STRIP_ALL };
 enum { LOCALS_UNDEF, LOCALS_START_L, LOCALS_ALL };
 static int strip_symbols = STRIP_NONE, discard_locals = LOCALS_UNDEF, out_binary, preserve_dates;
+/* The output format: 0 = ELF (the default, written by copy_elf), else one of the writers in out_formats[].
+ * out_binary stays as the "not ELF" question the ELF-shaped logic asks. */
+static int out_format; static const char *out_path = "";
 static int gap_fill_set, pad_to_set; static u8 gap_fill; static u32 pad_to;
 typedef struct { const char *pat; int kind; } Pat;        /* kind: 'R' remove, 'j' only, 'r' remove relocations */
 static Pat *pats; static int npat, patcap;
@@ -201,10 +205,10 @@ static int bin_cmp(const void *x, const void *y) {   /* compare_section_lma: by 
 	if (a->size != b->size) return a->size < b->size ? -1 : 1;
 	return a->j - b->j;
 }
-/* -O binary: every kept section with contents that is allocated (BFD: SEC_LOAD), at its load address minus the
- * lowest such (sized) one; gaps between consecutive ones (by load address) filled with --gap-fill, the last one
- * extended to --pad-to. */
-static void write_binary(const ElfFile *f, const int *keep) {
+/* The LOADABLE image every non-ELF output format is made of: each kept section with contents that is allocated
+ * (BFD: SEC_LOAD), sorted by load address, plus how much each one GROWS — a gap after it materialised by
+ * --gap-fill, or the last one extended to --pad-to. Shared by -O binary / srec / ihex, as BFD shares it. */
+static int load_image(const ElfFile *f, const int *keep, BinSec **pv, u32 **pgrow) {
 	BinSec *v = xcalloc(f->nsh, sizeof *v); int n = 0;
 	for (int j = 1; j < f->nsh; j++) {
 		const Elf32_Shdr *s = &f->sh[j];
@@ -212,9 +216,6 @@ static void write_binary(const ElfFile *f, const int *keep) {
 		v[n++] = (BinSec){ section_lma(f, j), s->sh_size, j };
 	}
 	qsort(v, n, sizeof *v, bin_cmp);
-	int found = 0; u32 low = 0;
-	for (int i = 0; i < n; i++) if (v[i].size && (!found || v[i].lma < low)) { low = v[i].lma; found = 1; }
-	u32 end = 0;
 	u32 *grow = xcalloc(n, sizeof *grow);
 	if (gap_fill_set || pad_to_set) {
 		for (int i = 0; i + 1 < n; i++) {
@@ -223,6 +224,15 @@ static void write_binary(const ElfFile *f, const int *keep) {
 		}
 		if (pad_to_set && n && v[n - 1].lma + v[n - 1].size < pad_to) grow[n - 1] = pad_to - (v[n - 1].lma + v[n - 1].size);
 	}
+	*pv = v; *pgrow = grow; return n;
+}
+/* -O binary: the image's bytes from the lowest load address, as one contiguous file (any hole --gap-fill did not
+ * cover reads as zero — an -O binary output is always a single span). */
+static void write_binary(const ElfFile *f, const int *keep) {
+	BinSec *v; u32 *grow; int n = load_image(f, keep, &v, &grow);
+	int found = 0; u32 low = 0;
+	for (int i = 0; i < n; i++) if (v[i].size && (!found || v[i].lma < low)) { low = v[i].lma; found = 1; }
+	u32 end = 0;
 	for (int i = 0; i < n; i++) if (v[i].size + grow[i]) { u32 e = v[i].lma - low + v[i].size + grow[i]; if (e > end) end = e; }
 	u8 *b = xcalloc(end, 1);
 	for (int i = 0; i < n; i++) {
@@ -234,6 +244,130 @@ static void write_binary(const ElfFile *f, const int *keep) {
 	emit(b, end);
 	free(v); free(grow);
 }
+
+/* ---- the TEXT output formats (srec / ihex) ------------------------------------------------------------- *
+ * Both describe the loadable image as lines of "address + bytes + checksum", 16 data bytes to a line, CRLF-ended,
+ * and both SKIP the holes between sections — unlike -O binary, which is one span. A record never spans two runs,
+ * so a 20-byte section becomes 16 + 4 rather than merging with the next one.
+ *
+ * S-records: an S0 header whose data is the OUTPUT FILE'S NAME as given (40 bytes at most), then S1/S2/S3 data
+ * records — the digit chosen ONCE for the whole file from the widest address in it, not per record — then
+ * S9/S8/S7 to terminate, carrying the ENTRY address in that same width. Count = the bytes that follow it,
+ * address and checksum included; checksum = ~(sum of those bytes).
+ *
+ * Intel HEX: type-00 data records carry a 16-bit address, so a base record precedes them whenever the address
+ * leaves the announced 64K window — type-02 "extended segment address" (base >> 4) while the image is inside the
+ * first megabyte, type-04 "extended linear address" (base >> 16) above it, and moving to type-04 first clears any
+ * segment base with a type-02 zero. No record crosses a 64K boundary. The entry address follows as type-03
+ * (segment:offset) or, above a megabyte, type-05 (linear) — and not at all when it is zero. Type-01 ends the
+ * file. Checksum is the two's complement of the sum. */
+static char *obuf_text; static size_t otext_len, otext_cap;
+static void put(const char *fmt, ...) {
+	va_list ap; char line[128];
+	va_start(ap, fmt); int n = vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
+	if (n < 0 || n >= (int)sizeof line) die("internal: record too long to format");
+	if (otext_len + (size_t)n + 1 > otext_cap) { otext_cap = (otext_cap ? otext_cap * 2 : 4096) + (size_t)n + 1; obuf_text = realloc(obuf_text, otext_cap); if (!obuf_text) die("out of memory"); }
+	memcpy(obuf_text + otext_len, line, (size_t)n); otext_len += (size_t)n;
+}
+/* One S-record: `type` is the digit, `addr` the address in `awid` bytes, `data` the payload. */
+static void srec_put(int type, u32 addr, int awid, const u8 *data, u32 len) {
+	u32 count = (u32)awid + len + 1, sum = count;
+	char body[96]; int at = 0; body[0] = 0;
+	for (int b = awid - 1; b >= 0; b--) { u32 byte = (addr >> (8 * b)) & 0xff; sum += byte; at += sprintf(body + at, "%02X", byte); }
+	for (u32 i = 0; i < len; i++) { sum += data[i]; at += sprintf(body + at, "%02X", data[i]); }
+	put("S%d%02X%s%02X\r\n", type, count, body, (~sum) & 0xff);
+}
+/* One Intel HEX record, at `addr16` within the announced window. */
+static void ihex_put(int type, u32 addr16, const u8 *data, u32 len) {
+	u32 sum = len + ((addr16 >> 8) & 0xff) + (addr16 & 0xff) + (u32)type;
+	char body[96]; int at = 0; body[0] = 0;          /* a record with no data must not print the last one's */
+	for (u32 i = 0; i < len; i++) { sum += data[i]; at += sprintf(body + at, "%02X", data[i]); }
+	put(":%02X%04X%02X%s%02X\r\n", len, addr16 & 0xffffu, type, body, (~sum + 1) & 0xff);
+}
+/* The image as runs of bytes at an address: each section, and then — as runs of THEIR OWN — whatever
+ * --gap-fill/--pad-to grew after it, because a record never spans the boundary. objcopy writes the fill a
+ * bufferful at a time, and a record never spans two of those either: invisible while records stay 16-byte
+ * aligned, but after Intel HEX clips one at a 64K boundary the alignment is the buffer's again. */
+#define FILLCHUNK 8192                           /* objcopy's BUFSIZE */
+typedef struct { u32 addr; const u8 *data; u32 len; } Run;
+static int load_runs(const ElfFile *f, const int *keep, Run **pr, u8 **pfill) {
+	BinSec *v; u32 *grow; int n = load_image(f, keep, &v, &grow);
+	size_t nr = 0;
+	for (int i = 0; i < n; i++) nr += (v[i].size != 0) + ((size_t)grow[i] + FILLCHUNK - 1) / FILLCHUNK;
+	u8 *fill = xcalloc(FILLCHUNK, 1); memset(fill, gap_fill, FILLCHUNK);
+	Run *r = xcalloc(nr + 1, sizeof *r); int k = 0;
+	for (int i = 0; i < n; i++) {
+		if (v[i].size) r[k++] = (Run){ v[i].lma, f->data + f->sh[v[i].j].sh_offset, v[i].size };
+		for (u32 at = 0; at < grow[i]; at += FILLCHUNK) {
+			u32 len = grow[i] - at < FILLCHUNK ? grow[i] - at : FILLCHUNK;
+			r[k++] = (Run){ v[i].lma + v[i].size + at, fill, len };
+		}
+	}
+	free(v); free(grow); *pr = r; *pfill = fill; return k;
+}
+static void write_srec(const ElfFile *f, const int *keep) {
+	Run *r; u8 *fill; int nr = load_runs(f, keep, &r, &fill);
+	int type = 1;                                    /* srec_set_section_contents: the widest address decides, once */
+	for (int i = 0; i < nr; i++) {
+		u32 last = r[i].addr + r[i].len - 1;
+		if (type < 2 && last > 0xffffu) type = 2;
+		if (type < 3 && last > 0xffffffu) type = 3;
+	}
+	int awid = type + 1;
+	size_t nm = strlen(out_path);
+	srec_put(0, 0, 2, (const u8 *)out_path, (u32)(nm > 40 ? 40 : nm));   /* S0: the output file's name */
+	for (int i = 0; i < nr; i++)
+		for (u32 off = 0; off < r[i].len; off += 16) {
+			u32 len = r[i].len - off < 16 ? r[i].len - off : 16;
+			srec_put(type, r[i].addr + off, awid, r[i].data + off, len);
+		}
+	srec_put(10 - type, f->eh->e_entry, awid, NULL, 0);                 /* S9 / S8 / S7 */
+	emit((u8 *)obuf_text, otext_len);
+	free(r); free(fill);
+}
+static void write_ihex(const ElfFile *f, const int *keep) {
+	Run *r; u8 *fill; int nr = load_runs(f, keep, &r, &fill);
+	u32 segbase = 0, extbase = 0;                    /* the window the type-00 addresses are relative to */
+	for (int i = 0; i < nr; i++) {
+		u32 where = r[i].addr, left = r[i].len; const u8 *p = r[i].data;
+		while (left) {
+			u32 now = left < 16 ? left : 16;
+			if (where > segbase + extbase + 0xffffu) {
+				u8 a[2];
+				if (where <= 0xfffffu) {             /* still inside the first megabyte: a segment base */
+					segbase = where & 0xf0000u;
+					a[0] = (u8)(segbase >> 12); a[1] = (u8)(segbase >> 4);
+					ihex_put(2, 0, a, 2);
+				} else {                             /* above it: a linear base, and no segment base left */
+					if (segbase) { a[0] = a[1] = 0; ihex_put(2, 0, a, 2); segbase = 0; }
+					extbase = where & 0xffff0000u;
+					a[0] = (u8)(extbase >> 24); a[1] = (u8)(extbase >> 16);
+					ihex_put(4, 0, a, 2);
+				}
+			}
+			u32 rec = where - (extbase + segbase);
+			if (rec + now > 0x10000u) now = 0x10000u - rec;
+			ihex_put(0, rec, p, now);
+			where += now; p += now; left -= now;
+		}
+	}
+	u32 start = f->eh->e_entry;                      /* an entry of 0 gets no start record at all */
+	if (start && start <= 0xfffffu) {                /* type 03: segment:offset */
+		u32 seg = (start & 0xf0000u) >> 4;
+		u8 a[4] = { (u8)(seg >> 8), (u8)seg, (u8)(start >> 8), (u8)start };
+		ihex_put(3, 0, a, 4);
+	} else if (start) {                              /* type 05: the linear address */
+		u8 a[4] = { (u8)(start >> 24), (u8)(start >> 16), (u8)(start >> 8), (u8)start };
+		ihex_put(5, 0, a, 4);
+	}
+	ihex_put(1, 0, NULL, 0);                         /* end of file */
+	emit((u8 *)obuf_text, otext_len);
+	free(r); free(fill);
+}
+
+static const struct { const char *name; void (*write)(const ElfFile *, const int *); int exec_p; } out_formats[] = {
+	{ "binary", write_binary, 1 }, { "srec", write_srec, 1 }, { "ihex", write_ihex, 0 },
+};
 
 /* _bfd_elf_get_reloc_section: the section a (non-symtab) REL section applies to, by name — ".rel.X" -> "X"; ".rel.plt"
  * -> ".got.plt", else ".got" (ARM wants a .got.plt). 0 = none. */
@@ -257,7 +391,8 @@ static void copy_elf(const char *in) {
 	if (size < 18 || memcmp(data, "\177ELF", 4)) die("%s: file format not recognized", in);
 	ElfFile f; elf_open(&f, in, data, size, data[16] | data[17] << 8, 0);
 	int et = f.eh->e_type, rel_obj = et == ET_REL, nsh = f.nsh;
-	out_exec = et == ET_EXEC || (et == ET_DYN && !out_binary);   /* (BFD: EXEC_P; a .so's DYNAMIC doesn't survive -O binary) */
+	out_exec = (et == ET_EXEC || (et == ET_DYN && !out_binary))  /* (BFD: EXEC_P; a .so's DYNAMIC doesn't survive -O binary) */
+	           && (!out_format || out_formats[out_format - 1].exec_p);
 	int symtab = f.symtab, strtab = symtab ? (int)f.sh[symtab].sh_link : 0, shstr = f.eh->e_shstrndx;
 	int *relof = xcalloc(nsh, sizeof *relof), *relsec = xcalloc(nsh, sizeof *relsec), *keep = xcalloc(nsh, sizeof *keep);
 	int has_reloc = 0;
@@ -284,7 +419,7 @@ static void copy_elf(const char *in) {
 		if (strip && !out_binary && et != ET_REL && f.sh[j].sh_flags & SHF_ALLOC && f.sh[j].sh_size)
 			die("%s: removing the allocated section %s from an executable: unsupported", in, nm);
 	}
-	if (out_binary) { write_binary(&f, keep); free(relof); free(relsec); free(keep); return; }
+	if (out_format) { out_formats[out_format - 1].write(&f, keep); free(relof); free(relsec); free(keep); return; }
 	for (int j = 1; j < nsh; j++)   /* a relocation section goes with its section, unless -R names it (or --remove-relocations) */
 		if (relof[j]) keep[j] = keep[relof[j]] && !pat_match(f.shstr + f.sh[j].sh_name, 'R') && !pat_match(f.shstr + f.sh[relof[j]].sh_name, 'r');
 	if (strip_symbols == STRIP_ALL) for (int j = 1; j < nsh; j++) if (relof[j] && keep[j]) die("%s: --strip-all of a relocatable object with relocations: unsupported", in);
@@ -543,9 +678,10 @@ static int common_opt(int argc, char **argv, int *i) {
 	return 1;
 }
 static void check_target(const char *t, int out) {
-	if (out && !strcmp(t, "binary")) { out_binary = 1; return; }
+	if (out) for (size_t i = 0; i < sizeof out_formats / sizeof *out_formats; i++)
+		if (!strcmp(t, out_formats[i].name)) { out_format = (int)i + 1; out_binary = 1; return; }
 	if (!strcmp(t, "elf32-littlearm") || !strcmp(t, "elf32-little")) return;
-	die("target '%s': unsupported (elf32-littlearm, elf32-little%s)", t, out ? ", binary" : "");
+	die("target '%s': unsupported (elf32-littlearm, elf32-little%s)", t, out ? ", binary, srec, ihex" : "");
 }
 
 int main(int argc, char **argv) {
@@ -587,15 +723,16 @@ int main(int argc, char **argv) {
 		else if (!strcmp(a, "--version") || !strcmp(a, "-V")) { printf("objcopy (the os toolchain) — GNU objcopy compatible\n"); return 0; }
 		else die("unrecognized option '%s'", a);
 	}
-	if (pad_to_set && !out_binary) die("--pad-to: only with -O binary");
-	if (gap_fill_set && !out_binary) die("--gap-fill: only with -O binary");
+	if (pad_to_set && !out_binary) die("--pad-to: only with -O binary, srec or ihex");
+	if (gap_fill_set && !out_binary) die("--gap-fill: only with -O binary, srec or ihex");
 	if (strip) {
 		if (!nfiles) die("no input file");
 		if (out && nfiles > 1) die("-o with more than one input");
-		for (int k = 0; k < nfiles; k++) { copy_elf(files[k]); finish(files[k], out); }
+		for (int k = 0; k < nfiles; k++) { out_path = out ? out : files[k]; copy_elf(files[k]); finish(files[k], out); }
 		return 0;
 	}
 	if (nfiles < 1 || nfiles > 2) die("usage: objcopy [options] in [out]");
+	out_path = nfiles == 2 ? files[1] : files[0];
 	copy_elf(files[0]);
 	finish(files[0], nfiles == 2 ? files[1] : NULL);
 	return 0;

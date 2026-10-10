@@ -22,7 +22,7 @@ $(BUILD):
 # BusyBox and U-Boot builds use, over the inputs the image build left behind.
 test: all
 	@for t in cpp cc as ld rt; do $(MAKE) -s -C ../$$t >/dev/null || exit 1; done
-	@GNU=$(GNU) OBJCOPY=$(abspath $(BUILD)/objcopy) STRIP=$(abspath $(BUILD)/strip) bash tests/objcopy-diff.sh
+	@GNU=$(abspath $(GNU)) OBJCOPY=$(abspath $(BUILD)/objcopy) STRIP=$(abspath $(BUILD)/strip) bash tests/objcopy-diff.sh
 
 clean:
 	rm -rf $(BUILD)

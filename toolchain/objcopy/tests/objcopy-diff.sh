@@ -32,13 +32,19 @@ for f in "$img/linux/init/main.o" "$img/linux/kernel/sched/core.o" "$S/usr/lib/c
 for f in $(find "$img/libc" -maxdepth 3 -name '*.so*' -type f 2>/dev/null | head -2); do execs+=("$f"); done
 [ -f "$img/linux/vmlinux" ] && execs+=("$img/linux/vmlinux")
 
-run() {   # run <name> <gnu-tool> <our-tool> <args with IN/OUT placeholders>  — fresh copies of the input each side
+# run <name> <gnu-tool> <our-tool> <args>, where @NAME is a file in each tool's own directory: @in is the input, a
+# fresh copy per side, and any other @NAME the output. Both tools are run from their own directory so that a path
+# INSIDE the output (an S0 header carries the output's name) is the same on both sides.
+run() {
   local name="$1" gt="$2" ot="$3" in="$4"; shift 4
-  cp "$in" $t/g/in; cp "$in" $t/o/in; chmod 640 $t/g/in $t/o/in; rm -f $t/g/out $t/o/out
-  local ga=() oa=(); for a in "$@"; do ga+=("${a//@/$t/g/}"); oa+=("${a//@/$t/o/}"); done
-  "$gt" "${ga[@]}" >$t/g.err 2>&1; local g=$?; "$ot" "${oa[@]}" >$t/o.err 2>&1; local o=$?
-  local res=$t/g/out; [ -f $t/g/out ] || res=$t/g/in
-  local ores=$t/o/out; [ -f $t/o/out ] || ores=$t/o/in
+  cp "$in" $t/g/in; cp "$in" $t/o/in; chmod 640 $t/g/in $t/o/in
+  local args=() o_name=
+  for a in "$@"; do case "$a" in @in) ;; @*) o_name="${a#@}";; esac; args+=("${a//@/}"); done
+  [ -z "$o_name" ] || rm -f "$t/g/$o_name" "$t/o/$o_name"
+  ( cd $t/g && "$gt" "${args[@]}" ) >$t/g.err 2>&1; local g=$?
+  ( cd $t/o && "$ot" "${args[@]}" ) >$t/o.err 2>&1; local o=$?
+  local res=$t/g/$o_name ores=$t/o/$o_name
+  { [ -n "$o_name" ] && [ -f "$res" ]; } || { res=$t/g/in; ores=$t/o/in; }
   if [ $g = $o ] && cmp -s $res $ores && [ "$(stat -c %a $res)" = "$(stat -c %a $ores)" ]; then pass=$((pass+1)); else
     fail=$((fail+1)); echo "FAIL $name $(basename $in): exit gnu=$g ours=$o, modes $(stat -c %a $res) $(stat -c %a $ores)"
     [ $g = 0 ] || sed 's/^/    gnu: /' $t/g.err | head -2; [ $o = 0 ] || sed 's/^/    ours: /' $t/o.err | head -2
@@ -61,7 +67,43 @@ done
 for f in "${execs[@]}"; do
   oc "$f" -O binary -R .comment -S @in @out;  oc "$f" -S @in @out;  st "$f" @in;  st "$f" -s -R .note -R .comment @in -o @out
   oc "$f" -O binary --gap-fill=0xff @in @out;  oc "$f" -O binary --pad-to=0x400000 --gap-fill=0x5a @in @out
+  # the TEXT formats: the record type follows the address width, holes between sections are skipped, and
+  # --gap-fill/--pad-to materialise them (so the same input is covered with and without)
+  oc "$f" -O srec @in @out;  oc "$f" -O ihex @in @out
+  oc "$f" -O srec -R .comment -S @in @out;  oc "$f" -O ihex -j .text @in @out
 done
+# The TEXT formats' address handling, which has a rule per range. S-records: ONE type for the whole file, from the
+# widest address in it (S1/S9 under 64K, S2/S8 under 16M, else S3/S7) — so a low image whose sections are far apart
+# is all S2, and --pad-to past 64K promotes the type. Intel HEX: a type-02 segment base inside the first megabyte,
+# a type-04 linear base above it (clearing the segment base first), no record across a 64K boundary, and an entry
+# address as type-03 or type-05 — or, when it is zero, not at all.
+if [ -n "${GNU}" ] && [ -x "${GNU}gcc" ]; then
+  printf 'int g=5;\nint f(int x){return x+g;}\n' > "$t/w.c"
+  "${GNU}gcc" -O1 -marm -c -o "$t/w.o" "$t/w.c" 2>/dev/null
+  link() {   # link <name> <ld args...>: one tiny image, then every text-format case over it
+    local n="$1"; shift
+    "${GNU}ld" "$@" -o "$t/w.$n" "$t/w.o" 2>/dev/null || return 0
+    oc "$t/w.$n" -O srec @in @out;             oc "$t/w.$n" -O ihex @in @out
+    oc "$t/w.$n" -O srec --gap-fill=0xaa @in @out;  oc "$t/w.$n" -O ihex --gap-fill=0xaa @in @out
+    oc "$t/w.$n" -O srec --pad-to=0x20000 --gap-fill=0 @in @out
+    oc "$t/w.$n" -O ihex --pad-to=0x20000 --gap-fill=0 @in @out
+  }
+  spread() { cat > "$t/w.ld" <<L
+ENTRY(f)
+SECTIONS { . = $1; .text : { *(.text) } . = $2; .data : { *(.data) } }
+L
+  }
+  for base in 0x8000 0x200000 0x40000000; do spread "${base}" "${base} + 0x9000"; link "$base" -T "$t/w.ld"; done
+  spread 0x100 .;      link low   -T "$t/w.ld"             # all under 64K: S1/S9, and no base record at all
+  spread 0x100 .;      link zero  -T "$t/w.ld" -e 0        # entry 0: an S9 carrying 0, and NO ihex start record
+  spread 0x8000 0x200000;  link mix  -T "$t/w.ld"          # page 0 then a linear base
+  spread 0x11000 0x200000; link seg2ext -T "$t/w.ld"       # a segment base, then a linear one over it
+  spread 0xfff8 .;     link cross -T "$t/w.ld"             # a section straddling a 64K boundary
+  # the S0 header carries the OUTPUT NAME as given, 40 bytes at most
+  long=aaaaaaaaaa/bbbbbbbbbb/cccccccccc/dddddddddd/eeeeeeeeee
+  for d in $t/g $t/o; do mkdir -p "$d/$long"; done
+  oc "$t/w.low" -O srec @in @$long/ffff.srec
+fi
 [ -f "$img/linux/vmlinux.o" ] && oc "$img/linux/vmlinux.o" -j .modinfo -O binary @in @out
 [ -f "$img/linux/arch/arm/boot/compressed/vmlinux" ] && oc "$img/linux/arch/arm/boot/compressed/vmlinux" -O binary -R .comment -S @in @out
 echo "objcopy-diff: $pass identical, $fail different over ${#objs[@]} objects + ${#execs[@]} executables/shared objects"
