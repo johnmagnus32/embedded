@@ -24,6 +24,11 @@
 # The compiler's own headers (cc/include, installed as ../lib/os-cc/include) come after the -I dirs, before a sysroot's
 # (-print-file-name=include names them, as gcc's).
 #
+# -g IS ACCEPTED, with a warning, and produces no debug information (we emit no .debug_* yet). That is gcc's own
+# answer when it can't give the format asked for — `gcc -gstabs` warns "no longer supported", compiles, exits 0 — and
+# a build system that passes -g unconditionally (U-Boot's KBUILD_CFLAGS/AFLAGS do) must not stop here. The levels and
+# DWARF versions gcc takes are classified exactly as its driver does; -g0 asks for nothing, so it is silent.
+#
 # A SYSROOT (--sysroot=DIR, else ../sysroot beside bin/ when it exists — gcc's --with-sysroot) is a C library to build
 # against, as gcc uses one: its headers after the -I dirs (-isystem DIR/usr/include, unless -nostdinc), and a program
 # link gets its start files (crt1.o crti.o ... crtn.o; Scrt1.o for -pie, none for -shared) unless -nostdlib /
@@ -40,6 +45,7 @@ TRIPLE=arm-os-custom-linux-gnueabihf
 GCCVER=13.3.0                      # the GCC we are interchangeable with (cpp's predefines say __GNUC__ 13)
 
 die() { echo "os-cc: $*" >&2; exit 1; }
+warn() { echo "os-cc: warning: $*" >&2; }
 unsupported() { die "unsupported option '$1'${2:+ ($2)}"; }
 
 mode=link            # link | compile | asm | preprocess
@@ -50,6 +56,7 @@ cc1args=()           # -> cc1: code generation (float ABI, target, PIC, unwind t
 asargs=()            # -> as: -Wa,... and the target flags gcc hands its assembler
 deps=()              # -> cpp: -MD/-MMD/-MF/-MT/-MP
 depsonly=""          # -M/-MM: only the dependency rule
+debug_asked=""       # -g asked for debug information we don't produce yet (warned about once, after the queries)
 depmode=""; depfile=""; deptarget=""
 inputs=()            # sources: "lang:path"
 linkobjs=()          # .o/.a already built, passed straight to ld
@@ -157,8 +164,17 @@ while [ $# -gt 0 ]; do
     -Wa,*) IFS=, read -r -a wa <<< "${a#-Wa,}"; asargs+=("${wa[@]}") ;;   # the assembler rejects what it doesn't know
     -Wl,*) IFS=, read -r -a wl <<< "${a#-Wl,}"; ldextra+=("${wl[@]}") ;;
     -W|-w|-W[a-z]*|-Werror|-Werror=*|-pedantic|-pedantic-errors) ;;   # (after -Wa, / -Wl, / -Wp,: we emit no warnings)
-    -g0) ;;
-    -g*) unsupported "$a" "we emit no debug information" ;;
+    # -g: as gcc's driver classifies it. A level or DWARF version we understand is accepted and warned about once
+    # (debug_asked); a malformed or out-of-range one is an error, in gcc's words. Retired formats (-gstabs, -gcoff,
+    # -gxcoff), which gcc still warns through, are refused here instead: nothing we build uses them, and they would
+    # only ever be a lie. For an assembly input gcc hands the assembler --gdwarf-<N>; ours has no line table yet, so
+    # nothing is forwarded (when it does, forward it here).
+    -g0|-ggdb0) ;;                                     # no debug information asked for: what we produce anyway
+    -g|-ggdb|-gdwarf|-g[123]|-ggdb[123]|-gdwarf-[2345]) debug_asked=1 ;;
+    -gdwarf-*) die "dwarf version ${a#-gdwarf-} is not supported" ;;
+    -gdwarf[0-9]*) die "'$a' is ambiguous; use '-gdwarf-${a#-gdwarf}' for DWARF version or '-gdwarf' '-g${a#-gdwarf}' for debug level" ;;
+    -g[0-9]*|-ggdb[0-9]*) die "debug output level '${a##*[a-z]}' is too high" ;;
+    -g*) die "unrecognized debug output level '${a#-g}'" ;;
     -pg|-p) unsupported "$a" ;;
     # ---- linking ---------------------------------------------------------------------------------------------
     -Ttext) need "$@"; ttext="$2"; shift ;;
@@ -197,6 +213,10 @@ case "${query}" in
   prog:*) n="${query#prog:}"; case "${n}" in as) echo "${AS}" ;; ld) echo "${LD}" ;; cpp) echo "${CPP}" ;; *) echo "${n}" ;; esac; exit 0 ;;
   libgcc) echo "$(readlink -f "${RTLIB}")"; exit 0 ;;
 esac
+
+# Said once per invocation, like gcc's for a format it can't produce, and after the -print-* queries so a build
+# system's capability probes stay quiet.
+[ -z "${debug_asked}" ] || warn "no debug information is produced (-g accepted, no .debug_* sections emitted)"
 
 [ -n "${nostdinc}" ] || [ ! -d "${CCINC}" ] || cppargs+=(-isystem "${CCINC}")   # the compiler's headers, then the C library's: gcc's order
 if [ -n "${sysroot}" ]; then

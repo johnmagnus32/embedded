@@ -104,6 +104,13 @@ if [ -f "${REPO}/libc/ld/test/test_reloc.c" ]; then
   rm -f "${b}"
 else sk "loader units"; fi
 
+echo "==== 8. driver option parity vs gcc (-g family) ===="
+if [ -x "${BIN}/arm-os-custom-gcc" ]; then
+  if CC="${BIN}/arm-os-custom-gcc" GNU="${GNUCC}" bash "${HERE}/driver-opts.sh" > /tmp/dopt.$$.log 2>&1; then
+    ok "$(tail -1 /tmp/dopt.$$.log)"; else no "driver options"; sed 's/^/    /' /tmp/dopt.$$.log | tail -8; fi
+  rm -f /tmp/dopt.$$.log
+else sk "driver options (no installed os-cc)"; fi
+
 echo "======================================="
 printf 'TOOLCHAIN REGRESSION: %d passed, %d failed, %d skipped\n' "${pass}" "${fail}" "${skip}"
 [ "${fail}" -eq 0 ] && grn "ALL GREEN" || { red "REGRESSIONS PRESENT"; exit 1; }
