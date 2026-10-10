@@ -21,8 +21,9 @@
  *     DEBUGGING by NAME (.debug*, .zdebug*, .line*, .stab*, .gdb_index);
  *   - a relocation line is "%08x %-16s  %s" (offset, type, symbol), the type named from BFD's howto table (note
  *     those names are NOT readelf's for every type: BFD calls 25 and 26 R_ARM_GOTPC and R_ARM_GOT32, where the ELF
- *     ABI and readelf call them R_ARM_BASE_PREL and R_ARM_GOT_BREL), the symbol being a named symbol's name or
- *     "[section]" for a section symbol, and "+0x%08x" appended when an addend is non-zero (never for ARM's REL).
+ *     ABI and readelf call them R_ARM_BASE_PREL and R_ARM_GOT_BREL); the symbol is its name — a section symbol's
+ *     being its section's, and no symbol at all (index 0) reading "*ABS*" — followed by "@@version" where it has
+ *     one, and "+0x%08x" when an addend is non-zero (never for ARM, whose relocations are REL).
  */
 #define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
