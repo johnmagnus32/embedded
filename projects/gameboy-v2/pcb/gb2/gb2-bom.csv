@@ -88,6 +88,8 @@ J8,charger,C295747,easyeda2kicad:S2B-PH-SM4-TB,Battery connector (Adafruit 2011 
 SW1,charger,C431541,easyeda2kicad:MSK12C02-HB,"Power switch, side-edge right-angle slide (drives Q1 gate, carries µA only) · SHOU HAN MSK12C02-HB · #55"
 Q1,charger,C15127,easyeda2kicad:AO3401A,"System power switch, high-side P-MOSFET SYS_SRC→SYS (true off) · AO3401A · #80"
 R30,charger,C25803,easyeda2kicad:0603WAF1003T5E,Q1 gate pull-up 100k (holds the FET off) · 0603WAF1003T5E · #81
+R31,charger,C99198,easyeda2kicad:RC0603JR-0710KL,Q1 soft-start gate series R 10k · RC0603JR-0710KL · #82
+C51,charger,C14663,easyeda2kicad:CC0603KRX7R9BB104,Q1 soft-start gate-drain cap 100nF · CC0603KRX7R9BB104 · #82
 U10,buck-boost,C202140,easyeda2kicad:TPS63021DSJR,3.3 V buck-boost · TPS63021DSJR · #44
 R24,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost FB→VOUT tie · 0603WAF0000T5E · #45
 R25,buck-boost,C25803,easyeda2kicad:0603WAF1003T5E,Buck-boost PS/SYNC pull-down 100k · 0603WAF1003T5E · #46
@@ -102,7 +104,6 @@ R26,battery-sense,C25803,easyeda2kicad:0603WAF1003T5E,Battery divider top 100k 1
 R27,battery-sense,C25803,easyeda2kicad:0603WAF1003T5E,Battery divider bottom 100k 1% · 0603WAF1003T5E · #51
 C45,battery-sense,C14663,easyeda2kicad:CC0603KRX7R9BB104,Battery-ADC filter · CC0603KRX7R9BB104 · #52
 U11,expander,C2864778,easyeda2kicad:PCA9555PWR,Button expander (I2C 0x20) · PCA9555PWR · #56
-R28,expander,C99198,easyeda2kicad:RC0603JR-0710KL,Expander INT pull-up · RC0603JR-0710KL · #62
 C46,expander,C14663,easyeda2kicad:CC0603KRX7R9BB104,PCA9555 VDD decoupling · CC0603KRX7R9BB104 · #63
 SW2,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,UP tactile · TS-1187A-B-A-B · #57
 SW3,buttons,C318884,easyeda2kicad:TS-1187A-B-A-B,DOWN tactile · TS-1187A-B-A-B · #57

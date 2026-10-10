@@ -1,0 +1,1952 @@
+{
+ "_about": "Mechanical reference geometry for gb2 outlines (drawn by draw_mech.py). Researched 2026-09-28; every item carries its source + confidence. tft: Adafruit 2090 module, frame = module PCB centre, +X toward JP2, +Y down, viewed from the screen side (= KiCad top view). gba: Nintendo Game Boy Advance AGB-001 front view, frame = top-left of the 144.5 x 82 bounding box, +X right, +Y down.",
+ "tft": {
+  "frame": "Origin: the centre of the Adafruit 2090 module PCB. This is Eagle board (0,0): the outline is symmetric about it in both Adafruit .brd files. +X points toward the JP2 short edge (the SPI/microSD header, which is also the end where the panel's FPC exits). +Y points down, viewed from the SCREEN (front) side, so the axes are screen coordinates. Units: mm. Mapping from Eagle board coordinates (the Eagle top view is the module's BACK/component side): X = -y_eagle, Y = +x_eagle. This is a pure 90-degree rotation with no mirror. Heights are given as distances along the view axis (+Z points away from the viewer, toward the mainboard). The screen-up module is seen from above, the same way KiCad shows the mainboard top side. So these (X,Y) values drop straight into the mainboard KiCad top view after adding the module-centre offset. Mainboard socket pin n sits directly under module header pin n.",
+  "items": [
+   {
+    "name": "module_pcb_outline (closed I-/dog-bone shape; arcs sampled every 22.5 deg, true arcs R2.54 centred (+-38.1, +-28.702))",
+    "kind": "polyline",
+    "points": [
+     [
+      -35.56,
+      -25.4
+     ],
+     [
+      35.56,
+      -25.4
+     ],
+     [
+      35.56,
+      -28.702
+     ],
+     [
+      35.753,
+      -29.674
+     ],
+     [
+      36.304,
+      -30.498
+     ],
+     [
+      37.128,
+      -31.049
+     ],
+     [
+      38.1,
+      -31.242
+     ],
+     [
+      39.072,
+      -31.049
+     ],
+     [
+      39.896,
+      -30.498
+     ],
+     [
+      40.447,
+      -29.674
+     ],
+     [
+      40.64,
+      -28.702
+     ],
+     [
+      40.64,
+      28.702
+     ],
+     [
+      40.447,
+      29.674
+     ],
+     [
+      39.896,
+      30.498
+     ],
+     [
+      39.072,
+      31.049
+     ],
+     [
+      38.1,
+      31.242
+     ],
+     [
+      37.128,
+      31.049
+     ],
+     [
+      36.304,
+      30.498
+     ],
+     [
+      35.753,
+      29.674
+     ],
+     [
+      35.56,
+      28.702
+     ],
+     [
+      35.56,
+      25.4
+     ],
+     [
+      -35.56,
+      25.4
+     ],
+     [
+      -35.56,
+      28.702
+     ],
+     [
+      -35.753,
+      29.674
+     ],
+     [
+      -36.304,
+      30.498
+     ],
+     [
+      -37.128,
+      31.049
+     ],
+     [
+      -38.1,
+      31.242
+     ],
+     [
+      -39.072,
+      31.049
+     ],
+     [
+      -39.896,
+      30.498
+     ],
+     [
+      -40.447,
+      29.674
+     ],
+     [
+      -40.64,
+      28.702
+     ],
+     [
+      -40.64,
+      -28.702
+     ],
+     [
+      -40.447,
+      -29.674
+     ],
+     [
+      -39.896,
+      -30.498
+     ],
+     [
+      -39.072,
+      -31.049
+     ],
+     [
+      -38.1,
+      -31.242
+     ],
+     [
+      -37.128,
+      -31.049
+     ],
+     [
+      -36.304,
+      -30.498
+     ],
+     [
+      -35.753,
+      -29.674
+     ],
+     [
+      -35.56,
+      -28.702
+     ],
+     [
+      -35.56,
+      -25.4
+     ]
+    ],
+    "source": "github.com/adafruit/Adafruit-2.8-TFT-with-Capacitive-Touch-PCB, 'Adafruit 2.8 inch TFT w Capacitive Touch.brd' and '... rev D.brd', <plain> layer-20 wires (identical in both). Shape confirmed by the product photos 2090-12 and 2090-13.",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "module_pcb_bounding_box 81.28 x 62.484 (BOM '81.3 x 62.5' verified, but it is the bbox of an I-shape, not a rectangle)",
+    "kind": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 81.28,
+    "h": 62.484,
+    "source": "Both .brd files, layer 20. Product page adafruit.com/product/2090: 'Board: 81.3mm x 62.5mm'.",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "module_centre_body (between the header strips; only 50.8 wide, square inner corners)",
+    "kind": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 71.12,
+    "h": 50.8,
+    "source": "Both .brd files, layer 20 (Eagle x +-25.4, y +-35.56)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP1_strip (8-bit side) 5.08 wide stadium ear, R2.54 semicircular ends",
+    "kind": "rounded-rect",
+    "x": -38.1,
+    "y": 0,
+    "w": 5.08,
+    "h": 62.484,
+    "r": 2.54,
+    "source": "Both .brd files, layer 20",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP2_strip (SPI/SD side) 5.08 wide stadium ear, R2.54 semicircular ends",
+    "kind": "rounded-rect",
+    "x": 38.1,
+    "y": 0,
+    "w": 5.08,
+    "h": 62.484,
+    "r": 2.54,
+    "source": "Both .brd files, layer 20",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "mounting_hole U$7 drill 3.0 plated (pad dia 3.6, silk ring dia 4.4, restrict dia ~4.03)",
+    "kind": "circle",
+    "x": 38.1,
+    "y": -28.575,
+    "r": 1.5,
+    "source": "Both .brd: element U$7 at Eagle (-28.575,-38.1); package MOUNTINGHOLE_3.0_PLATEDTHIN pad drill 3 diameter 3.6",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "mounting_hole U$15 drill 3.0 plated",
+    "kind": "circle",
+    "x": 38.1,
+    "y": 28.575,
+    "r": 1.5,
+    "source": "Both .brd: U$15 at Eagle (28.575,-38.1)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "mounting_hole U$16 drill 3.0 plated",
+    "kind": "circle",
+    "x": -38.1,
+    "y": -28.575,
+    "r": 1.5,
+    "source": "Both .brd: U$16 at Eagle (-28.575,38.1)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "mounting_hole U$17 drill 3.0 plated",
+    "kind": "circle",
+    "x": -38.1,
+    "y": 28.575,
+    "r": 1.5,
+    "source": "Both .brd: U$17 at Eagle (28.575,38.1)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "mounting_hole_pattern 76.2 (X) x 57.15 (Y), in line with the header rows (BOM verified; product page rounds to 57.2)",
+    "kind": "rect",
+    "x": 0,
+    "y": 0,
+    "w": 76.2,
+    "h": 57.15,
+    "source": "Both .brd element positions; product page 'Mounting Holes: 76.2mm x 57.2mm'",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP1 header 1x20 2.54 mm (8-bit 8080 side: GND,VIN,CS,C/D,WR,RD,RST,LITE,IRQ,SCL,SDA,GND,D0-D7). Pads dia 1.676, drill 1.0. Pin n at Y = 24.13 - 2.54*(n-1)",
+    "kind": "rect",
+    "x": -38.1,
+    "y": 0,
+    "w": 2.54,
+    "h": 50.8,
+    "source": "Both .brd: JP1 1X20_ROUND at Eagle (0,38.1) R180; package pad1 at x=-24.13 (square)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP1 pin 1 (GND, square pad)",
+    "kind": "point",
+    "x": -38.1,
+    "y": 24.13,
+    "source": "Both .brd (R180 puts pin 1 at Eagle x=+24.13); photos 2090-12/-13 show GND at that end",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP1 pin 20 (D7)",
+    "kind": "point",
+    "x": -38.1,
+    "y": -24.13,
+    "source": "Both .brd",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP2 header 1x20 2.54 mm (SPI/SD side: GND,VIN,3Vo,CLK,MISO,MOSI,CS,D/C,RST,Lite,... IM3-IM0, CCS, CD). Pin n at Y = 24.13 - 2.54*(n-1)",
+    "kind": "rect",
+    "x": 38.1,
+    "y": 0,
+    "w": 2.54,
+    "h": 50.8,
+    "source": "Both .brd: JP2 1X20_ROUND at Eagle (0,-38.1) R180",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP2 pin 1 (GND, square pad)",
+    "kind": "point",
+    "x": 38.1,
+    "y": 24.13,
+    "source": "Both .brd; photo 2090-13",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "JP2 pin 20 (CD)",
+    "kind": "point",
+    "x": 38.1,
+    "y": -24.13,
+    "source": "Both .brd",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "header centre-to-centre spacing JP1-JP2 = 76.2 (BOM verified)",
+    "kind": "note",
+    "x": 0,
+    "y": 0,
+    "w": 76.2,
+    "source": "Both .brd: JP1 Eagle y=+38.1, JP2 y=-38.1",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "TFT panel outline (LCD module 50.0 x 69.2) on the FRONT side. Centre +0.16 toward JP2. Panel spans X -34.44 (JP1 end) to +34.76 (FPC end), Y +-25.0",
+    "kind": "rect",
+    "x": 0.16,
+    "y": 0,
+    "w": 69.2,
+    "h": 50,
+    "source": "Adafruit .brd TFT_2.83IN_240X320_50PIN tDocu 50x69.2 (orig U$10 at Eagle (0,2.54) MR0; rev D CONN1 at (0,-8.89) MR0 with package origin shifted 11.43, so the board position is identical). Size = SPEC-DT280QV10-CT_Rev.B.pdf p5 '69.20+-0.2 / 50.00+-0.2 (OUTLINE)'",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "cover lens / CTP outline 68.75 x 49.5 (X -34.24..+34.51, Y +-24.75)",
+    "kind": "rect",
+    "x": 0.135,
+    "y": 0,
+    "w": 68.75,
+    "h": 49.5,
+    "source": "SPEC p5: 68.75+-0.2 x 49.50+-0.2 (CTP OUTLINE), 0.20 from the non-FPC edge, 0.25 per long side. Placed with the Adafruit panel position.",
+    "confidence": "derived"
+   },
+   {
+    "name": "CTP viewing area 58.6 x 44.2 (X -31.94..+26.66, Y +-22.1). Use this for a bezel window",
+    "kind": "rect",
+    "x": -2.64,
+    "y": 0,
+    "w": 58.6,
+    "h": 44.2,
+    "source": "SPEC p5: 58.60 x 44.20 (CTP V.A), 2.50 from the non-FPC edge, 2.90 per long side",
+    "confidence": "derived"
+   },
+   {
+    "name": "LCD active area 57.6 x 43.2 (320 px along X, 240 px along Y). X -31.44..+26.16, Y +-21.6. Offset 2.64 toward JP1",
+    "kind": "rect",
+    "x": -2.64,
+    "y": 0,
+    "w": 57.6,
+    "h": 43.2,
+    "source": "SPEC p5: 57.60 x 43.20 (LCD/CTP A.A), 3.00 from the non-FPC edge (8.60 from the FPC edge), 3.40 per long side. Also p4 'Active area 43.2(W)x57.6(H)'",
+    "confidence": "derived"
+   },
+   {
+    "name": "LCD active area as drawn in Adafruit's Eagle package (0.32 further toward JP1 than the spec). X -31.76..+25.84",
+    "kind": "rect",
+    "x": -2.96,
+    "y": 0,
+    "w": 57.6,
+    "h": 43.2,
+    "source": "Both .brd, TFT package tDocu short-dash rect x+-21.6, y 29.22..-28.38 (orig package coordinates)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "panel silkscreen outline on the module front",
+    "kind": "rect",
+    "x": 0.16,
+    "y": 0,
+    "w": 69.4,
+    "h": 50.2,
+    "source": "Both .brd, TFT package layer 21, mirrored to bPlace",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "FPC bend zone: the FPC wraps 180 deg around the panel's JP2-end edge on the front side, protruding <=1.0 beyond the panel edge (X 34.76..35.76). It lies over the JP2 strip; JP2 pad edges are at X=37.26",
+    "kind": "rect",
+    "x": 35.26,
+    "y": 0,
+    "w": 1,
+    "h": 45.2,
+    "source": "SPEC p5 bent view ('FPC shipped bent', 1.0MAX). Width from the Adafruit package FPC doc outline (Y +-22.6). Photo 2090-04 shows an amber FPC strip at the JP2 end",
+    "confidence": "derived"
+   },
+   {
+    "name": "FPC folded behind the panel (between the panel back and the module PCB front), as drawn flat in Adafruit's doc layer. Finger zone X 9.66..13.26",
+    "kind": "polyline",
+    "points": [
+     [
+      34.36,
+      -21.6
+     ],
+     [
+      33.36,
+      -22.6
+     ],
+     [
+      27.76,
+      -22.6
+     ],
+     [
+      23.26,
+      -18.1
+     ],
+     [
+      23.26,
+      -13.4
+     ],
+     [
+      22.36,
+      -12.5
+     ],
+     [
+      9.96,
+      -12.5
+     ],
+     [
+      9.66,
+      -12.2
+     ],
+     [
+      9.66,
+      12.2
+     ],
+     [
+      9.96,
+      12.5
+     ],
+     [
+      22.26,
+      12.5
+     ],
+     [
+      23.26,
+      13.5
+     ],
+     [
+      23.26,
+      18.2
+     ],
+     [
+      27.66,
+      22.6
+     ],
+     [
+      33.46,
+      22.6
+     ],
+     [
+      34.36,
+      21.7
+     ],
+     [
+      34.36,
+      -21.6
+     ]
+    ],
+    "source": "orig .brd TFT package layer-51 dash-dot outline, transformed. The finger end at 25.1 from the panel edge matches SPEC p5 bent view '25.00+-0.3'",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "module PCB internal cutout (milled through): FPC slot + CTP-chip pocket, one closed contour",
+    "kind": "polyline",
+    "points": [
+     [
+      15.748,
+      -14.986
+     ],
+     [
+      21.082,
+      -14.986
+     ],
+     [
+      21.082,
+      5.969
+     ],
+     [
+      34.544,
+      5.969
+     ],
+     [
+      34.544,
+      21.971
+     ],
+     [
+      21.082,
+      21.971
+     ],
+     [
+      21.082,
+      14.986
+     ],
+     [
+      15.748,
+      14.986
+     ],
+     [
+      15.748,
+      -14.986
+     ]
+    ],
+    "source": "Both .brd <plain> layer-20 inner contour (identical)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "FPC pass-through slot 5.334 x 29.972 (FPC goes from the panel back through here to the module back side)",
+    "kind": "rect",
+    "x": 18.415,
+    "y": 0,
+    "w": 5.334,
+    "h": 29.972,
+    "source": "Both .brd layer 20; photo 2090-13 (FPC visible through the slot)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "CTP controller pocket 13.462 x 16.002 (FT6206/CST026 on the FPC sits recessed here, <=1.0 tall)",
+    "kind": "rect",
+    "x": 27.813,
+    "y": 13.97,
+    "w": 13.462,
+    "h": 16.002,
+    "source": "Both .brd layer 20; rev D package hatched 'Captouch chip' polygon at the same place; SPEC p5 'CTP Components Area (T=1.0MAX)'; photo 2090-13",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "FPC solder pad row on the module BACK: 50 pads, 0.275 x 1.2, 0.5 pitch; pin 50 at Y=+12.25",
+    "kind": "rect",
+    "x": 7.85,
+    "y": 0,
+    "w": 1.2,
+    "h": 24.775,
+    "source": "Both .brd TFT package smd 1..50 (package layer 16, mirrored to top/back)",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "FPC pin 1 pad (back side)",
+    "kind": "point",
+    "x": 7.85,
+    "y": -12.25,
+    "source": "Both .brd TFT package smd '1'. Consistent with SPEC p5 '(12.25)' pin 1 offset from the centreline",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "FPC anchor pads (back side), orig rev: 2.4x2.4 at Y=+-14.35",
+    "kind": "rect",
+    "x": 10.55,
+    "y": -14.35,
+    "w": 2.4,
+    "h": 2.4,
+    "source": "orig .brd PAD1/PAD2; the mirror pad is at Y=+14.35",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "FPC anchor pads (back side), rev D: 3.81 (X) x 2.54 (Y) at Y=+-14.35",
+    "kind": "rect",
+    "x": 10.042,
+    "y": 14.35,
+    "w": 3.81,
+    "h": 2.54,
+    "source": "rev D .brd PAD1/PAD2; the mirror pad is at Y=-14.35",
+    "confidence": "measured-drawing"
+   },
+   {
+    "name": "microSD socket body (BACK side, faces mainboard). Card slot opens toward the Y=-25.4 edge; an inserted card reaches Y=-28.75. Height ~1.8-2.0",
+    "kind": "rect",
+    "x": -18.614,
+    "y": -15.892,
+    "w": 14.1,
+    "h": 15.22,
+    "source": "rev D .brd X2 MICROSD at Eagle (-15.875,18.415) R270, doc body; orig X1 lands at the same place. Height: no MPN in Eagle, typical push-push socket, photo 2090-13",
+    "confidence": "estimated-from-photo"
+   },
+   {
+    "name": "orig rev: IC2 74LVC245 SOIC-20W (BACK), incl. pads; height <=2.65 (tallest back part on the original rev)",
+    "kind": "rect",
+    "x": -18.542,
+    "y": 0.254,
+    "w": 12.09,
+    "h": 13.004,
+    "source": "orig .brd IC2 SO20W at Eagle (0.254,18.542) R180. Height from the SO20W/JEDEC MS-013 class, not fetched",
+    "confidence": "derived"
+   },
+   {
+    "name": "orig rev: IC3 74LVC245 SOIC-20W (BACK), incl. pads; height <=2.65",
+    "kind": "rect",
+    "x": -18.288,
+    "y": 15.24,
+    "w": 12.09,
+    "h": 13.004,
+    "source": "orig .brd IC3 SO20W at Eagle (15.24,18.288) R180",
+    "confidence": "derived"
+   },
+   {
+    "name": "rev D: U3 74LVC245 TSSOP-20 (BACK), height <=1.2",
+    "kind": "rect",
+    "x": -18.542,
+    "y": 0.104,
+    "w": 6.826,
+    "h": 6.63,
+    "source": "rev D .brd U3 TSSOP20 at Eagle (0.254,18.542) R180. Height from the TSSOP-20 class",
+    "confidence": "derived"
+   },
+   {
+    "name": "rev D: U2 74LVC245 TSSOP-20 (BACK), height <=1.2",
+    "kind": "rect",
+    "x": -18.161,
+    "y": 12.296,
+    "w": 6.826,
+    "h": 6.63,
+    "source": "rev D .brd U2 TSSOP20 at Eagle (12.446,18.161) R180",
+    "confidence": "derived"
+   },
+   {
+    "name": "rev D only: EYESPI 18-pin 0.5 mm flip-top FPC connector body (BACK), cable enters from the Y=+25.4 edge, height ~2.0",
+    "kind": "rect",
+    "x": -18.415,
+    "y": 22.557,
+    "w": 13,
+    "h": 4.4,
+    "source": "rev D .brd X1 EYE_SPI_DISPLAY_BOTCONTACT at Eagle (20.955,18.415) R90, doc body 13x4.4. Height estimated from the typical part and photo 2090-13",
+    "confidence": "estimated-from-photo"
+   },
+   {
+    "name": "3.3 V LDO SOT-23-5 (MIC5225 orig / AP2112K rev D) on the BACK, height <=1.45",
+    "kind": "rect",
+    "x": -0.254,
+    "y": 19.558,
+    "w": 3.8,
+    "h": 3.3,
+    "source": "Both .brd IC1/U1 at Eagle (19.558,0.254). Height from the SOT-23-5 class",
+    "confidence": "derived"
+   },
+   {
+    "name": "male header plastic body on the module BACK (user-soldered 0.1in strip), ~2.5 tall; the same at X=+38.1",
+    "kind": "rect",
+    "x": -38.1,
+    "y": 0,
+    "w": 2.54,
+    "h": 50.8,
+    "source": "Standard 0.1in breakaway header (Adafruit ships a loose strip, photo 2090-12). Not in the .brd",
+    "confidence": "estimated-from-photo"
+   },
+   {
+    "name": "panel stack thickness 4.0 +-0.2 without tape (LCD + backlight + ITO 0.4 + glass lens 0.7)",
+    "kind": "note",
+    "h": 4,
+    "source": "SPEC p4 'Module size 50.0x69.2x4.0(T)'; p5 side view '4.0+-0.2 Without Tape', CTP NOTE 'ITO GLASS:0.4mm LENS:GLASS 0.7mm'",
+    "confidence": "official-spec"
+   },
+   {
+    "name": "panel-to-PCB double-sided tape 0.1 (two strips 3.00 x 43.00 along the long edges from the non-FPC end)",
+    "kind": "note",
+    "h": 0.1,
+    "source": "SPEC p5 back view (T=0.1mm), 2-3.00+-0.5, 2-43.00+-0.5",
+    "confidence": "official-spec"
+   },
+   {
+    "name": "cover glass top above module PCB front surface: ~4.1 nominal (4.0+0.1); allow ~4.4 (+0.2 tolerance, and the 0.30 FPC is sandwiched under the JP2 end)",
+    "kind": "note",
+    "h": 4.1,
+    "source": "Derived from SPEC p5 thickness, tape and FPC 0.30+-0.05",
+    "confidence": "derived"
+   },
+   {
+    "name": "module PCB thickness ~1.57 (Adafruit standard 1.6)",
+    "kind": "note",
+    "h": 1.57,
+    "source": "Both .brd designrules: layerSetup (1*16), mtIsolate 1.5 mm + 2 x 0.035 mm Cu",
+    "confidence": "derived"
+   },
+   {
+    "name": "module total thickness, back copper to cover glass: ~5.7 (excluding headers and back parts)",
+    "kind": "note",
+    "h": 5.7,
+    "source": "1.57 + 0.1 + 4.0",
+    "confidence": "derived"
+   },
+   {
+    "name": "tallest back-side (mainboard-facing) part: orig rev SOIC-20W ~2.65; rev D microSD/EYESPI ~2.0. The FPC tail over its pads is ~0.3-0.5. The CTP chip is recessed in the pocket (not proud of the back)",
+    "kind": "note",
+    "h": 2.65,
+    "source": "Items above; SPEC p5 FPC 0.30+-0.05 (FPC+PI), CTP components T=1.0MAX",
+    "confidence": "derived"
+   },
+   {
+    "name": "mainboard socket HX PM2.54-1x20P ZC insulator height 8.5, pin length 3.2",
+    "kind": "note",
+    "h": 8.5,
+    "source": "https://www.lcsc.com/product-detail/C41417332.html",
+    "confidence": "official-spec"
+   },
+   {
+    "name": "module back PCB surface ~11.0 above the mainboard top (8.5 socket + ~2.5 male-header body). Cover glass ~16.7 above the mainboard. Mainboard parts under the module must stay below ~8 (11.0 - 2.65 - margin)",
+    "kind": "note",
+    "h": 11,
+    "source": "Socket from LCSC; header body estimated; module stack derived",
+    "confidence": "derived"
+   },
+   {
+    "name": "header short-pin tails + solder on the module FRONT at X=+-38.1, ~1.4 proud of the PCB (below the 4.1 glass plane)",
+    "kind": "note",
+    "h": 1.4,
+    "source": "Typical 3 mm short pin minus 1.57 PCB; header not specified",
+    "confidence": "estimated-from-photo"
+   },
+   {
+    "name": "TN viewing direction '6 o'clock' (FPC side) maps to +X (the JP2 end) in this frame. In a landscape handheld the symmetric (good) axis is vertical (Y)",
+    "kind": "note",
+    "source": "SPEC p4 'Viewing Direction 6 o'clock'; p5 drawing orientation",
+    "confidence": "derived"
+   },
+   {
+    "name": "panel 'RGB' first-pixel mark: at the AA corner on the JP1 end, +Y side (bottom-left in this frame). Scan direction is MADCTL-dependent",
+    "kind": "point",
+    "x": -31.44,
+    "y": 21.6,
+    "source": "SPEC p5 front view 'RGB/RGB' marks at the top-left AA corner (FPC down), rotated into the frame",
+    "confidence": "derived"
+   },
+   {
+    "name": "module weight 44 g",
+    "kind": "note",
+    "source": "adafruit.com/product/2090 Technical Details",
+    "confidence": "official-spec"
+   }
+  ],
+  "notes": "Checked the BOM rows #15-#17 against Adafruit's own board files, the panel datasheet drawing, and the product page and photos. All the BOM numbers hold, with one correction about the board shape.\n\n- **The board is not a rectangle.** 81.28 x 62.484 mm is only the bounding box. The board is I-shaped:\n  - a 71.12 x 50.8 mm centre body (Y within +-25.4)\n  - plus a 5.08 mm-wide strip at each short end, X = +-35.56 to +-40.64, extending out to Y = +-31.242 with R2.54 semicircular ends.\n  - The inner corners where the strips meet the body are square.\n  - **What this frees up:** the regions |Y| 25.4-31.24 with |X| < 35.56 (above and below the panel) are empty of the module. Only the ears reach out to 62.5 mm. The BOM says 'board 81.3 x 62.5 mm' and should add 'I-shape, 50.8 mm wide between the header strips'.\n- **Headers.** JP1 is the 8-bit side, at X = -38.1. JP2 is the SPI/microSD side, at X = +38.1; the panel's FPC also exits at this end. They are 76.2 mm apart (verified). Both are R180 in Eagle, so pin 1 (square GND) of both is at Y = +24.13 and pin n is at Y = 24.13 - 2.54(n-1). The product photos confirm this: GND is at the same end on both strips.\n- **Mounting holes.** Four 3.0 mm plated drills (pad dia 3.6, silk ring dia 4.4) at (+-38.1, +-28.575). That is a 76.2 x 57.15 mm pattern, in line with the headers (verified). The hole centres sit 0.127 mm inboard of the ear arc centres.\n- **Panel position.** The 50 x 69.2 panel is centred at X = +0.16, Y = 0. It spans X -34.44 to +34.76, so it stays inside the centre body with a 0.4 mm inset on the long edges.\n  - The active area is offset toward JP1: centre X = -2.64 per the panel spec (3.00 mm border at the JP1 end, 8.60 mm at the FPC end, 3.40 mm on the long sides).\n  - Adafruit's Eagle drawing puts it 0.32 mm further toward JP1 (centre X = -2.96). Treat about 0.3 mm as the placement uncertainty.\n  - The cover lens (68.75 x 49.5) and the touch viewing area (58.6 x 44.2) are listed separately. Use the viewing area for a bezel window.\n  - The product page says 'Screen: 69.6 x 45.2 mm', which matches neither the spec nor the CAD. I did not use it.\n- **FPC path.** The FPC exits the panel's JP2 end and wraps around that edge on the front, bulging out at most 1.0 mm (X <= 35.76, still over the JP2 strip, clear of the JP2 pads at X >= 37.26).\n  - It then runs flat behind the panel, goes through a milled slot in the module PCB (X 15.75-21.08, Y +-14.99), and is soldered on the module back to a 50-pad row at X = 7.85 (pin 1 at Y = -12.25).\n  - The touch-controller chip on the FPC sits recessed in a milled pocket (X 21.08-34.54, Y 5.97-21.97).\n  - Nothing of the FPC hangs outside the module outline, and on the mainboard-facing side it is only about 0.3-0.5 mm thick.\n  - The spec's FPC length (26.8 unbent, 25.0 bent) is about 2 mm short of what this route needs if the fold is creased flat. The fold is evidently not flat in Adafruit's assembly; this has no effect on the envelope.\n- **Heights.** Glass top is about 4.1 mm above the module PCB front (panel 4.0 +-0.2 plus 0.1 tape; allow about 4.4). The module PCB is about 1.57 mm. The module back sits about 11.0 mm above the mainboard: the 8.5 mm socket (LCSC spec) plus a male header body of about 2.5 mm (estimated). So the glass top is about 16.7 mm above the mainboard. All back-side parts are 2.65 mm or less, well within that gap.\n- **Two board revisions exist; the geometry above holds for both.** Outline, holes, headers, panel position, slot/pocket and FPC pads are identical in both .brd files. Only the back-side parts differ:\n  - Original: two 74LVC245 in SOIC-20W, about 2.65 mm tall.\n  - Rev D (Dec 2022): TSSOP-20 about 1.2 mm, an 18-pin EYESPI connector at X -24.9 to -11.9, Y 20.4-24.8, and the microSD socket in the same place.\n- **Viewing angle.** This is a TN panel whose best viewing direction ('6 o'clock') points along +X toward JP2. In a landscape handheld, the vertical viewing axis is the symmetric one.\n- **Sources.** The Adafruit repo is github.com/adafruit/Adafruit-2.8-TFT-with-Capacitive-Touch-PCB. Its .sch files are the same byte size as cad/docs/adafruit-2090-cap-touch.sch (329748) and -revD.sch (347493), which confirms it is the matching design. The panel drawing is page 5 of cad/docs/SPEC-DT280QV10-CT_Rev.B.pdf; the page-4 table gives the 4.0 mm module thickness.\n- **Scratch files in /tmp/gb2-mech/:** orig.brd, revD.brd, top300l.png and mid300l.png (spec drawing crops, rotated), xf.py (coordinate transform), and the product photos 2090-*.jpg."
+ },
+ "gba": {
+  "frame": "Front view of the Nintendo Game Boy Advance AGB-001, looking at the screen side with the unit upright and the cartridge slot at the top. Origin (0,0) is the top-left corner of the axis-aligned bounding box of the whole front silhouette, including the shoulder buttons. +x runs right (toward A/B), +y runs down (toward the bottom edge). Units are mm. The bounding box is 144.5 x 82, the vertical centreline is x=72.25, and the bbox mid-height is y=41.0. Where depth is given, it is mm behind the front face, or in front of the rear-most back surface where stated.",
+  "items": [
+   {
+    "name": "GBA overall bounding box (W x H; depth 24.5)",
+    "kind": "rect",
+    "x": 72.25,
+    "y": 41,
+    "w": 144.5,
+    "h": 82,
+    "source": "Nintendo Japan hardware spec page https://www.nintendo.co.jp/n08/hardware/spec/index.html, GBA column: 寸法 縦82mm×横144.5mm×厚さ24.5mm; 本体重量 約140g (乾電池含まず). The same figures appear in en.wikipedia.org/wiki/Game_Boy_Advance (infobox and spec table).",
+    "confidence": "official-spec"
+   },
+   {
+    "name": "GBA front silhouette outline (52-pt closed polyline, clockwise, L/R symmetric)",
+    "kind": "polyline",
+    "points": [
+     [
+      72.25,
+      0
+     ],
+     [
+      105.39,
+      0
+     ],
+     [
+      107.81,
+      0.45
+     ],
+     [
+      111.36,
+      1.67
+     ],
+     [
+      130.68,
+      4.01
+     ],
+     [
+      133.55,
+      4.92
+     ],
+     [
+      136.42,
+      6.59
+     ],
+     [
+      138.01,
+      8.1
+     ],
+     [
+      139.06,
+      9.62
+     ],
+     [
+      140.27,
+      12.87
+     ],
+     [
+      139.97,
+      14.16
+     ],
+     [
+      140.95,
+      15.52
+     ],
+     [
+      143.67,
+      38.08
+     ],
+     [
+      144.35,
+      48.31
+     ],
+     [
+      144.5,
+      57.62
+     ],
+     [
+      144.2,
+      61.48
+     ],
+     [
+      142.84,
+      65.12
+     ],
+     [
+      140.27,
+      68.45
+     ],
+     [
+      137.18,
+      70.49
+     ],
+     [
+      134.08,
+      70.42
+     ],
+     [
+      124.19,
+      73.37
+     ],
+     [
+      118.76,
+      74.66
+     ],
+     [
+      110.22,
+      78.06
+     ],
+     [
+      102.75,
+      79.88
+     ],
+     [
+      92.26,
+      81.17
+     ],
+     [
+      86.14,
+      81.62
+     ],
+     [
+      72.25,
+      82
+     ],
+     [
+      58.36,
+      81.62
+     ],
+     [
+      52.24,
+      81.17
+     ],
+     [
+      41.75,
+      79.88
+     ],
+     [
+      34.28,
+      78.06
+     ],
+     [
+      25.74,
+      74.66
+     ],
+     [
+      20.31,
+      73.37
+     ],
+     [
+      10.42,
+      70.42
+     ],
+     [
+      7.32,
+      70.49
+     ],
+     [
+      4.23,
+      68.45
+     ],
+     [
+      1.66,
+      65.12
+     ],
+     [
+      0.3,
+      61.48
+     ],
+     [
+      0,
+      57.62
+     ],
+     [
+      0.15,
+      48.31
+     ],
+     [
+      0.83,
+      38.08
+     ],
+     [
+      3.55,
+      15.52
+     ],
+     [
+      4.53,
+      14.16
+     ],
+     [
+      4.23,
+      12.87
+     ],
+     [
+      5.44,
+      9.62
+     ],
+     [
+      6.49,
+      8.1
+     ],
+     [
+      8.08,
+      6.59
+     ],
+     [
+      10.95,
+      4.92
+     ],
+     [
+      13.82,
+      4.01
+     ],
+     [
+      33.14,
+      1.67
+     ],
+     [
+      36.69,
+      0.45
+     ],
+     [
+      39.11,
+      0
+     ]
+    ],
+    "source": "Traced from Nintendo design patent US D452,280 S ('Hand-held electronic game machine', priority 2000-01-21, issued 2001-12-18), FIG.1 front elevation, sheet https://patentimages.storage.googleapis.com/c0/d2/99/33b659ab3127e4/USD0452280-20011218-D00001.png. The drawing's ink bbox (1915 x 1084 px) was scaled to the official 144.5 x 82 (13.25 / 13.22 px/mm). The drawing's aspect is 1.7666 against the spec's 1.7622 (0.25% difference). I filled the outer silhouette, closed the roughly 1 mm parting notches between the L/R buttons and the body (2.3 mm morphological close), averaged the left and right halves (the drawing is symmetric to within 0.3 mm), and simplified with Douglas-Peucker. Maximum deviation from the traced contour is 0.17 mm; area is 10598 mm2.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Silhouette shape descriptors",
+    "kind": "note",
+    "source": "Circle fits to the traced FIG.1 contour (US D452,280). (1) The top is flat at y=0 for x 39.1-105.4. (2) The shoulders fall gently (R about 80 mm, convex) to y=1.7 at x=33.1/111.4 and y=4.0 at x=13.8/130.7. (3) The upper corners are R about 10.0 mm, centred near (14.3,14.4) and (130.2,14.4). (4) The ends are almost straight and flare outward going down, from x=3.55 at y=15.5 to x=0 at y 50-60; the widest point is at y about 51-59. (5) The lower corners are R about 10.6, centred near (10.9,60.2) and (133.6,60.2). (6) There is a small flat at y about 70.45 for x 7.3-10.4 and 134.1-137.2, where the grey corner caps meet the body. (7) The bottom edge is an arc of R about 157 mm, lowest (y=82) at x=72.25 and at y=74.7 at x=25.7/118.8. A 144.5 x 82 rounded rectangle is a poor stand-in, because the bottom bows by about 7 mm and the top corners sit about 4 mm lower than the flat top.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Screen spec",
+    "kind": "note",
+    "source": "Nintendo JP spec page https://www.nintendo.co.jp/n08/hardware/spec/index.html: 反射型TFTカラー液晶 (reflective TFT, no light), 画面サイズ 40.8mm×61.2mm, 解像度 240×160, 32000色. The 2.9-inch figure is from the Nintendo JP GBA page https://www.nintendo.co.jp/n08/hardware/gba/index.html ('2.9インチ反射型TFTカラー液晶'). Check: the diagonal of 61.2 x 40.8 is 73.55 mm = 2.896 in; the pixel pitch is 0.255 mm.",
+    "confidence": "official-spec"
+   },
+   {
+    "name": "LCD active area 240x160 (61.2 x 40.8)",
+    "kind": "rect",
+    "x": 72.25,
+    "y": 36.67,
+    "w": 61.2,
+    "h": 40.8,
+    "source": "Size is official (Nintendo JP spec page). The centre is taken from the clear-window rectangle in US D452,280 FIG.1: measured centre (71.95, 36.67), with x placed on the unit centreline 72.25, a 0.3 mm shift. That gives an active area of x 41.65-102.85, y 16.27-57.07.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Screen lens clear window (rectangle as drawn)",
+    "kind": "rect",
+    "x": 72.25,
+    "y": 36.67,
+    "w": 61.9,
+    "h": 41.9,
+    "source": "US D452,280 FIG.1: straight window lines found by run-length detection at x 41.01/102.88 and y 15.74/57.60 (line centres), giving 61.9 x 41.9. The window is 0.35 mm (horizontal) and 0.55 mm (vertical) larger than the 61.2 x 40.8 active area on each side, which is consistent with the scale. Measured centre x is 71.95, placed on 72.25.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Screen lens / bezel outer outline (40-pt closed polyline)",
+    "kind": "polyline",
+    "points": [
+     [
+      72.25,
+      9.1
+     ],
+     [
+      84.22,
+      9.38
+     ],
+     [
+      98.72,
+      10.55
+     ],
+     [
+      103.6,
+      11.23
+     ],
+     [
+      104.68,
+      11.7
+     ],
+     [
+      106.12,
+      12.83
+     ],
+     [
+      106.99,
+      14.37
+     ],
+     [
+      107.14,
+      15.05
+     ],
+     [
+      108.05,
+      25
+     ],
+     [
+      108.97,
+      40
+     ],
+     [
+      109.52,
+      58.15
+     ],
+     [
+      109.4,
+      61.94
+     ],
+     [
+      109.14,
+      63.53
+     ],
+     [
+      108.82,
+      64.29
+     ],
+     [
+      107.32,
+      66.42
+     ],
+     [
+      105.88,
+      67.55
+     ],
+     [
+      104.15,
+      68.31
+     ],
+     [
+      99.02,
+      69.63
+     ],
+     [
+      88.12,
+      71.49
+     ],
+     [
+      77.22,
+      72.51
+     ],
+     [
+      72.25,
+      72.58
+     ],
+     [
+      67.28,
+      72.51
+     ],
+     [
+      56.38,
+      71.49
+     ],
+     [
+      45.48,
+      69.63
+     ],
+     [
+      40.35,
+      68.31
+     ],
+     [
+      38.62,
+      67.55
+     ],
+     [
+      37.18,
+      66.42
+     ],
+     [
+      35.68,
+      64.29
+     ],
+     [
+      35.36,
+      63.53
+     ],
+     [
+      35.1,
+      61.94
+     ],
+     [
+      34.98,
+      58.15
+     ],
+     [
+      35.53,
+      40
+     ],
+     [
+      36.45,
+      25
+     ],
+     [
+      37.36,
+      15.05
+     ],
+     [
+      37.51,
+      14.37
+     ],
+     [
+      38.38,
+      12.83
+     ],
+     [
+      39.82,
+      11.7
+     ],
+     [
+      40.9,
+      11.23
+     ],
+     [
+      45.78,
+      10.55
+     ],
+     [
+      60.28,
+      9.38
+     ]
+    ],
+    "source": "US D452,280 FIG.1: the lens perimeter line, traced at line centre. The top and bottom edges come from column scans that skip the hatching. The corners come from rays cast out of the window corners. The sides are a quadratic fit to the clean right-hand edge (residual 0.07 mm), mirrored. The lens is symmetric about its own centre (71.97 in the drawing) and was moved onto 72.25. The bbox is 74.5 x 63.5 (x 34.98-109.52, y 9.10-72.58). The top is slightly arched, the top corners are R about 3 mm, the sides lean outward going down (69.7 mm wide at y=15, 74.5 mm at y=58), the bottom corners are R about 7 mm, and the bottom edge bows down to 72.58.",
+    "confidence": "derived"
+   },
+   {
+    "name": "D-pad centre",
+    "kind": "point",
+    "x": 19.95,
+    "y": 34.09,
+    "source": "Production AGB-CPU-10 board scan (1200 DPI, github.com/djedditt/kicad-agb-template, scans/AGB-CPU-10_sideA_front.png). The centre is the mean of the gold-pad centroids UP (22.79,26.53), DOWN (22.77,43.76), LEFT (14.09,35.14) and RIGHT (31.37,35.07) in scan mm. Scan scale was corrected by x0.99547, calibrated on the 1.50 mm-pitch cartridge-connector pads (measured pitch 1.5068 over 31 pads). Registration: x = (x_scan - 75.30)*0.99547 + 72.25, because the board's mounting holes are symmetric about x_scan=75.30; y = y_scan*0.99547 - 0.88, a least-squares fit of D-pad/A/B/Start/Select to the patent. The patent FIG.1 centre circle is at (20.11, 34.02).",
+    "confidence": "derived"
+   },
+   {
+    "name": "D-pad cross cap outline (span 18.8, arm width 6.0)",
+    "kind": "polyline",
+    "points": [
+     [
+      16.95,
+      24.69
+     ],
+     [
+      22.95,
+      24.69
+     ],
+     [
+      22.95,
+      31.09
+     ],
+     [
+      29.35,
+      31.09
+     ],
+     [
+      29.35,
+      37.09
+     ],
+     [
+      22.95,
+      37.09
+     ],
+     [
+      22.95,
+      43.49
+     ],
+     [
+      16.95,
+      43.49
+     ],
+     [
+      16.95,
+      37.09
+     ],
+     [
+      10.55,
+      37.09
+     ],
+     [
+      10.55,
+      31.09
+     ],
+     [
+      16.95,
+      31.09
+     ]
+    ],
+    "source": "Sizes from US D452,280 FIG.1. The cap edges are at x 10.9/29.7 and y 25.0/43.7 (line centres), about 18.8 x 18.7. The arm edges are at x about 17.0/23.1 and y about 31.3/37.0, about 6 mm wide. The shell recess around the cross is about 21.3 mm across (x 9.66-30.94). The cross is centred on the board-derived D-pad centre.",
+    "confidence": "derived"
+   },
+   {
+    "name": "A button",
+    "kind": "circle",
+    "x": 130.88,
+    "y": 31.92,
+    "r": 4.7,
+    "source": "Centre: AGB-CPU-10 scan A contact pattern centroid (134.2, 32.95 scan mm), registered as for the D-pad; the patent FIG.1 centre is (130.43, 31.77). Diameter: about 9.4-9.5 mm between line centres in FIG.1 (edges 125.8/135.2 and 27.1/36.6).",
+    "confidence": "derived"
+   },
+   {
+    "name": "B button",
+    "kind": "circle",
+    "x": 117.94,
+    "y": 36.25,
+    "r": 4.7,
+    "source": "Centre: AGB-CPU-10 scan B contact centroid (121.2, 37.3 scan mm), registered; the patent FIG.1 centre is (117.45, 36.42). Diameter about 9.2-9.5 (FIG.1). The A-B centre spacing is 13.65 (board) against 13.79 (patent).",
+    "confidence": "derived"
+   },
+   {
+    "name": "START button (upper)",
+    "kind": "circle",
+    "x": 29.49,
+    "y": 53.82,
+    "r": 2,
+    "source": "Centre: AGB-CPU-10 scan START contact centroid (32.34, 54.95 scan mm), registered; the patent FIG.1 centre is (29.65, 53.90). The cap is about 4.0 mm across and the shell recess about 5 mm (FIG.1 line runs). The embossed 'START' oval runs diagonally to the left, about x 16.7-27, about 13 x 5.5 mm.",
+    "confidence": "derived"
+   },
+   {
+    "name": "SELECT button (lower)",
+    "kind": "circle",
+    "x": 29.44,
+    "y": 61.82,
+    "r": 2,
+    "source": "Centre: AGB-CPU-10 scan SELECT contact centroid (32.30, 62.99 scan mm), registered; the patent FIG.1 centre is (29.65, 61.80). Cap about 4.0 mm across. The 'SELECT' oval sits about 7.9 mm below the START oval.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Power LED window",
+    "kind": "circle",
+    "x": 118.14,
+    "y": 14.7,
+    "r": 1.25,
+    "source": "Centre: the centre of the 2x2 LED pad block DL1/DL2 (red/green) on the AGB-CPU-10 scan (121.4, 15.65 scan mm), registered. The patent FIG.1 window is centred at (117.56, 14.56) with a diameter of about 2.5 mm (edges 116.25/118.73, 13.27/15.88). The 'POWER' legend sits to its right.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Speaker grille slot 1 (top), centreline",
+    "kind": "polyline",
+    "points": [
+     [
+      113.36,
+      52.46
+     ],
+     [
+      128.04,
+      48.88
+     ]
+    ],
+    "source": "US D452,280 FIG.1. There are five parallel slots at centre x 120.7 and y 50.67/53.61/56.56/59.52/62.46 (pitch 2.95), tilted 13.7 deg with the right end higher (PCA of the slot outlines). Each slot is about 16.7 long outside and about 1.6 wide outside; the actual opening is about 1 mm. The count of five and the tilt direction match the production photo commons.wikimedia.org File:Game_Boy_Advance_front.jpg.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Speaker grille slot 2",
+    "kind": "polyline",
+    "points": [
+     [
+      113.36,
+      55.4
+     ],
+     [
+      128.04,
+      51.82
+     ]
+    ],
+    "source": "As slot 1 (US D452,280 FIG.1).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Speaker grille slot 3",
+    "kind": "polyline",
+    "points": [
+     [
+      113.36,
+      58.35
+     ],
+     [
+      128.04,
+      54.77
+     ]
+    ],
+    "source": "As slot 1 (US D452,280 FIG.1).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Speaker grille slot 4",
+    "kind": "polyline",
+    "points": [
+     [
+      113.36,
+      61.31
+     ],
+     [
+      128.04,
+      57.73
+     ]
+    ],
+    "source": "As slot 1 (US D452,280 FIG.1).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Speaker grille slot 5 (bottom)",
+    "kind": "polyline",
+    "points": [
+     [
+      113.36,
+      64.25
+     ],
+     [
+      128.04,
+      60.67
+     ]
+    ],
+    "source": "As slot 1 (US D452,280 FIG.1).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Speaker grille envelope",
+    "kind": "rect",
+    "x": 120.7,
+    "y": 56.6,
+    "w": 16.3,
+    "h": 17,
+    "source": "Envelope of the five slots in US D452,280 FIG.1 (x 112.6-128.8, y 48.1-65.1). The speaker transducer diameter behind the grille was not determined.",
+    "confidence": "derived"
+   },
+   {
+    "name": "L shoulder button envelope (top-left corner)",
+    "kind": "rect",
+    "x": 17.15,
+    "y": 7.6,
+    "w": 32.1,
+    "h": 11.8,
+    "source": "x extent along the top edge is 1.1-33.2, from US D452,280 FIG.3 top plan view (sheet https://patentimages.storage.googleapis.com/e3/e5/74/8988a475799f91/USD0452280-20011218-D00002.png, scaled by width at 13.197 px/mm); the rounded inner end reaches x about 33.2. In the front view (FIG.1) the visible face spans x 4.7-30.0, y 2.65-13.1, bounded above by the silhouette. In depth, the button band sits about 3.1-11.6 mm behind the front face. On the board, the L tact switch and slot are near (15.9, 19.4).",
+    "confidence": "derived"
+   },
+   {
+    "name": "R shoulder button envelope (top-right corner)",
+    "kind": "rect",
+    "x": 127.35,
+    "y": 7.6,
+    "w": 32.1,
+    "h": 11.8,
+    "source": "Mirror of L. FIG.3 top view gives x 111.3-143.4; the FIG.1 front-visible face spans x 113.9-138.8. The SW3 tact switch on the board is at about (130.2, 17.5) (AGB-CPU-10 scan).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Cartridge slot opening (top edge, rear half of thickness)",
+    "kind": "polyline",
+    "points": [
+     [
+      43.65,
+      0
+     ],
+     [
+      100.85,
+      0
+     ]
+    ],
+    "source": "US D452,280 FIG.3 top view: slot rectangle at x 43.34-100.55 (57.2 outside; measured centre 71.95, placed on 72.25). In depth it opens 1.8-9.3 mm in front of the rear-most back surface; the depth axis is normalised by x0.958 so the body is 24.5. The 7.5 mm opening matches the Game Pak thickness of 7.5 mm (en.wikipedia.org/wiki/Game_Boy_Game_Pak).",
+    "confidence": "derived"
+   },
+   {
+    "name": "ESTIMATE: inserted Game Pak envelope (behind LCD, back ~9 mm of depth)",
+    "kind": "rect",
+    "x": 72.25,
+    "y": 21.2,
+    "w": 57.5,
+    "h": 35,
+    "source": "Cartridge size is 35 tall x 57-58 wide with a 60 mm grip lip at the top (en.wikipedia.org/wiki/Game_Boy_Game_Pak; Nintendo JP GBA page says 縦34.5mm×横60mm). The vertical position is an assumption: the bottom edge is placed about 2 mm above the board's 32-pin cartridge-connector pad rows, which are at y 40.1/41.6 (AGB-CPU-10 scan, registered).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Link / EXT port (top edge)",
+    "kind": "polyline",
+    "points": [
+     [
+      75.4,
+      0
+     ],
+     [
+      85.6,
+      0
+     ]
+    ],
+    "source": "US D452,280 FIG.3 top view: port frame at x 75.3-85.5, centre 80.4, about 1-8 mm behind the front face. It is confirmed by the 2x3 P2 pin block on the AGB-CPU-10 scan, whose centre registers to x=80.70, y=7.54. Nintendo's labelled diagram (web.archive.org/web/20040406094014im_/http://www.nintendo.co.jp:80/n08/hardware/gba/zu.gif, item 2) also shows the port right of centre, with peripheral-fixing grooves (item 3) at about x 42-48 and 95-101 in FIG.3.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Power switch (bottom edge, left)",
+    "kind": "point",
+    "x": 22.8,
+    "y": 74,
+    "source": "US D452,280 FIG.4 bottom view (sheet D00002): switch housing x 14.5-31.1, slider window about 16.2-30.8, knob at x about 22.5. y is the silhouette bottom at that x. The placement agrees with the zu.gif label 電源スイッチ.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Headphone jack 3.5 mm (bottom edge, right)",
+    "kind": "point",
+    "x": 114,
+    "y": 76.6,
+    "source": "US D452,280 FIG.4: jack ring outside diameter about 6.4, bore about 3.3-3.8 (consistent with 3.5 mm), centre x about 114.0, about 11.7 mm behind the front face. y is the silhouette bottom at that x.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Volume wheel window (bottom edge, far right)",
+    "kind": "point",
+    "x": 125.7,
+    "y": 72.9,
+    "source": "US D452,280 FIG.4: window x about 121.2-130.1. The zu.gif label 音量ボリューム confirms it sits right of the jack.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Strap hook (rear face, left end)",
+    "kind": "point",
+    "x": 6.6,
+    "y": 54.6,
+    "source": "US D452,280 FIG.2 rear elevation, mirrored with x_front = 144.5 - x_rear: small recess of about 3.7 x 3.9 mm at rear x 137.9. The zu.gif item 6 (ストラップフック) is on the left end.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Shell screw / board hole, top-left",
+    "kind": "point",
+    "x": 37.39,
+    "y": 5.47,
+    "source": "AGB-CPU-10 Edge.Cuts hole (kicad-agb-template), registered. US D452,280 FIG.2 rear tri-wing screw (mirrored) is at (37.92, 5.51).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Shell screw / board hole, top-right",
+    "kind": "point",
+    "x": 107.19,
+    "y": 5.45,
+    "source": "AGB-CPU-10 hole, registered; FIG.2 screw at (107.14, 5.44).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Shell screw / board hole, mid-left",
+    "kind": "point",
+    "x": 27.17,
+    "y": 19.21,
+    "source": "AGB-CPU-10 hole, registered; FIG.2 screw at (27.74, 18.95).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Shell screw / board hole, mid-right",
+    "kind": "point",
+    "x": 117.33,
+    "y": 19.23,
+    "source": "AGB-CPU-10 hole, registered; FIG.2 screw at (117.25, 18.92).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Shell screw / board hole, bottom-left",
+    "kind": "point",
+    "x": 9.24,
+    "y": 61.91,
+    "source": "AGB-CPU-10 hole, registered; FIG.2 screw at (9.73, 61.48).",
+    "confidence": "derived"
+   },
+   {
+    "name": "Shell screw / board hole, bottom-right",
+    "kind": "point",
+    "x": 135.09,
+    "y": 62.01,
+    "source": "AGB-CPU-10 hole, registered; FIG.2 screw at (135.04, 61.52).",
+    "confidence": "derived"
+   },
+   {
+    "name": "2xAA battery door (rear face)",
+    "kind": "rect",
+    "x": 72.44,
+    "y": 59.5,
+    "w": 60.7,
+    "h": 37.6,
+    "source": "US D452,280 FIG.2 rear elevation (same sheet as FIG.1, ink bbox 1909 x 1101 px scaled to 144.5 x 82; its y scale is 1.6% taller than FIG.1, so allow about 1 mm), mirrored. The door spans x 42.1-102.8, y 40.7-78.3. Its latch tab is at top centre (72.55, 39.9), about 12.6 x 6.5. Above it (rear view, mirrored) are a label trapezoid at y 24.5-38.9 and the cartridge-back window at x 47.7-97.3, y 9.5-23.6. The layout matches the production rear photo commons File:Game_Boy_Advance_back.jpg.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Motherboard cut-out for the battery box (open to bottom edge)",
+    "kind": "rect",
+    "x": 72.5,
+    "y": 59.85,
+    "w": 64,
+    "h": 32.1,
+    "source": "AGB-CPU-10 Edge.Cuts outer loop (kicad-agb-template), registered. The cut-out spans x 40.5-104.5, from y 43.8 down to the board's bottom edge (75.9). The narrowest clear width is x 46.2-103.45 (57.3 mm) at y about 50-56, where the left edge steps in.",
+    "confidence": "derived"
+   },
+   {
+    "name": "ESTIMATE: AA cell 1 (upper) LR6 50.5 x 14.5",
+    "kind": "rect",
+    "x": 72.25,
+    "y": 52.6,
+    "w": 50.5,
+    "h": 14.5,
+    "source": "Cell size is the LR6/AA nominal maximum (IEC 60086: 50.5 x 14.5 dia). The arrangement (two horizontal cells stacked vertically) is inferred from the 60.7 x 37.6 door in FIG.2 and the production rear photo. The cells are assumed centred in the 32 mm board cut-out; not measured.",
+    "confidence": "estimated-from-photo"
+   },
+   {
+    "name": "ESTIMATE: AA cell 2 (lower) LR6 50.5 x 14.5",
+    "kind": "rect",
+    "x": 72.25,
+    "y": 67.1,
+    "w": 50.5,
+    "h": 14.5,
+    "source": "Same basis as AA cell 1; position assumed, not measured.",
+    "confidence": "estimated-from-photo"
+   },
+   {
+    "name": "AGB-CPU-10 production motherboard outline (96-pt polyline, includes battery cut-out)",
+    "kind": "polyline",
+    "points": [
+     [
+      12.48,
+      14.98
+     ],
+     [
+      21.81,
+      13.34
+     ],
+     [
+      22.34,
+      11.3
+     ],
+     [
+      27.3,
+      11.29
+     ],
+     [
+      29.35,
+      12.74
+     ],
+     [
+      32.09,
+      12.63
+     ],
+     [
+      35.33,
+      4.67
+     ],
+     [
+      36.44,
+      3.53
+     ],
+     [
+      40.75,
+      3.44
+     ],
+     [
+      41.14,
+      6.18
+     ],
+     [
+      44.31,
+      6.41
+     ],
+     [
+      45.16,
+      8.07
+     ],
+     [
+      47.15,
+      8.01
+     ],
+     [
+      47.7,
+      6.4
+     ],
+     [
+      50.77,
+      6.28
+     ],
+     [
+      51.54,
+      4.18
+     ],
+     [
+      87.04,
+      4.18
+     ],
+     [
+      87.61,
+      7.83
+     ],
+     [
+      89.86,
+      8.03
+     ],
+     [
+      90.72,
+      4.2
+     ],
+     [
+      93.37,
+      4.29
+     ],
+     [
+      93.97,
+      6.84
+     ],
+     [
+      103.02,
+      6.84
+     ],
+     [
+      103.77,
+      3.47
+     ],
+     [
+      107.75,
+      3.45
+     ],
+     [
+      109.05,
+      4.41
+     ],
+     [
+      112.45,
+      12.63
+     ],
+     [
+      115.25,
+      12.68
+     ],
+     [
+      117.08,
+      11.26
+     ],
+     [
+      122.2,
+      11.28
+     ],
+     [
+      122.72,
+      13.32
+     ],
+     [
+      132.07,
+      14.95
+     ],
+     [
+      134.82,
+      18.74
+     ],
+     [
+      134.85,
+      22.38
+     ],
+     [
+      136,
+      22.89
+     ],
+     [
+      136.01,
+      28.22
+     ],
+     [
+      137.18,
+      31.51
+     ],
+     [
+      136.01,
+      35.6
+     ],
+     [
+      136.01,
+      50.77
+     ],
+     [
+      137.46,
+      51.7
+     ],
+     [
+      137.47,
+      62.32
+     ],
+     [
+      136.58,
+      63.95
+     ],
+     [
+      134.1,
+      64.36
+     ],
+     [
+      133.48,
+      66.23
+     ],
+     [
+      131.48,
+      67.02
+     ],
+     [
+      131.2,
+      68.5
+     ],
+     [
+      115.57,
+      72.83
+     ],
+     [
+      114.49,
+      72.26
+     ],
+     [
+      107.54,
+      75.89
+     ],
+     [
+      103.61,
+      75.78
+     ],
+     [
+      103.47,
+      61.42
+     ],
+     [
+      104.49,
+      59.97
+     ],
+     [
+      104.49,
+      45.95
+     ],
+     [
+      103.97,
+      44.41
+     ],
+     [
+      102.44,
+      43.8
+     ],
+     [
+      79.26,
+      43.79
+     ],
+     [
+      78.07,
+      45.02
+     ],
+     [
+      66.23,
+      45.02
+     ],
+     [
+      65.1,
+      43.77
+     ],
+     [
+      42.68,
+      43.96
+     ],
+     [
+      41.59,
+      45.2
+     ],
+     [
+      41.56,
+      47.35
+     ],
+     [
+      42.28,
+      48.11
+     ],
+     [
+      44.65,
+      48.41
+     ],
+     [
+      44.77,
+      51.03
+     ],
+     [
+      46.16,
+      51.99
+     ],
+     [
+      46.18,
+      55.77
+     ],
+     [
+      44.79,
+      56.68
+     ],
+     [
+      44.52,
+      58.77
+     ],
+     [
+      42.7,
+      59.04
+     ],
+     [
+      41.59,
+      60.18
+     ],
+     [
+      41.47,
+      67.97
+     ],
+     [
+      40.48,
+      68.56
+     ],
+     [
+      40.16,
+      72.34
+     ],
+     [
+      35.75,
+      72.36
+     ],
+     [
+      29.75,
+      70.57
+     ],
+     [
+      29.88,
+      67.32
+     ],
+     [
+      21.42,
+      64.74
+     ],
+     [
+      20.66,
+      65
+     ],
+     [
+      19.47,
+      67.48
+     ],
+     [
+      8.16,
+      64.06
+     ],
+     [
+      7.02,
+      63.04
+     ],
+     [
+      6.97,
+      59.48
+     ],
+     [
+      10.34,
+      59.33
+     ],
+     [
+      10.83,
+      58.66
+     ],
+     [
+      10.82,
+      51.39
+     ],
+     [
+      8.4,
+      50.56
+     ],
+     [
+      8.39,
+      40.2
+     ],
+     [
+      6.85,
+      34.18
+     ],
+     [
+      8.37,
+      28.06
+     ],
+     [
+      8.41,
+      25.23
+     ],
+     [
+      10.43,
+      24.79
+     ],
+     [
+      11.08,
+      23.95
+     ],
+     [
+      10.82,
+      23.06
+     ],
+     [
+      9.65,
+      22.36
+     ],
+     [
+      9.7,
+      18.71
+     ]
+    ],
+    "source": "github.com/djedditt/kicad-agb-template kicad/AGB_template.kicad_pcb Edge.Cuts, traced from the 1200 DPI scan. The embedded Dwgs.User image is exactly the top 3996 rows of the scan, centred at (151.775, 91.175), so template coordinates minus (76.6965, 48.884) give scan mm. The outline was simplified to 0.4 mm and registered with the same formulas as the D-pad. The board is 130.6 x 72.5 (x 6.85-137.47, y 3.38-75.89) and sits inside the silhouette on all sides.",
+    "confidence": "derived"
+   },
+   {
+    "name": "Depth budget (thickness vs x, symmetric about 72.25)",
+    "kind": "note",
+    "source": "US D452,280 FIG.3 top view (rear-surface profile against the front-face line), with the depth axis normalised so the body is 24.5 (x0.958; the drawing shows 25.6, about 4.5% over-scale in depth). Thickness excluding button caps, mirrored at 144.5-x: x=2 about 10.6; x=5 about 14.5; x=10 about 16.4; x=15 about 18.8; x=20 about 20.8; x=25 about 22.2; x=30 about 23.3; x=35 about 24.0; x=38-106 about 24.5 (the full-depth central band carrying the cartridge housing at top and the battery box at bottom). The FIG.4 bottom view agrees: about 21.3 at x=20, and the battery bump spans x about 40.7-103.5. The D-pad and A/B caps stand about 1.9-2.1 mm proud of the front face; the official 24.5 excludes them. Stack in the central band, front to back: front shell and lens, LCD, PCB, then the cartridge in the rear 1.8-9.3 mm (top half) or the 2xAA box (14.5 mm cells plus door, about 16 mm, bottom half). That leaves roughly 15 mm in front of the cartridge and roughly 8.5 mm in front of the cells for shell + LCD + PCB (estimate).",
+    "confidence": "derived"
+   }
+  ],
+  "notes": "All figures are in the frame above. I rendered every item as an overlay and checked it visually.\n\n1. **Official dimensions confirmed.** Nintendo JP's spec page (https://www.nintendo.co.jp/n08/hardware/spec/index.html) gives 縦82 x 横144.5 x 厚さ24.5 mm, about 140 g without batteries, a reflective TFT screen of 40.8 x 61.2 mm at 240x160, and power from 2x AA (about 15 h) or the battery pack. The 2.9-inch figure is on https://www.nintendo.co.jp/n08/hardware/gba/index.html. Nintendo JP's old per-model spec URL (/n08/hardware/gba/spec/) now returns 404, as does the Nintendo UK technical-data page that Wikipedia cites.\n\n2. **Outline and front-panel shapes.** These come from Nintendo's own US design patent D452,280 S. It has orthographic FIG.1 (front), FIG.2 (rear), FIG.3 (top), FIG.4 (bottom) and FIG.5-6 (sides), downloaded from patentimages.storage.googleapis.com.\n   - FIG.1 matches the official 144.5 x 82 aspect to within 0.25%, and its window rectangle (61.9 x 41.9) fits just outside the official 61.2 x 40.8 active area, so the drawing is to scale in the front plane.\n   - The depth views (FIG.3 and FIG.4) are about 4.5% over-scale in depth, so I normalised them to 24.5 mm. The cartridge-slot depth then comes out at 7.5 mm, matching the cartridge thickness.\n\n3. **Button, LED and screw positions (production).** These come from a 1200 DPI scan of a bare AGB-CPU-10 motherboard and its KiCad board outline (github.com/djedditt/kicad-agb-template, CC0).\n   - **Scan calibration:** the scan reads 0.455% large, measured against the 1.50 mm cartridge-connector pitch. I corrected every scan value by x0.99547.\n   - **Registration:** x_shell = (x_scan - 75.30)·0.99547 + 72.25. The board's six mounting holes are symmetric about x_scan = 75.30, and I assumed that line is the shell centreline. y_shell = y_scan·0.99547 - 0.88, a least-squares fit to the patent's button centres.\n   - **Cross-check (board vs patent):** D-pad (-0.16, +0.07), Start (-0.16, -0.08), Select (-0.21, +0.02), A (+0.45, +0.15), B (+0.49, -0.17), LED (+0.58, +0.14). The board holes fall on the patent's six rear screws within 0.6 mm. Treat front-panel feature positions as ±0.5 mm and the outline as ±0.3 mm plus the drawing's own tolerance.\n   - **Useful derived centres:** D-pad (19.95, 34.09), A (130.88, 31.92), B (117.94, 36.25), Start (29.49, 53.82), Select (29.44, 61.82), LED (118.14, 14.70), screen centre (72.25, 36.67), link port x 80.5, cartridge slot x 43.6-100.9.\n\n4. **Internal notes for a handheld on this footprint.**\n   - **Depth:** the full 24.5 mm depth exists only in a central band about 66 mm wide (x about 38-106). The grips thin to about 21 mm at x = 20 and about 16 mm at x = 10.\n   - **Cartridge:** it occupies the rear 1.8-9.3 mm, top centre. It stands 35 mm tall and plugs into a 32-pin, 1.5 mm-pitch connector whose pads sit at y about 40-42.\n   - **Battery bay:** the 2xAA box sits bottom centre on the back. The door is about 61 x 38 mm (x 42-103, y 41-78). It passes through a motherboard cut-out of about 63 x 32 mm (x 40.5-104.5, y 43.8 down to the bottom edge; narrowest clear width 57.3 mm).\n   - **Motherboard:** the production board is 130.6 x 72.5 mm (x 6.9-137.5, y 3.4-75.9) and U-shaped.\n   - **Shoulder switches:** the L and R tact switches sit near (15.9, 19.4) and (130.2, 17.5).\n   - **Front-view clearance:** about 5-6 mm between the board edge and the outer silhouette on the long sides.\n\n5. **Gaps and caveats.**\n   - Speaker transducer diameter and the LCD module outline were not determined.\n   - The cartridge envelope and the AA cell placement are marked ESTIMATE. They are inferred from the connector position, the door size and the cell spec, not measured. The \"estimated-from-photo\" tag on the cells is the closest available label; the arrangement comes from the rear photo and door size.\n   - I did not use vendor IPS-kit or 3D-shell drawings. GitHub search was rate-limited, and the patent plus the board scan gave better-sourced data.\n   - Silhouette notch handling: the patent shows small parting-line notches of about 1-1.5 mm at y ≈ 13.5-15.5 where the shoulder buttons meet the body. I smoothed them in the outline; a small residual kink remains at about (4.2-4.5, 12.9-14.2) and its mirror.\n\nScratch files, all in /tmp/gb2-mech:\n- geom.json (all point arrays)\n- overlay.png (derived geometry on the patent FIG.1)\n- overlay2.png (all items)\n- p1_11.png and p2.png (full-resolution patent sheets)\n- USD452280.pdf\n- zu.png (Nintendo's labelled diagram)\n- agbt/ (board scans and KiCad template)\n- the scripts used (fig1*.py, bezel.py, comps.py, centres.py, pitch.py, cutout2.py, outline_sym.py, lens3.py, build.py)"
+ }
+}
