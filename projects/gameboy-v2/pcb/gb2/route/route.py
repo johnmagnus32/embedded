@@ -10,6 +10,7 @@ In a group file:
     P("U9.13")                  -> (x, y) of that pad's centre (board mm)
     T(net, layer, w, pts)       track polyline on "F" / "B" (or a KiCad layer name), width w mm
     VIA(net, x, y, d=0.6, h=0.3)  through via (default = the Power/Rail via; 0.45/0.25 for signals)
+    Every 90 deg corner in a T() polyline is mitered automatically (two 45 deg turns); see miter().
     ZONE(net, layer, pts, name)    copper pour (solid pad connection, 0.2 mm clearance, islands removed), filled
     nets are exact board names or, for a sheet-local net, the bare name if unique ("BB_FB" = "/buck-boost/BB_FB")
 
@@ -20,6 +21,7 @@ import pcbnew, os, sys, glob, subprocess, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 MM = pcbnew.FromMM; TO = pcbnew.ToMM
 def V(x, y): return pcbnew.VECTOR2I(int(round(MM(x))), int(round(MM(y))))
+MITER, MITER_MIN = 2.5, 0.4    # 90 deg corners become two 45s: chamfer leg 2.5 x track width, at least 0.4 mm
 
 
 def groups_on_disk():
@@ -44,6 +46,25 @@ def build(path, names, files):
             pads.setdefault(f"{fp.GetReference()}.{p.GetNumber()}", p)
     nets = [str(k) for k in B.GetNetsByName().keys()]
     report, lint = [], []          # lint: shape rules DRC doesn't check (a failing group is not saved)
+    pad_xy = {(round(TO(p.GetPosition().x), 2), round(TO(p.GetPosition().y), 2)) for p in pads.values()}
+    def miter(pts, w):
+        """chamfer every 90 deg corner to two 45 deg ones: chamfer leg MITER x width (>= MITER_MIN), shortened to fit
+        the shorter neighbouring segment. A corner sitting on a pad centre is left (the pad hides it)."""
+        out = [pts[0]]
+        for i in range(1, len(pts) - 1):
+            a, b, c = out[-1], pts[i], pts[i + 1]
+            u, v = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+            lu, lv = math.hypot(*u), math.hypot(*v)
+            if lu < 1e-6 or lv < 1e-6 or abs((u[0] * v[0] + u[1] * v[1]) / (lu * lv)) > 0.02 or \
+                    (round(b[0], 2), round(b[1], 2)) in pad_xy:
+                out.append(b); continue
+            k = min(max(MITER * w, MITER_MIN), 0.45 * lu, 0.45 * lv if i + 1 < len(pts) - 1 else 0.9 * lv)
+            if k < 0.1:
+                lint_warn.append(f"{name}: unmitered 90 deg corner at ({b[0]:.2f},{b[1]:.2f}) (segments too short)")
+                out.append(b); continue
+            out.append((b[0] - u[0] / lu * k, b[1] - u[1] / lu * k)); out.append((b[0] + v[0] / lv * k, b[1] + v[1] / lv * k))
+        out.append(pts[-1]); return out
+    lint_warn = []
     for name in names:
         g = pcbnew.PCB_GROUP(B); g.SetName("route:" + name); B.Add(g)
         stats = {"len": 0.0, "vias": 0}
@@ -60,6 +81,7 @@ def build(path, names, files):
         def T(net, layer, w, pts):
             L = {"F": pcbnew.F_Cu, "B": pcbnew.B_Cu}[layer] if layer in ("F", "B") else B.GetLayerID(layer)
             ni = NET(net)
+            pts = miter(pts, w)
             # lint: every segment >= 0.6 mm on the 45 deg grid (shorter pad stubs may follow the pad)
             for a, b in zip(pts, pts[1:]):
                 L_ = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
@@ -94,6 +116,7 @@ def build(path, names, files):
         report.append(f"  {name}: {stats['len']:.1f} mm of track, {stats['vias']} vias")
     if lint:
         print("LINT (not saved):\n  " + "\n  ".join(lint)); sys.stdout.flush(); os._exit(1)
+    if lint_warn: report.append("  lint warnings:\n    " + "\n    ".join(lint_warn))
     pcbnew.ZONE_FILLER(B).Fill(B.Zones())
     pcbnew.SaveBoard(path, B)
     print("\n".join(report)); sys.stdout.flush(); os._exit(0)
