@@ -5,7 +5,7 @@ board edge, and the ratsnest (the DRC's unconnected pairs), as a PNG for review.
 Run:  <kicad python> route/plot.py <x0> <y0> <x1> <y1> [--nets N1,N2,...] [--drc drc.json] [-o out.png]
        (board frame mm; default board gb2.kicad_pcb next to this folder; --drc runs kicad-cli if omitted)
 """
-import pcbnew, os, sys, json, subprocess, argparse, colorsys, html
+import pcbnew, os, sys, json, subprocess, argparse, colorsys, html, math
 
 HERE = os.path.dirname(os.path.abspath(__file__)); BOARD = os.path.join(HERE, "..", "gb2.kicad_pcb")
 CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
@@ -15,7 +15,7 @@ LAYER_COL = {pcbnew.F_Cu: "#d03030", pcbnew.B_Cu: "#3050d0", pcbnew.In1_Cu: "#30
 ap = argparse.ArgumentParser()
 ap.add_argument("box", nargs=4, type=float); ap.add_argument("--nets", default=""); ap.add_argument("--drc")
 ap.add_argument("-o", default="/tmp/gb2-plot.png")
-ap.add_argument("--channels", action="store_true", help="overlay route/channels.py"); ap.add_argument("--no-tracks", action="store_true"); ap.add_argument("--board", default=BOARD); ap.add_argument("--px", type=float, default=40)
+ap.add_argument("--channels", action="store_true", help="overlay route/channels.py"); ap.add_argument("--escape", action="store_true", help="overlay route/mcu_escape.py"); ap.add_argument("--no-tracks", action="store_true"); ap.add_argument("--board", default=BOARD); ap.add_argument("--px", type=float, default=40)
 a = ap.parse_args()
 x0, y0, x1, y1 = a.box; S = a.px                                      # px per mm
 side = max(x1 - x0, y1 - y0); x1, y1 = x0 + side, y0 + side           # qlmanage thumbnails are square: pad the window
@@ -91,6 +91,24 @@ if a.channels:
         o.append(f'<polygon points="{pp}" fill="{c}" fill-opacity="0.22" stroke="{c}" stroke-width="2" stroke-dasharray="{"" if lay == "F" else "8,4"}"/>')
         cx = sum(x for x, _ in pts) / len(pts); cy = sum(y for _, y in pts) / len(pts)
         o.append(f'<text x="{X(cx):.1f}" y="{Y(cy):.1f}" fill="{c}" font-size="{max(11, S*0.9):.0f}" font-family="Helvetica" font-weight="bold" text-anchor="middle" stroke="#000" stroke-width="3" paint-order="stroke">{html.escape(name.split()[0])} ({lay})</text>')
+if a.escape:
+    sys.path.insert(0, HERE); from mcu_escape import ESCAPE
+    U1 = B.FindFootprintByReference("U1"); pads = {p.GetNumber(): p for p in U1.Pads()}
+    CH = {"W1": "#ff5050", "E1": "#50a0ff", "E2": "#40e0ff", "hub->W1": "#ffa040", "hub->S": "#ffe040", "N": "#d070ff",
+          "P": "#60ff60", "W2b": "#ff60c0", "crystal": "#ffffff", "local": "#a0a0a0", "plane": "#606060"}
+    DIR = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0)}
+    for pin, (net, side, lay, via, ch, note) in ESCAPE.items():
+        if ch == "plane": continue
+        p = pads[str(pin)]; q = p.GetPosition(); px, py = TO(q.x), TO(q.y); dx, dy = DIR[side]
+        tip = (px + dx * 1.4, py + dy * 1.4); c = CH.get(ch, "#a0a0a0")
+        pts = [(px, py), tip] + ([via] if via and math.hypot(via[0] - tip[0], via[1] - tip[1]) < 8 else [])
+        o.append('<polyline points="' + " ".join(f"{X(x):.1f},{Y(y):.1f}" for x, y in pts) + f'" fill="none" stroke="{c}" stroke-width="3" stroke-dasharray="{"" if lay == "F" else "7,3"}"/>')
+        if via and math.hypot(via[0] - tip[0], via[1] - tip[1]) < 8:
+            o.append(f'<circle cx="{X(via[0]):.1f}" cy="{Y(via[1]):.1f}" r="{0.225*S:.1f}" fill="none" stroke="{c}" stroke-width="2"/>')
+        lx, ly = px + dx * 2.6, py + dy * 2.6
+        anchor = "start" if side == "E" else "end" if side == "W" else "middle"
+        rot = f' transform="rotate(-90 {X(lx):.1f} {Y(ly):.1f})"' if side in ("N", "S") else ""
+        o.append(f'<text x="{X(lx):.1f}" y="{Y(ly):.1f}" fill="{c}" font-size="{S*0.38:.0f}" font-family="Helvetica" text-anchor="{"start" if side == "N" else "end" if side == "S" else anchor}" dominant-baseline="middle"{rot} stroke="#000" stroke-width="2" paint-order="stroke">{html.escape(net.split("/")[-1])} {ch}</text>')
 for u in drc.get("unconnected_items", []):
     it = u["items"]; (ax, ay), (bx, by) = (it[0]["pos"]["x"], it[0]["pos"]["y"]), (it[1]["pos"]["x"], it[1]["pos"]["y"])
     n = it[0]["description"].split("[")[1].split("]")[0] if "[" in it[0]["description"] else ""

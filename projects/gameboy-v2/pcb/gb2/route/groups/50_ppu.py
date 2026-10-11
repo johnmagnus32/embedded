@@ -15,7 +15,7 @@ for net, mp, up, x_end in LANE:
 # NC pad to R4 (keeps U2.5 / C13's +1V2 via spot free)
 cv = (69.0, P("U2.8")[1])
 VIA("FPGA_CRESET_B", *cv, d=0.45, h=0.25)
-T("FPGA_CRESET_B", "B", W, [cv, (69.17, 59.51), (71.0, 59.51), (71.5, 60.0), (73.2, 60.0), P("R4.1")])  # C22 / TP7 gap, under U3.4
+T("FPGA_CRESET_B", "B", W, [cv, (69.17, 59.51), (71.0, 59.51), (71.49, 60.0), (73.2, 60.0), (74.0, 60.8), P("R4.1")])  # C22 / TP7 gap, under U3.4
 # CDONE pull-up + LED: straight down from the drop to R5, then along to D2; D2 -> R7 (LED resistor)
 cx = 70.0
 drop = (cx, P("U2.7")[1] - (cx - 69.5))           # the point on CDONE's 45 deg drop at x = 70.0

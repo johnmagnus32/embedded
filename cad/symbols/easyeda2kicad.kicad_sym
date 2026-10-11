@@ -303,7 +303,7 @@
         (name "PC6" (effects (font (size 1.27 1.27))))
         (number "37" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin bidirectional line
         (at 39.37 -6.35 180)
         (length 2.54)
         (name "PC7" (effects (font (size 1.27 1.27))))

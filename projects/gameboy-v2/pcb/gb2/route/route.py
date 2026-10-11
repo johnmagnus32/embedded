@@ -15,7 +15,7 @@ In a group file:
 
 Run:  <kicad python> route/route.py [--board gb2.kicad_pcb] [group ...]      (no groups = all)
 """
-import pcbnew, os, sys, glob, subprocess
+import pcbnew, os, sys, glob, subprocess, math
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MM = pcbnew.FromMM; TO = pcbnew.ToMM
@@ -43,7 +43,7 @@ def build(path, names, files):
         for p in fp.Pads():
             pads.setdefault(f"{fp.GetReference()}.{p.GetNumber()}", p)
     nets = [str(k) for k in B.GetNetsByName().keys()]
-    report = []
+    report, lint = [], []          # lint: shape rules DRC doesn't check (a failing group is not saved)
     for name in names:
         g = pcbnew.PCB_GROUP(B); g.SetName("route:" + name); B.Add(g)
         stats = {"len": 0.0, "vias": 0}
@@ -60,6 +60,20 @@ def build(path, names, files):
         def T(net, layer, w, pts):
             L = {"F": pcbnew.F_Cu, "B": pcbnew.B_Cu}[layer] if layer in ("F", "B") else B.GetLayerID(layer)
             ni = NET(net)
+            # lint: every segment >= 0.6 mm on the 45 deg grid (shorter pad stubs may follow the pad)
+            for a, b in zip(pts, pts[1:]):
+                L_ = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
+                if L_ < 0.6: continue
+                ang = math.degrees(math.atan2(b[1] - a[1], b[0] - a[0])) % 45
+                if min(ang, 45 - ang) > 0.5:
+                    lint.append(f"{name}: {net} {L_:.2f} mm segment {min(ang, 45 - ang):.1f} deg off the 45 grid at ({a[0]:.2f},{a[1]:.2f})")
+            # lint: no turn sharper than 90 deg (a doubling-back / overshoot), no zero-length segment
+            for a, b, c in zip(pts, pts[1:], pts[2:]):
+                u, v = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+                lu, lv = (u[0] ** 2 + u[1] ** 2) ** 0.5, (v[0] ** 2 + v[1] ** 2) ** 0.5
+                if lu < 1e-6 or lv < 1e-6: continue
+                if (u[0] * v[0] + u[1] * v[1]) / (lu * lv) < -0.02:     # sharper than ~91 deg
+                    lint.append(f"{name}: {net} turns back sharper than 90 deg at ({b[0]:.2f},{b[1]:.2f})")
             for a, b in zip(pts, pts[1:]):
                 t = pcbnew.PCB_TRACK(B); t.SetStart(V(*a)); t.SetEnd(V(*b)); t.SetWidth(MM(w)); t.SetLayer(L)
                 t.SetNet(ni); B.Add(t); g.AddItem(t)
@@ -78,6 +92,8 @@ def build(path, names, files):
             B.Add(z); g.AddItem(z)
         exec(compile(open(files[name]).read(), files[name], "exec"), {"P": P, "T": T, "VIA": VIA, "NET": NET, "ZONE": ZONE})
         report.append(f"  {name}: {stats['len']:.1f} mm of track, {stats['vias']} vias")
+    if lint:
+        print("LINT (not saved):\n  " + "\n  ".join(lint)); sys.stdout.flush(); os._exit(1)
     pcbnew.ZONE_FILLER(B).Fill(B.Zones())
     pcbnew.SaveBoard(path, B)
     print("\n".join(report)); sys.stdout.flush(); os._exit(0)

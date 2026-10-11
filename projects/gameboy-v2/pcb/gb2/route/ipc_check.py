@@ -63,7 +63,7 @@ for net, lay, n, l, w in branches:
 print("\nlayer changes on the trunks (vias in parallel vs the current through them):")
 for name, net, I, pts in (("Q1 drain -> back (SYS)", "SYS", 1.5, [(96.2, 43.4), (96.2, 44.3)]),
                           ("back -> buck-boost input (SYS)", "SYS", 1.2, [(88.6, 37.55), (88.6, 38.45)]),
-                          ("amp feed up at C30 (SYS)", "SYS", AMP_FEED, [(153.5, 54.1), (153.5, 54.95)]),
+                          ("amp feed up at C30 (SYS)", "SYS", AMP_FEED, [(153.5, 54.05), (153.5, 54.9)]),
                           ("J7 -> back (VBUS, each side)", "VBUS", 0.5, [(97.65, 39.95)]),
                           ("back -> C36 (VBUS)", "VBUS", 0.5, [(106.5, 43.15)])):
     vs = [v for v in B.GetTracks() if v.Type() == pcbnew.PCB_VIA_T and v.GetNetname() == net and

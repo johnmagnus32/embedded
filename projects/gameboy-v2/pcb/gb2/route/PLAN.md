@@ -60,6 +60,18 @@ enough 0.25/0.3 mm vias in parallel. Copper under 0.4 mm on a power net is a sig
 sense tap, Miller tie, VINA/VDD pins, test-point stubs), and the check lists those for review. The amp feed drops
 about 60 mV at a 1 A peak.
 
+## Signal integrity notes
+
+- **SPI3 is a T:** the MCU sits between the NOR (about 15 mm east) and the FPGA's config port (about 30 mm west).
+  At the STM32's fastest edges (2–3 ns) the critical length is about 150–200 mm, so the branches are 5–7× short
+  of needing termination, and there's no series resistor. Firmware should still run SPI3 SCK/MOSI at OSPEEDR
+  "medium" (about 10 ns edges): that adds margin and cuts EMI, and costs nothing at the 25 MHz maximum SCK.
+- **Return paths:** a front-to-back via moves a signal's reference from In1 (GND) to In2 (+3V3). Near the MCU and
+  FPGA the decaps carry the return across; on the long W1/E1 runs each cluster of signal vias gets a GND stitching
+  via beside it.
+- **I2C** spans the board (IMU east; expander and haptics far west). Its capacitance and rise time get checked
+  against the pull-ups once it's routed.
+
 ## Grounding
 
 - Exposed pads have thermal-via grids (`place.py --thermal-vias`). The grid steps around the decap GND pads that

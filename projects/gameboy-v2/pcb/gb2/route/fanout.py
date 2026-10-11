@@ -76,6 +76,16 @@ DOUBLE = {"C27.2", "C28.2", "U5.2", "C40.2", "C41.2", "C42.2", "C43.2", "C44.2",
           "C29.2", "C30.2"}
 BEARINGS = 24
 RADII = [MM(0.1 * k) for k in range(3, 26)]  # 0.3 .. 2.5 mm
+
+
+def candidates():
+    """(radius, bearing) to try: every radius on the 45 deg grid first (stubs a reviewer won't circle), then the
+    15 deg bearings as a fallback."""
+    for r in RADII:
+        for k in range(8): yield r, 2 * math.pi * k / 8
+    for r in RADII:
+        for k in range(BEARINGS):
+            if k % (BEARINGS // 8): yield r, 2 * math.pi * k / BEARINGS
 THERMAL_MIN = MM(1.4)                       # a pad this wide on its narrow side is an exposed pad
 THERMAL_PITCH, THERMAL_MAX = MM(1.1), 9
 CELL = MM(2.0)
@@ -141,6 +151,16 @@ def stub_start(pad, x, y, w):
         t = min(t, bb.GetWidth() / 2)
     t = max(0.0, min(L, t - w / 2))
     return V(c.x + dx * t, c.y + dy * t)
+
+
+def octi_paths(c, q):
+    """pad centre c -> target q: the two octilinear doglegs (straight run then 45 deg, 45 deg then straight), then
+    the plain straight line as the last resort."""
+    dx, dy = q.x - c.x, q.y - c.y
+    m = min(abs(dx), abs(dy)); sx, sy = (1 if dx >= 0 else -1), (1 if dy >= 0 else -1)
+    if abs(dx) >= abs(dy): k1 = V(q.x - sx * m, c.y); k2 = V(c.x + sx * m, q.y)
+    else: k1 = V(c.x, q.y - sy * m); k2 = V(q.x, c.y + sy * m)
+    return [[c, k1, q], [c, k2, q], [c, q]]
 
 
 def seg_dist(px, py, ax, ay, bx, by):
@@ -253,14 +273,23 @@ def main():
             if ob["kind"] == "pad" and not on_plane(it): continue
             q = it.GetPosition(); d = math.hypot(q.x - c.x, q.y - c.y)
             if d > TIE_FIRST or (best and d >= best[0]): continue
-            a = stub_start(pad, q.x, q.y, w); seg = pcbnew.SHAPE_SEGMENT(a, q, w)
-            if any(ob2["net"] != pad.GetNetCode() and ob2["shapes"].get(layer) is not None and ob2["shapes"][layer].Collide(seg, need(pad, ob2))
-                   for ob2 in grid.near((a.x + q.x) / 2, (a.y + q.y) / 2, d / 2 + MM(1.5))): continue
-            best = (d, a, q)
+            path = None
+            for pts in octi_paths(c, q):
+                a = stub_start(pad, pts[1].x, pts[1].y, w); pts = [a] + pts[1:]
+                if all(not any(ob2["net"] != pad.GetNetCode() and ob2["shapes"].get(layer) is not None and
+                               ob2["shapes"][layer].Collide(pcbnew.SHAPE_SEGMENT(p0, p1, w), need(pad, ob2))
+                               for ob2 in grid.near((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, d / 2 + MM(1.5)))
+                       for p0, p1 in zip(pts, pts[1:]) if (p0.x, p0.y) != (p1.x, p1.y)):
+                    path = pts; break
+            if path is None: continue
+            best = (d, path)
         if not best: return False
-        d, a, q = best
-        t = pcbnew.PCB_TRACK(B); t.SetStart(a); t.SetEnd(q); t.SetWidth(w); t.SetLayer(layer); t.SetNet(pad.GetNet())
-        B.Add(t); G.AddItem(t); grid.add(obstacle(t, "track")); return True
+        d, path = best
+        for p0, p1 in zip(path, path[1:]):
+            if (p0.x, p0.y) == (p1.x, p1.y): continue
+            t = pcbnew.PCB_TRACK(B); t.SetStart(p0); t.SetEnd(p1); t.SetWidth(w); t.SetLayer(layer); t.SetNet(pad.GetNet())
+            B.Add(t); G.AddItem(t); grid.add(obstacle(t, "track"))
+        return True
 
     placed, failed, thermal, thermal_none = [], [], [], []
     ep_ties = []
@@ -338,26 +367,20 @@ def main():
                         hit = (x, y, r); break
                 if hit: break
             AVOID[0] = True
-        for r in ([] if hit else RADII):
-            for k in range(BEARINGS):
-                a = 2 * math.pi * k / BEARINGS
-                x, y = c.x + r * math.cos(a), c.y + r * math.sin(a)
-                why = fits(pad, layer, w, x, y)
-                if why is None:
-                    hit = (x, y, r); break
-                blockers[why] += 1
-            if hit: break
+        for r, a in ([] if hit else candidates()):
+            x, y = c.x + r * math.cos(a), c.y + r * math.sin(a)
+            why = fits(pad, layer, w, x, y)
+            if why is None:
+                hit = (x, y, r); break
+            blockers[why] += 1
         if not hit and tie_now(pad, layer, w):  # before giving up a channel: a short tie to on-plane copper
             tied.append((ref, pad.GetNetname(), 0.0)); continue
         if not hit:                           # second chance: allow a reserved channel rather than leave it off-plane
             AVOID[0] = False
-            for r in RADII:
-                for k in range(BEARINGS):
-                    a = 2 * math.pi * k / BEARINGS
-                    x, y = c.x + r * math.cos(a), c.y + r * math.sin(a)
-                    if fits(pad, layer, w, x, y) is None:
-                        hit = (x, y, r); break
-                if hit: break
+            for r, a in candidates():
+                x, y = c.x + r * math.cos(a), c.y + r * math.sin(a)
+                if fits(pad, layer, w, x, y) is None:
+                    hit = (x, y, r); break
             AVOID[0] = True
             if hit: in_chan.append(ref)
         if not hit:
@@ -365,18 +388,14 @@ def main():
         x, y, r = hit
         add_via(pad, x, y)
         if ref in DOUBLE:                       # second via: nearest other spot >= 0.8 mm from the first
-            for r2 in RADII:
-                for k in range(BEARINGS):
-                    a = 2 * math.pi * k / BEARINGS
-                    x2, y2 = c.x + r2 * math.cos(a), c.y + r2 * math.sin(a)
-                    if math.hypot(x2 - x, y2 - y) < MM(0.8): continue
-                    if fits(pad, layer, w, x2, y2) is None:
-                        add_via(pad, x2, y2)
-                        t2 = pcbnew.PCB_TRACK(B); t2.SetStart(stub_start(pad, x2, y2, w)); t2.SetEnd(V(x2, y2)); t2.SetWidth(w)
-                        t2.SetLayer(layer); t2.SetNet(pad.GetNet()); B.Add(t2); G.AddItem(t2); grid.add(obstacle(t2, "track"))
-                        doubled.append(ref); break
-                else: continue
-                break
+            for r2, a in candidates():
+                x2, y2 = c.x + r2 * math.cos(a), c.y + r2 * math.sin(a)
+                if math.hypot(x2 - x, y2 - y) < MM(0.8): continue
+                if fits(pad, layer, w, x2, y2) is None:
+                    add_via(pad, x2, y2)
+                    t2 = pcbnew.PCB_TRACK(B); t2.SetStart(stub_start(pad, x2, y2, w)); t2.SetEnd(V(x2, y2)); t2.SetWidth(w)
+                    t2.SetLayer(layer); t2.SetNet(pad.GetNet()); B.Add(t2); G.AddItem(t2); grid.add(obstacle(t2, "track"))
+                    doubled.append(ref); break
         t = pcbnew.PCB_TRACK(B)
         t.SetStart(stub_start(pad, x, y, w)); t.SetEnd(V(x, y)); t.SetWidth(w); t.SetLayer(layer)
         t.SetNet(pad.GetNet()); B.Add(t); G.AddItem(t)

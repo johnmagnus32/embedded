@@ -27,9 +27,10 @@ T("LCD_D0", "F", W, [(px, py), (60.4, py), (60.4 - (jy - py), jy), (jx, jy)])
 # ---- RST: off U2's west side below D0, down the corridor's west column
 (px, py), (jx, jy) = P("U2.36"), P("J3.7")
 c = 59.6
-T("LCD_RST", "F", W, [(px, py), (60.6, py), (c, py + 1.0), (c, jy + (c - 57.95)), (57.95, jy), (jx, jy)])
+T("LCD_RST", "F", W, [(px, py), (60.6, py), (c, py + 1.0), (c, jy - (c - 57.95)), (57.95, jy), (jx, jy)])
 # ---- WR: pin 37 -> R29 (sits in the corner) -> down the east column -> J3.5
-T("LCD_WR_FPGA", "F", W, [P("U2.37"), P("R29.1")])
+(px, py), (rx, ry) = P("U2.37"), P("R29.1")
+T("LCD_WR_FPGA", "F", W, [(px, py), (px, ry - (px - rx)), (rx, ry)])     # down, then 45 deg into R29
 (rx, ry), (jx, jy) = P("R29.2"), P("J3.5")
 T("LCD_WR", "F", W, [(rx, ry), (rx, jy - (rx - 57.95) + 0.0), (57.95, jy), (jx, jy)])
 
@@ -41,7 +42,7 @@ T("LCD_CS", "F", W, [P("U2.43"), (64.942, 63.95), (65.2, 64.2), csv_]); VIA("LCD
 (jx, jy) = P("J3.4")
 T("LCD_DC", "B", W, [dcv, (61.2, 64.3), (61.2, jy - (61.2 - 57.95)), (57.95, jy), (jx, jy)])
 csf = (60.7, 83.6)                                  # above DC's peel (y 84.3), below WR's (82.1)
-T("LCD_CS", "B", W, [csv_, (64.97, 63.85), (61.1, 63.85), (60.7, 64.25), csf]); VIA("LCD_CS", *csf, d=0.45, h=0.25)
+T("LCD_CS", "B", W, [csv_, (65.0, 63.85), (61.1, 63.85), (60.7, 64.25), csf]); VIA("LCD_CS", *csf, d=0.45, h=0.25)
 (jx, jy) = P("J3.3")
 T("LCD_CS", "F", W, [csf, (60.7, jy - (60.7 - 57.95)), (57.95, jy), (jx, jy)])
 # LITE: MCU PC6 (pin 37, bottom side) straight down to a via, then west on the back under the E2 channel and U2
