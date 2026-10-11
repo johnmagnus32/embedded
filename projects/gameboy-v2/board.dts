@@ -23,7 +23,8 @@
          * gb2 (the custom board) swaps the two UARTs for routing (2026-10-10, see
          * pcb/BOM.md "Pinout notes" #2): console = USART1 (PA9/PA10 -> header J2),
          * BT830 HCI = USART2 (PA2 TX / PA3 RX / PA0 CTS / PA1 RTS), battery ADC moved
-         * PA0 -> PC0 (ADC1_IN10), BT_EN PC1 -> PC3, /PGOOD PC3 -> PC1 (EXTI1),
+         * PA0 -> PC0 (ADC1_IN10), BT_EN PC1 -> PC3, /CHG PC2 -> PC1 (EXTI1),
+         * /PGOOD PC3 -> PC2 (EXTI2),
          * IMU INT1 PB10 -> PB5 (EXTI5), I2C1 SDA PB9 -> PB7
          * (SCL stays PB8); right-grip buttons direct on GPIO (internal pull-ups):
          * R=PB9, Vol+=PB4, A=PB3, Vol-=PA15, B=PB14 (PB3 = SWO: no SWO trace on gb2);

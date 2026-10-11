@@ -122,3 +122,13 @@ C47,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,BT830 VREG_OUT_HV stabilit
 C48,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,BT830 VDD_PADS decoupling · CC0603KRX7R9BB104 · #66
 C49,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,BT830 VREG_IN_HV decoupling · CC0603KRX7R9BB104 · #66
 C50,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,BT830 3.3 V burst reservoir · CC0603KRX5R6BB475 · #67
+TP1,usb-c,,manual:TestPoint,Test point VBUS · bare probe pad on the back (not assembled) · #83
+TP2,charger,,manual:TestPoint,Test point BAT · bare probe pad on the back (not assembled) · #83
+TP3,charger,,manual:TestPoint,Test point SYS · bare probe pad on the back (not assembled) · #83
+TP4,charger,,manual:TestPoint,Test point GND · bare probe pad on the back (not assembled) · #83
+TP5,buck-boost,,manual:TestPoint,Test point +3V3 · bare probe pad on the back (not assembled) · #83
+TP6,lcd-boost,,manual:TestPoint,Test point +5V_LCD · bare probe pad on the back (not assembled) · #83
+TP7,fpga-ldo,,manual:TestPoint,Test point +1V2 · bare probe pad on the back (not assembled) · #83
+TP8,mcu,,manual:TestPoint,Test point BOOT0 · bare probe pad on the back (not assembled) · #83
+TP9,mcu,,manual:TestPoint,Test point MCO2 · bare probe pad on the back (not assembled) · #83
+TP10,mcu,,manual:TestPoint,Test point GND · bare probe pad on the back (not assembled) · #83

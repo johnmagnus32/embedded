@@ -7101,7 +7101,7 @@
     )
     (property
       "Footprint"
-      "easyeda2kicad:HDR-TH_20P-P2.54-V-F"
+      "manual:PinSocket_1x20_P2.54_D1.0"
       (id 2)
       (at 0 -31.75 0)
       (effects (font (size 1.27 1.27) ) hide)

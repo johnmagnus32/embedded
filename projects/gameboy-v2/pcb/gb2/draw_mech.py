@@ -43,7 +43,7 @@ CONTROL_CLEARANCE = 3.0             # mm from each front control to the module o
 GBA_STRETCH = None                  # mm added at the centre line; None = the smallest giving CONTROL_CLEARANCE
 
 # Our parts (body w, h / diameter; buffer) — same cells/transducers and buffers as gb3 (datasheet-verified bodies).
-BATTERY = (62.0, 38.5, 2.0)         # PKCELL LP-803860 max 62 x 38.5 x 8.5 incl. PCM (landscape, like the GBA AA bay), +2 buffer
+BATTERY = (62.0, 38.5, 2.0)         # Adafruit 2011 = PKCELL LP-803860 (2000 mAh), max 62 x 38.5 x 8.5 incl. PCM (landscape), +2 buffer
 SPEAKER = (27.0, 1.5)               # CES-2704-088L050 Ø27 ±0.2 x 4.9, +1.5 buffer
 SPK_OPENING = 23.4                  # Ø23.4 ±0.1 acoustic opening (front) — sizes the grille
 LRA     = (8.0, 1.0)                # VG0832022D Φ8 x 3.2, +1.0 buffer
@@ -79,6 +79,26 @@ SCREWS_DROPPED = {"Shell screw / board hole, mid-left",
 SCREWS_MOVED = {"Shell screw / board hole, bottom-right": (140.5, 100.5)}
 SCREW_HOLE_D = 2.4                  # mm: board hole for an M2 shell screw (only where a kept screw lands on the PCB)
 SCREW_KEEPOUT_R = 3.0               # mm: copper keep-out radius around it (Ø5 screw head / boss + margin)
+# 2090 screen-module standoffs: a plain hole at each of the module's four Ø3.0 mounting holes (for M2.5 standoffs /
+# screws), so the screen can't rock on its headers when the buttons around it are pressed (2026-10-10)
+STANDOFF_HOLE_D = 3.2               # mm: M2.5 clearance
+STANDOFF_KEEPOUT_R = 3.0            # mm: copper keep-out radius (5 mm hex standoff corners reach r 2.9); J3/J4's end
+                                    # pins are 3.55 mm from the hole centres, so they stay clear
+
+
+def standoffs(S):
+    """[(name, board x, board y)] of the 2090's four mounting holes (= our standoff holes)."""
+    gx, gy = GBA_ORIGIN; _, _, (mcx, mcy), fl = layout(S)
+    return [(it["name"], gx + mcx + fl * it["x"], gy + mcy + it["y"]) for it in REF["tft"]["items"]
+            if it["name"].startswith("mounting_hole U$")]
+
+
+def board_holes(S):
+    """Every board hole with its copper keep-out: [(name, x, y, hole dia, keep-out r)] (shell screws + standoffs)."""
+    return ([(n, x, y, SCREW_HOLE_D, SCREW_KEEPOUT_R) for n, x, y in screws(S)] +
+            [("2090 standoff " + ("top" if y < sum(q[2] for q in standoffs(S)) / 4 else "bottom") + "-" +
+              ("left" if x < sum(q[1] for q in standoffs(S)) / 4 else "right"), x, y, STANDOFF_HOLE_D, STANDOFF_KEEPOUT_R)
+             for n, x, y in standoffs(S)])
 
 
 def screws(S):
@@ -248,14 +268,15 @@ def board_shape(S, pos):
     b.Inflate(-int(MM(SLIVER)), ce, err); b.Inflate(int(MM(SLIVER)), ce, err)      # opening: drop strips < 2*SLIVER
     b.Inflate(int(MM(CUT_R)), ce, err); b.Inflate(-int(MM(CUT_R)), ce, err)        # closing: inside corners >= CUT_R
     b.Simplify()
-    # shell-screw holes: only the kept screws that land on the board (punched last, so they stay exact circles)
+    # holes, punched last so they stay exact circles: the kept shell screws that land on the board + the four 2090
+    # standoffs
     holes = pcbnew.SHAPE_POLY_SET()
-    for _, hx, hy in screws(S):
+    for _, hx, hy, hole_d, _r in board_holes(S):
         if not b.Contains(pcbnew.VECTOR2I(int(MM(hx)), int(MM(hy)))): continue
         holes.NewOutline()
         for i in range(48):
             a_ = 2 * math.pi * i / 48
-            holes.Append(int(MM(hx + SCREW_HOLE_D / 2 * math.cos(a_))), int(MM(hy + SCREW_HOLE_D / 2 * math.sin(a_))))
+            holes.Append(int(MM(hx + hole_d / 2 * math.cos(a_))), int(MM(hy + hole_d / 2 * math.sin(a_))))
     if holes.OutlineCount():
         b.BooleanSubtract(holes); b.Simplify()
     return b
@@ -408,7 +429,7 @@ def main():
     # ---------------- our parts (User.Drawings) ----------------
     bw, bh, bb = BATTERY; bx, by = gx + pos["battery"][0], gy + pos["battery"][1]
     rect(L_PART, bx, by, bw, bh, 0.2); rect(L_PART, bx, by, bw + 2 * bb, bh + 2 * bb, 0.1, dash=True)
-    text(L_PART, bx - bw / 2, by + bh / 2 + bb + 4.5, "BATTERY PKCELL LP-803860 62 x 38.5 x 8.5 (+2 buffer) — back side", 1.0)
+    text(L_PART, bx - bw / 2, by + bh / 2 + bb + 4.5, "BATTERY Adafruit 2011 (PKCELL LP-803860) 62 x 38.5 x 8.5 (+2 buffer)", 1.0)
     sd, sb = SPEAKER; spx, spy = gx + pos["speaker"][0], gy + pos["speaker"][1]
     circ(L_PART, spx, spy, sd / 2, 0.2); circ(L_PART, spx, spy, sd / 2 + sb, 0.1, dash=True)
     circ(L_PART, spx, spy, SPK_OPENING / 2, 0.08, dash=True)

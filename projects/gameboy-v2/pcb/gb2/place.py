@@ -22,7 +22,7 @@ Placement (new footprints; all of them with --reset; just the buttons with --pla
     sheet, boxed + labelled on User.3, in power-chain / signal-flow order. --repack re-packs every part that
     isn't on the board yet (outside the outline) without touching the placed ones.
 
-Run:  /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 place.py [--reset | --place-buttons | --place-display | --place-usb | --place-fpga | --place-bt | --place-charger | --place-buckboost | --place-mcu | --place-lcdboost | --place-nor | --place-haptics | --place-batsense | --place-display-caps | --place-amp | --set-4layer | --place-fpgaldo | --place-imu | --place-expander | --place-i2c | --repack] [--tidy-labels]
+Run:  /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 place.py [--reset | --place-buttons | --place-display | --place-usb | --place-fpga | --place-bt | --place-charger | --place-buckboost | --place-mcu | --place-lcdboost | --place-nor | --place-haptics | --place-batsense | --place-display-caps | --place-amp | --set-4layer | --place-fpgaldo | --place-imu | --place-expander | --place-i2c | --place-testpoints | --repack] [--tidy-labels]
 """
 import os, sys, re, subprocess, math, csv
 
@@ -397,6 +397,7 @@ def place_fpga(fps, nets, comps, notes, hub="U2", sock="J3"):
     def farads(r):
         m = re.match(r"([\d.]+)\s*([pnuµm]?)F", comps[r]["value"])
         return float(m.group(1)) * {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "m": 1e-3, "": 1}[m.group(2)] if m else 1.0
+    pos_of = {}
     BACK_GAP = 0.35                   # mm between back caps' pads (JLC min 0.2); their silk outlines go to B.Fab below
     for sd, items in by_side.items():
         pos = spread(items, BACK_GAP)
@@ -408,7 +409,8 @@ def place_fpga(fps, nets, comps, notes, hub="U2", sock="J3"):
                 for r, v in zip(sorted(mates, key=farads), slots_): pos[r] = v
         for _, _, r, _ in items:
             pitch, plen, pw = pad_dims(r); rc = pin_r[anchor[r][1]][2]
-            pose(r, anchor[r][2], at(sd, pos[r], rc), at(sd, pos[r], rc + pitch), True); where[r] = ("back", sd)
+            pose(r, anchor[r][2], at(sd, pos[r], rc), at(sd, pos[r], rc - pitch), True); where[r] = ("back", sd)   # GND inward
+            pos_of[r] = pos[r]
     # corner fix-up: caps from two sides pointing inward can meet under a corner; slide the clashing cap along its own
     # side, away from the corner, by the smallest amount that clears every other back-side pad (0.1 mm steps)
     def bboxes_B(r):
@@ -417,6 +419,29 @@ def place_fpga(fps, nets, comps, notes, hub="U2", sock="J3"):
     def hit(r, others):
         mine = bboxes_B(r)
         return any(x[0] < y[2] and y[0] < x[2] and x[1] < y[3] and y[1] < x[3] for o in others for x in mine for y in bboxes_B(o))
+    # the back-side strip along the socket's chip-facing edge, beside its top gaps, is the west routing channel
+    # (route/channels.py "W1"): the ferrite stays out of it
+    slid = []
+    for r in sorted(back_caps, key=lambda r: farads(r)):   # bulk caps move, the HF one keeps its spot
+        others = [o for o in back_caps if o != r]
+        if not hit(r, others): continue
+        sd = where[r][1]; pitch, plen, pw = pad_dims(r); rc = pin_r[anchor[r][1]][2]
+        t0 = pos_of[r]; ctr = cy if sd in ("left", "right") else cx
+        step = 0.1 if t0 < ctr else -0.1                 # away from the nearer corner = toward the middle of the side
+        # the caps beyond it on the same side move with it as a block (spacing kept), so it can't run into them
+        block = [o for o in back_caps if where[o][1] == sd and (pos_of[o] - t0) * step > 0] + [r]
+        start = {o: pos_of[o] for o in block}
+        for k in range(1, 41):
+            for o in block:
+                po, _, _ = pad_dims(o); ro = pin_r[anchor[o][1]][2]; t = start[o] + k * step
+                pose(o, anchor[o][2], at(sd, t, ro), at(sd, t, ro - po), True); pos_of[o] = t
+            if not any(hit(o, [q for q in back_caps if q not in block]) for o in block):
+                slid.append(f"{'+'.join(block)} {k * 0.1:.1f} mm"); break
+        else:
+            sys.exit(f"{r}: no clear spot along the {sd} side")
+    LANE = (sx_ := TO(fps[sock].GetPosition().x)) and (sx_ + 0.7, 46.0, sx_ + 3.2, 57.2)
+    def in_lane(r):
+        return any(b[0] < LANE[2] and LANE[0] < b[2] and b[1] < LANE[3] and LANE[1] < b[3] for b in bboxes_B(r))
     # ferrite: on the back at the nearest free spot (clear of the caps' pads and J3's through-hole pads) outside the
     # corner of the chip nearest its pin — the PLL filter's input side, a short +1V2_PLL hop from C19/C20
     for r in back_ferr:
@@ -433,7 +458,7 @@ def place_fpga(fps, nets, comps, notes, hub="U2", sock="J3"):
                 for deg_ in (0, 90):
                     ux_, uy_ = (1, 0) if deg_ == 0 else (0, 1)
                     pose(r, anchor[r][2], (qx - ux_ * pitch / 2, qy - uy_ * pitch / 2), (qx + ux_ * pitch / 2, qy + uy_ * pitch / 2), True)
-                    if not hit(r, obst):
+                    if not hit(r, obst) and not in_lane(r):
                         best_ = (math.hypot(qx - px, qy - py), qx, qy, deg_); break
                 if best_: break
             if best_: break
@@ -746,13 +771,15 @@ CHG_LOCAL = {
     "C36": {1: (1.0, -2.825), 2: (2.4, -2.825)},
     "R21": {1: (-0.1, -2.83), 2: (-0.1, -4.33)},
     "R18": {1: (-1.2, -2.83), 2: (-1.2, -4.33)},
-    "R19": {1: (2.83, -1.6), 2: (4.33, -1.6)},
     "C37": {1: (3.13, 0.0), 2: (5.13, 0.0)},
     "C38": {1: (-3.13, 0.0), 2: (-5.13, 0.0)},
     "R17": {1: (-0.9, 2.83), 2: (-0.9, 4.33)},
     "R23": {1: (0.6, 2.83), 2: (0.6, 4.33)},
     "R22": {1: (2.15, 2.83), 2: (2.15, 4.33)},
 }
+# R19 (ILIM) on the back, board frame, under C37's west half: on the front it sat right where SYS_SRC (charger OUT ->
+# Q1) and VBUS (J7 -> IN) have to cross; there it reaches U9.12 through one via and C37.2's GND via doubles as its own
+CHG_BACK = {"R19": {1: (104.67, 40.3), 2: (103.17, 40.3)}}
 # Q1 (system switch) + R30 (its gate pull-up), board frame: in the channel under J7, between J7's CC resistors and the
 # charger. S (from the charger) right, D (SYS, to the buck-boost's input caps) left; G under S, R30 beside G-S.
 CHG_SWITCH = {
@@ -794,6 +821,8 @@ def place_charger(fps, nets):
         put(r, {n: (ux + rot(x, y)[0], uy + rot(x, y)[1]) for n, (x, y) in pads.items()})
     for r, pads in CHG_SWITCH.items():
         put(r, pads)
+    for r, pads in CHG_BACK.items():
+        put(r, pads, back=True)
     d = {p.GetNumber(): TO(p.GetPosition().x) for p in fps["Q1"].Pads()}
     if d["3"] > d["2"]: sys.exit("Q1: drain landed toward the charger")
     S = M.stretch(); pos = M.fit(S); gx, gy = M.GBA_ORIGIN
@@ -817,13 +846,20 @@ def place_charger(fps, nets):
         lab = fp.Reference(); lab.SetLayer(pcbnew.F_Fab); lab.SetTextSize(V(0.5, 0.5)); lab.SetTextThickness(MM(0.08))
         lab.SetTextAngleDegrees(0); lab.SetPosition(fp.GetPosition())
         fp.Value().SetVisible(False)
+    for r in CHG_BACK:                               # same on the back: outline + refdes to B.Fab
+        fp = fps[r]
+        for g in fp.GraphicalItems():
+            if g.GetLayer() == pcbnew.B_SilkS: g.SetLayer(pcbnew.B_Fab)
+        lab = fp.Reference(); lab.SetLayer(pcbnew.B_Fab); lab.SetTextSize(V(0.5, 0.5)); lab.SetTextThickness(MM(0.08))
+        lab.SetTextAngleDegrees(0); lab.SetPosition(fp.GetPosition()); lab.SetMirrored(True)
+        fp.Value().SetVisible(False)
     ul = U.Reference(); ul.SetLayer(pcbnew.F_SilkS); ul.SetTextAngleDegrees(0); ul.SetPosition(V(ux + 3.0, uy + 4.0))
     ql = fps["Q1"].Reference(); ql.SetLayer(pcbnew.F_SilkS); ql.SetTextAngleDegrees(0); ql.SetPosition(V(103.6, 46.6))   # right of the soft-start pair
     for r in ("R15", "R16"):                         # J7's CC resistors: Q1 now sits right under their silk labels
         if r in fps:
             lab = fps[r].Reference(); lab.SetLayer(pcbnew.F_Fab); lab.SetTextSize(V(0.5, 0.5)); lab.SetTextThickness(MM(0.08))
             lab.SetPosition(fps[r].GetPosition())
-    RING_LABELED.update([*CHG_LOCAL, "R30", "R31", "C51", "Q1", "R15", "R16"]); RING_LABELED.add(CHG_HUB)
+    RING_LABELED.update([*CHG_LOCAL, *CHG_BACK, "R30", "R31", "C51", "Q1", "R15", "R16"]); RING_LABELED.add(CHG_HUB)
     # report: each part's pad on its U9 net -> that U9 pin
     for r in [*CHG_LOCAL, *CHG_SWITCH]:
         best = None
@@ -836,7 +872,7 @@ def place_charger(fps, nets):
         out.append(f"      {r:4s} -> U9 pin {best[1]:>2s} ({best[2]:10s}) {best[0]:4.2f} mm" if best else f"      {r:4s} (no U9 net)")
     jb = fps["J8"].GetPosition()
     out.insert(0, f"  U9 at ({ux:.2f},{uy:.2f}) rot {CHG_ROT}; J8 at ({TO(jb.x):.2f},{TO(jb.y):.2f}) mouth down at the cutout edge, {CHG_PLUG_BACK:g} mm set-back; R20 NTC on the back at the cutout edge, x {CHG_NTC_X:g}")
-    return {CHG_HUB, "J8", "R20", *CHG_LOCAL, *CHG_SWITCH}, out
+    return {CHG_HUB, "J8", "R20", *CHG_LOCAL, *CHG_SWITCH, *CHG_BACK}, out
 
 
 # ---------------------------------------------------------------- 3.3 V buck-boost (TPS63021) right of the charger
@@ -1375,12 +1411,12 @@ def set_4layer(B):
         for z in fpz[BT].Zones():
             ls = z.GetLayerSet()
             if ls.Contains(pcbnew.F_Cu) and ls.Contains(pcbnew.B_Cu): z.SetLayerSet(allcu)
-    # shell-screw keep-outs: a copper-free disc (screw head / boss) around each hole draw_mech punches in the board
+    # hole keep-outs: a copper-free disc (screw head / boss / standoff) around each hole draw_mech punches in the board
     Sx = M.stretch(); bsh = M.board_shape(Sx, M.fit(Sx))
-    for name, hx, hy in M.screws(Sx):
-        kname = "screw keep-out: " + name.split(",")[-1].strip()
+    for name, hx, hy, hd, kr in M.board_holes(Sx):
+        kname = ("screw keep-out: " + name.split(",")[-1].strip()) if name.startswith("Shell screw") else (name + " keep-out")
         kz = next((z for z in B.Zones() if z.GetIsRuleArea() and z.GetZoneName() == kname), None)
-        on_board = any(bsh.Contains(V(hx + M.SCREW_HOLE_D / 2 * math.cos(a_), hy + M.SCREW_HOLE_D / 2 * math.sin(a_))) for a_ in (0, 1.57, 3.14, 4.71))
+        on_board = any(bsh.Contains(V(hx + hd / 2 * math.cos(a_), hy + hd / 2 * math.sin(a_))) for a_ in (0, 1.57, 3.14, 4.71))
         if not on_board: continue
         if kz is None:
             kz = pcbnew.ZONE(B); kz.SetIsRuleArea(True); kz.SetZoneName(kname); B.Add(kz)
@@ -1388,7 +1424,7 @@ def set_4layer(B):
         kz.SetDoNotAllowFootprints(False); kz.SetLayerSet(allcu)
         ko = kz.Outline(); ko.RemoveAllContours(); ko.NewOutline()
         for i in range(32):
-            a_ = 2 * math.pi * i / 32; ko.Append(V(hx + M.SCREW_KEEPOUT_R * math.cos(a_), hy + M.SCREW_KEEPOUT_R * math.sin(a_)))
+            a_ = 2 * math.pi * i / 32; ko.Append(V(hx + kr * math.cos(a_), hy + kr * math.sin(a_)))
     rings = M.board_polys(M.stretch(), M.fit(M.stretch()))   # the cleaned outline (same as Edge.Cuts)
     out = []
     for lname, net, zname in PLANES:
@@ -1425,8 +1461,9 @@ LDO_PADS = {    # board frame, all on the back
     "C22": {1: (71.0, 57.45), 2: (71.0, 58.85)},   # +1V2 beside VOUT
     "C23": {1: (72.0, 56.0), 2: (73.4, 56.0)},     # +1V2 bulk, just above VOUT (U3's NC/EN row is below it on the back)
 }
-ISLAND = (60.6, 57.0, 74.0, 61.0)  # +1V2 island on In2 (x0, y0, x1, y1): U2 core pins 30 (61.4, 59.8) + 5 (68.2, 60.8), VOUT,
-                                   # C22 — bottom edge stops short of VCCIO_0 (pin 33, y 61.3) so it stays on the +3V3 plane
+ISLAND = (59.7, 57.0, 74.0, 61.0)  # +1V2 island on In2 (x0, y0, x1, y1): U2 core pins 30 (61.4, 59.8) + 5 (68.2, 60.8), VOUT,
+                                   # C22 — bottom edge stops short of VCCIO_0 (pin 33, y 61.3) so it stays on the +3V3 plane; left edge
+                                   # 1.3 mm past pin 30's tip so its fanout via (and C14's) lands on the island
 
 def place_fpgaldo(B, fps, nets):
     net_of = lambda r, p: nets.get((r, p), "").split("/")[-1]
@@ -1606,11 +1643,148 @@ def place_i2c(fps, nets):
     return set(I2C_PULLUPS), out
 
 
+# ---------------------------------------------------------------- bring-up test points (bare pads, back side)
+# Bare Ø1.5 mm copper probe pads (nothing assembled, so the back side costs nothing here), probed with the back shell
+# off. Each goes at the nearest clear back-side spot to the rail/signal it probes: >= 0.6 mm from any other copper on
+# the back (incl. through-hole pads), >= 0.5 mm inside the board edge, outside every rule area (BT antenna, screw and
+# standoff keep-outs) and every back-side courtyard (the BT830 module's included). A net-name label on B.SilkS.
+TP_TARGETS = {   # ref: (net label, near this board point)
+    "TP1": ("VBUS", (101.0, 42.2)), "TP2": ("BAT", (116.0, 40.0)), "TP3": ("SYS", (95.5, 41.5)),
+    "TP4": ("GND", (101.6, 33.8)), "TP5": ("3V3", (76.0, 36.0)), "TP6": ("5V_LCD", (63.0, 35.5)),
+    "TP7": ("1V2", (70.2, 60.3)), "TP8": ("BOOT0", (96.5, 53.0)), "TP9": ("MCO2", (89.2, 63.7)),
+    "TP10": ("GND", (99.0, 63.5)),
+}
+TP_GAP, TP_EDGE = 0.6, 0.5
+
+def in_back_channel(x, y, m=0.9):
+    """(x, y) within m of a back-side routing channel (route/channels.py): test points stay out of them."""
+    sys.path.insert(0, os.path.join(HERE, "route")); from channels import CHANNELS
+    def inside(px, py, poly):
+        c = False
+        for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
+            if (y1 > py) != (y2 > py) and px < x1 + (py - y1) * (x2 - x1) / (y2 - y1): c = not c
+        return c
+    return any(inside(x + dx, y + dy, poly) for lay, poly, _ in CHANNELS.values() if lay == "B"
+               for dx, dy in ((0, 0), (m, 0), (-m, 0), (0, m), (0, -m)))
+
+
+def place_testpoints(B, fps):
+    S = M.stretch(); board = M.board_shape(S, M.fit(S))
+    inner = pcbnew.SHAPE_POLY_SET(board); inner.Inflate(MM(-(0.75 + TP_EDGE)), pcbnew.CORNER_STRATEGY_ROUND_ALL_CORNERS, MM(0.005))
+    areas = [z for z in B.Zones() if z.GetIsRuleArea()]
+    back = []                                             # (x0, y0, x1, y1) of everything already on the back
+    for r, fp in fps.items():
+        if r in TP_TARGETS: continue
+        for p in fp.Pads():
+            if p.IsOnLayer(pcbnew.B_Cu):
+                b = p.GetBoundingBox(); back.append((TO(b.GetLeft()), TO(b.GetTop()), TO(b.GetRight()), TO(b.GetBottom())))
+        if fp.IsFlipped():
+            c = fp.GetCourtyard(pcbnew.B_CrtYd)
+            if c.OutlineCount():
+                b = c.BBox(); back.append((TO(b.GetLeft()), TO(b.GetTop()), TO(b.GetRight()), TO(b.GetBottom())))
+    out = []
+    for r, (lab, (tx, ty)) in TP_TARGETS.items():
+        found = None
+        for k in range(0, 41):
+            rad = 0.25 * k; n_ = max(1, int(2 * math.pi * rad / 0.25))
+            for j in range(n_):
+                x, y = tx + rad * math.cos(2 * math.pi * j / n_), ty + rad * math.sin(2 * math.pi * j / n_)
+                if not inner.Contains(V(x, y)): continue
+                if any(math.hypot(max(b[0] - x, 0, x - b[2]), max(b[1] - y, 0, y - b[3])) < 0.75 + TP_GAP for b in back): continue
+                if any(z.Outline().Contains(V(x, y)) or z.Outline().SquaredDistance(V(x, y)) < MM(0.75 + 0.2) ** 2 for z in areas): continue
+                if r != "TP1" and in_back_channel(x, y): continue     # TP1 sits on the VBUS trunk on purpose
+                found = (x, y, rad); break
+            if found: break
+        if not found: sys.exit(f"{r}: no clear back-side spot within 10 mm of {tx},{ty}")
+        x, y, rad = found
+        fp = fps[r]
+        if not fp.IsFlipped(): fp.Flip(fp.GetPosition(), False)
+        fp.SetOrientationDegrees(0); fp.SetPosition(V(x, y))
+        back.append((x - 0.75, y - 0.75, x + 0.75, y + 0.75))
+        ref = fp.Reference(); ref.SetLayer(pcbnew.B_Fab); ref.SetPosition(V(x, y)); ref.SetTextSize(V(0.5, 0.5)); ref.SetTextThickness(MM(0.08))
+        fp.Value().SetVisible(False)
+        t = next((g for g in fp.GraphicalItems() if g.GetClass() in ("PCB_TEXT", "FP_TEXT") and g.GetLayer() == pcbnew.B_SilkS), None)
+        if t is None:
+            t = pcbnew.PCB_TEXT(fp); t.SetLayer(pcbnew.B_SilkS); fp.Add(t)
+        t.SetText(lab); t.SetTextSize(V(0.8, 0.8)); t.SetTextThickness(MM(0.12)); t.SetMirrored(True); t.SetTextAngleDegrees(0)
+        # label side: below, above, right, left — the first whose box is on the board (0.6 mm off the edge) and clear
+        # of other back-side copper
+        w = 0.8 * 0.85 * len(lab); placed_lab = None
+        o = board.Outline(0); edge_pts = [(TO(o.CPoint(i).x), TO(o.CPoint(i).y)) for i in range(o.PointCount())]
+        for dx, dy in ((0, 1.6), (0, -1.6), (0.9 + w / 2, 0), (-0.9 - w / 2, 0)):
+            lx, ly = x + dx, y + dy; box = (lx - w / 2, ly - 0.5, lx + w / 2, ly + 0.5)
+            if not all(board.Contains(V(px, py)) for px, py in ((box[0], box[1]), (box[2], box[1]), (box[0], box[3]), (box[2], box[3]))): continue
+            if min(math.hypot(ex - lx, ey - ly) for ex, ey in edge_pts) < w / 2 + 0.6: continue
+            if any(b[0] - 0.2 < box[2] and box[0] < b[2] + 0.2 and b[1] - 0.2 < box[3] and box[1] < b[3] + 0.2 for b in back[:-1]): continue
+            placed_lab = (lx, ly); break
+        t.SetPosition(V(*(placed_lab or (x, y + 1.6))))
+        out.append(f"      {r:4s} {lab:6s} at ({x:6.2f},{y:6.2f})  {rad:.2f} mm from its target")
+    RING_LABELED.update(TP_TARGETS)
+    return set(TP_TARGETS), ["  test points (back, bare pads):"] + out
+
+
 # ---------------------------------------------------------------- main
 # KiCad 10 SWIG quirks: pcbnew.FootprintLoad is broken, so library footprints come through the PCB_IO plugin,
 # which must run BEFORE LoadBoard; and once PCB_IO has been used in a process, footprints read from the board
 # file come back as untyped SwigPyObjects (no .Pads(), no .SetPosition()). So adding the missing footprints
 # happens in a child process (--add-missing), and this process — which never touches PCB_IO — does the rest.
+# Thermal vias: a grid of vias in each exposed pad down to the In1 GND plane (heat + a low-inductance ground return).
+# 0.45/0.25 mm (the Default via): small drills wick little solder out from under the part; tented on the back.
+# ref -> (EP pad number, columns, rows, x pitch, y pitch) in the board frame
+THERMAL_VIAS = {"U2": ("49", 4, 4, 1.2, 1.2),     # iCE40 QFN-48, EP 5.35 sq
+                "U6": ("17", 2, 2, 0.8, 0.8),     # amp TQFN-16, EP 1.5 sq
+                "U9": ("17", 2, 2, 0.8, 0.8),     # charger QFN-16, EP 1.7 sq (pin-1 corner chamfered)
+                "U10": ("15", 2, 3, 0.8, 0.95)}   # buck-boost VSON-14, EP body 1.58 x 2.86 (+ comb fingers at both ends)
+TV_DIA, TV_DRILL, TV_GAP = 0.45, 0.25, 0.2
+
+
+def place_thermal_vias(B, fps):
+    """Add the THERMAL_VIAS grids. A grid via that would come within TV_GAP of another net's back-side copper, or land
+    in a GND pad on the back (the FPGA's decaps put theirs inward, under U2), is dropped; one already there is kept
+    (re-runs add nothing)."""
+    have = {(round(TO(t.GetPosition().x), 3), round(TO(t.GetPosition().y), 3)) for t in B.GetTracks() if t.Type() == pcbnew.PCB_VIA_T}
+    G = next((g for g in B.Groups() if g.GetName() == "thermal"), None)
+    if G is None:
+        G = pcbnew.PCB_GROUP(B); G.SetName("thermal"); B.Add(G)
+    back = [(p.GetNetname(), p.GetBoundingBox()) for fp in fps.values() for p in fp.Pads() if p.IsOnLayer(pcbnew.B_Cu)]
+    out = []
+    for ref, (num, nx, ny, px, py) in THERMAL_VIAS.items():
+        ep = next(p for p in fps[ref].Pads() if p.GetNumber() == num)
+        c = ep.GetBoundingBox().GetCenter(); cx, cy = TO(c.x), TO(c.y); netname = ep.GetNetname()
+        core = ep.GetEffectivePolygon(pcbnew.F_Cu, pcbnew.ERROR_INSIDE).CloneDropTriangulation()
+        core.Inflate(MM(-(TV_DIA / 2 + 0.05)), pcbnew.CORNER_STRATEGY_ROUND_ALL_CORNERS, MM(0.005))   # centres allowed here
+        added, dropped = 0, []
+        for i in range(nx):
+            for j in range(ny):
+                x, y = round(cx + (i - (nx - 1) / 2) * px, 3), round(cy + (j - (ny - 1) / 2) * py, 3)
+                if (x, y) in have: continue
+                if not core.Contains(V(x, y)):                    # whole annulus inside the pad copper
+                    sys.exit(f"{ref}: thermal via at ({x},{y}) not inside the exposed pad")
+                r = TV_DIA / 2 + TV_GAP
+                # other nets: clearance; own net (a decap's GND pad under the EP): just no via-in-pad
+                hit = [n for n, b in back for m in [r if n != netname else TV_DIA / 2 + 0.1]
+                       if TO(b.GetLeft()) - m < x < TO(b.GetRight()) + m and TO(b.GetTop()) - m < y < TO(b.GetBottom()) + m]
+                if hit: dropped.append(f"({x},{y})"); continue
+                v = pcbnew.PCB_VIA(B); v.SetViaType(pcbnew.VIATYPE_THROUGH); v.SetPosition(V(x, y))
+                v.SetWidth(MM(TV_DIA)); v.SetDrill(MM(TV_DRILL)); v.SetLayerPair(pcbnew.F_Cu, pcbnew.B_Cu)
+                v.SetNet(ep.GetNet())
+                try: v.SetBackTentingMode(pcbnew.TENTING_MODE_TENTED)
+                except AttributeError: pass
+                B.Add(v); G.AddItem(v); added += 1
+        out.append(f"  {ref:4s} EP{num} {netname}: {added} thermal vias added ({nx}x{ny} grid)" + (f", dropped under back copper: {' '.join(dropped)}" if dropped else ""))
+    return out
+
+
+def strip_thermal():                   # child process: delete the THERMAL_VIAS grids (grouped or not) so they re-place
+    B = pcbnew.LoadBoard(PCB)
+    eps = [p for r, (num, *_ ) in THERMAL_VIAS.items() for p in B.FindFootprintByReference(r).Pads() if p.GetNumber() == num]
+    kill = [t for t in B.GetTracks() if t.Type() == pcbnew.PCB_VIA_T and any(ep.GetNetCode() == t.GetNetCode() and ep.HitTest(t.GetPosition()) for ep in eps)]
+    groups = [g for g in B.Groups() if g.GetName() == "thermal"]
+    for t in kill: B.Remove(t)
+    for g in groups: B.Remove(g)
+    pcbnew.SaveBoard(PCB, B); print(f"  thermal vias removed: {len(kill)}"); sys.stdout.flush(); os._exit(0)
+
+
 def board_fpids():
     """ref -> "lib:footprint" for every footprint in the board file (parsed as text: no pcbnew needed)."""
     out = {}
@@ -1653,6 +1827,10 @@ def add_missing(comps, refs):
 
 def main():
     reset = "--reset" in sys.argv
+    if "--strip-thermal" in sys.argv:
+        return strip_thermal()
+    if "--thermal-vias" in sys.argv:
+        run_child("--strip-thermal")
     if "--remove" in sys.argv:
         return remove_refs(set(sys.argv[sys.argv.index("--remove") + 1:]))
     comps, nets = read_netlist()
@@ -1722,12 +1900,16 @@ def main():
             (x, y, rot), miss = pose_on_pins(fps[ref], pins[hdr])
             if miss > 0.001: sys.exit(f"{ref}: pads miss the {hdr} pins by {miss:.3f} mm")
             fps[ref].SetOrientationDegrees(rot); fps[ref].SetPosition(V(x, y))
+            fps[ref].Reference().SetLayer(pcbnew.F_Fab)      # under the screen: silk there is never seen
             socket_report.append(f"  {ref:5s} under {hdr}: pad 1 at ({pins[hdr][1][0]:.2f},{pins[hdr][1][1]:.2f}), rot {rot:g}, all 20 pads on the pins")
     jref, rr = usb_parts(nets); usb = {jref, *rr.values()} - {None}
     usb_report = []
     if usb and (usb & to_place or "--place-usb" in sys.argv):
         usb_report = place_usb(fps, nets)
     stk_report = set_4layer(B) if "--set-4layer" in sys.argv else []
+    tp_set, tp_report = set(), []
+    if "--place-testpoints" in sys.argv:
+        tp_set, tp_report = place_testpoints(B, fps)
     i2c_set, i2c_report = set(), []
     if "--place-i2c" in sys.argv:
         i2c_set, i2c_report = place_i2c(fps, nets)
@@ -1775,7 +1957,8 @@ def main():
         notes = {r["refdes"]: r["note"] for r in csv.DictReader(open(os.path.join(HERE, "gb2-bom.csv"), encoding="utf-8"))}
         fpga_set, fpga_report = place_fpga(fps, nets, comps, notes)
         fpga_report += place_fpga_lane(fps)
-    fixed = set(targets) | set(DISPLAY_SOCKETS) | usb | fpga_set | bt_set | chg_set | bb_set | mcu_set | lb_set | nor_set | hap_set | bs_set | dc_set | amp_set | ldo_set | imu_set | exp_set | i2c_set   # never packed
+    tv_report = place_thermal_vias(B, fps) if "--thermal-vias" in sys.argv else []   # after every part has moved
+    fixed = set(targets) | set(DISPLAY_SOCKETS) | usb | fpga_set | bt_set | chg_set | bb_set | mcu_set | lb_set | nor_set | hap_set | bs_set | dc_set | amp_set | ldo_set | imu_set | exp_set | i2c_set | tp_set   # never packed
     if "--repack" in sys.argv:          # re-pack every part not yet on the board (outside the GBA outline)
         S_ = M.stretch(); poly = M.silhouette(S_); gx_, gy_ = M.GBA_ORIGIN
         off = {r for r in comps if r not in fixed and not M.inside((TO(fps[r].GetPosition().x) - gx_, TO(fps[r].GetPosition().y) - gy_), poly)}
@@ -1837,7 +2020,7 @@ def main():
         if ref in RING_LABELED: continue
         if not (ref in to_place or "--tidy-labels" in sys.argv or (ref in targets and "--place-buttons" in sys.argv)
                 or (ref in DISPLAY_SOCKETS and "--place-display" in sys.argv) or (ref in usb and "--place-usb" in sys.argv)
-                or ref in fpga_set or ref in bt_set or ref in chg_set or ref in bb_set or ref in mcu_set or ref in lb_set or ref in nor_set or ref in hap_set or ref in bs_set or ref in dc_set or ref in amp_set or ref in ldo_set or ref in imu_set or ref in exp_set or ref in i2c_set):
+                or ref in fpga_set or ref in bt_set or ref in chg_set or ref in bb_set or ref in mcu_set or ref in lb_set or ref in nor_set or ref in hap_set or ref in bs_set or ref in dc_set or ref in amp_set or ref in ldo_set or ref in imu_set or ref in exp_set or ref in i2c_set or ref in tp_set):
             continue
         fp = fps[ref]; xs, ys = [], []
         for p in fp.Pads():
@@ -1863,7 +2046,7 @@ def main():
     if stale: print("deleted (no longer in the schematic):", ", ".join(stale))
     if swapped: print("footprint swapped (symbol now uses a different footprint):", ", ".join(f"{r} -> {comps[r]['footprint']}" for r in swapped))
     if missing_pads: print("WARNING netlist pins with no matching pad:", ", ".join(missing_pads))
-    for line in socket_report + usb_report + fpga_report + bt_report + chg_report + bb_report + mcu_report + lb_report + nor_report + hap_report + bs_report + dc_report + amp_report + stk_report + ldo_report + imu_report + exp_report + i2c_report: print(line)
+    for line in socket_report + usb_report + fpga_report + bt_report + chg_report + bb_report + mcu_report + lb_report + nor_report + hap_report + bs_report + dc_report + amp_report + stk_report + ldo_report + imu_report + exp_report + i2c_report + tp_report + tv_report: print(line)
     btn = {r: n.split("/")[-1] for (r, p), n in nets.items() if r in targets and n.split("/")[-1].startswith(("BTN_", "PWR_SW"))}
     for r in sorted(targets, key=lambda r: int(r[2:])):
         x, y, rot = targets[r]; print(f"  {r:5s} {btn[r]:12s} {comps[r]['value'][:16]:16s} ({x:7.2f},{y:7.2f}) rot {rot}")
