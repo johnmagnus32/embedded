@@ -15,13 +15,14 @@
 /* --- fixed NOR offsets (64 KB aligned) ------------------------------------ */
 #define NOR_TABLE_OFF     0x000000u   /* component table (in the 64KB guard)   */
 #define NOR_KERNEL_OFF    0x010000u   /* zImage / kernel image                 */
-#define NOR_DTB_OFF       0x610000u   /* device tree blob                      */
-#define NOR_INITRD_OFF    0x620000u   /* initramfs.cpio.gz                     */
+#define NOR_DTB_OFF       0x840000u   /* device tree blob (kernel gets 8.2 MiB) */
+#define NOR_INITRD_OFF    0x850000u   /* initramfs.cpio.gz (to ~14.7 of 16 MiB)  */
 
 /* --- DRAM load addresses (match main.c / boot.cmd) ------------------------ */
-#define NOR_KERNEL_ADDR   0x41000000u
-#define NOR_DTB_ADDR      0x41800000u
-#define NOR_INITRD_ADDR   0x41C00000u
+/* Above the DECOMPRESSED kernel (~56 MiB when built by our cc), not just above the zImage. */
+#define NOR_KERNEL_ADDR   0x45000000u
+#define NOR_DTB_ADDR      0x44800000u
+#define NOR_INITRD_ADDR   0x44000000u
 
 /* --- component table (little-endian) at NOR_TABLE_OFF --------------------- */
 #define NOR_TABLE_MAGIC   "GV3NOR1"   /* 8 bytes incl. NUL; NOT "eGON.BT0"     */

@@ -47,6 +47,17 @@ SSH="ssh -o BatchMode=yes ${RIG_HOST}"
 
 log "config: $BUNDLE_CFG  (bootloader=$BOOTLOADER kernel=$KERNEL rootfs=$ROOTFS) -> media=$MEDIA"
 
+# --- 0. will it fit? ---------------------------------------------------------
+# Before a single byte reaches the board: the components must fit the part and not overlap. The dtb
+# and initramfs are written at fixed offsets AFTER the kernel, so a kernel that outgrows its region
+# is quietly corrupted by the next write — the board then hangs with nothing to point at.
+NOR_SIZE="${NOR_SIZE:-0x1000000}"      # the on-board W25Q128: 16 MiB
+python3 "${HERE}/nor_fit.py" "$NOR_SIZE" \
+  "$NOR_TABLE_OFF" "$NOR_KERNEL_OFF" "$KERNEL_SIZE" "$NOR_DTB_OFF" "$DTB_SIZE" \
+  "$NOR_INITRD_OFF" "$INITRD_SIZE" \
+  || die "this bundle does not fit the NOR layout (fix the NOR_*_OFF in conf/machine/<machine>.conf)"
+log "NOR fits: kernel ${NOR_KERNEL_OFF}+${KERNEL_SIZE}, dtb ${NOR_DTB_OFF}+${DTB_SIZE}, initramfs ${NOR_INITRD_OFF}+${INITRD_SIZE} of ${NOR_SIZE}"
+
 # --- 1. stage the bundle to the NUC -----------------------------------------
 log "staging bundle -> ${RIG_HOST}:${RIG_DIR}/"
 $SSH "mkdir -p ${RIG_DIR}" || die "cannot mkdir on rig (ssh ${RIG_HOST} reachable?)"
@@ -105,7 +116,7 @@ rlog "NOR flashed (offset 0 = GV3NOR1 table, NOT an eGON -> FEL fallback intact)
   sudo -n bash -c "nohup cat $RIG_TTY > /tmp/uart.log 2>/dev/null & echo \$! > /tmp/uart.pid"
 }
 uart_bytes(){ ( [ -f "$UARTCAP_EX" ] && eval "$UARTCAP dump" || sudo -n cat /tmp/uart.log ) 2>/dev/null | wc -c; }
-if [ "$BOOTLOADER" = custom ]; then
+if [ "$BOOTLOADER" = bootloader-custom ]; then
   rlog "FEL-loading the custom bootloader @0x28000 (it does DRAM init + NOR read)"
   # The FEL exec can silently no-op on this rig (flaky window); retry until the
   # console actually produces output, re-arming FEL between tries.
@@ -139,7 +150,7 @@ else
   send(){ printf '%s\r\n' "$1" | sudo -n tee "$RIG_TTY" >/dev/null; sleep "${2:-1}"; }
   for _ in $(seq 1 12); do printf ' ' | sudo -n tee "$RIG_TTY" >/dev/null; sleep 0.1; done
   send '' 1; send 'sf probe' 3
-  send "sf read $DRAM_KERNEL $NOR_KERNEL_OFF 0x556000" 25
+  send "sf read $DRAM_KERNEL $NOR_KERNEL_OFF 0x$(printf %x "$KERNEL_SIZE")" 25
   send "sf read $DRAM_DTB $NOR_DTB_OFF 0x8000" 3
   send "sf read $DRAM_INITRD $NOR_INITRD_OFF 0x$(printf %x "$INITRD_SIZE")" 6
   send "fdt addr $DRAM_DTB" 2; send 'fdt resize 0x1000' 2

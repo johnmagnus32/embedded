@@ -38,14 +38,17 @@ int printf(const char *fmt, ...);   /* tiny printf in dram_shim.c */
 
 #define DRAM_BASE  0x40000000u      /* CFG_SYS_SDRAM_BASE for 32-bit sunxi */
 
-/* Where we load the boot payload in DRAM — U-Boot's own sunxi load addresses
- * for this SoC (kernel >32MiB, DTB & initramfs spread out, non-overlapping). */
-#define KERNEL_ADDR   0x41000000u
-#define DTB_ADDR      0x41800000u
-#define INITRD_ADDR   0x41C00000u
-#define KERNEL_MAX    0x00800000u   /* 8 MiB cap (zImage ~5.4M)  */
-#define DTB_MAX       0x00100000u   /* 1 MiB cap (dtb ~18K)      */
-#define INITRD_MAX    0x00400000u   /* 4 MiB cap (initrd ~1.2M)  */
+/* Where we load the boot payload in DRAM (128 MiB at DRAM_BASE). Everything must sit ABOVE the
+ * DECOMPRESSED kernel, because a zImage unpacks itself to DRAM_BASE+0x8000 and would otherwise write
+ * over the DTB and the initramfs it was handed. The decompressed image is what sets the floor, and it
+ * is far bigger than the zImage: 56 MiB for a sunxi_defconfig kernel built by OUR cc (gcc's is ~8),
+ * so the floor is ~0x43800000 and the payload starts a margin above it. */
+#define KERNEL_ADDR   0x45000000u
+#define DTB_ADDR      0x44800000u
+#define INITRD_ADDR   0x44000000u
+#define KERNEL_MAX    0x01000000u   /* 16 MiB cap (zImage: 5.4M by gcc, 8.2M by ours) */
+#define DTB_MAX       0x00100000u   /* 1 MiB cap (dtb ~19K)                           */
+#define INITRD_MAX    0x00800000u   /* 8 MiB cap (initramfs: 1.2M busybox-only, 6.4M with console) */
 
 #define KERNEL_NAME   "zImage"      /* mainline zImage OR custom zImage-headed  */
 #define DTB_NAME      "sun8i-t113s-mangopi-mq-r-t113.dtb"
