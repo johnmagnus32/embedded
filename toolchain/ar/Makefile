@@ -24,6 +24,8 @@ test: $(BUILD)/ar
 	head -c 200 $$t/a.o > $$t/cut.o; $(BUILD)/ar rc $$t/bad.a $$t/cut.o 2>$$t/err; st=$$?; \
 	[ $$st = 1 ] && grep -q 'outside the file' $$t/err && echo "PASS truncated object rejected: $$(cat $$t/err)" \
 	  || { echo "FAIL truncated object: exit $$st, '$$(cat $$t/err)'"; rm -rf $$t; exit 1; }; rm -rf $$t
+	@# ranlib — the same program under another name (argv[0]), indexing an archive made without one
+	@t=$$(mktemp -d); ln -sf $(abspath $(BUILD)/ar) $$t/ranlib; 	printf '.global r1\nr1: nop\n' | $(GNU)as -o $$t/r.o; printf '.global r2\nr2: bx lr\n' | $(GNU)as -o $$t/s.o; 	for who in g o; do $(GNU)ar rcSD $$t/$$who.a $$t/r.o $$t/s.o; done; 	$(GNU)ranlib -D $$t/g.a; $$t/ranlib -D $$t/o.a; 	if cmp -s $$t/g.a $$t/o.a; then echo "PASS ranlib -D: the index is byte-identical to GNU ranlib's"; else 	  echo "FAIL ranlib: $$(cmp $$t/g.a $$t/o.a 2>&1)"; rm -rf $$t; exit 1; fi; 	$$t/ranlib $$t/nosuch.a 2>$$t/e; [ $$? = 1 ] && grep -q 'ranlib: ' $$t/e 	  && echo "PASS ranlib names itself when it fails: $$(cat $$t/e)" 	  || { echo "FAIL ranlib on a missing archive: '$$(cat $$t/e)'"; rm -rf $$t; exit 1; }; rm -rf $$t
 
 clean:
 	rm -rf $(BUILD)

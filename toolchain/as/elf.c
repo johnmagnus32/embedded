@@ -84,6 +84,8 @@ static void build_shdrs(Obj *o) {
 	str_add(&o->shstr, "");
 	for (int i = 0; i < nsec; i++) { if (secs[i].merged) continue; Elf32_Shdr *h = &o->sh[secs[i].shndx];
 		h->sh_name = str_add(&o->shstr, secs[i].name); h->sh_type = secs[i].type; h->sh_flags = secs[i].flags; h->sh_addralign = secs[i].align; h->sh_entsize = secs[i].entsize;
+		/* An array of pointers says so, whatever the source wrote (BFD's elf_fake_sections: the arch's size). */
+		if (h->sh_type == 14 || h->sh_type == 15 || h->sh_type == 16) h->sh_entsize = 4;
 		if (secs[i].link >= 0) h->sh_link = secs[secs[i].link].shndx; }   /* SHF_LINK_ORDER: the section it describes (.ARM.exidx) */   /* GAS: the largest alignment requested in the section (default 1) */
 	for (int i = 0; i < nsec; i++) if (o->relof[i] >= 0) { char nm[128]; snprintf(nm, sizeof nm, ".rel%s", secs[i].name);
 		Elf32_Shdr *h = &o->sh[o->relof[i]];

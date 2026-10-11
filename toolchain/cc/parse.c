@@ -291,6 +291,7 @@ static void attr_merge(Attr *to, const Attr *a) {
 	to->always_inline |= a->always_inline; to->gnu_inline |= a->gnu_inline; to->naked |= a->naked;
 	to->weak |= a->weak; to->used |= a->used; to->returns_twice |= a->returns_twice; to->common |= a->common; if (a->align > to->align) to->align = a->align; if (a->pcs) to->pcs = a->pcs;
 	if (a->vis) to->vis = a->vis;
+	if (a->ctor) to->ctor = a->ctor; if (a->dtor) to->dtor = a->dtor;
 	if (a->section[0]) strcpy(to->section, a->section);
 	if (a->alias[0]) strcpy(to->alias, a->alias);
 }
@@ -379,6 +380,14 @@ static void attribute(void) {
 			Attr c = *a; c.alias[0] = 0; c.weak = c.vis = c.always_inline = c.gnu_inline = 0; attr_merge(&decl_attr, &c);
 			if (a->packed) decl_attr.packed = 1;
 			if (a->cleanup[0] && !decl_attr.cleanup[0]) strcpy(decl_attr.cleanup, a->cleanup);
+		}
+		else if (!strcmp(nm, "constructor") || !strcmp(nm, "destructor")) {   /* a pointer to it in .init_array / .fini_array */
+			int prio = -1;
+			if (consume("(")) {
+				prio = (int)eval_const(assign()); expect(")");
+				if (prio < 0 || prio > 65535) die("parse: %s priority %d is not in 0-65535 (line %d)", nm, prio, tk->line);
+			}
+			if (nm[0] == 'c') decl_attr.ctor = prio; else decl_attr.dtor = prio;
 		}
 		else if (!strcmp(nm, "common")) decl_attr.common = 1;
 		else if (!strcmp(nm, "naked")) decl_attr.naked = 1;   /* the body's asm is the whole function (gen_func) */

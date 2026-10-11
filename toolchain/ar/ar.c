@@ -12,6 +12,9 @@
  * through "//" — by its path relative to the archive's directory. A thin archive given as a member is flattened into
  * its members (the kernel's built-in.a of built-in.a's).
  *
+ * Run as `ranlib` — argv[0] ending in "ranlib" — it rewrites each named archive's symbol index and nothing else,
+ * the same work as `ar s`, which is all GNU's ranlib is (musl's build and the autotools ones call it by that name).
+ *
  * Usage: ar [-]{d|m|p|q|r|s|t|x}[abcDiPsSTuUv] [relpos] archive [member...]   — GNU's keys and modifiers:
  *   r replace or add (after/before relpos with a / b|i; u: only if newer), q append, d delete, m move, t list,
  *   x extract, p print, s just index; c quietly create; D deterministic (date/uid/gid 0, mode 644) — U (the default
@@ -29,9 +32,10 @@
 #include "elfread.h"
 #include "arread.h"
 
+static const char *tool = "ar";
 void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
-	fputs("ar: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
+	fprintf(stderr, "%s: ", tool); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
 typedef struct {
@@ -39,6 +43,7 @@ typedef struct {
 	char *path;                 /* thin: its file (for reading it); else NULL */
 	u8 *data; long size;        /* regular: its bytes (thin: read only to index it) */
 	long date; long uid, gid; unsigned mode;
+	int fresh;                  /* added by THIS command: a later file on the same line does not replace it */
 } Mem;
 static Mem *mem; static int nmem, memcap;
 static int key, verbose, quiet_create, deterministic, full_path, no_index, want_index, thin, update, pos_mode;   /* pos_mode: 'a' or 'b' */
@@ -108,6 +113,13 @@ static int find(const char *name) {   /* a member by name: the full stored name 
 	}
 	return -1;
 }
+/* What `r` may replace: a member that was already in the archive when the command started. Two files with the
+ * same member name on one command line BOTH land (GNU's replace_members, "the same file added multiple times"),
+ * which is how musl's libc.a carries two free.o's — src/malloc/free.c and mallocng/free.c. */
+static int find_replaceable(const char *name) {
+	int at = find(name);
+	return at >= 0 && mem[at].fresh ? -1 : at;
+}
 static int place(void) {   /* where a / b|i put new or moved members: the index to insert at (nmem = the end) */
 	if (!pos_mode) return nmem;
 	for (int at = 0; at < nmem; at++)   /* relpos names a member exactly (GNU's get_pos_bfd: no basename) */
@@ -133,7 +145,8 @@ static void add_file(const char *archive, const char *file, int replace) {
 	m.name = thin ? relative_to(file, archive) : strdup(full_path ? file : base_of(file));
 	m.size = size; stamp(&m, file);
 	if (thin) { m.path = strdup(file); free(d); } else m.data = d;
-	int at = replace ? find(thin ? m.name : file) : -1;
+	int at = replace ? find_replaceable(thin ? m.name : file) : -1;
+	m.fresh = 1;
 	if (at >= 0 && update && m.date <= mem[at].date) { free(m.name); free(m.data); free(m.path); return; }   /* u: not newer */
 	if (at >= 0) { free(mem[at].name); free(mem[at].data); free(mem[at].path); mem[at] = m; return; }
 	insert_at(replace ? place() : nmem, m);
@@ -212,6 +225,26 @@ static void write_archive(const char *path) {
 }
 
 int main(int argc, char **argv) {
+	const char *base = strrchr(argv[0], '/'); base = base ? base + 1 : argv[0];
+	size_t bl = strlen(base);
+	if (bl >= 6 && !strcmp(base + bl - 6, "ranlib")) {   /* ranlib [-D|-U|-t] archive... — just the index */
+		tool = "ranlib"; key = 's';
+		int done = 0;
+		for (int i = 1; i < argc; i++) {
+			const char *a = argv[i];
+			if (!strcmp(a, "-D")) { deterministic = 1; continue; }
+			if (!strcmp(a, "-U")) { deterministic = 0; continue; }
+			if (!strcmp(a, "-t")) continue;              /* "update the index" — what we do anyway */
+			if (a[0] == '-' && a[1]) die("unknown option '%s'", a);
+			int was_thin = 0;
+			struct stat ast; if (stat(a, &ast)) die("%s: No such file or directory", a);
+			load_archive(a, &was_thin); thin = was_thin;
+			write_archive(a);
+			nmem = 0; done = 1;
+		}
+		if (!done) die("usage: ranlib [-D|-U] archive...");
+		return 0;
+	}
 	if (argc < 3) die("usage: ar [-]{d|m|p|q|r|s|t|x}[abcDiPsSTuUv] [relpos] archive [member...]");
 	int ai = 1;
 	for (const char *c = argv[ai][0] == '-' ? argv[ai] + 1 : argv[ai]; *c; c++)
@@ -286,7 +319,7 @@ int main(int argc, char **argv) {
 		}
 		break;
 	case 'q': case 'r':
-		if (!exists && !quiet_create) fprintf(stderr, "ar: creating %s\n", archive);
+		if (!exists && !quiet_create) fprintf(stderr, "%s: creating %s\n", tool, archive);
 		for (int k = 0; k < nfiles; k++) add_file(archive, files[k], key == 'r');
 		break;
 	case 's':

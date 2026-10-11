@@ -12,6 +12,20 @@ _start:
 	vmsr fpexc, r0            @ FPEXC.EN
 	movw sp, #0x0000
 	movt sp, #0x4090          @ sp = 0x40900000 (well above the loaded image in virt RAM)
+	@ the constructors, the way a C runtime runs them: every word the linker script collected into .init_array.
+	@ Weak, so a script that collects nothing (and so names no bounds) still links: both resolve to 0, and the
+	@ loop does nothing.
+	.weak __init_array_start
+	.weak __init_array_end
+	ldr  r4, =__init_array_start
+	ldr  r5, =__init_array_end
+ctors:
+	cmp  r4, r5
+	bge  ctors_done
+	ldr  r6, [r4], #4
+	blx  r6
+	b    ctors
+ctors_done:
 	bl   main                 @ result -> r0
 	mov  r1, r0               @ exit code
 	movw r2, #0x0026

@@ -1469,6 +1469,17 @@ static void gen_func(Func *f) {
 	fprintf(o, "\tbx lr\n");
 	if (unwind_tables) fprintf(o, "\t.fnend\n");
 	fprintf(o, "\t.size %s, .-%s\n", sym, sym);    /* the symbol's size (debuggers, backtraces, a provider's exports) */
+	/* __attribute__((constructor/destructor)): a word pointing at it in .init_array / .fini_array, which the
+	 * linker script collects between __init_array_start/_end for the C runtime to walk. A priority gets its own
+	 * .init_array.NNNNN, which the script sorts by name. */
+	for (int pass = 0; pass < 2; pass++) {
+		int prio = pass ? f->attr.dtor : f->attr.ctor;
+		if (!prio) continue;
+		const char *arr = pass ? ".fini_array" : ".init_array";
+		if (prio < 0) fprintf(o, "\t.section %s,\"aw\"\n", arr);
+		else fprintf(o, "\t.section %s.%05d,\"aw\"\n", arr, prio);
+		fprintf(o, "\t.align 2\n\t.word %s\n", sym);
+	}
 }
 
 /* An initialized object's section, as GCC chooses it: a const (not volatile) object is read-only — .rodata, or
@@ -1610,7 +1621,7 @@ static void dce(Func *prog) {
 	strmap_clear(&dce_funcs); strmap_clear(&dce_vars); strmap_clear(&dce_refs);
 	for (Func *f = prog; f; f = f->next) strmap_put(&dce_funcs, f->name, f);
 	for (Gvar *g = globals; g; g = g->next) if (!g->is_topasm) strmap_put(&dce_vars, g->name, g);   /* (an extern: to know it's used) */
-	for (Func *f = prog; f; f = f->next) f->reachable = f->no_emit || (f->is_static && !f->attr.used && !is_alias_target(f->name)) ? 0 : 1;
+	for (Func *f = prog; f; f = f->next) f->reachable = f->no_emit || (f->is_static && !f->attr.used && !f->attr.ctor && !f->attr.dtor && !is_alias_target(f->name)) ? 0 : 1;
 	for (Gvar *g = globals; g; g = g->next)
 		g->reachable = g->is_topasm || (!g->is_extern && !g->is_str && (!g->is_static || g->attr.used || is_alias_target(g->name)));
 	for (dce_changed = 1; dce_changed; ) {   /* reachable 1: newly found, 2: its references followed */

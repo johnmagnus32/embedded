@@ -179,6 +179,9 @@ while [ $# -gt 0 ]; do
     # ---- linking ---------------------------------------------------------------------------------------------
     -Ttext) need "$@"; ttext="$2"; shift ;;
     -Ttext=*) ttext="${a#-Ttext=}" ;;
+    -Tbss=*|-Tdata=*) unsupported "$a" "only -Ttext; place the others with a linker script" ;;
+    -T) need "$@"; ldextra+=(-T "$2"); shift ;;        # a linker script, forwarded as gcc forwards it
+    -T*) ldextra+=(-T "${a#-T}") ;;                    # gcc takes the name joined too (-Tboard.ld)
     -e|--entry) need "$@"; entry="$2"; shift ;;
     -shared) shared=1 ;;
     -r|--relocatable) relocatable=1 ;;                 # one relocatable object out (ld -r): no runtime, no entry
@@ -196,8 +199,10 @@ while [ $# -gt 0 ]; do
     -pie|--pie) linkpie=1 ;;
     -*) unsupported "$a" ;;
     # ---- inputs ----------------------------------------------------------------------------------------------
-    *.o|*.a) linkobjs+=("$a") ;;
-    *) inputs+=("${lang:-ext}:$a") ;;
+    # A suffix we compile is a source; EVERY other file is linker input, which is how gcc's driver decides it —
+    # musl names its shared objects .lo and links them without a murmur. -x forces the language either way.
+    *) if [ -n "${lang}" ]; then inputs+=("${lang}:$a")
+       else case "$a" in *.c|*.i|*.S|*.sx|*.s) inputs+=("ext:$a") ;; *) linkobjs+=("$a") ;; esac; fi ;;
   esac
   shift
 done
@@ -224,6 +229,10 @@ if [ -n "${sysroot}" ]; then
   [ -n "${nostdinc}" ] || cppargs+=(-isystem "${sysroot}/usr/include")   # (after every -I: gcc's order)
 fi
 [ ${#inputs[@]} -gt 0 ] || [ ${#linkobjs[@]} -gt 0 ] || die "no input files"
+if [ "${mode}" != link ] && [ ${#linkobjs[@]} -gt 0 ]; then   # gcc names each one and carries on
+  for f in "${linkobjs[@]}"; do warn "${f}: linker input file unused because linking not done"; done
+  linkobjs=()
+fi
 [ "${gnu89}" = 1 ] && cc1args+=(-fgnu89-inline)
 asargs=(-meabi=5 "${asargs[@]}")                       # what gcc tells its assembler (EABI 5, then the target, then -Wa)
 
@@ -255,7 +264,8 @@ compile_one() {
     kind=ext
   fi
   if [ "${kind}" = ext ]; then
-    case "${src}" in *.c) kind=c ;; *.i) kind=i ;; *.S|*.sx) kind=assembler-with-cpp ;; *.s) kind=assembler ;; *) kind=c ;; esac
+    case "${src}" in *.c) kind=c ;; *.i) kind=i ;; *.S|*.sx) kind=assembler-with-cpp ;; *.s) kind=assembler ;;
+      *) die "internal: no language for ${src} (a suffix we don't compile is linker input)" ;; esac
   fi
   local df=(); mapfile -t df < <(depflags "${dst}")
   case "${kind}" in

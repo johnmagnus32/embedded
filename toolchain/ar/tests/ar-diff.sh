@@ -8,6 +8,7 @@ t=$(mktemp -d); trap 'rm -rf $t' EXIT
 mkdir -p $t/w/d/e $t/g $t/o; cd $t/w
 mk() { printf "$2" | "${GNU}as" -o "$1"; }
 mk d/a.o '.global a1\na1: nop\n.weak w1\nw1: nop\n'; mk d/e/b_long_name_object.o '.global b1\nb1: nop\n.comm cm,4\n'
+mk d/dup.o '.global dup_d\ndup_d: nop\n'; mk d/e/dup.o '.global dup_e\ndup_e: nop\n'
 mk c.o 'c: nop\n'; mk sixteen_chars.o '.global s1\ns1: bx lr\n'; mk fifteen_chr.o '.global f1\nf1: nop\n'; printf 'not an object\n' > notes.txt
 touch -d '2020-01-02 03:04:05' d/a.o c.o
 pass=0; fail=0
@@ -50,6 +51,11 @@ for m in D U; do
   case_ "thin-mPiT$m" "\"\$AR_SETUP\" cDPrST x.a c.o d/a.o d/e/b_long_name_object.o"      mPiT c.o x.a d/e/b_long_name_object.o d/a.o
   case_ "thin-index$m" ""                             cDPrT x.a $objs
 done
+# Two files with the SAME member name on one command line both land — `r` replaces only what was in the archive
+# BEFORE the command (musl's libc.a carries src/malloc/free.o AND mallocng/free.o, and the link needs both).
+case_ dup-one-command  ""                                        rcD x.a d/dup.o d/e/dup.o
+case_ dup-same-file    ""                                        rcD x.a d/dup.o d/dup.o
+case_ dup-then-replace "\"\$AR_SETUP\" rcD x.a d/dup.o c.o"     rD x.a d/e/dup.o
 case_ t    "\"\$AR_SETUP\" rcD x.a $objs"   t x.a
 case_ tP   "\"\$AR_SETUP\" rcPD x.a $objs"  tP x.a
 case_ tthin "\"\$AR_SETUP\" cDPrST x.a $objs" t x.a

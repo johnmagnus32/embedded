@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # driver-opts.sh — os-cc's option handling against the real gcc's, for the families where a build system depends on
-# the exact answer. Today: the -g family, which gcc's driver sorts into accepted / warned-through / rejected, each
-# with its own wording (`gcc -gfoo` → "unrecognized debug output level 'foo'"). We produce no debug information yet,
+# the exact answer: the -g family and -T (the linker script). -g is the one gcc's driver sorts into accepted /
+# warned-through / rejected, each with its own wording (`gcc -gfoo` → "unrecognized debug output level 'foo'"). We
+# produce no debug information yet,
 # so a request for it is ACCEPTED with a warning — gcc's own answer when it can't give the format asked for
 # (`gcc -gstabs`: warning, exit 0, no .debug_* sections) — and a project that passes -g unconditionally, as U-Boot's
 # KBUILD_CFLAGS/AFLAGS do, builds. Malformed and out-of-range forms are errors in gcc's words.
@@ -66,5 +67,42 @@ w=$("${CC}" -g -c -o $t/o.o $t/a.c 2>&1 | grep -c 'no debug information')
 #    table yet, so nothing is forwarded — but it must still assemble
 "${CC}" -gdwarf-4 -c -o $t/s.o $t/a.S 2>/dev/null && "${GNU}nm" $t/s.o | grep -q ' T s$' && ok || no "-gdwarf-4 on a .S input"
 
-echo "driver -g options: $pass passed, $fail failed"
+# 7. -T <script>: the linker script, which gcc takes separate OR joined and forwards to ld. Our bootloader's
+#    Makefile passes the separate form, so both must put the output where the script says. -Tbss=/-Tdata= are a
+#    DECLARED DIVERGENCE: gcc forwards them, we refuse (a script is the one way we place sections).
+cat > $t/s.ld <<'L'
+ENTRY(_start)
+SECTIONS { . = 0x28000; .text : { *(.text) } /DISCARD/ : { *(.ARM.exidx*) *(.ARM.attributes) *(.comment) } }
+L
+printf 'void _start(void){}\n' > $t/s.c
+entry() { "${GNU}readelf" -h "$1" | sed -n 's/.*Entry point address: *//p'; }
+for form in "-T $t/s.ld" "-T$t/s.ld"; do
+  for cc in "${GNU}gcc" "${CC}"; do
+    if "$cc" -nostdlib $form $t/s.c -o $t/s.out 2>$t/e && [ "$(entry $t/s.out)" = 0x28000 ]; then ok
+    else no "'$form' with $(basename "$cc"): $(head -1 $t/e)"; fi
+  done
+done
+"${CC}" -c -T $t/s.ld -o $t/s.o $t/s.c 2>/dev/null && ok || no "-T is ignored when only compiling (gcc ignores it)"
+"${GNU}gcc" -nostdlib -Tbss=0x40000000 $t/s.c -o $t/s.out 2>/dev/null \
+  && { "${CC}" -nostdlib -Tbss=0x40000000 $t/s.c -o $t/s.out 2>/dev/null && no "-Tbss= accepted; decide whether that is honest" || ok; } \
+  || no "-Tbss=: gcc rejects it too — this divergence no longer exists"
+
+# 8. A suffix we do not compile is LINKER INPUT, which is how gcc's driver decides it — musl names its shared
+#    objects .lo and links them without a murmur. -x forces the language; -c warns and carries on, in gcc's words.
+printf 'int helper(int x){return x+1;}\n' > $t/h.c
+"${GNU}gcc" -c $t/h.c -o $t/h.lo
+printf 'void _start(void){}\n' > $t/l.c
+for cc in "${GNU}gcc" "${CC}"; do
+  if "$cc" -nostdlib -T $t/s.ld $t/l.c $t/h.lo -o $t/l.out 2>$t/e && "${GNU}nm" $t/l.out | grep -q ' T helper$'; then ok
+  else no "a .lo as linker input with $(basename "$cc"): $(head -1 $t/e)"; fi
+done
+g=$("${GNU}gcc" -c $t/h.lo -o $t/z.o 2>&1); grc=$?
+o=$("${CC}" -c $t/h.lo -o $t/z.o 2>&1); orc=$?
+[ $grc = 0 ] && [ $orc = 0 ] && ok || no "-c on a linker input: gcc exit $grc, ours $orc"
+[ "$(printf '%s' "$o" | sed -e 's/^os-cc: //')" = "$(printf '%s' "$g" | sed -e 's/^[^ ]*gcc: //')" ] && ok \
+  || { no "-c on a linker input: the warning differs"; echo "    gcc : $g"; echo "    ours: $o"; }
+cp $t/h.c $t/src.lo   # the same suffix, but C: -x says so, and then it is compiled
+"${CC}" -c -x c $t/src.lo -o $t/z.o 2>/dev/null && "${GNU}nm" $t/z.o | grep -q ' T helper$' && ok || no "-x c must compile a .lo as C"
+
+echo "driver options: $pass passed, $fail failed"
 [ $fail -eq 0 ]

@@ -181,7 +181,9 @@ typedef struct Node {
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
-typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gnu_inline, common, naked, returns_twice; char section[IDMAX], alias[IDMAX], cleanup[IDMAX]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
+typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gnu_inline, common, naked, returns_twice;
+	int ctor, dtor;   /* constructor/destructor: 0 none, -1 no priority, else the priority (its .init_array.NNNNN) */
+	char section[IDMAX], alias[IDMAX], cleanup[IDMAX]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
                                                                                          * packed: on a member (its alignment 1) or an enum (its smallest type);
                                                                                          * cleanup: a local's scope-exit function (cleanup(fn));
                                                                                          * returns_twice: setjmp-like (see func_returns_twice);
