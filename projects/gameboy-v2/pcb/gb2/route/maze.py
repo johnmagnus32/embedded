@@ -20,6 +20,7 @@ TO = pcbnew.ToMM
 RES = 0.05
 MARGIN = 0.03            # extra clearance for the cell-centre approximation
 VIA_D, VIA_H = 0.45, 0.25
+SNAP_MAX = 0.06          # an end corner may move this much to land the path exactly on its pad centre (inside MARGIN)
 DIRS = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -196,7 +197,7 @@ class Maze:
         return True
 
     # ---- search
-    def route(self, net, a, b, w=0.15, layers="FB", cost=None, via_cost=60.0, bend=2.0, bend90=6.0):
+    def route(self, net, a, b, w=0.15, layers="FB", cost=None, via_cost=60.0, bend=2.0, bend90=6.0, relax=(True, True)):
         """a, b = (x, y, layer). Returns corner points [(x, y, layer)], layer changes = vias."""
         half = w / 2
         grids = {L: self._blocked(L, net, half) for L in layers}
@@ -207,7 +208,9 @@ class Maze:
             if not (0 <= i < self.nx and 0 <= j < self.ny): return False
             if endpoint: return True               # inside its own pad, whatever the neighbours' halos say
             return not grids[L](j * self.nx + i)
-        near_end = lambda i, j, L: (abs(i - si) <= 3 and abs(j - sj) <= 3 and L == sL) or (abs(i - ti) <= 3 and abs(j - tj) <= 3 and L == tL)
+        # an endpoint inside its own pad may start / end in its neighbours' halos; a waypoint may not
+        near_end = lambda i, j, L: (relax[0] and abs(i - si) <= 3 and abs(j - sj) <= 3 and L == sL) or \
+                                   (relax[1] and abs(i - ti) <= 3 and abs(j - tj) <= 3 and L == tL)
         h = lambda i, j: (max(abs(i - ti), abs(j - tj)) + 0.414 * min(abs(i - ti), abs(j - tj)))
         if cost:
             _cc = {}; _raw = cost
@@ -291,6 +294,8 @@ def _snap_ends(out, a, b):
     """make the path start / end exactly on the pad centres a / b while every segment stays on the 45 deg grid:
     each end run is shifted (keeping its direction) to pass through its pad centre and re-met with its neighbour."""
     pts = [list(p) for p in out]
+    jog = []                                     # ends where re-meeting would move a corner more than SNAP_MAX
+    grid_end = {0: tuple(out[0]), -1: tuple(out[-1])}
     for end, tgt in ((0, a), (-1, b)):
         i0, i1 = (0, 1) if end == 0 else (-1, -2)
         if len(pts) < 2 or pts[i0][2] != pts[i1][2]: pts[i0][0], pts[i0][1] = tgt[0], tgt[1]; continue
@@ -305,12 +310,49 @@ def _snap_ends(out, a, b):
             if ok(k3) and pts[k3][2] == pts[k2][2]:
                 e = _octi(pts[k3][0] - pts[k2][0], pts[k3][1] - pts[k2][1])
                 c = _meet((tgt[0], tgt[1]), d, (pts[k3][0], pts[k3][1]), e)
-                if c is not None and math.hypot(c[0] - pts[i1][0], c[1] - pts[i1][1]) < 0.2:
+                if c is not None and math.hypot(c[0] - pts[i1][0], c[1] - pts[i1][1]) < SNAP_MAX:
                     pts[i1][0], pts[i1][1] = c; pts[k2][0], pts[k2][1] = c
+                else: jog.append(end)
         elif ok(k2) and pts[k2][2] == pts[i1][2]:
             e = _octi(pts[k2][0] - pts[i1][0], pts[k2][1] - pts[i1][1])
             c = _meet((tgt[0], tgt[1]), d, (pts[k2][0], pts[k2][1]), e)
-            if c is not None and math.hypot(c[0] - pts[i1][0], c[1] - pts[i1][1]) < 0.2:
+            if c is not None and math.hypot(c[0] - pts[i1][0], c[1] - pts[i1][1]) < SNAP_MAX:
                 pts[i1][0], pts[i1][1] = c
+            else: jog.append(end)
+        if end in jog: continue                  # keep the grid end, add the tiny jog to the pad centre below
         pts[i0][0], pts[i0][1] = tgt[0], tgt[1]
-    return [tuple(p) for p in pts]
+    res = [tuple(p) for p in pts]
+    if 0 in jog: res.insert(0, (a[0], a[1], res[0][2]))
+    if -1 in jog: res.append((b[0], b[1], res[-1][2]))
+    return res
+
+
+def _free_seg(m, net, L, half, a, b):
+    """every cell along a -> b free for a centre line of half-width `half` (net `net`) on layer L."""
+    blk = m._blocked(L, net, half)
+    n = max(1, int(math.hypot(b[0] - a[0], b[1] - a[1]) / (RES / 2)))
+    for k in range(n + 1):
+        x, y = a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n
+        i, j = int(round((x - m.x0) / RES)), int(round((y - m.y0) / RES))
+        if not (0 <= i < m.nx and 0 <= j < m.ny) or blk(j * m.nx + i): return False
+    return True
+
+
+def chamfer(m, net, pts, w, legs=(0.5, 0.4, 0.3, 0.2)):
+    """turn every 90 deg corner of a routed path into two 45s, using the biggest chamfer leg that stays clear of the
+    maze's obstacles (so the cut corner can't come too close to a neighbour). Corners at a layer change stay."""
+    out = list(pts); i = 1
+    while i < len(out) - 1:
+        a, b, c = out[i - 1], out[i], out[i + 1]
+        if not (a[2] == b[2] == c[2]): i += 1; continue
+        u = (b[0] - a[0], b[1] - a[1]); v = (c[0] - b[0], c[1] - b[1])
+        lu, lv = math.hypot(*u), math.hypot(*v)
+        if lu < 1e-6 or lv < 1e-6 or abs((u[0] * v[0] + u[1] * v[1]) / (lu * lv)) > 0.02: i += 1; continue
+        done = False
+        for k in legs:
+            if k > 0.45 * lu or k > 0.45 * lv: continue
+            p = (b[0] - u[0] / lu * k, b[1] - u[1] / lu * k, b[2]); q = (b[0] + v[0] / lv * k, b[1] + v[1] / lv * k, b[2])
+            if _free_seg(m, net, b[2], w / 2, p, q):
+                out[i:i + 1] = [p, q]; done = True; break
+        i += 2 if done else 1
+    return out

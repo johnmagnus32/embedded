@@ -81,10 +81,10 @@ def build(path, names, files):
         def P(key):
             if key not in pads: sys.exit(f"{name}: no pad {key}")
             q = pads[key].GetPosition(); return (TO(q.x), TO(q.y))
-        def T(net, layer, w, pts):
+        def T(net, layer, w, pts, miter_=True):
             L = {"F": pcbnew.F_Cu, "B": pcbnew.B_Cu}[layer] if layer in ("F", "B") else B.GetLayerID(layer)
             ni = NET(net)
-            pts = miter(pts, w)
+            if miter_: pts = miter(pts, w)
             # lint: every segment >= 0.6 mm on the 45 deg grid (shorter pad stubs may follow the pad)
             for a, b in zip(pts, pts[1:]):
                 L_ = ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
@@ -96,7 +96,7 @@ def build(path, names, files):
             for a, b, c in zip(pts, pts[1:], pts[2:]):
                 u, v = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
                 lu, lv = (u[0] ** 2 + u[1] ** 2) ** 0.5, (v[0] ** 2 + v[1] ** 2) ** 0.5
-                if lu < 1e-6 or lv < 1e-6: continue
+                if lu < 0.1 or lv < 0.1: continue           # a sub-0.1 mm jog onto a pad centre sits inside the pad
                 if (u[0] * v[0] + u[1] * v[1]) / (lu * lv) < -0.02:     # sharper than ~91 deg
                     lint.append(f"{name}: {net} turns back sharper than 90 deg at ({b[0]:.2f},{b[1]:.2f})")
             for a, b in zip(pts, pts[1:]):
@@ -120,19 +120,21 @@ def build(path, names, files):
         def AUTOROUTE(m, net, a, b, w=0.15, layers="FB", cost=None, via_cost=60.0, through=()):
             """maze-route a -> [through ...] -> b (each (x, y, "F"/"B")), lay it down as T()/VIA() and mark it for
             later routes. `through` waypoints steer a route the search would not find on its own."""
+            net = NET(net).GetNetname()                     # the board's full name ("/mcu/NRST"), as the maze sees it
             pts, legs = [], [a, *through, b]
-            for u, v in zip(legs, legs[1:]):
-                leg = m.route(net, u, v, w, layers, cost, via_cost)
+            for k, (u, v) in enumerate(zip(legs, legs[1:])):
+                leg = m.route(net, u, v, w, layers, cost, via_cost, relax=(k == 0, k == len(legs) - 2))
                 if leg is None:
                     lint.append(f"{name}: maze found no path for {net} {u} -> {v}"); return None
                 pts += leg if not pts else leg[1:]
+            pts = maze.chamfer(m, net, pts, w)              # miter inside the maze: clearance-checked, and committed as laid
             run = [pts[0]]
             for p in pts[1:]:
                 if p[2] != run[-1][2]:                      # layer change: via at the corner
-                    T(net, run[-1][2], w, [(q[0], q[1]) for q in run]); VIA(net, p[0], p[1], d=maze.VIA_D, h=maze.VIA_H)
+                    T(net, run[-1][2], w, [(q[0], q[1]) for q in run], miter_=False); VIA(net, p[0], p[1], d=maze.VIA_D, h=maze.VIA_H)
                     run = [p]
                 else: run.append(p)
-            if len(run) > 1: T(net, run[-1][2], w, [(q[0], q[1]) for q in run])
+            if len(run) > 1: T(net, run[-1][2], w, [(q[0], q[1]) for q in run], miter_=False)
             m.commit(net, pts, w); return pts
         exec(compile(open(files[name]).read(), files[name], "exec"),
              {"P": P, "T": T, "VIA": VIA, "NET": NET, "ZONE": ZONE, "MAZE": MAZE, "AUTOROUTE": AUTOROUTE, "B": B})
