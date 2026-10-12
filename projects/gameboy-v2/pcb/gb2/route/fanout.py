@@ -51,14 +51,15 @@ BIG_IC = 32                                 # pads: an IC this big fans out inwa
 # the 3 mm fan from U2 to J3, where a stitching via would block the bus
 SKIP_REFS = {"C20", "C19", "C14", "C15", "FB2"}
 sys.path.insert(0, HERE)
-from channels import CHANNELS
+from channels import CHANNELS, SOFT
 def _inside(x, y, poly):              # even-odd point in polygon (board mm)
     c = False
     for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
         if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1): c = not c
     return c
 def in_channel(x, y, m=0.35):         # a through via anywhere in a reserved channel (either layer) blocks it
-    return any(_inside(x + dx, y + dy, poly) for _, poly, _ in CHANNELS.values() for dx, dy in ((0, 0), (m, 0), (-m, 0), (0, m), (0, -m)))
+    return any(_inside(x + dx, y + dy, poly) for name, (_, poly, _) in CHANNELS.items() if name not in SOFT
+               for dx, dy in ((0, 0), (m, 0), (-m, 0), (0, m), (0, -m)))
 AVOID = [True]                        # first pass keeps out of the channels; a pad with no fit retries without
 def skip(p):
     fp = p.GetParentFootprint(); r = fp.GetReference()
@@ -71,6 +72,7 @@ KEEPOUT_CLR = MM(0.20)
 STUB_W = (MM(0.20), MM(0.30))
 TIE_MAX = MM(5.0)
 TIE_FIRST = MM(2.5)                         # a tie this short beats a via inside a reserved channel
+DECAP_MAX = MM(3.0)                         # a cap pad this close to its IC's same-net pin is tied straight to it
 # switching stages' cap GND pads get a SECOND via (the hot-loop return: two vias halve the via inductance)
 DOUBLE = {"C27.2", "C28.2", "U5.2", "C40.2", "C41.2", "C42.2", "C43.2", "C44.2", "C36.2", "C37.2", "C38.2",
           "C29.2", "C30.2"}
@@ -79,13 +81,13 @@ RADII = [MM(0.1 * k) for k in range(3, 26)]  # 0.3 .. 2.5 mm
 
 
 def candidates():
-    """(radius, bearing) to try: every radius on the 45 deg grid first (stubs a reviewer won't circle), then the
-    15 deg bearings as a fallback."""
+    """(radius, bearing, dogleg) to try: every radius on the 45 deg grid first (a straight stub), then the 15 deg
+    bearings reached by a two-segment octilinear dogleg - no stub ever leaves the 45 deg grid."""
     for r in RADII:
-        for k in range(8): yield r, 2 * math.pi * k / 8
+        for k in range(8): yield r, 2 * math.pi * k / 8, False
     for r in RADII:
         for k in range(BEARINGS):
-            if k % (BEARINGS // 8): yield r, 2 * math.pi * k / BEARINGS
+            if k % (BEARINGS // 8): yield r, 2 * math.pi * k / BEARINGS, True
 THERMAL_MIN = MM(1.4)                       # a pad this wide on its narrow side is an exposed pad
 THERMAL_PITCH, THERMAL_MAX = MM(1.1), 9
 CELL = MM(2.0)
@@ -153,6 +155,16 @@ def stub_start(pad, x, y, w):
     return V(c.x + dx * t, c.y + dy * t)
 
 
+def stub_path(pad, x, y, w, dog):
+    """pad -> via (x, y): None for a straight stub, else the [start, knee, via] octilinear dogleg (two variants)."""
+    if not dog: return [None]
+    out = []
+    for pts in octi_paths(pad.GetPosition(), V(x, y))[:2]:
+        knee = pts[1]
+        out.append([stub_start(pad, knee.x, knee.y, w), knee, V(x, y)])
+    return out
+
+
 def octi_paths(c, q):
     """pad centre c -> target q: the two octilinear doglegs (straight run then 45 deg, 45 deg then straight), then
     the plain straight line as the last resort."""
@@ -171,12 +183,12 @@ def seg_dist(px, py, ax, ay, bx, by):
 
 
 def main():
-    path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE, "..", "gb2.kicad_pcb")
-    subprocess.run([sys.executable, os.path.join(HERE, "route.py"), "--strip", path, "fanout"], check=True)
-    B = pcbnew.LoadBoard(path)
+    board_path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE, "..", "gb2.kicad_pcb")
+    subprocess.run([sys.executable, os.path.join(HERE, "route.py"), "--strip", board_path, "fanout"], check=True)
+    B = pcbnew.LoadBoard(board_path)
     G = pcbnew.PCB_GROUP(B); G.SetName("route:fanout"); B.Add(G)
     global CLR_OF
-    pro = os.path.splitext(path)[0] + ".kicad_pro"
+    pro = os.path.splitext(board_path)[0] + ".kicad_pro"
     CLR_OF = netclass_clearances(pro if os.path.exists(pro) else os.path.join(HERE, "..", "gb2.kicad_pro"))
     need = lambda pad, ob: max(CLR_OF(pad.GetNetname()), ob["clr"]) + CLR_MARGIN
     conn = B.GetConnectivity()
@@ -223,11 +235,13 @@ def main():
             if p.GetNetname() in plane and not p.HasHole() and not is_thermal(p) and not skip(p) and (dbl or not on_plane(p)):
                 todo.append(p)
 
-    def fits(pad, layer, w, x, y, in_pad=False):
+    def fits(pad, layer, w, x, y, in_pad=False, path=None):
         via = pcbnew.SHAPE_CIRCLE(V(x, y), VIA_D // 2)
         hole = pcbnew.SHAPE_CIRCLE(V(x, y), VIA_H // 2)
         c = pad.GetPosition()
-        stub = None if in_pad else pcbnew.SHAPE_SEGMENT(stub_start(pad, x, y, w), V(x, y), w)
+        if in_pad: stubs = []
+        elif path: stubs = [pcbnew.SHAPE_SEGMENT(p0, p1, w) for p0, p1 in zip(path, path[1:]) if (p0.x, p0.y) != (p1.x, p1.y)]
+        else: stubs = [pcbnew.SHAPE_SEGMENT(stub_start(pad, x, y, w), V(x, y), w)]
         if any(bb.Contains(V(x, y)) for bb in keepouts): return "keepout"
         if not ps.Contains(V(x, y)): return "off-board"
         if AVOID[0] and in_channel(TO(x), TO(y)): return "channel"
@@ -251,8 +265,15 @@ def main():
                         return "own pad"                  # via-in-own-pad: keep it beside the pad
                     continue
                 if sh.Collide(via, need(pad, ob)): return "via vs " + ob["kind"] + ("@" + B.GetLayerName(l) if ob["kind"] != "via" else "")
-                if stub is not None and l == layer and sh.Collide(stub, need(pad, ob)): return "stub vs " + ob["kind"]
+                if l == layer and any(sh.Collide(st, need(pad, ob)) for st in stubs): return "stub vs " + ob["kind"]
         return None
+
+    def add_stub(pad, layer, w, x, y, path):
+        pts = path or [stub_start(pad, x, y, w), V(x, y)]
+        for p0, p1 in zip(pts, pts[1:]):
+            if (p0.x, p0.y) == (p1.x, p1.y): continue
+            t = pcbnew.PCB_TRACK(B); t.SetStart(p0); t.SetEnd(p1); t.SetWidth(w); t.SetLayer(layer)
+            t.SetNet(pad.GetNet()); B.Add(t); G.AddItem(t); grid.add(obstacle(t, "track"))
 
     def add_via(pad, x, y):
         v = pcbnew.PCB_VIA(B)
@@ -273,19 +294,19 @@ def main():
             if ob["kind"] == "pad" and not on_plane(it): continue
             q = it.GetPosition(); d = math.hypot(q.x - c.x, q.y - c.y)
             if d > TIE_FIRST or (best and d >= best[0]): continue
-            path = None
+            tpath = None
             for pts in octi_paths(c, q):
                 a = stub_start(pad, pts[1].x, pts[1].y, w); pts = [a] + pts[1:]
                 if all(not any(ob2["net"] != pad.GetNetCode() and ob2["shapes"].get(layer) is not None and
                                ob2["shapes"][layer].Collide(pcbnew.SHAPE_SEGMENT(p0, p1, w), need(pad, ob2))
                                for ob2 in grid.near((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, d / 2 + MM(1.5)))
                        for p0, p1 in zip(pts, pts[1:]) if (p0.x, p0.y) != (p1.x, p1.y)):
-                    path = pts; break
-            if path is None: continue
-            best = (d, path)
+                    tpath = pts; break
+            if tpath is None: continue
+            best = (d, tpath)
         if not best: return False
-        d, path = best
-        for p0, p1 in zip(path, path[1:]):
+        d, tpath = best
+        for p0, p1 in zip(tpath, tpath[1:]):
             if (p0.x, p0.y) == (p1.x, p1.y): continue
             t = pcbnew.PCB_TRACK(B); t.SetStart(p0); t.SetEnd(p1); t.SetWidth(w); t.SetLayer(layer); t.SetNet(pad.GetNet())
             B.Add(t); G.AddItem(t); grid.add(obstacle(t, "track"))
@@ -313,6 +334,55 @@ def main():
         t = pcbnew.PCB_TRACK(B); t.SetStart(c); t.SetEnd(V(tx, ty)); t.SetWidth(w); t.SetLayer(layer)
         t.SetNet(pad.GetNet()); B.Add(t); G.AddItem(t); grid.add(obstacle(t, "track"))
         ep_ties.append("%s.%s" % (fp.GetReference(), pad.GetPadName())); return True
+    # ---- decaps first: each supply-net cap pad gets a direct octilinear trace to its IC's nearest same-net pin on
+    # the same layer (the pin it decouples), and that IC's other same-net pins next to it (logic ties such as a
+    # flash's /WP, /HOLD) link to that pin - so cap and pin share ONE via, placed by the normal search at the cap.
+    decap_tied, decap_log = set(), []
+    ic_pads = [p for fp in B.GetFootprints() if fp.GetReference().startswith("U") for p in fp.Pads() if not p.HasHole()]
+    def clear_path(pad, layer, w, pts):
+        for p0, p1 in zip(pts, pts[1:]):
+            if (p0.x, p0.y) == (p1.x, p1.y): continue
+            seg = pcbnew.SHAPE_SEGMENT(p0, p1, w)
+            for ob in grid.near((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, math.hypot(p1.x - p0.x, p1.y - p0.y) / 2 + MM(1.5)):
+                if ob["net"] == pad.GetNetCode(): continue
+                sh = ob["shapes"].get(layer)
+                if sh is not None and sh.Collide(seg, need(pad, ob)): return False
+        return True
+    def draw(pad, layer, w, pts):
+        for p0, p1 in zip(pts, pts[1:]):
+            if (p0.x, p0.y) == (p1.x, p1.y): continue
+            t = pcbnew.PCB_TRACK(B); t.SetStart(p0); t.SetEnd(p1); t.SetWidth(w); t.SetLayer(layer); t.SetNet(pad.GetNet())
+            B.Add(t); G.AddItem(t); grid.add(obstacle(t, "track"))
+    for fp in B.GetFootprints():
+        if not fp.GetReference().startswith("C") or len(fp.Pads()) != 2: continue
+        pp = list(fp.Pads())
+        rail = [p for p in pp if p.GetNetname() in plane and p.GetNetname() != "GND"]
+        if len(rail) != 1 or not any(p.GetNetname() == "GND" for p in pp): continue
+        cp = rail[0]; layer = pcbnew.F_Cu if cp.IsOnLayer(pcbnew.F_Cu) else pcbnew.B_Cu
+        c0 = cp.GetPosition()
+        near = sorted((q for q in ic_pads if q.GetNetCode() == cp.GetNetCode() and q.IsOnLayer(layer) and not is_thermal(q)
+                       and math.hypot(q.GetPosition().x - c0.x, q.GetPosition().y - c0.y) < DECAP_MAX),
+                      key=lambda q: math.hypot(q.GetPosition().x - c0.x, q.GetPosition().y - c0.y))
+        linked = {it.m_Uuid.AsString() for it in conn.GetConnectedItems(cp)}
+        if any(q.m_Uuid.AsString() in linked for q in near): continue   # a route group already joins them
+        for q in near:
+            qb = q.GetBoundingBox(); w = min(MM(0.3), min(qb.GetWidth(), qb.GetHeight()))
+            dpath = next((pts for pts in octi_paths(c0, q.GetPosition()) if clear_path(cp, layer, w, pts)), None)
+            if not dpath: continue
+            draw(cp, layer, w, dpath); decap_tied.add(q.m_Uuid.AsString())
+            ties = []
+            for o in q.GetParentFootprint().Pads():       # logic-tie neighbours of that pin
+                if o.m_Uuid.AsString() == q.m_Uuid.AsString() or o.GetNetCode() != q.GetNetCode() or not o.IsOnLayer(layer) or is_thermal(o): continue
+                if math.hypot(o.GetPosition().x - q.GetPosition().x, o.GetPosition().y - q.GetPosition().y) > MM(1.6): continue
+                ob = o.GetBoundingBox(); w2 = min(MM(0.3), min(ob.GetWidth(), ob.GetHeight()))
+                pts = [q.GetPosition(), o.GetPosition()]
+                if clear_path(o, layer, w2, pts):
+                    draw(o, layer, w2, pts); decap_tied.add(o.m_Uuid.AsString()); ties.append(o.GetPadName())
+            decap_log.append("%s -> %s.%s%s" % (fp.GetReference(), q.GetParentFootprint().GetReference(), q.GetPadName(),
+                                                 (" (+ pins %s)" % ",".join(ties)) if ties else ""))
+            break
+    todo = [p for p in todo if p.m_Uuid.AsString() not in decap_tied]
+
     for pad in todo:
         layer = [l for l in cu_layers(pad) if l in (pcbnew.F_Cu, pcbnew.B_Cu)][0]
         bb = pad.GetBoundingBox()
@@ -367,20 +437,23 @@ def main():
                         hit = (x, y, r); break
                 if hit: break
             AVOID[0] = True
-        for r, a in ([] if hit else candidates()):
+        spath = None
+        for r, a, dog in ([] if hit else candidates()):
             x, y = c.x + r * math.cos(a), c.y + r * math.sin(a)
-            why = fits(pad, layer, w, x, y)
-            if why is None:
-                hit = (x, y, r); break
-            blockers[why] += 1
+            for pth in stub_path(pad, x, y, w, dog):
+                why = fits(pad, layer, w, x, y, path=pth)
+                if why is None: hit, spath = (x, y, r), pth; break
+                blockers[why] += 1
+            if hit: break
         if not hit and tie_now(pad, layer, w):  # before giving up a channel: a short tie to on-plane copper
             tied.append((ref, pad.GetNetname(), 0.0)); continue
         if not hit:                           # second chance: allow a reserved channel rather than leave it off-plane
             AVOID[0] = False
-            for r, a in candidates():
+            for r, a, dog in candidates():
                 x, y = c.x + r * math.cos(a), c.y + r * math.sin(a)
-                if fits(pad, layer, w, x, y) is None:
-                    hit = (x, y, r); break
+                for pth in stub_path(pad, x, y, w, dog):
+                    if fits(pad, layer, w, x, y, path=pth) is None: hit, spath = (x, y, r), pth; break
+                if hit: break
             AVOID[0] = True
             if hit: in_chan.append(ref)
         if not hit:
@@ -388,18 +461,15 @@ def main():
         x, y, r = hit
         add_via(pad, x, y)
         if ref in DOUBLE:                       # second via: nearest other spot >= 0.8 mm from the first
-            for r2, a in candidates():
+            done2 = False
+            for r2, a, dog in candidates():
                 x2, y2 = c.x + r2 * math.cos(a), c.y + r2 * math.sin(a)
                 if math.hypot(x2 - x, y2 - y) < MM(0.8): continue
-                if fits(pad, layer, w, x2, y2) is None:
-                    add_via(pad, x2, y2)
-                    t2 = pcbnew.PCB_TRACK(B); t2.SetStart(stub_start(pad, x2, y2, w)); t2.SetEnd(V(x2, y2)); t2.SetWidth(w)
-                    t2.SetLayer(layer); t2.SetNet(pad.GetNet()); B.Add(t2); G.AddItem(t2); grid.add(obstacle(t2, "track"))
-                    doubled.append(ref); break
-        t = pcbnew.PCB_TRACK(B)
-        t.SetStart(stub_start(pad, x, y, w)); t.SetEnd(V(x, y)); t.SetWidth(w); t.SetLayer(layer)
-        t.SetNet(pad.GetNet()); B.Add(t); G.AddItem(t)
-        grid.add(obstacle(t, "track"))
+                for pth in stub_path(pad, x2, y2, w, dog):
+                    if fits(pad, layer, w, x2, y2, path=pth) is None:
+                        add_via(pad, x2, y2); add_stub(pad, layer, w, x2, y2, pth); doubled.append(ref); done2 = True; break
+                if done2: break
+        add_stub(pad, layer, w, x, y, spath)
         placed.append((ref, pad.GetNetname(), TO(r)))
 
     # a pad tied by a routed trace to one that got a via is on-plane now
@@ -447,7 +517,7 @@ def main():
               for pad, ref, why in failed if not on_plane(pad)]
 
     pcbnew.ZONE_FILLER(B).Fill(B.Zones())
-    pcbnew.SaveBoard(path, B)
+    pcbnew.SaveBoard(board_path, B)
 
     by = defaultdict(int)
     for _, n, _ in placed: by[n] += 1
@@ -455,6 +525,7 @@ def main():
                      "(%d vias), %d joined via a neighbour, %d tied to a nearby plane item, %d no fit\n"
                      % (len(todo), len(placed), ", ".join("%s %d" % kv for kv in sorted(by.items())),
                         len(thermal), sum(n for *_, n in thermal), len(joined), len(tied), len(failed)))
+    if decap_log: sys.stderr.write("  decap -> pin ties (one shared via): %s\n" % "; ".join(decap_log))
     if ep_ties: sys.stderr.write("  tied into the exposed pad: %s\n" % " ".join(ep_ties))
     if doubled: sys.stderr.write("  second GND via (switcher caps): %s\n" % " ".join(doubled))
     if in_chan: sys.stderr.write("  via inside a reserved channel (no other fit): %s\n" % " ".join(in_chan))

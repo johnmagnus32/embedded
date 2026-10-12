@@ -42,6 +42,7 @@ for fp in B.GetFootprints():
     for p in fp.Pads():
         if p.GetNetname(): pads[p.GetNetname()].append((TO(p.GetPosition().x), TO(p.GetPosition().y), fp.GetReference() + "." + p.GetNumber()))
 tracks = defaultdict(list); vias = defaultdict(list)
+pad_xy = {(round(x, 2), round(y, 2)) for pp in pads.values() for x, y, _ in pp}
 for t in B.GetTracks():
     if t.Type() == pcbnew.PCB_VIA_T: vias[t.GetNetname()].append(t)
     else: tracks[t.GetNetname()].append(t)
@@ -69,11 +70,12 @@ for net, ts in tracks.items():
         g = groups.get(t.m_Uuid.AsString(), "?")
         if off > 0.5 and L >= STUB:
             out.append((L * off / 45, "angle", f"{net}: {L:.2f} mm segment at {off:.1f} deg off the 45 grid, ({a[0]:.2f},{a[1]:.2f})-({b[0]:.2f},{b[1]:.2f}) {B.GetLayerName(t.GetLayer())}", g))
-        if g == "route:fanout" and L > STUB_MAX:
+        via_end = any((round(TO(v.GetPosition().x), 2), round(TO(v.GetPosition().y), 2)) in ((round(a[0], 2), round(a[1], 2)), (round(b[0], 2), round(b[1], 2))) for v in vias[net])
+        if g == "route:fanout" and L > STUB_MAX and via_end:                 # pad -> plane via; pad-to-pad ties are not stubs
             out.append((L - STUB_MAX, "stub", f"{net}: fanout stub {L:.2f} mm at ({a[0]:.2f},{a[1]:.2f}) {B.GetLayerName(t.GetLayer())}", g))
         for e, o in ((a, b), (b, a)): ends[(e, t.GetLayer())].append((o, L, t))
     for (e, lay), lst in ends.items():
-        if len(lst) != 2: continue
+        if len(lst) != 2 or (round(e[0], 2), round(e[1], 2)) in pad_xy: continue      # traces meeting on a pad centre
         (o1, l1, t1), (o2, l2, t2) = lst
         u = (e[0] - o1[0], e[1] - o1[1]); v = (o2[0] - e[0], o2[1] - e[1])
         cos = (u[0] * v[0] + u[1] * v[1]) / (l1 * l2)

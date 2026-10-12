@@ -1,5 +1,7 @@
 # gb2 signal channels: the reserved corridors every route group has to respect (see route/PLAN.md).
 # Each: name -> (layer, polygon in board mm, what runs there). plot.py --channels draws them over the board.
+# SOFT: wide bands that routes weave through - plane vias may land in them (decoupling beats a channel slot);
+# every other channel is a choke point where a via would cost a slot, so fanout keeps out.
 CHANNELS = {
     # west: everything bound for the left grip crosses J3's pin column (both ends are keep-outs) on the BACK,
     # two traces per gap, in the 4 gaps above the FPGA's back-side decaps
@@ -30,3 +32,5 @@ CHANNELS = {
     "N  charger signals":  ("B", [(86.6, 34.7), (103.6, 34.7), (103.6, 36.2), (88.0, 36.2), (88.0, 42.8), (86.6, 42.8)],
                             "BAT (sense tap), CHG_PGOOD, CHG_STAT: west under J7, down to the MCU's top pins / R26"),
 }
+
+SOFT = {"E1 east, back", "E2 east, front"}
