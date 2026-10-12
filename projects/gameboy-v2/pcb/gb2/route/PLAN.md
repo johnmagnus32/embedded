@@ -44,7 +44,7 @@ to the right grip crosses J4 between its pins.
 | P | F | SPI1 SCK/MOSI/select to U2's config pins (configuration + PPU commands, one bus), CRESET_B, CDONE |
 | H | B | Under the MCU body: BT_EN, I2C ×2 west |
 | E1 | B | BTN_A, VOL±, BTN_R → J4 gaps 50.7 / 53.2 / 55.8 |
-| E2 | F | I2S ×3, BTN_B along the bottom edge under NOR and J8 → J4 gaps 58.3–65.9 |
+| E2 | F | I2S ×3, BTN_B along the bottom edge under NOR and J8 → J4 gaps 60.7–63.6. The amp takes the I2S lines in the opposite rotation to the MCU's pins, so WS and CK dive to the back west of J4 (WS first, which also swaps them): 4 vias in all |
 | A | B | SYS to the amp: Q1 → y 45.2 → J4 gap 48.1 (0.5 mm neck) → across the right grip → C30 |
 | N | B | Under J7, between its shell-tab rows: BAT (sense tap), /PGOOD, /CHG → MCU top pins / R26 |
 

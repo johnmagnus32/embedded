@@ -1,0 +1,60 @@
+# Right grip, front: the I2S bus (E2 band -> J4's lower gaps -> the amp), BTN_B -> SW7, and the locals (speaker,
+# SD_MODE strap, power LED, the switches' A/B pad pairs).
+# The MCU's bottom pins (WS 33, CK 34, BTN_B 35, SD 36, west -> east) drop south past the console / LCD_LITE / BT_EN
+# vias and run east along the bottom-edge band. The amp takes them in the opposite rotation (DIN on its west side,
+# BCLK then LRCLK along its top), so the I2S bundle has to reverse once on the way: that happens in the free band
+# west of J4 (the maze places the hops), not at either package.
+W = 0.15
+import math
+J4 = lambda k: P("J4.%d" % k)[1]
+X4 = P("J4.1")[0]
+def slots(k):                                     # as in 70_east: the two trace positions in the gap below pin k + 1
+    lo = J4(k + 1) + 0.8 + 0.255; hi = J4(k) - 0.8 - 0.255
+    return math.ceil(lo / 0.05 - 1e-6) * 0.05, math.floor(hi / 0.05 + 1e-6) * 0.05
+S61, S63 = slots(14), slots(13)
+thru = lambda y, L: [(X4 - 2.0, y, L), (X4 + 1.25, y, L)]
+VC = 30.0
+m = MAZE((83.0, 44.0, 166.5, 70.0))
+# escapes: straight south off the pins (between the LCD_LITE / BT_EN vias' column and the pin row), one 45, then east
+# in the band under BT_EN's via; the eastern pin turns highest, so nothing crosses: north -> south SD, BTN_B, CK, WS.
+# Past the NOR (x 99) the band opens up to y 62.2 and the four spread to a 0.6 mm pitch, so a via on any lane clears
+# its neighbours. The maze takes over at x 117 (east of R20).
+BAND = {"I2S2_SD": ("U1.36", 63.45, 62.55, 99.0), "BTN_B": ("U1.35", 63.75, 63.15, 99.6),
+        "I2S2_CK": ("U1.34", 64.05, 63.75, 100.2), "I2S2_WS": ("U1.33", 64.35, 64.35, None)}
+D, XE = 0.4, 117.0
+for net, (pin, y, y2, xs) in BAND.items():
+    px, py = P(pin)
+    pts = [(px, py), (px, y - D), (px + D, y)] + ([(xs, y), (xs + (y - y2), y2)] if xs else []) + [(XE, y2)]
+    T(net, "F", W, pts, miter_=False)
+    m.commit(NET(net).GetNetname(), [(x, y_, "F") for x, y_ in pts], W)
+# J4 (pins 13 / 14 / 15 gaps), north -> south: WS, CK (back), SD, BTN_B (front) - the order the amp / SW7 take them
+# in. WS dives first (x 118) and runs north under CK's front lane to the back lane y = WS slot; CK dives 1.5 mm later
+# to the lane south of it. Diving in that order IS the WS / CK swap, so the reversal costs four vias in all.
+# (Both back lanes pass under J8's pads, which are front-only, and clear SWDIO's via at (125.6, 60.0).)
+for net, xv, lane in (("I2S2_WS", 118.0, S61[0]), ("I2S2_CK", 119.5, S61[1])):
+    y = BAND[net][2]
+    T(net, "F", W, [(XE, y), (xv, y)]); VIA(net, xv, y, d=0.45, h=0.25)
+    pts = [(xv, y), (xv, lane + 0.7), (xv + 0.7, lane), (X4 + 1.25, lane)]
+    T(net, "B", W, pts, miter_=False)
+    m.commit(NET(net).GetNetname(), [(XE, y, "F"), (xv, y, "F"), (xv, y, "B")] + [(x, y_, "B") for x, y_ in pts[1:]], W)
+# east of J4: WS / CK come up before VOLDOWN's back diagonal and run north-east to the amp's top pins from above it
+# (WS outermost: it passes north of CK's pin to drop into pin 14), SD to pin 1 on the amp's west side, inside them
+# BTN_B and SD stay on the front: each drops to its J4 slot with one 45 (BTN_B first, so the two diagonals don't
+# meet), then BTN_B runs straight on to SW7; SD goes on to the amp after WS / CK
+x1, y1 = P("SW7.1"); yb, ys = S63[1], S63[0]
+pts = [(XE, 63.15), (127.0, 63.15), (127.0 + (yb - 63.15), yb), (x1 - (y1 - yb), yb), (x1, y1)]
+T("BTN_B", "F", W, pts, miter_=False); m.commit(NET("BTN_B").GetNetname(), [(x, y, "F") for x, y in pts], W)
+pts = [(XE, 62.55), (128.5, 62.55), (128.5 + (ys - 62.55), ys), (X4 + 1.25, ys)]
+T("I2S2_SD", "F", W, pts, miter_=False); m.commit(NET("I2S2_SD").GetNetname(), [(x, y, "F") for x, y in pts], W)
+AUTOROUTE(m, "I2S2_WS", (X4 + 1.25, S61[0], "B"), (*P("U6.14"), "F"), through=[(146.0, 49.25, "F"), (150.25, 49.25, "F")], via_cost=VC)
+AUTOROUTE(m, "I2S2_CK", (X4 + 1.25, S61[1], "B"), (*P("U6.16"), "F"), through=[(146.6, 49.85, "F")], via_cost=VC)
+AUTOROUTE(m, "I2S2_SD", (X4 + 1.25, ys, "F"), (*P("U6.1"), "F"), via_cost=VC)
+# switch A/B pad pairs (joined inside the switch, but each pad needs its copper)
+for net, a_, b_ in (("BTN_B", "SW7.1", "SW7.2"), ("BTN_A", "SW6.1", "SW6.2")):
+    T(net, "F", W, [P(a_), P(b_)]); m.commit(NET(net).GetNetname(), [(*P(a_), "F"), (*P(b_), "F")], W)
+# locals
+AUTOROUTE(m, "AMP_SD_MODE", (*P("U6.4"), "F"), (*P("R11.1"), "F"), layers="F")
+T("PWR_LED_A", "F", W, [P("D1.2"), P("R2.2")])
+# speaker: OUTP / OUTN (filterless class-D, ~300 kHz square waves) as a short pair to J5, 0.3 mm (0.5 A peaks)
+AUTOROUTE(m, "SPK_P", (*P("U6.9"), "F"), (*P("J5.1"), "F"), w=0.3, via_cost=VC)
+AUTOROUTE(m, "SPK_N", (*P("U6.10"), "F"), (*P("J5.2"), "F"), w=0.3, via_cost=VC)
