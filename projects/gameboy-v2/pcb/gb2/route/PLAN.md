@@ -93,4 +93,8 @@ about 60 mV at a 1 A peak.
 4. `30_fpga_power`: U2's west-side supply pins and decaps.
 5. `55_mcu_local`, `65_debug`, `70_east`, `75_right_grip`, `80_west`: everything is routed (0 unconnected, 2026-10-12).
    PWR_SW runs from R31 under the MCU (the north side is closed on both layers) — a µA DC line, 4 vias.
-6. Last: whole-board GND pours on F.Cu/B.Cu with edge and field stitching; silk cleanup; final DRC.
+6. `pour.py` (after `fanout.py`): whole-board GND pours on F.Cu/B.Cu (thermal spokes; J7's shell solid), a return
+   via within 1.2 mm of every signal via where there's room (the MCU's east escape column, slow GPIO, is ~3.5 mm),
+   edge stitching every 2.5 mm, a 4 mm field grid. `planecheck.py` checks the reference planes under every track
+   (no slots; no B.Cu track crosses the +1V2 island).
+7. Last: silk cleanup; the I2C rise-time check; final review.

@@ -162,8 +162,9 @@ def main():
     files = groups_on_disk(); names = a or list(files)
     bad = [n for n in names if n not in files]
     if bad: sys.exit(f"no group file for {bad}; have {list(files)}")
-    # the plane fanout is rebuilt after routing (fanout.py), so its old vias go too - routes never dodge stale ones
-    subprocess.run([sys.executable, __file__, "--strip", board, *names, "fanout"], check=True)
+    # the plane fanout and the pours / stitching are rebuilt after routing (fanout.py, pour.py), so their old copper
+    # goes too - routes never dodge stale vias
+    subprocess.run([sys.executable, __file__, "--strip", board, *names, "fanout", "pour"], check=True)
     build(board, names, files)
 
 
