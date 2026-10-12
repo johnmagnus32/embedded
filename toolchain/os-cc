@@ -118,6 +118,9 @@ while [ $# -gt 0 ]; do
     -mfpu=*) unsupported "$a" ;;
     -mfloat-abi=soft|-mfloat-abi=hard|-msoft-float) cppargs+=("$a"); cc1args+=("$a"); asargs+=("${a/-msoft-float/-mfloat-abi=soft}") ;;
     -mfloat-abi=*) unsupported "$a" ;;
+    -mgeneral-regs-only) cppargs+=("$a"); cc1args+=("$a") ;;   # the FP registers are off limits (our own kernel
+                                                       # builds with it); gcc leaves the hard-float ABI alone and
+                                                       # emits byte-identical code for integer-only input
     -mno-unaligned-access) unsupported "$a" "our cc may use unaligned word accesses" ;;
     -munaligned-access) cppargs+=("$a"); cc1args+=("$a") ;;
     -marm) cppargs+=("$a"); cc1args+=("$a") ;;

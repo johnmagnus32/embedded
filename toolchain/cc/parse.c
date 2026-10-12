@@ -291,7 +291,8 @@ static void attr_merge(Attr *to, const Attr *a) {
 	to->always_inline |= a->always_inline; to->gnu_inline |= a->gnu_inline; to->naked |= a->naked;
 	to->weak |= a->weak; to->used |= a->used; to->returns_twice |= a->returns_twice; to->common |= a->common; if (a->align > to->align) to->align = a->align; if (a->pcs) to->pcs = a->pcs;
 	if (a->vis) to->vis = a->vis;
-	if (a->ctor) to->ctor = a->ctor; if (a->dtor) to->dtor = a->dtor;
+	if (a->ctor) to->ctor = a->ctor;
+	if (a->dtor) to->dtor = a->dtor;
 	if (a->section[0]) strcpy(to->section, a->section);
 	if (a->alias[0]) strcpy(to->alias, a->alias);
 }

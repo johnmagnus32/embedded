@@ -33,15 +33,14 @@
 #include "elfread.h"
 #include "arread.h"
 #include "elfver.h"
+#include "bfdsec.h"
 
 void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
 	fputs("objdump: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
-#define SHT_NULL          0
 #define SHT_NOTE          7
-#define SHT_RELA          4
 #define SHT_GROUP        17
 #define SHF_GROUP      0x200u
 #define SHF_EXCLUDE 0x80000000u
@@ -69,26 +68,6 @@ static int starts(const char *s, const char *p) { return !strncmp(s, p, strlen(p
  * in -h and does not mark its target RELOC (bfd_section_from_shdr's SHT_REL case): one that the image loads (an
  * executable's or shared object's dynamic relocations), one against a symbol table other than the file's one
  * .symtab (so .dynsym's), or one with no usable target. */
-static int rel_is_normal_section(const ElfFile *f, int i) {
-	const Elf32_Shdr *h = &f->sh[i];
-	int exec = f->eh->e_type == ET_EXEC || f->eh->e_type == ET_DYN;
-	if (exec && (h->sh_flags & SHF_ALLOC)) return 1;
-	if (h->sh_flags & 0x800u /* SHF_COMPRESSED */) return 1;
-	if (!h->sh_link || (int)h->sh_link != f->symtab) return 1;
-	if (!h->sh_info || (int)h->sh_info >= f->nsh) return 1;
-	u32 t = f->sh[h->sh_info].sh_type;
-	return t == SHT_REL || t == SHT_RELA;
-}
-static int bfd_has_section(const ElfFile *f, int i) {
-	const Elf32_Shdr *h = &f->sh[i];
-	if (h->sh_type == SHT_REL || h->sh_type == SHT_RELA) return rel_is_normal_section(f, i);
-	if (h->sh_type == SHT_NULL || h->sh_type == SHT_SYMTAB || h->sh_type == 18 /* SHT_SYMTAB_SHNDX */) return 0;
-	if (h->sh_type == SHT_STRTAB) {
-		if (i == f->eh->e_shstrndx) return 0;
-		for (int j = 1; j < f->nsh; j++) if (f->sh[j].sh_type == SHT_SYMTAB && (int)f->sh[j].sh_link == i) return 0;
-	}
-	return 1;
-}
 /* _bfd_elf_make_section_from_shdr, for what -h prints. has_rel: a REL/RELA section names this one. */
 static unsigned sec_flags(const ElfFile *f, int i, int has_rel) {
 	const Elf32_Shdr *h = &f->sh[i]; const char *name = f->shstr + h->sh_name;

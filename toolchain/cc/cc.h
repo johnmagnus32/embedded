@@ -92,6 +92,7 @@ int  vfp_class(Type *t, int *nel);           /* 0; 1 = float elements; 2 = doubl
 extern int exec_stack;                       /* the code needs an executable stack (a nested function's trampoline) */
 extern int gnu89_inline;                     /* -fgnu89-inline: gnu89 `inline` semantics (see cc.c) */
 extern int soft_float;                       /* -mfloat-abi=soft: no floating code, base PCS attributes */
+extern int general_regs_only;                /* -mgeneral-regs-only: no FP registers, but the hard-float ABI stays */
 extern int short_wchar, no_unaligned, unsafe_math, finite_math, softfp_abi, unwind_tables, function_sections, data_sections;   /* cc.c: target options (build attributes) */
 extern unsigned fixed_regs;                  /* cc.c: -ffixed-REG (r4-r10) */
 int fixed_reg_number(const char *s);         /* gen.c: a register name -> its number, else -1 */

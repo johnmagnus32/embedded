@@ -24,6 +24,8 @@ int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32
 int default_vis = 0;   /* -fvisibility= */
 const char *vis_directive(int vis) { return vis == VIS_HIDDEN ? ".hidden" : vis == VIS_INTERNAL ? ".internal" : vis == VIS_PROTECTED ? ".protected" : NULL; }
 int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; default hard (gnueabihf) */
+int general_regs_only = 0;   /* -mgeneral-regs-only: the FP registers are off limits, but the ABI stays hard-float
+                              * (gcc keeps Tag_ABI_VFP_args) — our own kernel builds with this */
 /* What GCC records in the object's build attributes (and our lexer's wchar_t width): the target options. */
 int unwind_tables = 0;    /* -funwind-tables: an EHABI unwind entry per function (.fnstart/.save/.setfp/.fnend) */
 int short_wchar = 0;      /* -fshort-wchar: wchar_t is 16-bit (L"" / L'' are halfwords; Tag_ABI_PCS_wchar_t 2) */
@@ -67,6 +69,7 @@ static void *compile(void *unused) {
 		else if (!strcmp(argv[i], "-mfloat-abi=soft") || !strcmp(argv[i], "-msoft-float")) soft_float = 1, softfp_abi = 0;   /* no floating
 		                                                             * code allowed; no VFP ABI attributes (the kernel) */
 		else if (!strcmp(argv[i], "-mfloat-abi=softfp")) die("cc: -mfloat-abi=softfp is not supported (VFP code with the base PCS)");
+		else if (!strcmp(argv[i], "-mgeneral-regs-only")) general_regs_only = 1;
 		else if (!strcmp(argv[i], "-funwind-tables") || !strcmp(argv[i], "-fasynchronous-unwind-tables")) unwind_tables = 1;
 		else if (!strcmp(argv[i], "-fno-unwind-tables") || !strcmp(argv[i], "-fno-asynchronous-unwind-tables")) unwind_tables = 0;
 		else if (!strcmp(argv[i], "-fshort-wchar")) short_wchar = 1; else if (!strcmp(argv[i], "-fno-short-wchar")) short_wchar = 0;

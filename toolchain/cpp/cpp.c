@@ -1069,10 +1069,10 @@ static struct {
 	const char *std;       /* its predef.h key; NULL: gnu17, the default */
 	int freestanding, pthread, undef, assembler, signed_char, trigraphs;
 	const char *float_abi; /* NULL (hard) | "soft" | "softfp" */
-	int short_wchar, thumb, no_unaligned;
+	int short_wchar, thumb, no_unaligned, general_regs_only;
 	const char *march, *mfpu;   /* NULL: the target's own (cortex-a7, neon-vfpv4); else a predef.h key */
 	const char *ssp;            /* NULL | "-fstack-protector[-strong|-all|-explicit]" */
-} po = { '0', -1, 0, 0, NULL, 0, 0, 0, 0, 0, 0, NULL, 0, 0, 0, NULL, NULL, NULL };
+} po = { .olevel = '0', .fast = -1 };   /* every other field starts at 0/NULL (designated: adding one cannot shift the rest) */
 static const char *std_key(const char *v) {                 /* -std=VALUE -> its key in predef_delta */
 	static const struct { const char *v, *key; } m[] = {
 		{"c89","-std=c89"},{"c90","-std=c89"},{"iso9899:1990","-std=c89"},{"gnu89","-std=gnu89"},{"gnu90","-std=gnu89"},
@@ -1100,6 +1100,7 @@ static void predefines(void) {
 	if (po.mfpu) apply_delta(po.mfpu);
 	if (po.float_abi) apply_delta(!strcmp(po.float_abi, "soft") ? "-mfloat-abi=soft" : "-mfloat-abi=softfp");   /* after the FPU's:
 	                                                           * soft float takes back the __ARM_FP it defined */
+	if (po.general_regs_only) apply_delta("-mgeneral-regs-only");   /* takes back the NEON and FP_FAST macros, zeroes __GCC_IEC_559 */
 	if (po.no_unaligned) apply_delta("-mno-unaligned-access");
 	if (po.thumb) apply_delta("-mthumb");
 	if (po.ssp) apply_delta(po.ssp);
@@ -1180,6 +1181,7 @@ int main(int argc, char **argv) {
 		else if (IS("-pthread")) po.pthread = 1;
 		else if (PRE("-mfloat-abi=")) { const char *v = a + 12;
 			if (!strcmp(v, "hard")) po.float_abi = NULL; else if (!strcmp(v, "soft") || !strcmp(v, "softfp")) po.float_abi = v; else die("unsupported option '%s'", a); }
+		else if (IS("-mgeneral-regs-only")) po.general_regs_only = 1;
 		else if (IS("-marm")) po.thumb = 0; else if (IS("-mthumb")) po.thumb = 1;
 		else if (IS("-mcpu=cortex-a7")) po.march = NULL;          /* the target's own */
 		else if (IS("-march=armv7-a")) po.march = "-march=armv7-a";

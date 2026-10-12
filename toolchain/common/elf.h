@@ -29,7 +29,9 @@ typedef struct { u32 d_tag, d_val; } Elf32_Dyn;   /* .dynamic entry (d_val doubl
 
 /* --- section header: sh_type / sh_flags / special indices ---------------------------------------- */
 #define SHT_PROGBITS 1
+#define SHT_NULL     0
 #define SHT_SYMTAB   2
+#define SHT_RELA     4
 #define SHT_STRTAB   3
 #define SHT_NOBITS   8
 #define SHT_REL      9

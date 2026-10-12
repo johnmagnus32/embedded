@@ -715,8 +715,14 @@ static OutSec *placed_outsec(const char *name, const char *fn) {
 	die("linker script %s: %s(%s): no such output section", script_name, fn, name);
 }
 static u32 align_to(u32 x, u32 a) { return a > 1 ? (x + a - 1) / a * a : x; }
+/* The arm of a ?: that was NOT taken still has to be PARSED (one pass over the tokens), but its symbols need
+ * not exist — GNU's exp_fold_tree folds the condition and then only the taken branch. `LOAD_ADDR =
+ * DEFINED(LOAD_ADDR) ? LOAD_ADDR : 0x41000000;` (our kernel's script) is the whole point: the reference in the
+ * untaken arm is undefined by construction. */
+static int e_skip;
 static u32 sym_value(const char *name) {
 	GSym *g = gsym_find(name);
+	if ((!g || !g->defined) && e_skip) return 0;
 	if (!g || !g->defined) die("linker script %s: undefined symbol '%s' in an expression", script_name, name);
 	if (g->obj) {
 		Elf32_Sym *s = &g->obj->sym[g->symidx];
@@ -794,7 +800,10 @@ static u32 e_bin(int min) {
 static u32 e_cond(void) {
 	u32 c = e_bin(1);
 	if (!eis("?")) return c;
-	ep++; u32 a = e_cond(); eexpect(":"); u32 b = e_cond();
+	ep++;
+	e_skip += !c; u32 a = e_cond(); e_skip -= !c;       /* parse both arms; only the taken one must resolve */
+	eexpect(":");
+	e_skip += !!c; u32 b = e_cond(); e_skip -= !!c;
 	return c ? a : b;
 }
 static u32 eval(Expr e, u32 dot) {

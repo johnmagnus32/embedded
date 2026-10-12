@@ -11,7 +11,7 @@
 # build/initramfs.cpio.gz artifact to pass with `-initrd` (no longer embedded).
 #
 # Uses the pinned glibc cross toolchain (provisioned by `make toolchain` in the product);
-# gen_init_cpio is an engine HOST PACKAGE (forge fetches + compiles it); the fixtures build
+# gen_init_cpio is an engine HOST PACKAGE (the os build fetches + compiles it); the fixtures build
 # gets its path via GEN_INIT_CPIO= (golden.sh passes it) — see GEN_INIT_CPIO below.
 
 CROSS_COMPILE ?= arm-buildroot-linux-gnueabihf-
@@ -33,7 +33,7 @@ BUILD   := build/$(BOARD)
 # gen_init_cpio: the newc-cpio writer for the `fixtures` test initramfs images below.
 # Only the `fixtures` goal needs it (not `all` — the kernel binary itself packs no cpio),
 # so a plain `make`/`make image KERNEL=custom` never touches it. It is an ENGINE-owned
-# HOST PACKAGE now (forge/hostpackages/gen_init_cpio): the forge host subsystem FETCHES +
+# HOST PACKAGE now (os/meta/recipes-devtools/gen_init_cpio): the os host subsystem FETCHES +
 # compiles it into <product>/build/hosttools/bin/ (`make toolchain`). The kernel provider
 # does NOT own/vendor it — the golden harness (kernel/test/golden.sh) passes GEN_INIT_CPIO=
 # from the product's host prefix. A bare `make -C kernel fixtures` with no override errors
@@ -48,11 +48,11 @@ GEN_INIT_CPIO ?= gen_init_cpio-NOT-PROVISIONED
 # custom-kernel build produces its own board.dtb with NO mainline-Linux checkout.
 #
 # The console overlay (uart0-console.dtsi) is PRODUCT/BOARD data (shared with U-Boot),
-# so it is NOT vendored here; the forge engine passes its path as DTB_OVERLAYS (and the
+# so it is NOT vendored here; the os engine passes its path as DTB_OVERLAYS (and the
 # output path as DTB_OUT) on the make line — the engine sourced board.conf cleanly in
 # bash, so these arrive stripped (the kernel Makefile never parses board.conf itself).
 # A bare `make -C kernel dtb` (no engine) builds the STOCK board DTB (no overlay) into
-# the build dir — enough for a dev to eyeball it; the shipped DTB always comes via forge.
+# the build dir — enough for a dev to eyeball it; the shipped DTB always comes via the os build.
 # The board .dts basename. The engine forwards UBOOT_BOARD_DT from board.conf; a bare
 # standalone build defaults to the only board .dts we vendor.
 UBOOT_BOARD_DT ?= sun8i-t113s-mangopi-mq-r-t113
@@ -89,6 +89,11 @@ BOARD_UART_OBJ := $(BUILD)/drivers/tty/board_pl011.o
 LDFLAGS += -Wl,--defsym=LOAD_ADDR=0x40010000
 else
 BOARD_UART_OBJ := $(BUILD)/drivers/tty/board_16550.o
+# The real board: our bootloader reads the kernel from NOR into DRAM and jumps to it, so this MUST be the
+# loader's KERNEL_ADDR (bootloader/nor_layout.h NOR_KERNEL_ADDR). We do not relocate ourselves, so a
+# mismatch means every absolute address is wrong. The script's own default (0x41000000) predates the
+# layout a 56 MiB decompressed mainline kernel forced, so state it here rather than inherit it.
+LDFLAGS += -Wl,--defsym=LOAD_ADDR=0x45000000
 endif
 
 # Kernel objects, grouped like the source tree (arch / kernel / mm / fs /
@@ -116,7 +121,7 @@ ULDFLAGS := -T user/user.ld -nostdlib -static -Wl,--build-id=none \
 
 .PHONY: all fixtures clean qemu test
 # `all` builds ONLY the kernel binary + its board DTB — that is the deliverable the
-# forge image path consumes (make image KERNEL=custom). The golden-test initramfs
+# os image path consumes (make image KERNEL=custom). The golden-test initramfs
 # images are TEST SCAFFOLDING, not part of the kernel, so they live behind a separate
 # `fixtures` goal: a plain `make` (or the engine's make-c build) no longer pays to pack
 # four cpios it doesn't ship, and gen_init_cpio is only needed when you build fixtures.
@@ -220,7 +225,7 @@ $(BUILD)/preemptramfs.cpio.gz: $(BUILD)/preemptramfs.cpio
 # ---- board device tree blob (dtc-compiled from the vendored dts/, + overlays) ----
 # Mirrors the kernel's own Kbuild DTB rule: build a preprocessed .dts (base + an
 # appended `#include "<overlay>"` per DTB_OVERLAYS, same as our mainline build.sh
-# appends the console overlay), then dtc it. The forge engine sets DTB_OVERLAYS (the
+# appends the console overlay), then dtc it. The os engine sets DTB_OVERLAYS (the
 # board's uart0-console.dtsi) + DTB_OUT (OUTPUT_DIR/<name>.dtb) so the composer picks
 # it up; a bare `make -C kernel dtb` builds the stock board DTB (no overlay) locally.
 # HOST tools (cpp/dtc), not the cross toolchain — the DTB is target-arch-neutral data.

@@ -169,7 +169,14 @@ static void gen_expr_w(Node *n, int want64) {
 }
 /* ---- floating point: a float/double value lives in r0 / r0:r1 as its IEEE bits (so the stack machine's loads,
  * stores, copies and pushes are unchanged); arithmetic, conversions and compares move it into VFP registers. */
-static void need_fp(void) { if (soft_float) die("cc: floating-point code in %s with -mfloat-abi=soft", cur_gen_func); }
+/* About to touch the FP unit. Under -mfloat-abi=soft there is no FP unit in the ABI at all; under
+ * -mgeneral-regs-only there is one but its registers are off limits. gcc's own enforcement of the latter is
+ * partial (a local double compiles silently, a global one makes it print "unrecognizable insn:" — an ICE), so
+ * we are deliberately STRICTER: any floating-point code is refused, which is what the flag promises. */
+static void need_fp(void) {
+	if (soft_float) die("floating-point code in %s with -mfloat-abi=soft", cur_gen_func);
+	if (general_regs_only) die("floating-point code in %s not permitted with '-mgeneral-regs-only'", cur_gen_func);
+}
 static void to_vfp(int dbl, int r)   { need_fp(); fprintf(o, dbl ? "\tvmov d%d, r0, r1\n" : "\tvmov s%d, r0\n", r); }
 static void from_vfp(int dbl, int r) { fprintf(o, dbl ? "\tvmov r0, r1, d%d\n" : "\tvmov r0, s%d\n", r); }
 /* Z/N/C/V from comparing the value in r0(:r1) (floating) with zero: Z = equal (a NaN is unordered -> true). */

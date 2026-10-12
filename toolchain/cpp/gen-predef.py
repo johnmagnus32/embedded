@@ -30,6 +30,7 @@ DELTAS = ["-O1", "-O2", "-O3", "-Os", "-Oz", "-Og", "-ffast-math",
           "-std=c89", "-std=gnu89", "-std=iso9899:199409", "-std=c99", "-std=gnu99", "-std=c11", "-std=gnu11",
           "-std=c17", "-std=c2x", "-std=gnu2x", "-x assembler-with-cpp", "-fsigned-char",
           "-fshort-wchar", "-march=armv7-a", "-mfpu=vfp", "-mno-unaligned-access", "-mthumb",
+          "-mgeneral-regs-only",
           "-fstack-protector", "-fstack-protector-strong", "-fstack-protector-all", "-fstack-protector-explicit"]
 base = dump([])
 version = subprocess.run([gnu + "gcc", "-dumpfullversion"], capture_output=True, text=True).stdout.strip()
