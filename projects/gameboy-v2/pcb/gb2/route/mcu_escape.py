@@ -9,9 +9,9 @@
 # via: (x, y) or None. ch: channel (route/channels.py) or local destination.
 ESCAPE = {
     # ---- top row (pins 16..1, x 84.25 .. 91.75), all leave north on the front
-    16: ("USART2_TX",   "N", "F>B", (84.25, 48.55), "W1", "BT830"),
-    15: ("USART2_RTS",  "N", "F>B", (84.75, 47.95), "W1", "BT830 (staggered via)"),
-    14: ("USART2_CTS",  "N", "F>B", (85.25, 48.55), "W1", "BT830"),
+    16: ("USART2_TX",   "N", "F>B", (84.25, 48.55), "W1", "BT830: back, one 45 down to J3 gap 50.7"),
+    15: ("USART2_RTS",  "N", "F>B", (84.75, 47.95), "W1", "BT830 (staggered via): back, clear of TX's via, to J3 gap 50.7"),
+    14: ("USART2_CTS",  "N", "F>B", None, "W1", "BT830: north between RTS / +3V3A vias, west on the FRONT at y 47.3, drops to J3 gap 48.1 above RTS / TX"),
     13: ("+3V3A",       "N", "F>B", (85.75, 47.95), "local", "C9 / C10 / FB1 under the row"),
     12: ("GND",         "N", "F>B", None, "plane", "fanout, straight out"),
     11: ("BB_PSYNC",    "N", "F>B", (84.4, 46.0), "local", "north to y 46, west, back-side column x 84.4 up to R25 / U10.13 (PC3, swapped with BT_EN)"),
@@ -53,7 +53,7 @@ ESCAPE = {
     47: ("GND",         "S", "F>B", None, "plane", "fanout"),
     48: ("+3V3",        "S", "F>B", None, "plane", "fanout"),
     # ---- left row (pins 17..32, y 51.76 .. 59.26)
-    17: ("USART2_RX",   "W", "F>B", (80.9, 51.76), "W1", "BT830"),
+    17: ("USART2_RX",   "W", "F>B", None, "W1", "BT830: west then north-west on the FRONT (y 48.75), drops to J3 gap 48.1"),
     18: ("GND",         "W", "F>B", None, "plane", "fanout"),
     19: ("+3V3",        "W", "F>B", None, "plane", "fanout"),
     20: ("FPGA_SS_B",   "W", "F", None, "P", "SPI1 select -> U2 SPI_SS (16) / R6 (config strap; active-high runtime select)"),
@@ -68,5 +68,5 @@ ESCAPE = {
 # the hub's west exit (C8|C7, y 54.5-57.5) carries BT_EN, SCL, SDA (since 2026-10-12, when the FPGA config bus
 # moved from SPI3 to SPI1 - it no longer crosses under the MCU). W1 at J3's gaps, north -> south: PWR_SW, USART2
 # TX / RTS / CTS / RX, BT_EN, SCL, SDA (2 per gap).
-HUB_WEST = ["BT_EN", "I2C1_SCL", "I2C1_SDA"]
+HUB_WEST = ["I2C1_SCL", "I2C1_SDA", "PWR_SW", "BT_EN"]   # PWR_SW too (from R31: the MCU's north side is closed), hopping over the I2C on the front inside the pin ring
 PIN_SWAPS = {"BB_PSYNC": ("pin 38 PC7", "pin 11 PC3"), "BT_EN": ("pin 11 PC3", "pin 38 PC7")}

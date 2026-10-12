@@ -454,11 +454,11 @@ U11,1,,,~{INT} — not connected: the expander is polled over I2C (frees a track
 U11,2,GND,gnd,A1
 U11,3,GND,gnd,A2
 U11,4,BTN_L,,P00
-U11,5,BTN_UP,,P01
-U11,6,BTN_LEFT,,P02
+U11,5,BTN_LEFT,,P01 (swapped with BTN_UP 2026-10-12 for routing: LEFT passes north of SW2)
+U11,6,BTN_UP,,P02
 U11,7,BTN_DOWN,,P03
-U11,8,BTN_START,,P04
-U11,9,BTN_SELECT,,P05
+U11,8,BTN_SELECT,,P04 (swapped with BTN_START 2026-10-12 for routing: Start's line drops into SW8 east of Select's)
+U11,9,BTN_START,,P05
 U11,10,BTN_RIGHT,,P06
 U11,11,,,P07 — spare (internal pull-up)
 U11,12,GND,gnd,GND

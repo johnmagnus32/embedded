@@ -38,11 +38,11 @@ to the right grip crosses J4 between its pins.
 
 | Ch | Layer | Carries |
 |---|---|---|
-| W1 | B | BT ×5 and PWR_SW from the MCU's top-left; I2C ×2 from under the MCU → J3 gaps → left grip |
+| W1 | B | BT UART ×4 (CTS/RX reach it on the front), and from under the MCU (the hub) I2C ×2, PWR_SW, BT_EN → J3 gaps, N→S CTS, RX \| RTS, TX \| SCL, SDA \| PWR_SW, BT_EN → left grip |
 | W2 | F | LCD_CS/DC/WR/RST from U2's bottom pins down J3's east side |
 | W2b | B | LCD_LITE from the MCU's bottom pins under U2 into the same strip |
 | P | F | SPI1 SCK/MOSI/select to U2's config pins (configuration + PPU commands, one bus), CRESET_B, CDONE |
-| H | B | Under the MCU body: BT_EN, I2C ×2 west |
+| H | B | Under the MCU body: I2C ×2, PWR_SW (front hop inside the pin ring), BT_EN west |
 | E1 | B | BTN_A, VOL±, BTN_R → J4 gaps 50.7 / 53.2 / 55.8 |
 | E2 | F | I2S ×3, BTN_B along the bottom edge under NOR and J8 → J4 gaps 60.7–63.6. The amp takes the I2S lines in the opposite rotation to the MCU's pins, so WS and CK dive to the back west of J4 (WS first, which also swaps them): 4 vias in all |
 | A | B | SYS to the amp: Q1 → y 45.2 → J4 gap 48.1 (0.5 mm neck) → across the right grip → C30 |
@@ -91,7 +91,6 @@ about 60 mV at a 1 A peak.
 2. `15_switcher_gnd`: F.Cu GND pours under the switchers.
 3. `20_charger`: charger/USB signals (channel N).
 4. `30_fpga_power`: U2's west-side supply pins and decaps.
-5. `55_mcu_local` (crystal, +3V3A filter, VCAP1, BB_PSYNC), `65_debug`, `70_east`, `75_right_grip` are done.
-   **Next:** the display bus + LCD control (W2/W2b); the PPU lane (P); SPI3 + NOR (S, H); the MCU's right side and
-   bottom → E1 / E2 → right grip; W1 → left grip (BT, I2C → U11 / U8, PWR_SW → SW1); crystal; haptics; the rest.
+5. `55_mcu_local`, `65_debug`, `70_east`, `75_right_grip`, `80_west`: everything is routed (0 unconnected, 2026-10-12).
+   PWR_SW runs from R31 under the MCU (the north side is closed on both layers) — a µA DC line, 4 vias.
 6. Last: whole-board GND pours on F.Cu/B.Cu with edge and field stitching; silk cleanup; final DRC.
