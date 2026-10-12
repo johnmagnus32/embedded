@@ -980,13 +980,11 @@ MCU_FRONT = {  # footprint rot-0 frame (board frame = rotated by MCU_ROT about U
     "C11": {1: (-5.7, 8.4), 2: (-5.7, 9.24)},               # HSE_IN load, beside OSC1
     "C12": {1: (-2.62, 11.9), 2: (-3.46, 11.9)},            # HSE_OUT load, beside OSC2
 }
-# Debug headers + power LED (board frame): outside the 2090's outline, where they're reachable with the shell open —
-# the right grip under the GBA's power-LED window, above the A/B buttons, clear of the J4 ear and the R shoulder.
+# Power LED (board frame): the right grip under the GBA's power-LED window. (The SWD / console headers J1 / J2 that
+# sat below it were replaced by back-side test pads on 2026-10-12: see TP_TARGETS.)
 MCU_ABS = {
     "D1": {1: (143.39, 44.7), 2: (144.89, 44.7)},           # power LED centred on the GBA power-LED window
     "R2": {2: (146.65, 44.7), 1: (148.15, 44.7)},           # anode-side pad next to D1's anode
-    "J1": {1: (139.0, 47.0), 5: (139.0, 57.16)},            # SWD, vertical (pin 1 = 3V3 at the top)
-    "J2": {1: (142.3, 47.0), 3: (142.3, 52.08)},            # UART console
 }
 
 def place_mcu(fps, nets):
@@ -1030,11 +1028,10 @@ def place_mcu(fps, nets):
             lab.SetTextAngleDegrees(0); lab.SetPosition(fps[r].GetPosition()); fps[r].Value().SetVisible(False)
     for r, pads in MCU_ABS.items():
         put(r, pads)
-    # header / LED labels beside the parts (upright), off their outlines
-    for r, (dx, dy) in {"J1": (-2.6, 5.08), "J2": (2.6, 2.54), "D1": (0.0, -1.6), "R2": (0.0, -1.6)}.items():
+    # LED labels above the parts (upright), off their outlines
+    for r, (dx, dy) in {"D1": (0.0, -1.6), "R2": (0.0, -1.6)}.items():
         fp = fps[r]; a = MCU_ABS[r]; ax = sum(v[0] for v in a.values()) / 2; ay = sum(v[1] for v in a.values()) / 2
-        lab = fp.Reference(); lab.SetLayer(pcbnew.F_SilkS); lab.SetTextAngleDegrees(90 if r.startswith("J") else 0)
-        lab.SetPosition(V(a[min(a)][0] + dx, a[min(a)][1] + dy) if r.startswith("J") else V(ax + dx, ay + dy))
+        lab = fp.Reference(); lab.SetLayer(pcbnew.F_SilkS); lab.SetTextAngleDegrees(0); lab.SetPosition(V(ax + dx, ay + dy))
     RING_LABELED.update(MCU_ABS)
     RING_LABELED.update([*MCU_BACK, *MCU_FRONT, MCU])
     ul = U.Reference(); ul.SetLayer(pcbnew.F_SilkS); ul.SetTextAngleDegrees(0); ul.SetPosition(V(ux, uy))   # inside the pad ring
@@ -1651,9 +1648,15 @@ def place_i2c(fps, nets):
 TP_TARGETS = {   # ref: (net label, near this board point)
     "TP1": ("VBUS", (101.0, 42.2)), "TP2": ("BAT", (116.0, 40.0)), "TP3": ("SYS", (95.5, 41.5)),
     "TP4": ("GND", (101.6, 33.8)), "TP5": ("3V3", (76.0, 36.0)), "TP6": ("5V_LCD", (63.0, 35.5)),
-    "TP7": ("1V2", (70.2, 60.3)), "TP8": ("BOOT0", (97.3, 53.76)), "TP9": ("MCO2", (89.2, 63.7)),
-    "TP10": ("GND", (99.0, 63.5)),
+    "TP7": ("1V2", (70.2, 60.3)), "TP8": ("BOOT0", (97.3, 53.76)),
+    # the SWD + console pad row (replaced the J1/J2 headers 2026-10-12): along the bottom edge under the MCU's bottom
+    # pins, on a 2.54 mm pitch so a pogo strip or a held 0.1" header lands on it; in pin order west -> east (no crossings), MCO under its pin
+    "TP9": ("MCO", (87.75, 63.9)), "TP11": ("TX", (90.29, 63.9)), "TP12": ("RX", (92.83, 63.9)),
+    "TP13": ("DIO", (95.37, 63.9)), "TP10": ("GND", (97.91, 63.9)), "TP14": ("CLK", (100.45, 63.9)),
+    "TP15": ("3V3", (102.99, 63.9)),
+    "TP16": ("RST", (94.5, 48.6)),                       # NRST leaves the MCU's top row: its own pad, east of C6
 }
+TP_ROW = {"TP9", "TP11", "TP12", "TP13", "TP10", "TP14", "TP15"}   # row labels all go above (below is off the board)
 TP_GAP, TP_EDGE = 0.6, 0.5
 
 def in_back_channel(x, y, m=0.9):
@@ -1711,8 +1714,9 @@ def place_testpoints(B, fps):
         # of other back-side copper
         w = 0.8 * 0.85 * len(lab); placed_lab = None
         o = board.Outline(0); edge_pts = [(TO(o.CPoint(i).x), TO(o.CPoint(i).y)) for i in range(o.PointCount())]
-        for dx, dy in ((0, 1.6), (0, -1.6), (0.9 + w / 2, 0), (-0.9 - w / 2, 0)):
+        for dx, dy in ((0, -1.6),) if r in TP_ROW else ((0, 1.6), (0, -1.6), (0.9 + w / 2, 0), (-0.9 - w / 2, 0)):
             lx, ly = x + dx, y + dy; box = (lx - w / 2, ly - 0.5, lx + w / 2, ly + 0.5)
+            if r in TP_ROW: placed_lab = (lx, ly); break
             if not all(board.Contains(V(px, py)) for px, py in ((box[0], box[1]), (box[2], box[1]), (box[0], box[3]), (box[2], box[3]))): continue
             if min(math.hypot(ex - lx, ey - ly) for ex, ey in edge_pts) < w / 2 + 0.6: continue
             if any(b[0] - 0.2 < box[2] and box[0] < b[2] + 0.2 and b[1] - 0.2 < box[3] and box[1] < b[3] + 0.2 for b in back[:-1]): continue

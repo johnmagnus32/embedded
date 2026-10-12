@@ -21,7 +21,7 @@
         /* NUCLEO bring-up board: console on USART2 (PA2/PA3), because the Nucleo's
          * ST-Link virtual COM port (/dev/ttyACM0) is hard-wired to those pins.
          * gb2 (the custom board) swaps the two UARTs for routing (2026-10-10, see
-         * pcb/BOM.md "Pinout notes" #2): console = USART1 (PA9/PA10 -> header J2),
+         * pcb/BOM.md "Pinout notes" #2): console = USART1 (PA9/PA10 -> test pads TP11/TP12),
          * BT830 HCI = USART2 (PA2 TX / PA3 RX / PA0 CTS / PA1 RTS), battery ADC moved
          * PA0 -> PC0 (ADC1_IN10), BT_EN PC1 -> PC7, buck-boost PS/SYNC PC7 -> PC3,
          * /CHG PC2 -> PC1 (EXTI1),
@@ -73,7 +73,7 @@
             status = "okay";
         };
 
-        /* USART1 (PA9=TX, PA10=RX). On gb2 this is the CONSOLE (header J2); the
+        /* USART1 (PA9=TX, PA10=RX). On gb2 this is the CONSOLE (pads TP11/TP12); the
          * BT830 HCI link is on USART2 there (see the chosen{} note above). */
         usart1: serial@40011000 {
             compatible = "st,stm32-usart";

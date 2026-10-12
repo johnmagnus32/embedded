@@ -79,7 +79,7 @@ for net, ts in tracks.items():
         (o1, l1, t1), (o2, l2, t2) = lst
         u = (e[0] - o1[0], e[1] - o1[1]); v = (o2[0] - e[0], o2[1] - e[1])
         cos = (u[0] * v[0] + u[1] * v[1]) / (l1 * l2)
-        if cos < -0.02:                            # sharper than ~91 deg
+        if cos < -0.02 and min(l1, l2) >= 0.1:     # sharper than ~91 deg (a sub-0.1 mm jog onto a pad centre hides in the pad)
             out.append((min(l1, l2) + 5, "backturn", f"{net}: turns back {math.degrees(math.acos(max(-1, min(1, cos)))):.0f} deg at ({e[0]:.2f},{e[1]:.2f}) {B.GetLayerName(lay)}", groups.get(t1.m_Uuid.AsString(), "?")))
         if min(l1, l2) < JOG and max(l1, l2) > 1.0 and abs(cos) > 1e-3 and cos < 0.999:
             pass                                   # short corner chamfers are fine; jogs are caught below

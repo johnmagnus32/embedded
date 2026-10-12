@@ -17,7 +17,7 @@ motion, and console-feel buttons.
 - **Battery:** 1S LiPo (Adafruit 2011, 2000 mAh), USB-C charge + power-path, buck-boost 3.3 V rail; % via a divider → STM32 ADC
 - **Buttons:** 12 all-tactile (D-pad, A/B, Start/Select, Vol±, L/R bumpers) via a PCA9555 I2C expander (0 STM32 GPIO)
 - **Power on/off:** GBA-style side-edge slide switch driving a high-side P-MOSFET in the SYS system-power path (true off, charge-while-off preserved)
-- **Programming:** ST-Link V2 (SWD) header; **UART header** on USART1 (PA9/PA10) for debug
+- **Programming:** ST-Link V2 (SWD) and the USART1 (PA9/PA10) console on a row of back-side test pads under the MCU (the headers were dropped 2026-10-12)
 
 **Src legend:** ✅ = exact part confirmed good on JLCPCB (or proven on gameboy-v1 / ice40-breakout / breadboard).
 ⚠️ = candidate not yet confirmed (currently none). **Fit:** JLC = SMT, JLCPCB reflows it ·
@@ -48,9 +48,7 @@ Hand = external module / THT you attach yourself.
 | 78 | 1 | SS_B pull-down (slave-boot strap) | 0603WAF3301T5E (3.3 kΩ 1%) | C22978 | iCE40 SPI_SS (pin 16) / PA4 → GND | ✅ | JLC | **SS_B idles HIGH = master boot, so it must read low when CRESET_B releases at power-up** (CRESET_B has a pull-up, so the FPGA self-starts before firmware runs). The iCE40 weak pull-up is up to 128 µA at VCCIO 3.3 V: 10 kΩ would sit at up to 1.28 V (above LVCMOS33 VIL 0.8 V); **3.3 kΩ → ≤ 0.42 V**, guaranteed low. Firmware still drives PA4 low at every configure (`ice40.c`). In user mode PA4 is the PPU command-bus select, active-high, so it idles LOW with this pull-down (no standing current; an active-low select would burn ~1 mA) (2026-10-12). **Do NOT add a pull-up.** Same part as #42 (board total C22978 = 2). *(Numbered 78 to keep existing row numbers stable.)* |
 | 11 | 2 | LED current-limit | 0603WAF5100T5E (510 Ω 0603) | C23193 | CDONE LED + power LED | ✅ | JLC | ~2.5–3 mA. CDONE status LED (+3V3 → 510 Ω → LED anode, cathode on CDONE, as ice40-breakout: **lit = FPGA not configured**, goes out in user mode) + a **power LED** (+3V3 → 510 Ω → LED → GND, as v1). Lit only when switched on — no charge indicator while off (3.3 V is post-switch; accepted). |
 | 12 | 2 | Green LED | 19-213SYGC/S530-E2/5T | C2986027 | CDONE indicator + power LED | ✅ | JLC | 0603 green. The CDONE LED is lit while CDONE is low (FPGA unconfigured) and goes out when CDONE releases high (user mode); the power LED is lit whenever +3V3 is up. |
-| 13 | 1 | SWD programming/debug header | Pin Header 1x5 2.54 mm | C358687 | 3V3 / SWDIO(PA13) / SWCLK(PA14) / GND / NRST | ✅ | Hand | ST-Link V2 pinout. Sole flashing/debug path. THT → hand-solder. |
-| 14 | 1 | UART debug/console header | Pin Header 1x3 2.54 mm | C49257 | pin 1 GND / 2 TX (PA9) / 3 RX (PA10) on **USART1** — v1's pin order, so the existing cable fits | ✅ | Hand | Console/debug only (needs an external 3.3 V USB-UART); SWD (#13) is the only flash path (BOOT0 is strapped low). **Console is on USART1** (USART2 is Bluetooth) (swapped 2026-10-10 for routing: USART2's pins face the BT830, USART1's face the console header J2). On the Nucleo the console stays on USART2 (its ST-Link VCP is hard-wired to PA2/PA3) — gb2 needs its own board config. |
-| 83 | 10 | Bring-up test points | bare Ø1.5 mm copper pads (manual:TestPoint) | — | TP1 VBUS · TP2 BAT · TP3 SYS · TP4/TP10 GND · TP5 +3V3 · TP6 +5V_LCD · TP7 +1V2 · TP8 BOOT0 · TP9 MCO2 (PC9) | ✅ | — | **Added 2026-10-10**, all on the **back** (probe with the back shell off; bare copper, nothing assembled, so no double-sided-assembly cost). **TP8 BOOT0 → bridge to TP5 (+3V3) at power-up** = the STM32 ROM UART bootloader on J2 (USART1 PA9/PA10) — a recovery path if SWD is ever locked out. TP9 = MCO2 (PC9): route HSE or SYSCLK out to check the crystal. |
+| 83 | 16 | Bring-up + debug test points | bare Ø1.5 mm copper pads (manual:TestPoint) | — | TP1 VBUS · TP2 BAT · TP3 SYS · TP4/TP10 GND · TP5/TP15 +3V3 · TP6 +5V_LCD · TP7 +1V2 · TP8 BOOT0 · TP9 MCO2 (PC9) · TP11 USART1_TX (PA9) · TP12 USART1_RX (PA10) · TP13 SWDIO (PA13) · TP14 SWCLK (PA14) · TP16 NRST | ✅ | — | **Added 2026-10-10**, all on the **back** (probe with the back shell off; bare copper, nothing assembled, so no double-sided-assembly cost). **Debug row (2026-10-12, replaced the SWD header J1 and the console header J2):** along the bottom edge under the MCU, 2.54 mm pitch, west → east MCO · TX · RX · SWDIO · GND · SWCLK · 3V3 — tack-solder Dupont leads, or press a pogo strip / a held 0.1" header on it; NRST (TP16) is its own pad north-east of the MCU (needed only for connect-under-reset). **SWD is the sole flash path** (USB is power-only). **TP8 BOOT0 → bridge to TP5/TP15 (+3V3) at power-up** = the STM32 ROM UART bootloader on TP11/TP12 (USART1 PA9/PA10) — a recovery path if SWD is ever locked out. TP9 = MCO2 (PC9): route HSE or SYSCLK out to check the crystal. |
 
 > **iCE40 config bus:** SPI1 SCK/MOSI (PA5/PA7) + select PA4 → SPI_SCK/SI/SS (pins 15/17/16), CRESET_B (PB1), CDONE (PB2) — the same
 > pins carry the PPU command bus after configuration (2026-10-12; ice40-breakout used SPI3 + PB6 — re-jumper it to match); CRESET 10 K pull-up, SS_B **3.3 K** pull-**down** (slave-boot strap, #78), CDONE 10 K pull-up + LED, **NOR /CS
@@ -193,7 +191,7 @@ All buttons hang off the **PCA9555** on the shared I2C1 bus → **buttons cost 0
 
 ## 7. Bluetooth — Ezurio BT830-SA-01 (CSR8811, UART-HCI)
 
-BT830 on **USART2 4-wire HCI** (PA2 TX / PA3 RX / PA0 CTS / PA1 RTS, all AF7) (swapped 2026-10-10 for routing: USART2's pins face the BT830, USART1's face the console header J2). USART2's CTS pin PA0 was the battery ADC; that moved to PC0.
+BT830 on **USART2 4-wire HCI** (PA2 TX / PA3 RX / PA0 CTS / PA1 RTS, all AF7) (swapped 2026-10-10 for routing: USART2's pins face the BT830, USART1's face the console pads). USART2's CTS pin PA0 was the battery ADC; that moved to PC0.
 
 | # | Qty | Role | Part | LCSC # | Interface | Src | Fit | Note |
 |---|-----|------|------|--------|-----------|-----|-----|------|
@@ -279,7 +277,7 @@ spare I2C bus except I2C3 — PA8 + PC9 (SDA AF4), kept free as the escape bus �
 
 **Layout/firmware rules:**
 1. **No spare SPI** — SPI1 = FPGA config + PPU, I2S2 = audio, SPI3 = NOR. New peripherals go on I2C / UART / GPIO only.
-2. **USART2 = Bluetooth, USART1 = console** (swapped 2026-10-10 for routing: USART2's pins face the BT830, USART1's face the console header J2). USART2's flow-control pins (PA0/PA1) are free now that the battery ADC is on PC0. The Nucleo keeps its console on USART2 (ST-Link VCP) — so Bluetooth can't be brought up on the Nucleo without opening its VCP solder bridges; gb2 gets its own board config.
+2. **USART2 = Bluetooth, USART1 = console** (swapped 2026-10-10 for routing: USART2's pins face the BT830, USART1's face the console pads). USART2's flow-control pins (PA0/PA1) are free now that the battery ADC is on PC0. The Nucleo keeps its console on USART2 (ST-Link VCP) — so Bluetooth can't be brought up on the Nucleo without opening its VCP solder bridges; gb2 gets its own board config.
 3. **Buttons on the PCA9555 expander** → 0 GPIO.
 4. **No system 5 V rail** — one local MT3608 boost (§8) makes +5V_LCD for the display only; the amp runs from SYS; buck-boost makes 3.3 V; AP2127K makes the iCE40 1.2 V core. The power switch (#55 → P-FET #80) in the SYS power path gives a true "off"; the amp self-gates (SD_MODE on the switched rail).
 5. **Battery divider taps the BAT/cell node** (not SYS/OUT), VREF = 3.3 V.
@@ -318,8 +316,8 @@ spare I2C bus except I2C3 — PA8 + PC9 (SDA AF4), kept free as the escape bus �
   LITE is on STM32 PC6, not the FPGA. Keep config pins package-fixed.
 - **Verify-on-arrival:** any *replacement* 2090 must have its IM solder jumpers SJ1–SJ4 open (8080 8-bit; un-bridge IM1–IM3 on a
   module set up for SPI); Adafruit 2011 charge C-rate; enclosure fit for the 2011 (~60 × 38.5 × 8.5 mm — see row 53) + the side-edge power switch (8 × 2.8 mm, lever through a shell-side slot).
-- **Mounting holes:** layout-only (no net). **No test points** (owner decision 2026-09-25) — probe the existing caps and
-  headers (SWD #13 / UART #14 carry 3V3 + GND).
+- **Mounting holes:** layout-only (no net). Test points: see #83 (bare back-side pads, added 2026-10-10; the SWD/console
+  headers became test pads 2026-10-12).
 - **No DNP pads** (the flow places every part): the OSC_OUT series R is fitted as 0 Ω (#77); the optional VBUS TVS, I2C parallel
   pads and Class-D ferrite + 1 nF EMC pads are dropped.
 - **Schematic capture (CSV flow):** tooling done (`manual:SolderPad_1x02` symbol + footprint added — gameboy-v3 uses it too;

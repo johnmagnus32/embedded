@@ -29,8 +29,9 @@ to the right grip crosses J4 between its pins.
 - **J3, west (W1, back):** BT ×5, PWR_SW and I2C ×2 cross in the four gaps above the FPGA's back-side decaps
   (y 48.1 / 50.7 / 53.2 / 55.8). On the front, J3's east side is the display-bus fan, so a front-layer crossing
   would cut a data line. FB2 is kept out of this strip (`place_fpga` `in_lane`).
-- **J4, east (E1 back, E2 front, A):** about 13 signals to the right grip, plus the amp's SYS feed in the top gap
-  (y 48.1).
+- **J4, east (E1 back, E2 front, A):** 8 signals to the right grip (buttons, I2S), plus the amp's SYS feed in the
+  top gap (y 48.1). The SWD and console headers J1/J2 that used to sit there were replaced on 2026-10-12 by a row of
+  back-side test pads under the MCU (`65_debug`), which took five lines off this crossing.
 
 ## Channels (route/channels.py)
 
@@ -41,9 +42,9 @@ to the right grip crosses J4 between its pins.
 | W2b | B | LCD_LITE from the MCU's bottom pins under U2 into the same strip |
 | P | F | SPI1 SCK/MOSI/select to U2's config pins (configuration + PPU commands, one bus), CRESET_B, CDONE |
 | H | B | Under the MCU body: BT_EN, I2C ×2 west |
-| E1 | B | BTN_A, VOL±, BTN_R, SWCLK, NRST → J4 gaps 50.7 / 53.2 / 55.8 |
-| E2 | F | I2S ×3, BTN_B, USART1 TX/RX, SWDIO along the bottom edge under NOR and J8 → J4 gaps 58.3–65.9 |
-| A | B | SYS to the amp: Q1 → y 45.2 → J4 gap 48.1 (0.5 mm neck) → over J1/J2 → C30 |
+| E1 | B | BTN_A, VOL±, BTN_R → J4 gaps 50.7 / 53.2 / 55.8 |
+| E2 | F | I2S ×3, BTN_B along the bottom edge under NOR and J8 → J4 gaps 58.3–65.9 |
+| A | B | SYS to the amp: Q1 → y 45.2 → J4 gap 48.1 (0.5 mm neck) → across the right grip → C30 |
 | N | B | Under J7, between its shell-tab rows: BAT (sense tap), /PGOOD, /CHG → MCU top pins / R26 |
 
 Fanout vias and test points stay out of the channels. A pad with no other fit, or one inside a channel because

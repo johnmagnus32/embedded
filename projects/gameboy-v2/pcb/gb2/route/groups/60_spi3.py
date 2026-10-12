@@ -8,7 +8,7 @@ W = 0.15
 # ---- east-channel (E1) escapes: pin -> via in the stagger column -> first back-side leg east (the east group
 # extends these legs to J4; laying them now makes later routes here respect E1's rows)
 E1 = (("BTN_R", "U1.62", 96.0), ("IMU_INT1", "U1.57", 95.2), ("BTN_VOLUP", "U1.56", 96.0),
-      ("BTN_A", "U1.55", 95.2), ("BTN_VOLDOWN", "U1.50", 96.0), ("SWCLK", "U1.49", 95.2))
+      ("BTN_A", "U1.55", 95.2), ("BTN_VOLDOWN", "U1.50", 96.0))
 for net, pin, vx in E1:
     (px, py) = P(pin)
     T(net, "F", W, [(px, py), (vx, py)]); VIA(net, vx, py, d=0.45, h=0.25)

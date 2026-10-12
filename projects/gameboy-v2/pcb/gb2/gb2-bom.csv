@@ -12,8 +12,6 @@ FB1,mcu,C1002,easyeda2kicad:GZ1608D601TF,STM32 VDD→VDDA ferrite · GZ1608D601T
 C9,mcu,C100042,easyeda2kicad:CC0603KRX7R9BB103,STM32 VDDA HF bypass · CC0603KRX7R9BB103 · #8
 C10,mcu,C106215,easyeda2kicad:CC0603KRX5R7BB105,STM32 VDDA bulk · CC0603KRX5R7BB105 · #9
 R1,mcu,C99198,easyeda2kicad:RC0603JR-0710KL,BOOT0 pull-down · RC0603JR-0710KL · #10
-J1,mcu,C358687,easyeda2kicad:MTP125-1105S1,SWD header (ST-Link V2 order) · Pin Header 1x5 · #13
-J2,mcu,C49257,easyeda2kicad:Header-Male-2.54_1x3,"UART console header (USART2, v1 order) · Pin Header 1x3 · #14"
 R2,mcu,C23193,easyeda2kicad:0603WAF5100T5E,Power LED resistor · 0603WAF5100T5E · #11
 D1,mcu,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,Power LED (lit when +3V3 is up) · 19-213SYGC/S530-E2/5T · #12
 Y1,clock,C57131,easyeda2kicad:DSX321G8MHz,HSE crystal 8 MHz CL 12 pF · KDS 1C208000BC0R · #74
@@ -132,3 +130,9 @@ TP7,fpga-ldo,,manual:TestPoint,Test point +1V2 · bare probe pad on the back (no
 TP8,mcu,,manual:TestPoint,Test point BOOT0 · bare probe pad on the back (not assembled) · #83
 TP9,mcu,,manual:TestPoint,Test point MCO2 · bare probe pad on the back (not assembled) · #83
 TP10,mcu,,manual:TestPoint,Test point GND · bare probe pad on the back (not assembled) · #83
+TP11,mcu,,manual:TestPoint,Test point USART1_TX · bare probe pad on the back (not assembled) · #83
+TP12,mcu,,manual:TestPoint,Test point USART1_RX · bare probe pad on the back (not assembled) · #83
+TP13,mcu,,manual:TestPoint,Test point SWDIO · bare probe pad on the back (not assembled) · #83
+TP14,mcu,,manual:TestPoint,Test point SWCLK · bare probe pad on the back (not assembled) · #83
+TP15,mcu,,manual:TestPoint,Test point +3V3 · bare probe pad on the back (not assembled) · #83
+TP16,mcu,,manual:TestPoint,Test point NRST · bare probe pad on the back (not assembled) · #83
