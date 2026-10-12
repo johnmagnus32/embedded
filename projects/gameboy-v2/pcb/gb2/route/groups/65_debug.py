@@ -13,7 +13,15 @@ T("MCO2", "B", W, [(tx, 62.4), (tx, ty)])
 (px, py) = P("U1.42"); tx, ty = P("TP11.1")
 T("USART1_TX", "F", W, [(px, py), (px, 62.35)]); VIA("USART1_TX", px, 62.35, d=0.45, h=0.25)
 T("USART1_TX", "B", W, [(px, 62.35), (tx, ty)])                # 1.54 x 1.55: on the 45
-AUTOROUTE(m, "USART1_RX", (*P("U1.43"), "F"), (*P("TP12.1"), "B"), through=[(90.2, 62.65, "B")], via_cost=VC)
+# RX: drops below its pin row, steps east to a via level with TX's (so the I2S band below stays clear from y 62.85),
+# then along the back above TX's pad and one 45 down into its own
+(px, py) = P("U1.43"); tx, ty = P("TP12.1"); rv = (px + 0.6, 62.35)
+T("USART1_RX", "F", W, [(px, py), (px, 62.0), (px + 0.35, 62.35), rv], miter_=False); VIA("USART1_RX", *rv, d=0.45, h=0.25)
+T("USART1_RX", "B", W, [rv, (tx - (ty - rv[1]), rv[1]), (tx, ty)], miter_=False)
+# console GND pad: the I2S band fills the front under it, so its plane via sits up past SWDIO's via, by the NOR's
+# GND pin (fanout can't reach that far)
+(gx, gy) = P("TP10.1"); gv = (98.6, 62.4)
+T("GND", "B", 0.3, [(gx, gy), (gv[0] - (gy - gv[1]), gy), gv]); VIA("GND", *gv, d=0.45, h=0.25)
 # ---- SWD -> J1 (top edge). SWCLK: right-side pin -> via in the east stagger column; NRST: its pin's north lane is
 # closed by R3, so it goes inward under the body to a via, round C6's GND pad to C6 (the reset filter cap, on the back
 # under the pin). The maze takes all three north to the header.
@@ -40,6 +48,6 @@ for net, ((vx, vy), jog, cx, c, pin) in COLS.items():
 hx, hy = P("J1.5"); NV = (hx, 47.8)
 VIA("NRST", *NV, d=0.45, h=0.25); T("NRST", "F", W, [NV, (hx, hy)])
 ms.commit(NET("NRST").GetNetname(), [(*NV, "B"), (*NV, "F"), (hx, hy, "F")], W)
-AUTOROUTE(ms, "NRST", (*P("C6.1"), "B"), (*NV, "B"), layers="B")
+AUTOROUTE(ms, "NRST", (*P("C6.1"), "B"), (*NV, "B"), layers="B", through=[(90.0, 48.9, "B"), (95.5, 48.9, "B")])   # clear of the crystal
 AUTOROUTE(ms, "SWCLK", (95.2, py, "B"), (*COLS["SWCLK"][0], "B"), layers="B")
 AUTOROUTE(ms, "SWDIO", (*P("U1.46"), "F"), (*COLS["SWDIO"][0], "B"), through=[(100.0, 60.0, "B")], via_cost=VC)

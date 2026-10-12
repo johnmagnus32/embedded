@@ -466,6 +466,9 @@ def main():
                 x2, y2 = c.x + r2 * math.cos(a), c.y + r2 * math.sin(a)
                 if math.hypot(x2 - x, y2 - y) < MM(0.8): continue
                 for pth in stub_path(pad, x2, y2, w, dog):
+                    pts2 = pth or [stub_start(pad, x2, y2, w), V(x2, y2)]
+                    if any(seg_dist(x, y, a_.x, a_.y, b_.x, b_.y) < VIA_D / 2 + w / 2 for a_, b_ in zip(pts2, pts2[1:])):
+                        continue                    # its stub would run over the first via
                     if fits(pad, layer, w, x2, y2, path=pth) is None:
                         add_via(pad, x2, y2); add_stub(pad, layer, w, x2, y2, pth); doubled.append(ref); done2 = True; break
                 if done2: break
@@ -508,6 +511,12 @@ def main():
             if path_clear(pad, layer, a, q, w, it): best = (d, a, q)
         if best:
             d, a, q = best
+            # stop at a same-net via sitting on the way (else the tie runs over the via and on to the far pad)
+            for ob in grid.near((a.x + q.x) / 2, (a.y + q.y) / 2, math.hypot(q.x - a.x, q.y - a.y) / 2 + MM(0.5)):
+                if ob["kind"] != "via" or ob["net"] != pad.GetNetCode(): continue
+                v = ob["item"].GetPosition()
+                if seg_dist(v.x, v.y, a.x, a.y, q.x, q.y) < VIA_D / 2 and math.hypot(v.x - a.x, v.y - a.y) < math.hypot(q.x - a.x, q.y - a.y):
+                    q = v
             t = pcbnew.PCB_TRACK(B)
             t.SetStart(a); t.SetEnd(q); t.SetWidth(w); t.SetLayer(layer); t.SetNet(pad.GetNet()); B.Add(t); G.AddItem(t)
             grid.add(obstacle(t, "track"))

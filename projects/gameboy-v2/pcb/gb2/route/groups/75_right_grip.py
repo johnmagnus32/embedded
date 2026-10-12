@@ -15,26 +15,27 @@ S61, S63 = slots(14), slots(13)
 thru = lambda y, L: [(X4 - 2.0, y, L), (X4 + 1.25, y, L)]
 VC = 30.0
 m = MAZE((83.0, 44.0, 166.5, 70.0))
-# escapes: straight south off the pins (between the LCD_LITE / BT_EN vias' column and the pin row), one 45, then east
-# in the band under BT_EN's via; the eastern pin turns highest, so nothing crosses: north -> south SD, BTN_B, CK, WS.
-# Past the NOR (x 99) the band opens up to y 62.2 and the four spread to a 0.6 mm pitch, so a via on any lane clears
-# its neighbours. The maze takes over at x 117 (east of R20).
-BAND = {"I2S2_SD": ("U1.36", 63.45, 62.55, 99.0), "BTN_B": ("U1.35", 63.75, 63.15, 99.6),
-        "I2S2_CK": ("U1.34", 64.05, 63.75, 100.2), "I2S2_WS": ("U1.33", 64.35, 64.35, None)}
-D, XE = 0.4, 117.0
-for net, (pin, y, y2, xs) in BAND.items():
+# escapes: straight south off the pins, one 45, then east along the band; the eastern pin turns highest, so nothing
+# crosses: north -> south SD, BTN_B, CK, WS. The console / LCD_LITE vias above all sit at y <= 62.4 (BT_EN's goes
+# under the MCU body), so the band starts at 62.95 and the four run at ~0.5 mm pitch: BCLK keeps >= 0.3 mm to both
+# neighbours the whole way. BTN_B's lane is its J4 slot. The maze takes over at x 117 (east of R20).
+BAND = {"I2S2_SD": ("U1.36", 62.95, 0.2), "BTN_B": ("U1.35", S63[1], 0.4),
+        "I2S2_CK": ("U1.34", 64.03, 0.4), "I2S2_WS": ("U1.33", 64.5, 0.4)}
+XE = 117.0
+for net, (pin, y, D) in BAND.items():
     px, py = P(pin)
-    pts = [(px, py), (px, y - D), (px + D, y)] + ([(xs, y), (xs + (y - y2), y2)] if xs else []) + [(XE, y2)]
+    pts = [(px, py), (px, y - D), (px + D, y), (XE, y)]
     T(net, "F", W, pts, miter_=False)
     m.commit(NET(net).GetNetname(), [(x, y_, "F") for x, y_ in pts], W)
 # J4 (pins 13 / 14 / 15 gaps), north -> south: WS, CK (back), SD, BTN_B (front) - the order the amp / SW7 take them
 # in. WS dives first (x 118) and runs north under CK's front lane to the back lane y = WS slot; CK dives 1.5 mm later
 # to the lane south of it. Diving in that order IS the WS / CK swap, so the reversal costs four vias in all.
 # (Both back lanes pass under J8's pads, which are front-only, and clear SWDIO's via at (125.6, 60.0).)
-for net, xv, lane in (("I2S2_WS", 118.0, S61[0]), ("I2S2_CK", 119.5, S61[1])):
-    y = BAND[net][2]
+for net, xv, lane, dl in (("I2S2_WS", 118.0, S61[0], 0.0), ("I2S2_CK", 119.5, S61[1], 0.3)):
+    y = BAND[net][1]                              # CK runs 0.3 below its slot (0.6 from WS) until J4's approach
     T(net, "F", W, [(XE, y), (xv, y)]); VIA(net, xv, y, d=0.45, h=0.25)
-    pts = [(xv, y), (xv, lane + 0.7), (xv + 0.7, lane), (X4 + 1.25, lane)]
+    pts = [(xv, y), (xv, lane + dl + 0.7), (xv + 0.7, lane + dl)] + \
+          ([(129.5, lane + dl), (129.5 + dl, lane)] if dl else []) + [(X4 + 1.25, lane)]
     T(net, "B", W, pts, miter_=False)
     m.commit(NET(net).GetNetname(), [(XE, y, "F"), (xv, y, "F"), (xv, y, "B")] + [(x, y_, "B") for x, y_ in pts[1:]], W)
 # east of J4: WS / CK come up before VOLDOWN's back diagonal and run north-east to the amp's top pins from above it
@@ -42,9 +43,9 @@ for net, xv, lane in (("I2S2_WS", 118.0, S61[0]), ("I2S2_CK", 119.5, S61[1])):
 # BTN_B and SD stay on the front: each drops to its J4 slot with one 45 (BTN_B first, so the two diagonals don't
 # meet), then BTN_B runs straight on to SW7; SD goes on to the amp after WS / CK
 x1, y1 = P("SW7.1"); yb, ys = S63[1], S63[0]
-pts = [(XE, 63.15), (127.0, 63.15), (127.0 + (yb - 63.15), yb), (x1 - (y1 - yb), yb), (x1, y1)]
+pts = [(XE, yb), (x1 - (y1 - yb), yb), (x1, y1)]
 T("BTN_B", "F", W, pts, miter_=False); m.commit(NET("BTN_B").GetNetname(), [(x, y, "F") for x, y in pts], W)
-pts = [(XE, 62.55), (128.5, 62.55), (128.5 + (ys - 62.55), ys), (X4 + 1.25, ys)]
+pts = [(XE, 62.95), (128.5, 62.95), (128.5 + (ys - 62.95), ys), (X4 + 1.25, ys)]
 T("I2S2_SD", "F", W, pts, miter_=False); m.commit(NET("I2S2_SD").GetNetname(), [(x, y, "F") for x, y in pts], W)
 AUTOROUTE(m, "I2S2_WS", (X4 + 1.25, S61[0], "B"), (*P("U6.14"), "F"), through=[(146.0, 49.25, "F"), (150.25, 49.25, "F")], via_cost=VC)
 AUTOROUTE(m, "I2S2_CK", (X4 + 1.25, S61[1], "B"), (*P("U6.16"), "F"), through=[(146.6, 49.85, "F")], via_cost=VC)

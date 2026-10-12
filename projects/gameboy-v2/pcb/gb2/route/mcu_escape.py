@@ -45,7 +45,7 @@ ESCAPE = {
     35: ("BTN_B",       "S", "F", None, "E2", "band -> J4 front -> SW7"),
     36: ("I2S2_SD",     "S", "F", None, "E2", "band (northmost) -> J4 front -> amp pin 1"),
     37: ("LCD_LITE",    "S", "F>B", (86.25, 62.4), "W2b", "routed (display group)"),
-    38: ("BT_EN",       "S", "F>B", (86.75, 62.95), "hub->W1", "north through the hub's south side, out its west gap (PC7, swapped with BB_PSYNC)"),
+    38: ("BT_EN",       "S", "F>B", (86.75, 59.9), "hub->W1", "via inward under the body (keeps the I2S band below the pin row free), north through the hub, out its west gap (PC7, swapped with BB_PSYNC)"),
     40: ("MCO2",        "S", "F>B", (88.0, 62.4), "local", "TP9 on the back, under the pin"),
     42: ("USART1_TX",   "S", "F>B", (88.75, 62.35), "local", "console pad TP11 (bottom-edge debug row)"),
     43: ("USART1_RX",   "S", "F>B", None, "local", "console pad TP12"),

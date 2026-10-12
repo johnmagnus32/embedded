@@ -91,6 +91,7 @@ about 60 mV at a 1 A peak.
 2. `15_switcher_gnd`: F.Cu GND pours under the switchers.
 3. `20_charger`: charger/USB signals (channel N).
 4. `30_fpga_power`: U2's west-side supply pins and decaps.
-5. **Next:** the display bus + LCD control (W2/W2b); the PPU lane (P); SPI3 + NOR (S, H); the MCU's right side and
+5. `55_mcu_local` (crystal, +3V3A filter, VCAP1, BB_PSYNC), `65_debug`, `70_east`, `75_right_grip` are done.
+   **Next:** the display bus + LCD control (W2/W2b); the PPU lane (P); SPI3 + NOR (S, H); the MCU's right side and
    bottom → E1 / E2 → right grip; W1 → left grip (BT, I2C → U11 / U8, PWR_SW → SW1); crystal; haptics; the rest.
 6. Last: whole-board GND pours on F.Cu/B.Cu with edge and field stitching; silk cleanup; final DRC.
