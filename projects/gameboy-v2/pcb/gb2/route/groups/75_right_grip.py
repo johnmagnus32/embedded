@@ -50,11 +50,25 @@ AUTOROUTE(m, "I2S2_WS", (X4 + 1.25, S61[0], "B"), (*P("U6.14"), "F"), through=[(
 AUTOROUTE(m, "I2S2_CK", (X4 + 1.25, S61[1], "B"), (*P("U6.16"), "F"), through=[(146.6, 49.85, "F")], via_cost=VC)
 AUTOROUTE(m, "I2S2_SD", (X4 + 1.25, ys, "F"), (*P("U6.1"), "F"), via_cost=VC)
 # switch A/B pad pairs (joined inside the switch, but each pad needs its copper)
-for net, a_, b_ in (("BTN_B", "SW7.1", "SW7.2"), ("BTN_A", "SW6.1", "SW6.2")):
-    T(net, "F", W, [P(a_), P(b_)]); m.commit(NET(net).GetNetname(), [(*P(a_), "F"), (*P(b_), "F")], W)
+T("BTN_B", "F", W, [P("SW7.1"), P("SW7.2")]); m.commit(NET("BTN_B").GetNetname(), [(*P("SW7.1"), "F"), (*P("SW7.2"), "F")], W)
+# SW6's pair is tied on the BACK, continuing BTN_A's back line from its via at SW6.1 to a via past SW6.2, so the
+# speaker pair can run down between the switch's pads on the front
+(ax, ay), (bx, by) = P("SW6.1"), P("SW6.2")
+T("BTN_A", "B", W, [(153.1, 60.05), (bx + 1.0, by)]); VIA("BTN_A", bx + 1.0, by, d=0.45, h=0.25)
+T("BTN_A", "F", W, [(bx + 1.0, by), (bx, by)])
 # locals
 AUTOROUTE(m, "AMP_SD_MODE", (*P("U6.4"), "F"), (*P("R11.1"), "F"), layers="F")
 T("PWR_LED_A", "F", W, [P("D1.2"), P("R2.2")])
-# speaker: OUTP / OUTN (filterless class-D, ~300 kHz square waves) as a short pair to J5, 0.3 mm (0.5 A peaks)
-AUTOROUTE(m, "SPK_P", (*P("U6.9"), "F"), (*P("J5.1"), "F"), w=0.3, via_cost=VC)
-AUTOROUTE(m, "SPK_N", (*P("U6.10"), "F"), (*P("J5.2"), "F"), w=0.3, via_cost=VC)
+# speaker: OUTP / OUTN (filterless class-D: full-swing ~300 kHz square waves, the speaker coil is the filter) as a
+# tight 0.3 mm pair (0.5 mm pitch) the whole way, to keep the radiating loop small: east off the pins, down past the
+# amp feed's vias between SW6's pads, west under SW6, and each drops into its J5 pad. The outer line's corners are
+# cut longer so the pair stays parallel through every 45. SPK_N (pin 10, north) is the outer line at the first turn.
+WS_ = 0.3
+yP, yN = P("U6.9")[1], P("U6.10")[1]              # 52.75 / 52.25
+xP, xN = 154.75, 155.25                           # columns, clear of the SYS vias (153.5) and SW6.1 / SW6.3 (154.38)
+hP, hN = 64.75, 65.25                             # the run west under SW6 (its GND pads end at 64.14)
+jP, jN = P("J5.1")[0], P("J5.2")[0]
+T("SPK_P", "F", WS_, [P("U6.9"), (xP - 0.6, yP), (xP, yP + 0.6), (xP, hP - 0.45), (xP - 0.45, hP),
+                      (jP + 0.45, hP), (jP, hP + 0.45), P("J5.1")], miter_=False)
+T("SPK_N", "F", WS_, [P("U6.10"), (xN - 0.893, yN), (xN, yN + 0.893), (xN, hN - 0.743), (xN - 0.743, hN),
+                      (jN + 0.45, hN), (jN, hN + 0.45), P("J5.2")], miter_=False)
