@@ -17,10 +17,13 @@ In a group file:
 Run:  <kicad python> route/route.py [--board gb2.kicad_pcb] [group ...]      (no groups = all)
 """
 import pcbnew, os, sys, glob, subprocess, math
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import maze
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MM = pcbnew.FromMM; TO = pcbnew.ToMM
 def V(x, y): return pcbnew.VECTOR2I(int(round(MM(x))), int(round(MM(y))))
+FORCE = False
 MITER, MITER_MIN = 2.5, 0.4    # 90 deg corners become two 45s: chamfer leg 2.5 x track width, at least 0.4 mm
 
 
@@ -112,10 +115,31 @@ def build(path, names, files):
             ol = z.Outline(); ol.NewOutline()
             for x, y in pts: ol.Append(V(x, y))
             B.Add(z); g.AddItem(z)
-        exec(compile(open(files[name]).read(), files[name], "exec"), {"P": P, "T": T, "VIA": VIA, "NET": NET, "ZONE": ZONE})
+        def MAZE(box, layers=("F", "B")):
+            return maze.Maze(B, box, layers)
+        def AUTOROUTE(m, net, a, b, w=0.15, layers="FB", cost=None, via_cost=60.0, through=()):
+            """maze-route a -> [through ...] -> b (each (x, y, "F"/"B")), lay it down as T()/VIA() and mark it for
+            later routes. `through` waypoints steer a route the search would not find on its own."""
+            pts, legs = [], [a, *through, b]
+            for u, v in zip(legs, legs[1:]):
+                leg = m.route(net, u, v, w, layers, cost, via_cost)
+                if leg is None:
+                    lint.append(f"{name}: maze found no path for {net} {u} -> {v}"); return None
+                pts += leg if not pts else leg[1:]
+            run = [pts[0]]
+            for p in pts[1:]:
+                if p[2] != run[-1][2]:                      # layer change: via at the corner
+                    T(net, run[-1][2], w, [(q[0], q[1]) for q in run]); VIA(net, p[0], p[1], d=maze.VIA_D, h=maze.VIA_H)
+                    run = [p]
+                else: run.append(p)
+            if len(run) > 1: T(net, run[-1][2], w, [(q[0], q[1]) for q in run])
+            m.commit(net, pts, w); return pts
+        exec(compile(open(files[name]).read(), files[name], "exec"),
+             {"P": P, "T": T, "VIA": VIA, "NET": NET, "ZONE": ZONE, "MAZE": MAZE, "AUTOROUTE": AUTOROUTE, "B": B})
         report.append(f"  {name}: {stats['len']:.1f} mm of track, {stats['vias']} vias")
-    if lint:
+    if lint and not FORCE:
         print("LINT (not saved):\n  " + "\n  ".join(lint)); sys.stdout.flush(); os._exit(1)
+    if lint: print("LINT (saved anyway: --force, for inspection only):\n  " + "\n  ".join(lint))
     if lint_warn: report.append("  lint warnings:\n    " + "\n    ".join(lint_warn))
     pcbnew.ZONE_FILLER(B).Fill(B.Zones())
     pcbnew.SaveBoard(path, B)
@@ -125,6 +149,9 @@ def build(path, names, files):
 def main():
     a = sys.argv[1:]
     if a and a[0] == "--strip": return strip(a[1], a[2:])
+    global FORCE
+    FORCE = "--force" in a
+    if FORCE: a.remove("--force")
     board = os.path.join(HERE, "..", "gb2.kicad_pcb")
     if "--board" in a:
         i = a.index("--board"); board = a[i + 1]; del a[i:i + 2]
@@ -132,7 +159,8 @@ def main():
     files = groups_on_disk(); names = a or list(files)
     bad = [n for n in names if n not in files]
     if bad: sys.exit(f"no group file for {bad}; have {list(files)}")
-    subprocess.run([sys.executable, __file__, "--strip", board, *names], check=True)
+    # the plane fanout is rebuilt after routing (fanout.py), so its old vias go too - routes never dodge stale ones
+    subprocess.run([sys.executable, __file__, "--strip", board, *names, "fanout"], check=True)
     build(board, names, files)
 
 

@@ -14,13 +14,11 @@ CHANNELS = {
     "W2b LCD_LITE":        ("B", [(61.0, 62.6), (87.0, 62.6), (87.0, 64.6), (61.7, 64.6), (61.7, 78.0), (58.1, 78.0), (58.1, 62.6)],
                             "LCD_LITE from the MCU's bottom pins along the board's bottom edge, under the FPGA"),
     # MCU <-> FPGA, front: the straight PPU lane
-    "P  PPU lane":         ("F", [(68.8, 52.9), (81.6, 52.9), (81.6, 57.6), (68.8, 60.1)],
-                            "PPU_SPI CS/SCK/MOSI, FPGA_CRESET_B, FPGA_CDONE"),
+    "P  PPU lane":         ("F", [(64.8, 52.9), (81.6, 52.9), (81.6, 57.6), (68.8, 60.1), (64.8, 56.2)],
+                            "SPI1 SCK/MOSI/select to U2's config pins (top edge), FPGA_CRESET_B, FPGA_CDONE"),
     # under the MCU body on the back: the hub between its back-side decap rings
     "H  MCU hub":          ("B", [(84.3, 51.8), (92.2, 51.8), (92.2, 59.4), (84.3, 59.4)],
-                            "SPI3 x3 + FPGA_SS_B west to U2's top; I2C x2 west; PWR_SW west; NRST east; BB_PSYNC north"),
-    "S  SPI3 to FPGA":     ("B", [(65.0, 54.6), (84.3, 54.6), (84.3, 57.2), (68.0, 57.2), (68.0, 56.2), (65.0, 56.2)],
-                            "SPI3 MISO/MOSI/SCK + FPGA_SS_B under the PPU lane to vias at U2's top edge"),
+                            "I2C x2 + BT_EN west to W1 (the FPGA config bus left SPI3 on 2026-10-12)"),
     # east: everything for the right grip crosses J4's pin column (both ends keep-outs); two traces per gap per layer
     "E1 east, back":       ("B", [(95.0, 49.4), (131.0, 49.4), (131.0, 58.8), (95.0, 60.0)],
                             "BTN_A, VOL+, VOL-, BTN_R, SWCLK, NRST (MCU right side / hub) -> J4 gaps 50.7/53.2/55.8"),

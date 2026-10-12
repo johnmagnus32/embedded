@@ -29,14 +29,14 @@ ESCAPE = {
     61: ("I2C1_SCL",    "E", "F",   (95.2, 53.26), "hub->W1", "front east to R13 / U7; west branch through the via, hub C4|R1 gap"),
     60: ("BOOT0",       "E", "F>B", (96.0, 53.76), "local", "R1 (back, under the pin) + TP8"),
     59: ("I2C1_SDA",    "E", "F",   (95.2, 54.26), "hub->W1", "front east to R14 / U7; west branch R1|TP8 gap"),
-    58: ("FPGA_SS_B",   "E", "F>B", (96.0, 54.76), "hub->S", "west under the body to U2's top (R6)"),
+    58: ("PB6",         "E", "F",   None, "spare", "spare since 2026-10-12 (FPGA_SS_B moved to PA4)"),
     57: ("IMU_INT1",    "E", "F>B", (95.2, 55.26), "E1", "U7 / R12"),
     56: ("BTN_VOLUP",   "E", "F>B", (96.0, 55.76), "E1", "SW10"),
     55: ("BTN_A",       "E", "F>B", (95.2, 56.26), "E1", "SW6"),
     54: ("NOR_CS",      "E", "F",   None, "local", "U4.1 / R8 straight east"),
-    53: ("SPI3_MOSI",   "E", "F",   (95.2, 57.26), "hub->S", "front east to NOR; west branch through the via"),
-    52: ("SPI3_MISO",   "E", "F",   (96.0, 57.76), "hub->S", "front east to NOR; west branch"),
-    51: ("SPI3_SCK",    "E", "F",   (95.2, 58.26), "hub->S", "front east to NOR; west branch"),
+    53: ("SPI3_MOSI",   "E", "F",   None, "local", "NOR only: inside the pin ring, round the corner, under U4 to pin 5"),
+    52: ("SPI3_MISO",   "E", "F",   None, "local", "NOR only"),
+    51: ("SPI3_SCK",    "E", "F",   None, "local", "NOR only, between U4 pins 2|3 to pin 6"),
     50: ("BTN_VOLDOWN", "E", "F>B", (96.0, 58.76), "E1", "SW11"),
     49: ("SWCLK",       "E", "F>B", (95.2, 59.26), "E1", "J1.3"),
     # ---- bottom row (pins 33..48, x 84.25 .. 91.75), all leave south on the front
@@ -56,19 +56,17 @@ ESCAPE = {
     17: ("USART2_RX",   "W", "F>B", (80.9, 51.76), "W1", "BT830"),
     18: ("GND",         "W", "F>B", None, "plane", "fanout"),
     19: ("+3V3",        "W", "F>B", None, "plane", "fanout"),
-    20: ("PPU_SPI_CS",  "W", "F", None, "P", "routed (ppu group)"),
-    21: ("PPU_SPI_SCK", "W", "F", None, "P", "routed"),
-    23: ("PPU_SPI_MOSI", "W", "F", None, "P", "routed"),
+    20: ("FPGA_SS_B",   "W", "F", None, "P", "SPI1 select -> U2 SPI_SS (16) / R6 (config strap; active-high runtime select)"),
+    21: ("PPU_SPI_SCK", "W", "F", None, "P", "-> U2 SPI_SCK (15)"),
+    23: ("PPU_SPI_MOSI", "W", "F>B", None, "P", "-> U2 SPI_SI (17), one hop under SCK"),
     27: ("FPGA_CRESET_B", "W", "F", None, "P", "routed"),
     28: ("FPGA_CDONE",  "W", "F", None, "P", "routed"),
     30: ("VCAP1",       "W", "F>B", (81.2, 58.1), "local", "C7 under the pin"),
     31: ("GND",         "W", "F>B", None, "plane", "fanout"),
     32: ("+3V3",        "W", "F>B", None, "plane", "fanout"),
 }
-# the hub's west exit (C8|C7, y 54.5-57.5) carries, north -> south: SCL, SDA, BT_EN, SS_B, MOSI, MISO, SCK
-# (7 of its 8 slots); SS_B / SPI3 peel off to vias at U2's top edge, the other three continue in W1.
-# W1 at J3's gaps, north -> south: PWR_SW, USART2 TX / RTS / CTS / RX, SCL, SDA, BT_EN (2 per gap). PWR_SW (from
-# R31 at Q1) runs west on the back above the top decap row at y 48.0 and becomes W1's northmost line; in the left
-# grip it and BT_EN change sides of their neighbours on the front (that grip has room) on the way to SW1 / U12.
-HUB_WEST = ["I2C1_SCL", "I2C1_SDA", "BT_EN", "FPGA_SS_B", "SPI3_MOSI", "SPI3_MISO", "SPI3_SCK"]
+# the hub's west exit (C8|C7, y 54.5-57.5) carries BT_EN, SCL, SDA (since 2026-10-12, when the FPGA config bus
+# moved from SPI3 to SPI1 - it no longer crosses under the MCU). W1 at J3's gaps, north -> south: PWR_SW, USART2
+# TX / RTS / CTS / RX, BT_EN, SCL, SDA (2 per gap).
+HUB_WEST = ["BT_EN", "I2C1_SCL", "I2C1_SDA"]
 PIN_SWAPS = {"BB_PSYNC": ("pin 38 PC7", "pin 11 PC3"), "BT_EN": ("pin 11 PC3", "pin 38 PC7")}

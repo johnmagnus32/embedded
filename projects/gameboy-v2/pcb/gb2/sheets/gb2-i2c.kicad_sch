@@ -459,7 +459,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "0376d66d-cbd6-41f6-8bd5-edfe3598b22f")
+			(uuid "711b5c4c-3d99-4b6b-986c-5c61cdec093c")
 		)
 		(instances
 			(project "gb2"
@@ -546,10 +546,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "e2ae8638-8db5-41b7-81f4-18445ec3993c")
+			(uuid "8223d5b0-fd92-49e1-a476-ce1d8402b42c")
 		)
 		(pin "2"
-			(uuid "aeaba2c2-0243-42dd-ab22-516b54352e32")
+			(uuid "986d5ba5-1c30-40fb-ab0c-0d404a0abaae")
 		)
 		(instances
 			(project "gb2"
@@ -636,10 +636,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "a69d88b2-a0bc-4d33-8db2-45490f33d5f1")
+			(uuid "8b516ed2-2bc3-42cc-99b3-9a0adf383aba")
 		)
 		(pin "2"
-			(uuid "ae5ced56-719c-4259-a2d3-48d7c22747cd")
+			(uuid "7fc24218-441e-436c-a4b4-e6493733fb34")
 		)
 		(instances
 			(project "gb2"
@@ -714,7 +714,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "036be6da-9c7d-4c63-91bf-d3643107a222")
+			(uuid "0b3ab348-5af8-4bf0-ba38-914f2c468b94")
 		)
 		(instances
 			(project "gb2"

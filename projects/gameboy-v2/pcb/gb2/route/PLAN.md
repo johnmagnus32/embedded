@@ -39,9 +39,8 @@ to the right grip crosses J4 between its pins.
 | W1 | B | BT ×5 and PWR_SW from the MCU's top-left; I2C ×2 from under the MCU → J3 gaps → left grip |
 | W2 | F | LCD_CS/DC/WR/RST from U2's bottom pins down J3's east side |
 | W2b | B | LCD_LITE from the MCU's bottom pins under U2 into the same strip |
-| P | F | PPU SPI CS/SCK/MOSI, CRESET_B, CDONE: straight across MCU ↔ FPGA |
-| H | B | Under the MCU body: SPI3 + SS_B west, I2C west, PWR_SW west, NRST east, BB_PSYNC north |
-| S | B | SPI3 + SS_B under the PPU lane to vias at U2's top edge |
+| P | F | SPI1 SCK/MOSI/select to U2's config pins (configuration + PPU commands, one bus), CRESET_B, CDONE |
+| H | B | Under the MCU body: BT_EN, I2C ×2 west |
 | E1 | B | BTN_A, VOL±, BTN_R, SWCLK, NRST → J4 gaps 50.7 / 53.2 / 55.8 |
 | E2 | F | I2S ×3, BTN_B, USART1 TX/RX, SWDIO along the bottom edge under NOR and J8 → J4 gaps 58.3–65.9 |
 | A | B | SYS to the amp: Q1 → y 45.2 → J4 gap 48.1 (0.5 mm neck) → over J1/J2 → C30 |
@@ -62,10 +61,11 @@ about 60 mV at a 1 A peak.
 
 ## Signal integrity notes
 
-- **SPI3 is a T:** the MCU sits between the NOR (about 15 mm east) and the FPGA's config port (about 30 mm west).
-  At the STM32's fastest edges (2–3 ns) the critical length is about 150–200 mm, so the branches are 5–7× short
-  of needing termination, and there's no series resistor. Firmware should still run SPI3 SCK/MOSI at OSPEEDR
-  "medium" (about 10 ns edges): that adds margin and cuts EMI, and costs nothing at the 25 MHz maximum SCK.
+- **One SPI1 bus to the FPGA (2026-10-12):** the STM32 configures the FPGA through its config pins (SPI_SCK 15 /
+  SPI_SI 17 / SPI_SS 16) and the PPU gateware reuses those pins as its command bus (datasheet §5.1.3: they're
+  general I/O in user mode). The runtime select is active-high, so it idles low with the 3.3 kΩ SS_B strap. SPI3
+  serves only the NOR: point-to-point, about 15 mm, no termination needed. Firmware runs SCK/MOSI at OSPEEDR
+  "medium" (about 10 ns edges) for margin and less EMI.
 - **Return paths:** a front-to-back via moves a signal's reference from In1 (GND) to In2 (+3V3). Near the MCU and
   FPGA the decaps carry the return across; on the long W1/E1 runs each cluster of signal vias gets a GND stitching
   via beside it.

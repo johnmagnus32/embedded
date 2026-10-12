@@ -1651,20 +1651,20 @@ def place_i2c(fps, nets):
 TP_TARGETS = {   # ref: (net label, near this board point)
     "TP1": ("VBUS", (101.0, 42.2)), "TP2": ("BAT", (116.0, 40.0)), "TP3": ("SYS", (95.5, 41.5)),
     "TP4": ("GND", (101.6, 33.8)), "TP5": ("3V3", (76.0, 36.0)), "TP6": ("5V_LCD", (63.0, 35.5)),
-    "TP7": ("1V2", (70.2, 60.3)), "TP8": ("BOOT0", (96.5, 53.0)), "TP9": ("MCO2", (89.2, 63.7)),
+    "TP7": ("1V2", (70.2, 60.3)), "TP8": ("BOOT0", (97.3, 53.76)), "TP9": ("MCO2", (89.2, 63.7)),
     "TP10": ("GND", (99.0, 63.5)),
 }
 TP_GAP, TP_EDGE = 0.6, 0.5
 
 def in_back_channel(x, y, m=0.9):
     """(x, y) within m of a back-side routing channel (route/channels.py): test points stay out of them."""
-    sys.path.insert(0, os.path.join(HERE, "route")); from channels import CHANNELS
+    sys.path.insert(0, os.path.join(HERE, "route")); from channels import CHANNELS, SOFT
     def inside(px, py, poly):
         c = False
         for (x1, y1), (x2, y2) in zip(poly, poly[1:] + poly[:1]):
             if (y1 > py) != (y2 > py) and px < x1 + (py - y1) * (x2 - x1) / (y2 - y1): c = not c
         return c
-    return any(inside(x + dx, y + dy, poly) for lay, poly, _ in CHANNELS.values() if lay == "B"
+    return any(inside(x + dx, y + dy, poly) for name, (lay, poly, _) in CHANNELS.items() if lay == "B" and name not in SOFT
                for dx, dy in ((0, 0), (m, 0), (-m, 0), (0, m), (0, -m)))
 
 

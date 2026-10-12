@@ -18,10 +18,10 @@ U1,16,USART2_TX,,PA2 — USART2_TX (AF7) → BT830 UART_RX (BT HCI moved here fr
 U1,17,USART2_RX,,PA3 — USART2_RX (AF7) ← BT830 UART_TX
 U1,18,GND,gnd,VSS
 U1,19,+3V3,pwr,VDD
-U1,20,PPU_SPI_CS,,PA4 — SPI1 CS → iCE40 pin 12
-U1,21,PPU_SPI_SCK,,PA5 — SPI1 SCK → iCE40 pin 11
+U1,20,FPGA_SS_B,,"PA4 — SPI1 select → iCE40 SPI_SS (pin 16): drive LOW through CRESET release = slave-config strap; in user mode the PPU's command-bus select, ACTIVE-HIGH so it idles low with R6 (one SPI1 bus for config + runtime, 2026-10-12)"
+U1,21,PPU_SPI_SCK,,"PA5 — SPI1 SCK → iCE40 SPI_SCK (pin 15): bitstream at boot, PPU commands after (2026-10-12)"
 U1,22,,,PA6 — SPI1 MISO unused — PPU bus is write-only
-U1,23,PPU_SPI_MOSI,,PA7 — SPI1 MOSI → iCE40 pin 10
+U1,23,PPU_SPI_MOSI,,"PA7 — SPI1 MOSI → iCE40 SPI_SI (pin 17): bitstream at boot, PPU commands after (2026-10-12)"
 U1,24,,,PC4
 U1,25,,,PC5
 U1,26,,,PB0 — spare (NOR /CS moved to PD2 2026-10-04: next to the SPI3 pins)
@@ -49,14 +49,14 @@ U1,47,GND,gnd,VSS
 U1,48,+3V3,pwr,VDD
 U1,49,SWCLK,,PA14
 U1,50,BTN_VOLDOWN,,PA15 — EXTI15 ← Vol− (internal pull-up)
-U1,51,SPI3_SCK,,PC10 — SPI3 SCK → W25Q128 + iCE40 config
-U1,52,SPI3_MISO,,PC11 — SPI3 MISO ← W25Q128 DO + iCE40 SPI_SO
-U1,53,SPI3_MOSI,,PC12 — SPI3 MOSI → W25Q128 DI + iCE40 SPI_SI
+U1,51,SPI3_SCK,,PC10 — SPI3 SCK → W25Q128 (NOR only since the FPGA moved to SPI1)
+U1,52,SPI3_MISO,,PC11 — SPI3 MISO ← W25Q128 DO
+U1,53,SPI3_MOSI,,PC12 — SPI3 MOSI → W25Q128 DI
 U1,54,NOR_CS,,"PD2 — W25Q128 /CS (+10k pull-up); beside SPI3 MOSI/MISO/SCK (pins 53/52/51), same side as the NOR"
 U1,55,BTN_A,,PB3 — EXTI3 ← A (internal pull-up; costs SWO trace output)
 U1,56,BTN_VOLUP,,PB4 — EXTI4 ← Vol+ (internal pull-up; NJTRST pull-up at reset is harmless). I2C3 escape now = PA8 + PC9
 U1,57,IMU_INT1,,"PB5 — EXTI5 ← LSM6DSOX INT1 (input, no pull at boot); right side, facing the IMU"
-U1,58,FPGA_SS_B,,PB6 — iCE40 SPI_SS (10k pull-down = slave-boot strap)
+U1,58,,,"PB6 — spare (FPGA_SS_B moved to PA4, 2026-10-12)"
 U1,59,I2C1_SDA,,PB7 — I2C1_SDA (AF4; moved from PB9 2026-10-10 so SCL/SDA/INT1 leave in the order they reach the IMU)
 U1,60,BOOT0,,BOOT0 — 10k pull-down: boot from main flash
 U1,61,I2C1_SCL,,PB8 — I2C1_SCL (AF4)
@@ -118,14 +118,14 @@ U2,6,,,IOB_13b — spare
 U2,7,FPGA_CDONE,,CDONE
 U2,8,FPGA_CRESET_B,,creset_b
 U2,9,,,IOB_16a — spare
-U2,10,PPU_SPI_MOSI,,"IOB_18a — runtime cmd bus MOSI (right side, opposite STM32 PA7; moved from pin 21 2026-10-04)"
-U2,11,PPU_SPI_SCK,,"IOB_20a — runtime cmd bus SCK (sampled by the system clock in spi_cmd.v, so no GBIN needed; moved from pin 20)"
-U2,12,PPU_SPI_CS,,IOB_22a — runtime cmd bus CS (moved from pin 18)
+U2,10,,,"IOB_18a — spare (the command bus moved onto the config pins, 2026-10-12)"
+U2,11,,,IOB_20a — spare (2026-10-12)
+U2,12,,,IOB_22a — spare (2026-10-12)
 U2,13,,,IOB_24a — spare
-U2,14,SPI3_MISO,,IOB_32a_SPI_SO — config SO — PPU bitstream must leave it high-Z in user mode
-U2,15,SPI3_SCK,,IOB_34a_SPI_SCK
-U2,16,FPGA_SS_B,,IOB_35b_SPI_SS
-U2,17,SPI3_MOSI,,IOB_33b_SPI_SI
+U2,14,,,"IOB_32a_SPI_SO — not connected (slave config is write-only; was SPI3 MISO, 2026-10-12)"
+U2,15,PPU_SPI_SCK,,IOB_34a_SPI_SCK — config clock at boot; the PPU command-bus SCK in user mode (2026-10-12)
+U2,16,FPGA_SS_B,,"IOB_35b_SPI_SS — config select (low = slave mode at CRESET release); the PPU command-bus select in user mode, active-high (2026-10-12)"
+U2,17,PPU_SPI_MOSI,,IOB_33b_SPI_SI — config data at boot; the PPU command-bus MOSI in user mode (2026-10-12)
 U2,18,,,IOB_31b — spare (PPU CS moved to pin 12)
 U2,19,,,IOB_29b — spare
 U2,20,,,IOB_25b_G3 — spare (PPU SCK moved to pin 11)
@@ -144,7 +144,7 @@ U2,32,LCD_D2,,IOT_43a
 U2,33,+3V3,pwr,VCCIO_0
 U2,34,LCD_D1,,IOT_44b
 U2,35,LCD_D0,,IOT_46b_G0 — (D0 moved from pin 36 2026-10-10 so LCD_RST can take 36)
-U2,36,LCD_RST,,IOT_48b — open-drain only (module has APX803 + 10k pull-up); moved from 37 2026-10-10: leaves from U2's J3 side, clear of the board's inner corner below U2
+U2,36,LCD_RST,,"IOT_48b — open-drain only (module has APX803 + 10k pull-up); moved from 37 2026-10-10: leaves from U2's J3 side, clear of the board's inner corner below U2"
 U2,37,LCD_WR_FPGA,,IOT_45a_G1 — → 33 Ω series R (source termination) → LCD_WR (moved from 38 2026-10-10)
 U2,38,,,IOT_50b — spare
 U2,39,,,RGB0 — spare

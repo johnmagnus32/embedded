@@ -26,6 +26,14 @@
          * PA0 -> PC0 (ADC1_IN10), BT_EN PC1 -> PC7, buck-boost PS/SYNC PC7 -> PC3,
          * /CHG PC2 -> PC1 (EXTI1),
          * /PGOOD PC3 -> PC2 (EXTI2),
+         * FPGA configuration moves OFF SPI3 onto SPI1 (2026-10-12): SPI1 SCK PA5 /
+         * MOSI PA7 + select PA4 -> iCE40 SPI_SCK/SI/SS (pins 15/17/16); after
+         * configuration the same pins are the PPU command bus, with the select
+         * ACTIVE-HIGH (it idles low with the 3.3k SS_B strap). PB6 is spare; SPI3
+         * serves only the W25Q128. fpga_load_bitstream() must run SPI1 fast
+         * (several MHz) while streaming the bitstream and drop back to the slow
+         * runtime rate (br = 5) afterwards - at ~250 kHz a ~104 KB bitstream
+         * would take ~3.3 s.
          * IMU INT1 PB10 -> PB5 (EXTI5), I2C1 SDA PB9 -> PB7
          * (SCL stays PB8); right-grip buttons direct on GPIO (internal pull-ups):
          * R=PB9, Vol+=PB4, A=PB3, Vol-=PA15, B=PB14 (PB3 = SWO: no SWO trace on gb2);
