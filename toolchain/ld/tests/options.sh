@@ -51,5 +51,37 @@ printf '.global _start\n_start: ldr r0, =__start_myset\nldr r1, =__stop_myset\nb
 "$LD" -o $t/ss.elf $t/ss.o && "${GNU}ld" -o $t/ss.g $t/ss.o 2>/dev/null \
   && [ "$("${GNU}readelf" -sW $t/ss.elf | grep '_myset' | awk '{print $2, $5, $6, $8}' | sort)" = "$("${GNU}readelf" -sW $t/ss.g | grep '_myset' | awk '{print $2, $5, $6, $8}' | sort)" ] \
   && ok || no "__start_SEC/__stop_SEC differ from GNU ld's: $("${GNU}readelf" -sW $t/ss.elf 2>&1 | grep _myset | tr '\n' ' ')"
+# ---- linker-script semantics the kernel's own scripts depend on --------------------------------------------
+# Compared with GNU because both of these were silent WRONG ANSWERS, not errors, and both bit the real build.
+printf '.text\n.global _start\n_start: bx lr\n' | "${GNU}as" -o $t/s1.o
+# 1. A section whose only content is DATA STATEMENTS has contents: GNU marks it A/PROGBITS and the bytes land
+#    in `objcopy -O binary`. Marking it NOBITS instead loses them silently — which is how the mainline zImage
+#    came out 4 bytes shorter than the size in its own header (its .pad is `BYTE(0); . = ALIGN(8);`).
+for body in 'BYTE(0x5a);' 'BYTE(0x5a); . = ALIGN(8);' 'LONG(0x11223344);' 'LONG(0x11223344); . = ALIGN(16);' \
+            '. = . + 16;' '*(.text) LONG(0xdeadbeef);'; do
+  printf 'SECTIONS { . = 0x8000; .text : { *(.text) } .d : { %s } _e = .; }\n' "$body" > $t/ds.ld
+  "$LD" -T $t/ds.ld -o $t/ds.ours $t/s1.o 2>/dev/null; "${GNU}ld" -T $t/ds.ld -o $t/ds.gnu $t/s1.o 2>/dev/null
+  "${GNU}objcopy" -O binary $t/ds.ours $t/ds.ours.bin 2>/dev/null; "${GNU}objcopy" -O binary $t/ds.gnu $t/ds.gnu.bin 2>/dev/null
+  if cmp -s $t/ds.ours.bin $t/ds.gnu.bin; then ok
+  else no "data statements '$body': $(stat -c %s $t/ds.ours.bin 2>/dev/null) bytes, GNU $(stat -c %s $t/ds.gnu.bin 2>/dev/null)"; fi
+done
+# 2. A ?: evaluates ONLY the branch it takes (GNU's exp_fold_tree folds the condition first). Our own kernel's
+#    script is `LOAD_ADDR = DEFINED(LOAD_ADDR) ? LOAD_ADDR : <default>;`, where the untaken arm references a
+#    symbol that is undefined by construction.
+cat > $t/cond.ld <<'L'
+LOAD_ADDR = DEFINED(LOAD_ADDR) ? LOAD_ADDR : 0x41000000;
+SECTIONS { . = LOAD_ADDR; .text : { *(.text) } }
+L
+for d in "" "--defsym=LOAD_ADDR=0x45000000"; do
+  if [ -z "$d" ]; then
+    "$LD" -T $t/cond.ld -o $t/c.ours $t/s1.o 2>$t/c.err; "${GNU}ld" -T $t/cond.ld -o $t/c.gnu $t/s1.o 2>/dev/null
+  else
+    "$LD" "$d" -T $t/cond.ld -o $t/c.ours $t/s1.o 2>$t/c.err; "${GNU}ld" "$d" -T $t/cond.ld -o $t/c.gnu $t/s1.o 2>/dev/null
+  fi
+  o=$("${GNU}readelf" -lW $t/c.ours 2>/dev/null | awk '/LOAD/{print $3; exit}')
+  g=$("${GNU}readelf" -lW $t/c.gnu  2>/dev/null | awk '/LOAD/{print $3; exit}')
+  [ -n "$g" ] && [ "$o" = "$g" ] && ok || no "DEFINED(X) ? X : default ${d:-(no --defsym)}: ours $o, GNU $g $(head -1 $t/c.err)"
+done
+
 echo "ld options: $pass passed, $fail failed"
 [ $fail = 0 ]

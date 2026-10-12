@@ -111,11 +111,14 @@ static int append_num(char *dst, int o, int cap, uint32_t v, int base)
  *        initrd=0x<addr>,<size> panic=10" into buf.
  * Bare "earlycon" (not "=on", which is a silent no-op) makes the kernel scan the
  * DTB /chosen/stdout-path and register the snps,dw-apb-uart earlycon, inheriting
- * our 115200 baud — output from the very first kernel instructions. */
+ * our 115200 baud — output from the very first kernel instructions.
+ * "earlyprintk" is the one that does not depend on the DTB at all: with
+ * CONFIG_DEBUG_LL the UART address is compiled in, so it prints even when the
+ * DTB-driven earlycon never registers. A kernel without DEBUG_LL ignores it. */
 static void build_cmdline(char *buf, int cap, uint32_t initrd_addr, uint32_t initrd_size)
 {
 	int o = 0;
-	o = append(buf, o, cap, "console=ttyS0,115200 earlycon "
+	o = append(buf, o, cap, "console=ttyS0,115200 earlycon earlyprintk "
 	                        "mem=128M@0x40000000 initrd=0x");
 	o = append_num(buf, o, cap, initrd_addr, 16);
 	o = append(buf, o, cap, ",");

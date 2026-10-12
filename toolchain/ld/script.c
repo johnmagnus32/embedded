@@ -1150,15 +1150,26 @@ void layout_run(void) {
 	if (unplaced) die("unplaced orphan sections (--orphan-handling=error)");
 	for (int i = 0; i < nst; i++) {                     /* each output section's type/flags from its inputs */
 		if (st[i].kind != S_OUTSEC || st[i].discard) continue;
-		OutSec *os = st[i].os; int first = 1, nobits = 1;
-		for (int k = 0; k < st[i].nitem; k++) for (int n = 0; n < st[i].items[k].nin; n++) {
-			Elf32_Shdr *h = &st[i].items[k].in[n].obj->sh[st[i].items[k].in[n].shndx];
-			os->flags |= h->sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR | SHF_TLS | SHF_LINK_ORDER);   /* (.ARM.exidx stays "AL", as GNU's) */
-			nobits &= h->sh_type == SHT_NOBITS;
-			if (first) { os->type = h->sh_type; os->entsize = h->sh_entsize; first = 0; }
-			else { if (os->type != h->sh_type) os->type = SHT_PROGBITS; if (os->entsize != h->sh_entsize) os->entsize = 0; }
+		OutSec *os = st[i].os; int first = 1, nobits = 1, has_data = 0;
+		for (int k = 0; k < st[i].nitem; k++) {
+			if (st[i].items[k].kind == I_DATA) has_data = 1;   /* BYTE/SHORT/LONG/QUAD: bytes of its own */
+			for (int n = 0; n < st[i].items[k].nin; n++) {
+				Elf32_Shdr *h = &st[i].items[k].in[n].obj->sh[st[i].items[k].in[n].shndx];
+				os->flags |= h->sh_flags & (SHF_ALLOC | SHF_WRITE | SHF_EXECINSTR | SHF_TLS | SHF_LINK_ORDER);   /* (.ARM.exidx stays "AL", as GNU's) */
+				nobits &= h->sh_type == SHT_NOBITS;
+				if (first) { os->type = h->sh_type; os->entsize = h->sh_entsize; first = 0; }
+				else { if (os->type != h->sh_type) os->type = SHT_PROGBITS; if (os->entsize != h->sh_entsize) os->entsize = 0; }
+			}
 		}
-		if (first) os->flags = SHF_ALLOC | SHF_WRITE;   /* only `. = . + N`: reserved space */
+		/* No input section placed anything here. A data statement still gives the section CONTENTS, which GNU
+		 * marks A/PROGBITS; only a bare `. = . + N` is reserved space (AW/NOBITS). Getting this wrong loses the
+		 * bytes: `objcopy -O binary` rightly writes nothing for a NOBITS section, which is how the mainline
+		 * zImage came out 4 bytes shorter than its own header said (.pad is `BYTE(0); . = ALIGN(8);`). */
+		if (first) {                                /* no input section placed anything: the type comes from here */
+			os->flags = has_data ? SHF_ALLOC : (SHF_ALLOC | SHF_WRITE);
+			os->type = has_data ? SHT_PROGBITS : SHT_NOBITS;
+		}
+		if (has_data) nobits = 0;
 		if (st[i].noalloc) { os->flags &= ~SHF_ALLOC; os->type = SHT_PROGBITS; }   /* (GNU: no ALLOC, so no NOBITS either — file zeros) */
 		else if (st[i].noload || nobits) os->type = SHT_NOBITS;
 		else if (os->type == SHT_NOBITS) os->type = SHT_PROGBITS;   /* .bss inside a PROGBITS section: file zeros */
