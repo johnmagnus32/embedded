@@ -30,8 +30,9 @@ to the right grip crosses J4 between its pins.
   (y 48.1 / 50.7 / 53.2 / 55.8). On the front, J3's east side is the display-bus fan, so a front-layer crossing
   would cut a data line. FB2 is kept out of this strip (`place_fpga` `in_lane`).
 - **J4, east (E1 back, E2 front, A):** 8 signals to the right grip (buttons, I2S), plus the amp's SYS feed in the
-  top gap (y 48.1). The SWD and console headers J1/J2 that used to sit there were replaced on 2026-10-12 by a row of
-  back-side test pads under the MCU (`65_debug`), which took five lines off this crossing.
+  top gap (y 48.1). On 2026-10-12 the console header J2 there became back-side test pads under the MCU and the SWD header
+  J1 moved to the top edge east of the USB-C (`65_debug`), which took five lines off this crossing. SWD reaches J1
+  east of the BAT trunk: two back lanes below E1, up through J8's BAT|GND pad gap on the front.
 
 ## Channels (route/channels.py)
 

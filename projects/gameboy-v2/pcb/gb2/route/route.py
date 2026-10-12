@@ -100,6 +100,7 @@ def build(path, names, files):
                 if (u[0] * v[0] + u[1] * v[1]) / (lu * lv) < -0.02:     # sharper than ~91 deg
                     lint.append(f"{name}: {net} turns back sharper than 90 deg at ({b[0]:.2f},{b[1]:.2f})")
             for a, b in zip(pts, pts[1:]):
+                if abs(a[0] - b[0]) < 1e-4 and abs(a[1] - b[1]) < 1e-4: continue     # a maze leg ending on its own start
                 t = pcbnew.PCB_TRACK(B); t.SetStart(V(*a)); t.SetEnd(V(*b)); t.SetWidth(MM(w)); t.SetLayer(L)
                 t.SetNet(ni); B.Add(t); g.AddItem(t)
                 stats["len"] += ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5

@@ -18,7 +18,7 @@ ESCAPE = {
     10: ("CHG_PGOOD",   "N", "F>B", (87.2, 41.3), "N", "routed (charger group)"),
     9:  ("CHG_STAT",    "N", "F>B", (87.9, 42.2), "N", "routed (charger group)"),
     8:  ("BAT_SENSE",   "N", "F>B", (88.25, 47.5), "local", "routed; via moves 0.25 north to let PWR_SW pass"),
-    7:  ("NRST",        "N", "F>B", (88.75, 48.55), "local", "C6 under the row (inward via, round C6's GND pad), then east to its pad TP16"),
+    7:  ("NRST",        "N", "F>B", (88.75, 48.55), "local", "C6 under the row (inward via, round C6's GND pad), east along the back strip between SYS and E1 -> J1.5"),
     6:  ("HSE_OUT_MCU", "N", "F", None, "crystal", "R3 straight above"),
     5:  ("HSE_IN",      "N", "F", None, "crystal", "Y1.1 / C11 - nothing else crosses the crystal area"),
     1:  ("+3V3",        "N", "F>B", None, "plane", "fanout"),
@@ -38,7 +38,7 @@ ESCAPE = {
     52: ("SPI3_MISO",   "E", "F",   None, "local", "NOR only"),
     51: ("SPI3_SCK",    "E", "F",   None, "local", "NOR only, between U4 pins 2|3 to pin 6"),
     50: ("BTN_VOLDOWN", "E", "F>B", (96.0, 58.76), "E1", "SW11"),
-    49: ("SWCLK",       "E", "F>B", (95.2, 59.26), "local", "down the back to its pad TP14 (bottom-edge debug row)"),
+    49: ("SWCLK",       "E", "F>B", (95.2, 59.26), "local", "back lane y 59.26 below E1 -> via south of J8 -> front through J8's pad gap -> J1.3 (top edge)"),
     # ---- bottom row (pins 33..48, x 84.25 .. 91.75), all leave south on the front
     33: ("I2S2_WS",     "S", "F", None, "E2", "amp"),
     34: ("I2S2_CK",     "S", "F", None, "E2", "amp"),
@@ -49,7 +49,7 @@ ESCAPE = {
     40: ("MCO2",        "S", "F>B", (88.0, 62.4), "local", "TP9 on the back, under the pin"),
     42: ("USART1_TX",   "S", "F>B", (88.75, 62.35), "local", "console pad TP11 (bottom-edge debug row)"),
     43: ("USART1_RX",   "S", "F>B", None, "local", "console pad TP12"),
-    46: ("SWDIO",       "S", "F>B", None, "local", "SWD pad TP13"),
+    46: ("SWDIO",       "S", "F>B", None, "local", "front east under the pin row, back lane y 60.0 -> J8 gap -> J1.2"),
     47: ("GND",         "S", "F>B", None, "plane", "fanout"),
     48: ("+3V3",        "S", "F>B", None, "plane", "fanout"),
     # ---- left row (pins 17..32, y 51.76 .. 59.26)

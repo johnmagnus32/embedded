@@ -1649,14 +1649,41 @@ TP_TARGETS = {   # ref: (net label, near this board point)
     "TP1": ("VBUS", (101.0, 42.2)), "TP2": ("BAT", (116.0, 40.0)), "TP3": ("SYS", (95.5, 41.5)),
     "TP4": ("GND", (101.6, 33.8)), "TP5": ("3V3", (76.0, 36.0)), "TP6": ("5V_LCD", (63.0, 35.5)),
     "TP7": ("1V2", (70.2, 60.3)), "TP8": ("BOOT0", (97.3, 53.76)),
-    # the SWD + console pad row (replaced the J1/J2 headers 2026-10-12): along the bottom edge under the MCU's bottom
-    # pins, on a 2.54 mm pitch so a pogo strip or a held 0.1" header lands on it; in pin order west -> east (no crossings), MCO under its pin
+    # the console pad row (replaced the J2 header 2026-10-12): along the bottom edge under the MCU's bottom pins, on a
+    # 2.54 mm pitch so a pogo strip or a held 0.1" header lands on it; in pin order west -> east (no crossings)
     "TP9": ("MCO", (87.75, 63.9)), "TP11": ("TX", (90.29, 63.9)), "TP12": ("RX", (92.83, 63.9)),
-    "TP13": ("DIO", (95.37, 63.9)), "TP10": ("GND", (97.91, 63.9)), "TP14": ("CLK", (100.45, 63.9)),
-    "TP15": ("3V3", (102.99, 63.9)),
-    "TP16": ("RST", (94.5, 48.6)),                       # NRST leaves the MCU's top row: its own pad, east of C6
+    "TP10": ("GND", (95.37, 63.9)),
 }
-TP_ROW = {"TP9", "TP11", "TP12", "TP13", "TP10", "TP14", "TP15"}   # row labels all go above (below is off the board)
+TP_ROW = {"TP9", "TP11", "TP12", "TP10"}   # row labels all go above (below is off the board)
+
+# SWD header J1 (ST-Link V2 order: 1 3V3, 2 SWDIO, 3 SWCLK, 4 GND, 5 NRST): on the top edge east of the USB-C, outside
+# the 2090's outline (its body starts at y ~46), so the debugger plugs in with the front shell off. Pin 1 west:
+# SWDIO / SWCLK come up the front east of the BAT trunk (through J8's BAT|GND pad gap) and NRST up the east side, so
+# the row reads west -> east in their arrival order. Placed with the test points (--place-testpoints).
+SWD_HEADER = {"J1": {1: (118.5, 37.0), 5: (128.66, 37.0)}}
+SWD_SILK = ["3V3", "DIO", "CLK", "GND", "RST"]         # pin 1 .. 5, west -> east, above the pads
+
+def place_swd(B, fps):
+    out = ["  SWD header:"]
+    for r, want in SWD_HEADER.items():
+        fp = fps[r]
+        if fp.IsFlipped(): fp.Flip(fp.GetPosition(), False)
+        (x, y, rt), miss = pose_on_pins(fp, want)
+        if miss > 0.01: sys.exit(f"{r}: pose miss {miss:.3f} mm")
+        fp.SetOrientationDegrees(rt); fp.SetPosition(V(x, y))
+        lab = fp.Reference(); lab.SetLayer(pcbnew.F_SilkS); lab.SetTextAngleDegrees(0)
+        lab.SetPosition(V(want[1][0] - 2.4, want[1][1]))
+        fp.Value().SetVisible(False)
+        for g in [g for g in fp.GraphicalItems() if g.GetClass() in ("PCB_TEXT", "FP_TEXT") and g.GetLayer() == pcbnew.F_SilkS]:
+            fp.Remove(g)
+        x1, y1 = want[1]
+        for k, t_ in enumerate(SWD_SILK):
+            t = pcbnew.PCB_TEXT(fp); t.SetLayer(pcbnew.F_SilkS); t.SetText(t_); t.SetTextSize(V(0.8, 0.8))
+            t.SetTextThickness(MM(0.12)); t.SetPosition(V(x1 + 2.54 * k, y1 - 1.9)); fp.Add(t)
+        out.append(f"      {r} pin 5 at {want[5]}, pin 1 at {want[1]}, rot {rt:g}")
+    RING_LABELED.update(SWD_HEADER)
+    return set(SWD_HEADER), out
+
 TP_GAP, TP_EDGE = 0.6, 0.5
 
 def in_back_channel(x, y, m=0.9):
@@ -1914,6 +1941,7 @@ def main():
     tp_set, tp_report = set(), []
     if "--place-testpoints" in sys.argv:
         tp_set, tp_report = place_testpoints(B, fps)
+        sw_set, sw_report = place_swd(B, fps); tp_set |= sw_set; tp_report += sw_report
     i2c_set, i2c_report = set(), []
     if "--place-i2c" in sys.argv:
         i2c_set, i2c_report = place_i2c(fps, nets)

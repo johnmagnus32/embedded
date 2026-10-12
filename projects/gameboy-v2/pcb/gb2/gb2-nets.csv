@@ -5,7 +5,7 @@ U1,3,,,PC14-OSC32_IN
 U1,4,,,PC15_OSC32_OUT
 U1,5,HSE_IN,,"PH0_OSC_IN — OSC_IN, 8 MHz crystal (#74)"
 U1,6,HSE_OUT_MCU,,PH1_OSC_OUT — OSC_OUT via 0 Ω series R (#77)
-U1,7,NRST,,NRST — 100 nF filter + test point TP16 (SWD reset); internal pull-up
+U1,7,NRST,,NRST — 100 nF filter + SWD header J1 pin 5; internal pull-up
 U1,8,BAT_SENSE,,PC0 — ADC1_IN10 ← BAT/2 divider (#51) (moved from PA0 2026-10-10: PA0 is now USART2_CTS)
 U1,9,CHG_STAT,,PC1 — EXTI1 ← BQ24074 /CHG (+10k pull-up) (swapped with /PGOOD 2026-10-10 so both route under J7 without crossing)
 U1,10,CHG_PGOOD,,PC2 — EXTI2 ← BQ24074 /PGOOD (+10k pull-up)
@@ -40,14 +40,14 @@ U1,38,BT_EN,,"PC7 — push-pull → BT830 VREG_EN_RST# (boot low, then high) (sw
 U1,39,,,PC8
 U1,40,MCO2,,PC9 — MCO2 (HSE/SYSCLK out) → test point TP9 for checking the crystal
 U1,41,,,PA8 — kept free: I2C3_SCL escape bus
-U1,42,USART1_TX,,PA9 — USART1_TX (AF7) console → test point TP11 (the J2 header was dropped 2026-10-12)
+U1,42,USART1_TX,,PA9 — USART1_TX (AF7) console → test pad TP11 (the J2 header was dropped 2026-10-12)
 U1,43,USART1_RX,,PA10 — USART1_RX (AF7) console ← test point TP12
 U1,44,,,PA11 — spare (the PCA9555 is polled over I2C since 2026-10-10; was its INT)
 U1,45,,,PA12 — spare
-U1,46,SWDIO,,PA13 — SWD → test point TP13 (the J1 header was dropped 2026-10-12)
+U1,46,SWDIO,,PA13 — SWD → J1 pin 2 (header at the top edge, east of the USB-C)
 U1,47,GND,gnd,VSS
 U1,48,+3V3,pwr,VDD
-U1,49,SWCLK,,PA14 — SWD → test point TP14
+U1,49,SWCLK,,PA14 — SWD → J1 pin 3
 U1,50,BTN_VOLDOWN,,PA15 — EXTI15 ← Vol− (internal pull-up)
 U1,51,SPI3_SCK,,PC10 — SPI3 SCK → W25Q128 (NOR only since the FPGA moved to SPI1)
 U1,52,SPI3_MISO,,PC11 — SPI3 MISO ← W25Q128 DO
@@ -203,6 +203,11 @@ C24,1,+3V3,pwr,1
 C24,2,GND,gnd,2
 R8,1,NOR_CS,,1
 R8,2,+3V3,pwr,2
+J1,1,+3V3,pwr,1
+J1,2,SWDIO,,2
+J1,3,SWCLK,,3
+J1,4,GND,gnd,4
+J1,5,NRST,,5
 J3,1,GND,gnd,1
 J3,2,+5V_LCD,pwr,2 — module VIN
 J3,3,LCD_CS,,3
@@ -568,12 +573,8 @@ TP4,1,GND,gnd,ground (power strip)
 TP5,1,+3V3,pwr,3.3 V logic rail
 TP6,1,+5V_LCD,pwr,screen 5 V
 TP7,1,+1V2,pwr,iCE40 core
-TP8,1,BOOT0,,BOOT0: bridge to 3V3 (TP15) at power-up for the ROM UART bootloader on TP11/TP12
+TP8,1,BOOT0,,BOOT0: bridge to 3V3 (TP5 / J1 pin 1) at power-up for the ROM UART bootloader on TP11/TP12
 TP9,1,MCO2,,PC9 MCO2 clock out
 TP10,1,GND,gnd,ground (by the MCU)
-TP11,1,USART1_TX,,console TX out (PA9) — SWD/console pad row along the bottom edge
+TP11,1,USART1_TX,,console TX out (PA9) — console pad row along the bottom edge
 TP12,1,USART1_RX,,console RX in (PA10)
-TP13,1,SWDIO,,SWD data (PA13)
-TP14,1,SWCLK,,SWD clock (PA14)
-TP15,1,+3V3,pwr,3.3 V for the debugger's VTref (in the SWD/console pad row)
-TP16,1,NRST,,SWD reset (connect-under-reset)

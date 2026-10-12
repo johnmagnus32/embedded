@@ -1,7 +1,7 @@
 # East: MCU -> J4 (crossing between its pins, two traces per gap per layer) -> the right grip.
 # The back (E1) carries the MCU right-side escapes laid by the spi3 group; the front (E2, the bottom-edge band)
 # carries the MCU bottom-side group. Each line is steered through its J4 slot by a waypoint and the maze finds the
-# exact path. (SWD / console no longer come here: J1 / J2 became test pads by the MCU, see 65_debug.)
+# exact path. (SWD and the console no longer cross J4: J1 is on the top edge, the console on pads; see 65_debug.)
 W = 0.15
 J4 = lambda k: P("J4.%d" % k)[1]
 gap = lambda k: (J4(k) + J4(k + 1)) / 2           # between J4 pin k and k+1 (pin 20 is the top, pin 1 the bottom)

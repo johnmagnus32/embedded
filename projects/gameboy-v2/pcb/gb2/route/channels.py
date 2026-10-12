@@ -23,7 +23,7 @@ CHANNELS = {
     "E1 east, back":       ("B", [(95.0, 49.4), (131.0, 49.4), (131.0, 58.8), (95.0, 60.0)],
                             "BTN_A, VOL+, VOL-, BTN_R (MCU right side) -> J4 gaps 50.7/53.2/55.8"),
     "E2 east, front":      ("F", [(84.0, 62.2), (131.0, 62.2), (131.0, 64.7), (84.0, 64.7)],
-                            "I2S x3, BTN_B (MCU bottom side) under NOR and J8 -> J4 gaps 58.3..65.9 (south of the debug pads' vias)"),
+                            "I2S x3, BTN_B (MCU bottom side) under NOR and J8 -> J4 gaps 58.3..65.9 (south of the console pads' vias)"),
     "A  amp feed":         ("B", [(96.6, 44.7), (129.5, 44.7), (133.0, 47.6), (133.0, 48.7), (128.6, 45.7), (96.6, 45.7)],
                             "SYS to the amp: Q1 -> J4 gap 48.1 (0.5 mm neck) -> across the right grip -> amp"),
     # north: under J7 on the back, between its shell-tab rows
