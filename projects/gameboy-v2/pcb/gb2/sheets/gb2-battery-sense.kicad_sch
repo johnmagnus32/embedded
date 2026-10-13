@@ -754,7 +754,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "0aed7a14-a54c-5fc3-aea3-7bcff89106ae")
-		(property "Reference" "#PWR0228"
+		(property "Reference" "#PWR0229"
 			(at 97.79 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -807,12 +807,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "6b6eac24-0770-4da2-bdcb-fb5ff6c47362")
+			(uuid "fb02bf2e-31a7-43af-ba41-5c2baabd766c")
 		)
 		(instances
 			(project "gb2"
 				(path "/18b3f5b7-5d6d-5df4-b18e-e494ce9bbe48/6472de9a-55a9-5ff2-afee-d6871b779a47"
-					(reference "#PWR0228")
+					(reference "#PWR0229")
 					(unit 1)
 				)
 			)
@@ -894,10 +894,10 @@
 			)
 		)
 		(pin "2"
-			(uuid "279abf1c-6b6f-4d2f-8746-477135a43579")
+			(uuid "7bb95a4f-8e59-4ed5-aec5-106d26f53396")
 		)
 		(pin "1"
-			(uuid "7a8070f8-a543-4968-8d94-317e71bf5bad")
+			(uuid "8e0954fc-6536-4ac9-bdfa-37bc1053082b")
 		)
 		(instances
 			(project "gb2"
@@ -919,7 +919,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "4d3ca8b3-097b-59b5-abec-e7c76fe279b0")
-		(property "Reference" "#PWR0229"
+		(property "Reference" "#PWR0230"
 			(at 139.7 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -972,12 +972,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "7017c665-381a-403c-9149-cefd816c172b")
+			(uuid "a91bfe30-6190-4a28-9d99-60c7e7b74b65")
 		)
 		(instances
 			(project "gb2"
 				(path "/18b3f5b7-5d6d-5df4-b18e-e494ce9bbe48/6472de9a-55a9-5ff2-afee-d6871b779a47"
-					(reference "#PWR0229")
+					(reference "#PWR0230")
 					(unit 1)
 				)
 			)
@@ -1059,10 +1059,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "1ab076bc-cfe6-41b9-8e3d-80eab3f016b4")
+			(uuid "0c89a60e-f9f6-4018-ba93-2d5dd1a1c817")
 		)
 		(pin "2"
-			(uuid "be68df71-7054-442c-88aa-1787d40bc897")
+			(uuid "e9d81368-069f-4bdb-8fba-e8ff6d95e786")
 		)
 		(instances
 			(project "gb2"
@@ -1149,10 +1149,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "122b7c09-1226-41d1-8f4e-5c8e3dc46d16")
+			(uuid "07cc36b1-9bb9-45a7-9cc0-dacc7278021c")
 		)
 		(pin "2"
-			(uuid "3aa5c25c-0393-4feb-be88-705f10419e73")
+			(uuid "bd69d604-713a-4f22-8dbd-bd4848d4c898")
 		)
 		(instances
 			(project "gb2"
@@ -1174,7 +1174,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "b2fa462f-707f-59ee-87f7-0e244c4e7971")
-		(property "Reference" "#PWR0230"
+		(property "Reference" "#PWR0231"
 			(at 38.1 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -1227,12 +1227,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "4d9cb48b-f906-456c-bad5-0567a18579d3")
+			(uuid "53d6d399-5892-44f3-9f90-90bae0c752c6")
 		)
 		(instances
 			(project "gb2"
 				(path "/18b3f5b7-5d6d-5df4-b18e-e494ce9bbe48/6472de9a-55a9-5ff2-afee-d6871b779a47"
-					(reference "#PWR0230")
+					(reference "#PWR0231")
 					(unit 1)
 				)
 			)

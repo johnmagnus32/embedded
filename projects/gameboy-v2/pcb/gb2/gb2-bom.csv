@@ -72,7 +72,7 @@ R14,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C1 SDA pull-up · 0603WAF1501T5E �
 J7,usb-c,C165948,easyeda2kicad:TYPE-C-31-M-12,USB-C receptacle (power only) · TYPE-C-31-M-12 · #34
 R15,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,CC1 Rd 5.1k · RC0603FR-075K1L · #35
 R16,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,CC2 Rd 5.1k · RC0603FR-075K1L · #35
-U9,charger,C54313,easyeda2kicad:BQ24074RGTR,Power-path charger · BQ24074RGTR · #36
+U9,charger,C15220,easyeda2kicad:BQ24073RGTR,Power-path charger · BQ24073RGTR · #36
 R17,charger,C21189,easyeda2kicad:0603WAF0000T5E,EN2 strap to charger OUT · 0603WAF0000T5E · #37
 C36,charger,C19666,easyeda2kicad:CL10A475KO8NNNC,Charger IN cap · CL10A475KO8NNNC · #38
 C37,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger OUT cap · CL21A106KOQNNNE · #39

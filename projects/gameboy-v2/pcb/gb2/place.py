@@ -747,10 +747,10 @@ def place_bt(B, fps, nets):
     return {BT, *[c[0] for c in BT_CAPS]}, out
 
 
-# ---------------------------------------------------------------- charger (BQ24074) below the USB-C
+# ---------------------------------------------------------------- charger (BQ24073; BQ24074 until 2026-10-12) below the USB-C
 # TI §12.1: IN and OUT caps (and BAT's) as close as possible with short runs to IN/OUT/thermal pad; the programming
 # resistors at their pins; high-current IN/OUT/BAT paths short and wide. U9 sits on the front right under J7 at rot 0,
-# so its sides face: top = IN/TMR/ITERM/ISET (VBUS arrives from J7 straight above), right = CHG/OUT/OUT/ILIM (OUT ->
+# so its sides face: top = IN/TMR/TD/ISET (VBUS arrives from J7 straight above), right = CHG/OUT/OUT/ILIM (OUT ->
 # Q1 -> SYS), left = TS/BAT/BAT/CE (BAT -> J8 at the cell), bottom = EN2/EN1/PGOOD/VSS. Positions in U9's frame
 # (rot 0, front; pin tips at +-1.925): {pad: (x, y)}. Spacings: >= 0.5 mm from the pin tips, >= 0.24 mm pad-to-pad.
 #   C36 IN cap   horizontal over pin 13: VBUS pad right above IN (the J7 trace lands on it, then drops into the pin)

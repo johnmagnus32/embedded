@@ -83,7 +83,7 @@ SPECIAL = {
     "Y1": "3225 crystal: pins 1/3 are the crystal, 2/4 GND - check the footprint's pin numbering against the datasheet (a 90 deg error shorts the oscillator to GND).",
     "Q1": "SOT-23 P-FET: G / S / D pin order against the AO3401A datasheet.",
     "U10": "TPS63021 VSON-14: easyeda2kicad import - check the land pattern + exposed pad against TI's recommended pattern.",
-    "U9": "BQ24074 VQFN-16: easyeda2kicad import - check the land pattern + exposed pad against TI's recommended pattern.",
+    "U9": "BQ24073 VQFN-16: easyeda2kicad import - check the land pattern + exposed pad against TI's recommended pattern.",
     "U2": "iCE40UP5K QFN-48 (SG48): EP = GND; pin 1 corner.",
     "D1": "LED: cathode (bar on silk) = pad 1 (power LED D1 -> GND; CDONE LED D2 likewise).",
 }
@@ -91,7 +91,7 @@ VERIFIED = {   # checked 2026-10-12 without hardware (fab/verify.py reruns the a
     "*IC": "Verified by fab/verify.py: pins number CCW from the top (not mirrored), pin 1 at the corner the footprint name declares. Land pattern is LCSC/EasyEDA's own, the library JLC places from.",
     "Q1": "Verified: AO3401A datasheet G/S/D = pins 1/2/3; S on SYS_SRC, D on SYS (body diode blocks SYS_SRC -> SYS when off); footprint not mirrored.",
     "Y1": "Verified: KDS datasheet #1/#3 = quartz (diagonal pads, our HSE_IN/HSE_OUT), #2/#4 unconnected inside (tied to GND here); footprint not mirrored.",
-    "U9": "Verified: pin functions vs TI's BQ24074 table; land pattern vs TI RGT0016C: pads 0.85 x 0.28 (TI 0.6 x 0.24 - longer toe, normal), pitch 0.5, EP 1.7 (TI 1.68).",
+    "U9": "Verified: pin functions vs TI's BQ2407x table (BQ24073: pin 15 = TD, tied to the exposed pad / GND; top marking CKQ, MSL 1); land pattern vs TI RGT0016C: pads 0.85 x 0.28 (TI 0.6 x 0.24 - longer toe, normal), pitch 0.5, EP 1.7 (TI 1.68).",
     "U10": "Verified: pin functions vs TI's TPS63021 table; the comb-shaped thermal pad matches TI's DSJ pad (4 PGND fingers at each end); pads 0.25 x 0.7 at 0.5 pitch.",
     "J3": "Verified by fab/verify.py: all 20 pads on the 2090's JP1 pins (0.000 mm, from Adafruit's .brd), every net matches Adafruit's schematic (GND, +5V, CS, D/C, WR, RD high, RST, LITE, D0-D7; touch pins 9-11 open). Only left: the socket tails in the 1.0 mm drill (KiCad's PinSocket drill for 0.64 mm square tails).",
     "J4": "Verified by fab/verify.py: all 20 pads on JP2's pins; only pins 1 and 11 (GND) connected, IM0-3 / VCC / 3Vo open as required.",

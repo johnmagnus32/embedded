@@ -12,6 +12,8 @@ T("USBC_CC2", "F", 0.2, [P("J7.B5"), P("R16.1")])
 T("CHG_EN2", "F", 0.2, [P("R17.1"), (108.4, 36.97), (108.25, 37.12), P("U9.5")])
 T("CHG_ISET", "F", 0.2, [P("U9.16"), (108.25, 41.5), (108.7, 41.95), P("R18.1")])
 T("CHG_TMR", "F", 0.2, [P("U9.14"), (107.25, 41.6), (107.6, 41.95), P("R21.1")])
+# TD (pin 15, BQ24073): tied low = termination enabled - straight up into the exposed pad (GND) between its neighbours
+(tx, ty) = P("U9.15"); T("GND", "F", 0.2, [(tx, ty), (tx, ty - 1.0)])
 
 # ---- /PGOOD: U9.7 up to its pull-up R23, west under R22's body, via, west along the back (y 35.4), down at x 87.2
 pg = "CHG_PGOOD"; pv, pm = (102.5, 35.92), (87.2, 41.3)

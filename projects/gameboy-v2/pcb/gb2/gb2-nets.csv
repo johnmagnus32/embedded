@@ -7,8 +7,8 @@ U1,5,HSE_IN,,"PH0_OSC_IN — OSC_IN, 8 MHz crystal (#74)"
 U1,6,HSE_OUT_MCU,,PH1_OSC_OUT — OSC_OUT via 0 Ω series R (#77)
 U1,7,NRST,,NRST — 100 nF filter + SWD header J1 pin 5; internal pull-up
 U1,8,BAT_SENSE,,PC0 — ADC1_IN10 ← BAT/2 divider (#51) (moved from PA0 2026-10-10: PA0 is now USART2_CTS)
-U1,9,CHG_STAT,,PC1 — EXTI1 ← BQ24074 /CHG (+10k pull-up) (swapped with /PGOOD 2026-10-10 so both route under J7 without crossing)
-U1,10,CHG_PGOOD,,PC2 — EXTI2 ← BQ24074 /PGOOD (+10k pull-up)
+U1,9,CHG_STAT,,PC1 — EXTI1 ← BQ24073 /CHG (+10k pull-up) (swapped with /PGOOD 2026-10-10 so both route under J7 without crossing)
+U1,10,CHG_PGOOD,,PC2 — EXTI2 ← BQ24073 /PGOOD (+10k pull-up)
 U1,11,BB_PSYNC,,"PC3 — push-pull → TPS63021 PS/SYNC: high = forced PWM; 100k pull-down = power-save through reset (swapped with BT_EN 2026-10-11: the buck-boost is north of the MCU)"
 U1,12,GND,gnd,VSSA/VREF-
 U1,13,+3V3A,pwr,VDDA/VREF+ — after ferrite FB (#5)
@@ -371,7 +371,7 @@ U9,11,SYS_SRC,pwr,OUT
 U9,12,CHG_ILIM,,ILIM
 U9,13,VBUS,pwr,IN
 U9,14,CHG_TMR,,TMR — 68k → 6.8/9.1/11.3 h
-U9,15,,,ITERM — float = 10 % termination
+U9,15,GND,gnd,TD — tied low = termination enabled (BQ24073: TD must not float; was ITERM on the BQ24074, swapped 2026-10-12 for stock)
 U9,16,CHG_ISET,,ISET
 U9,17,GND,gnd,EP — exposed pad → VSS
 R17,1,CHG_EN2,,1
