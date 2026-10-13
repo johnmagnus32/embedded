@@ -1,0 +1,24 @@
+(footprint "SPEAKER_CES2704"
+	(version 20240108)
+	(generator "manual")
+	(layer "B.Cu")
+	(descr "3D reference only: Same Sky CES-2704-088L050 speaker (off-board, in the cutout). No pads.")
+	(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)
+	(property "Reference" "SPK1"
+		(at 0 0 0)
+		(layer "B.SilkS")
+		(hide yes)
+		(effects (font (size 1 1) (thickness 0.15)))
+	)
+	(property "Value" "CES-2704-088L050"
+		(at 0 0 0)
+		(layer "B.Fab")
+		(hide yes)
+		(effects (font (size 1 1) (thickness 0.15)))
+	)
+	(model "${KIPRJMOD}/../../../../cad/symbols/easyeda2kicad.3dshapes/CES-2704-088L050.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
+)

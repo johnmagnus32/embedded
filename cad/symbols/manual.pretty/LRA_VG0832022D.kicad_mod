@@ -1,0 +1,24 @@
+(footprint "LRA_VG0832022D"
+	(version 20240108)
+	(generator "manual")
+	(layer "B.Cu")
+	(descr "3D reference only: Vybronics VG0832022D LRA coin motor (off-board, in the cutout). No pads.")
+	(attr board_only exclude_from_pos_files exclude_from_bom allow_missing_courtyard)
+	(property "Reference" "LRA1"
+		(at 0 0 0)
+		(layer "B.SilkS")
+		(hide yes)
+		(effects (font (size 1 1) (thickness 0.15)))
+	)
+	(property "Value" "VG0832022D"
+		(at 0 0 0)
+		(layer "B.Fab")
+		(hide yes)
+		(effects (font (size 1 1) (thickness 0.15)))
+	)
+	(model "${KIPRJMOD}/../../../../cad/symbols/easyeda2kicad.3dshapes/VG0832022D.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
+)

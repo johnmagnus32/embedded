@@ -93,4 +93,9 @@
   (fp_line (start 13.1 -9.105) (end -0.595 -9.105) (layer F.CrtYd) (width 0.05))
   (fp_circle (center -1.2 -6.63) (end -1.05 -6.63) (layer F.SilkS) (width 0.3))
   (fp_circle (center -1.2 -6.63) (end -1.05 -6.63) (layer F.Fab) (width 0.3))
+  (model "${KIPRJMOD}/../../../../cad/symbols/easyeda2kicad.3dshapes/BT830-SA-01_MODULE_BOX.wrl"
+    (offset (xyz 6.2525 4.255 0))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+  )
 )
