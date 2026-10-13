@@ -3925,6 +3925,7 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 static int init_nest;                                   /* braces around the object being initialized (0: a whole declarator's) */
 static int parse_init1(Type *ty, int base, InitPlace **tail);
 static int literal_is_element(Token *t, int np);
+static int literal_inits_dest(Type *lit, Type *dest);
 static int parse_init(Type *ty, int base, InitPlace **tail) {
 	int braced = is("{");
 	init_nest += braced; int r = parse_init1(ty, base, tail); init_nest -= braced;
@@ -4032,8 +4033,8 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 			tk = tk->next; np++;
 			if (cast_ahead() && literal_is_element(tk, np)) {
 				char d[IDMAX]; expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
-				if (is("{")) { int r = parse_init(t, base, tail); while (np--) expect(")"); return r; }
-				break;   /* a cast, not a compound literal */
+				if (is("{") && literal_inits_dest(t, ty)) { int r = parse_init(t, base, tail); while (np--) expect(")"); return r; }
+				break;   /* a cast, or a literal that is its own object — the expression path */
 			}
 			if (!is("(")) break;   /* not nested grouping */
 		}
@@ -4042,8 +4043,8 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 	if (cast_ahead() && literal_is_element(tk, 0)) {   /* compound literal (T){...}: initialize as if the braces were written directly */
 		Token *save = tk; char d[IDMAX];
 		expect("("); Type *t = declarator(declspec(NULL, NULL), d); expect(")");
-		if (is("{")) return parse_init(t, base, tail);
-		tk = save;   /* just a cast of a constant — fall through to the scalar leaf */
+		if (is("{") && literal_inits_dest(t, ty)) return parse_init(t, base, tail);
+		tk = save;   /* a cast of a constant, or a literal of another type — fall through to the scalar leaf */
 	}
 	if (tk->kind == TK_STR && ty->kind == TY_STRUCT) { Node *none = NULL; elide_init(ty, base, tail, &none); return ty->size; }   /* elided
 	                                                                           * braces: the string initializes the first char array */
@@ -4061,6 +4062,16 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 	return ty->size;
 }
 
+/* `dest = (T){...}`: may the braces be written straight into the destination? Only when the literal IS an
+ * object of the destination's type (`struct S s = (struct S){1,2}`, the kernel's cap_t/kuid_t macros). A
+ * literal of a DIFFERENT type is a separate anonymous object, and what reaches the destination is its value
+ * — for an array, its decayed ADDRESS. Linux's CLK_HW_INIT_HW builds a clock's parent list that way:
+ *   .parent_hws = (const struct clk_hw *[]){ _parent }
+ * a pointer member initialized from an array literal. Writing those braces into the member instead stores
+ * element [0] — the parent's clk_hw read as a clk_hw** — and silently drops every later element. */
+static int literal_inits_dest(Type *lit, Type *dest) {
+	return lit && dest && lit->kind == dest->kind && lit->size == dest->size;
+}
 /* Is the compound literal `(T){...}` at t, inside np grouping parens, the whole initializer element? Else it's an
  * operand of a larger expression (`((T){4}).a`, `(T){1}.x + 2`), parsed as one. */
 static int literal_is_element(Token *t, int np) {
