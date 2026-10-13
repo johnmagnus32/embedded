@@ -181,5 +181,5 @@ R39,display,C99198,easyeda2kicad:RC0603JR-0710KL,DISP pull-up 10k · RC0603JR-07
 R40,power-ctrl,C99198,easyeda2kicad:RC0603JR-0710KL,STM6601 /PB_OUT pull-up 10k · RC0603JR-0710KL · #117 · [AUDIT] PWR_BTN_3V3 -> PE10; BOM.md #117 (fixes PE10 SYS-overvoltage)
 R41,imu,C22843,easyeda2kicad:0603WAF1501T5E,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
 R42,imu,C22843,easyeda2kicad:0603WAF1501T5E,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
-J2,haptics,,manual:SolderPad_1x02,"LRA motor solder pads (Vybronics VG0832022D flying leads; direct-solder, no connector) · #46"
-J3,amp,,manual:SolderPad_1x02,"Speaker solder pads (flying leads; direct-solder, no connector) · #52"
+J2,haptics,,manual:SolderPad_1x02_SMD,"LRA motor solder pads (Vybronics VG0832022D flying leads; direct-solder, no connector) · #46"
+J3,amp,,manual:SolderPad_1x02_SMD,"Speaker solder pads (flying leads; direct-solder, no connector) · #52"
