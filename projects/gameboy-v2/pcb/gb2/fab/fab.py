@@ -58,7 +58,10 @@ with open(os.path.join(OUT, "gb2-cpl-jlc.csv"), "w", newline="", encoding="utf-8
     for e in jlc.values():
         for r in e["refs"]:
             p = placed[r]
-            w.writerow([r, p["PosX"] + "mm", p["PosY"] + "mm", "Top" if p["Side"] == "top" else "Bottom", p["Rot"]])
+            # JLC reads Rotation as seen from above the part, so a bottom-side angle is mirrored to 180 - θ (Fabrication
+            # Toolkit process.py, Bouni's kicad-jlcpcb-tools fix_rotation); kicad-cli writes θ as the board shows it
+            rot = p["Rot"] if p["Side"] == "top" else "%.6f" % ((180.0 - float(p["Rot"])) % 360.0)
+            w.writerow([r, p["PosX"] + "mm", p["PosY"] + "mm", "Top" if p["Side"] == "top" else "Bottom", rot])
 with open(os.path.join(OUT, "gb2-hand-parts.csv"), "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f); w.writerow(["Designator", "Part", "Source", "Side"]); w.writerows(hand)
 os.remove(pos)
@@ -147,7 +150,8 @@ with open(os.path.join(HERE, "FOOTPRINT_CHECKLIST.md"), "w", encoding="utf-8") a
     f.write("\n## Assembly files (fab/out/, check in JLC's online preview)\n\n"
             "- **Rotations:** easyeda2kicad footprints come from the same EasyEDA library JLC's placement uses, so most need no\n"
             "  offset - but check every polarized part (ICs, diodes, the LED, Q1, the crystal) in JLC's 3D/2D preview,\n"
-            "  and especially the 35 **bottom-side** parts (rotation conventions differ most there).\n"
+            "  and especially the 35 **bottom-side** parts: their CPL angle is written as 180 - θ (JLC's 'seen from above\n"
+            "  the part' convention); before 2026-10-13 it was θ, which turns a bottom part at 0/180 deg round (U3).\n"
             "- **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the I2C / impedance estimates assume it); 1 oz outer;\n"
             "  min track/space 0.15/0.15 mm; vias 0.45/0.25 mm tented; ENIG recommended (0.5 mm-pitch QFN/LQFP/TSSOP flatness).\n"
             "- **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts) **plus through-hole** (J1 SWD header,\n"

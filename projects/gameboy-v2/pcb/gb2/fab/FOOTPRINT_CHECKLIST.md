@@ -96,7 +96,8 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there);
 
 - **Rotations:** easyeda2kicad footprints come from the same EasyEDA library JLC's placement uses, so most need no
   offset - but check every polarized part (ICs, diodes, the LED, Q1, the crystal) in JLC's 3D/2D preview,
-  and especially the 35 **bottom-side** parts (rotation conventions differ most there).
+  and especially the 35 **bottom-side** parts: their CPL angle is written as 180 - θ (JLC's 'seen from above
+  the part' convention); before 2026-10-13 it was θ, which turns a bottom part at 0/180 deg round (U3).
 - **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the I2C / impedance estimates assume it); 1 oz outer;
   min track/space 0.15/0.15 mm; vias 0.45/0.25 mm tented; ENIG recommended (0.5 mm-pitch QFN/LQFP/TSSOP flatness).
 - **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts) **plus through-hole** (J1 SWD header,
