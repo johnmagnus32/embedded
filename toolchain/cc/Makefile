@@ -65,6 +65,10 @@ test: $(BUILD)/cc
 	case "$$rel" in ".rodata=R_ARM_REL32 glob_var=R_ARM_GOT_PREL hidden_var=R_ARM_REL32 .data=R_ARM_REL32 .rodata=R_ARM_REL32 ") \
 	  echo "PASS -fPIC addressing: PC-relative for a literal/static/hidden symbol, the GOT only for an interposable one"; pass=$$((pass+1));; \
 	  *) echo "FAIL -fPIC addressing: $$rel"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -o $$t/pb.s tests/packed_bitfield.c; \
+	bf="$$(awk '/^q_wr:/,/\.size q_wr/' $$t/pb.s | grep -c strb) $$(awk '/^q_wr:/,/\.size q_wr/' $$t/pb.s | grep -cE 'str r[0-9a-z]+, \\[r[0-3]') $$(awk '/^q_rd:/,/\.size q_rd/' $$t/pb.s | grep -c ldrb)"; \
+	case "$$bf" in "3 0 3") echo "PASS packed bit-field access: byte-wise over the field's own 3 bytes, never the unit's 4th"; pass=$$((pass+1));; \
+	  *) echo "FAIL packed bit-field access (strb/word-store/ldrb counts): $$bf, want '3 0 3'"; fail=$$((fail+1));; esac; \
 	$(BUILD)/cc -o $$t/vis.s tests/visibility.c; vis=$$(grep -oE '\.(hidden|protected|internal) [a-z_]+' $$t/vis.s | sort | tr '\n' ' '); \
 	case "$$vis" in ".hidden hidden_fn .protected prot_var ") echo "PASS visibility: .hidden / .protected emitted (none for an unused declaration, as GCC)"; pass=$$((pass+1));; \
 	  *) echo "FAIL visibility directives: '$$vis'"; fail=$$((fail+1));; esac; \

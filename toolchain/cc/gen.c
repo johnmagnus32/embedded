@@ -617,6 +617,21 @@ static void shr64c(int k, int arith) {
 /* A field needs the 64-bit path when its unit is 8 bytes (long long fields) or, in a packed struct, it
  * spans past the first 32 bits of its unit. */
 static int bf_wide(Node *m) { return m->bf_type->size == 8 || m->bit_offset + m->bit_width > 32; }
+/* A PACKED field (`bf_dense`) was laid out bit by bit, so its declared unit need not be aligned and may
+ * reach PAST THE END of the object: `struct __attribute__((packed)) { unsigned f : 20; }` is 3 bytes with a
+ * 4-byte unit, and `{ char pad; unsigned f : 20; }` is 4 bytes with its unit at byte 1. Neither the
+ * unit-wide access below nor bf_wide's two words may be used there — a store would write a byte past the
+ * object and corrupt whatever follows. Touch only the bytes the field itself occupies, one at a time, as
+ * GCC does: byte `lo` of the unit for `nb` bytes, the field starting `sbo` bits into byte lo. */
+static void bf_span(Node *n, int *lo, int *nb, int *sbo) {
+	int bo = n->bit_offset, hi = (bo + n->bit_width - 1) / 8;
+	*lo = bo / 8; *nb = hi - *lo + 1; *sbo = bo - 8 * *lo;
+}
+static void bf_dense_check(Node *n) {
+	int lo, nb, sbo; bf_span(n, &lo, &nb, &sbo);
+	if (n->sso) die("cc: a packed bit-field in a reverse-storage-order struct is not supported");
+	if (sbo + n->bit_width > 64) die("cc: a packed bit-field of %d bits at bit %d spans more than 64", n->bit_width, n->bit_offset);
+}
 /* Bitfield read: r0 = &storage-unit on entry -> r0(:r1) = the field value. Two shifts isolate the field —
  * left so its top bit reaches the top, then right (arithmetic if signed) down to bit 0. */
 static int bf_bo(Node *n) {   /* the field's bit offset in its unit's VALUE: big-endian bit order in a reversed unit */
@@ -624,6 +639,17 @@ static int bf_bo(Node *n) {   /* the field's bit offset in its unit's VALUE: big
 }
 static void gen_bitfield_load(Node *n) {
 	int sz = n->bf_type->size, bo = bf_bo(n), bw = n->bit_width, sg = !n->bf_type->is_unsigned;
+	if (n->bf_dense) {                                   /* only the field's own bytes (see bf_span) */
+		bf_dense_check(n);
+		int lo, nb, sbo; bf_span(n, &lo, &nb, &sbo);
+		fprintf(o, "\tmov r3, r0\n\tmov r0, #0\n\tmov r1, #0\n");
+		for (int i = nb - 1; i >= 0; i--) {              /* little-endian: the span's top byte first */
+			if (i != nb - 1) shl64c(8);
+			fprintf(o, "\tldrb ip, [r3, #%d]\n\torr r0, r0, ip\n", lo + i);
+		}
+		shl64c(64 - sbo - bw); shr64c(64 - bw, sg);      /* isolate, then sign/zero-extend down to bit 0 */
+		return;
+	}
 	if (bf_wide(n)) {
 		fprintf(o, "\tldr r1, [r0, #4]\n\tldr r0, [r0]\n");
 		if (n->sso) swap_value(8);
@@ -642,6 +668,22 @@ static void gen_bitfield_load(Node *n) {
 static void bitfield_put(Node *lhs) {
 	int sz = lhs->bf_type->size, bo = bf_bo(lhs), bw = lhs->bit_width;
 	unsigned long long fm = bw >= 64 ? ~0ULL : (1ULL << bw) - 1, pm = fm << bo;   /* field mask, placed mask */
+	if (lhs->bf_dense) {                                 /* byte-at-a-time RMW over the field's own bytes */
+		bf_dense_check(lhs);
+		int lo, nb, sbo; bf_span(lhs, &lo, &nb, &sbo);
+		unsigned long long placed = fm << sbo;
+		load_imm("r3", (long)(fm & 0xffffffff)); fprintf(o, "\tand r0, r0, r3\n");          /* value &= fieldmask */
+		load_imm("r3", (long)(fm >> 32));        fprintf(o, "\tand r1, r1, r3\n");          /* (clears r1 for a <=32-bit field) */
+		shl64c(sbo);                                     /* the pair's byte k is now the byte for unit+lo+k */
+		for (int k = 0; k < nb; k++) {
+			unsigned mb = (unsigned)((placed >> (8 * k)) & 0xff);   /* this byte's share of the field */
+			if (mb) fprintf(o, "\tldrb r3, [r2, #%d]\n\tbic r3, r3, #%u\n\tand ip, r0, #%u\n"
+			                   "\torr r3, r3, ip\n\tstrb r3, [r2, #%d]\n", lo + k, mb, mb, lo + k);
+			if (k != nb - 1) shr64c(8, 0);
+		}
+		fprintf(o, "\tmov r0, r2\n"); gen_bitfield_load(lhs);   /* the assignment's value: read it back */
+		return;
+	}
 	if (bf_wide(lhs)) {
 		load_imm("r3", fm & 0xffffffff); fprintf(o, "\tand r0, r0, r3\n"); load_imm("r3", fm >> 32); fprintf(o, "\tand r1, r1, r3\n");
 		shl64c(bo);

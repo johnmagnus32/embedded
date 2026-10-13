@@ -232,11 +232,11 @@ static int str_decode(const char *s, unsigned char *out, int cap);
 /* One shared initializer traversal (like a real compiler's InitListChecker): parse the initializer syntax
  * ONCE into a neutral list of scalar leaf placements, then lower to either a .data byte image (globals) or
  * a block of runtime stores (locals). Kills the old global_init/init_of fork that drifted in capability. */
-struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset, sso; struct InitPlace *next; };   /* sso: in a
+struct InitPlace { int off; Type *ty; Node *expr; int bit_width, bit_offset, bf_dense, sso; struct InitPlace *next; };   /* sso: in a
                                                                                                              * reverse-storage-order struct */
 static int init_sso;                                     /* parse_init: the struct whose members are being placed is reversed */
 static int   parse_init(Type *ty, int base, InitPlace **tail);
-static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo);
+static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo, int dense);
 static Init *lower_global(InitPlace *places, int total);
 static Node *lower_local(Node *dest, InitPlace *places, int total);
 static long eval_try(Node *n, int *ok);        /* non-dying constant folder (used by __builtin_constant_p) */
@@ -398,7 +398,22 @@ static void attribute(void) {
 	}
 	expect(")"); expect(")");
 }
-static void skip_parens(void) { expect("("); int d = 1; while (d && tk->kind != TK_EOF) { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } }   /* skips a balanced (...) */
+/* `_Static_assert ( const-expr [, "message"] ) ;` — C11. The condition is EVALUATED: a zero one is an error,
+ * as in GCC, whose wording this matches. It used to be skipped unparsed, which quietly turned every such
+ * assertion into a no-op — including the ~1200 layout and ABI assertions the kernel uses to catch exactly
+ * the struct-offset and initializer mistakes this compiler has shipped. */
+static void static_assert_decl(void) {
+	tk = tk->next;                                  /* _Static_assert */
+	expect("(");
+	long v = eval_const(assign());
+	const char *msg = NULL;
+	if (consume(",")) {
+		if (tk->kind != TK_STR) die("parse: _Static_assert's message must be a string literal (line %d)", tk->line);
+		msg = tk->sval; tk = tk->next;
+	}
+	expect(")"); consume(";");
+	if (!v) { if (msg) die("parse: static assertion failed: \"%s\"", msg); die("parse: static assertion failed"); }
+}
 /* Parse `__attribute__((...))` (the `__attribute__` already consumed) for the LAYOUT attributes we honor:
  * `packed` -> *packed=1, `aligned(N)` -> *alignb=N, scalar_storage_order, transparent_union. The ignorable ones
  * (attr_ignorable) are skipped with any (...) payload; any other is an error.
@@ -705,6 +720,7 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union, int ma
 			int unit = ma * 8;
 			if (m->bit_width == 0) { bitpos = (bitpos + unit - 1) / unit * unit; continue; }   /* :0 -> align, no storage */
 			if (pk) {                                       /* bit by bit: the byte holding its first bit */
+				m->bf_dense = 1;                            /* ...so the declared unit may run past the object: see Member.bf_dense */
 				m->offset = (int)(bitpos / 8);
 				m->bit_offset = (int)(bitpos % 8);
 				bitpos += m->bit_width;
@@ -1228,9 +1244,9 @@ static void init_leaf(InitPlace **tail, int base, Type *ty, Node *e) {   /* a wh
 	                                                                            * split into its parts when they're separate: a constant folds) */
 	if (is_cplx(ty) || is_cplx(type_of(e))) {
 		e = cplx_convert(ty, e);
-		if (is_cplx(ty) && e->kind == ND_CPAIR) { pi_append(tail, base, ty->base, e->lhs, 0, 0); pi_append(tail, base + ty->base->size, ty->base, e->rhs, 0, 0); return; }
+		if (is_cplx(ty) && e->kind == ND_CPAIR) { pi_append(tail, base, ty->base, e->lhs, 0, 0, 0); pi_append(tail, base + ty->base->size, ty->base, e->rhs, 0, 0, 0); return; }
 	}
-	pi_append(tail, base, ty, e, 0, 0);
+	pi_append(tail, base, ty, e, 0, 0, 0);
 }
 static Node *un_op(NodeKind k, Node *e) { Type *t = type_of(e); return is_vec(t) ? vec_unary(k, e) : is_cplx(t) ? cplx_unary(k, e) : unary(k, e); }
 static Node *arith(NodeKind k, Node *l, Node *r) {   /* a binary operator (typed now, so a chain is typed once) */
@@ -1765,8 +1781,8 @@ static Node *builtin_lower(char *name) {
 /* Mark an ND_MEMBER as a bitfield of declared type `ty`. Like GCC, a field promotes by its WIDTH: to int when
  * every value fits (width < 32, or signed 32), to unsigned int for unsigned :32; a long long field wider than
  * 32 bits keeps its type. */
-static void bitfield_node(Node *n, Type *ty, int bw, int bo) {
-	n->bit_width = bw; n->bit_offset = bo; n->bf_type = ty;
+static void bitfield_node(Node *n, Type *ty, int bw, int bo, int dense) {
+	n->bit_width = bw; n->bit_offset = bo; n->bf_type = ty; n->bf_dense = dense;
 	n->type = bw > 32 ? ty : (ty->is_unsigned && bw == 32) ? ty_uint : ty_int;
 	if (bw > 32 && bw < 8 * ty->size) { Type *t = calloc(1, sizeof *t); *t = *ty; t->prec = bw; n->type = t; }   /* long long:40 */
 }
@@ -1793,10 +1809,10 @@ static Node *struct_member(Node *base, const char *mname) {
 			if (!is_lval(base)) die("parse: a member of a variable-size struct value (line %d)", tk->line);
 			Node *at = unary(ND_DEREF, cast_to(pointer_to(m->type), new_add(cast_to(pointer_to(ty_char), unary(ND_ADDR, base)), slot_ref(m->voff, m->vdepth))));
 			if (!m->is_bitfield) return at;
-			Node *n = node(ND_MEMBER); n->lhs = at; n->offset = 0; bitfield_node(n, m->type, m->bit_width, m->bit_offset); return n;
+			Node *n = node(ND_MEMBER); n->lhs = at; n->offset = 0; bitfield_node(n, m->type, m->bit_width, m->bit_offset, m->bf_dense); return n;
 		}
 		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type; n->sso = base->type->sso;
-		if (m->is_bitfield) bitfield_node(n, m->type, m->bit_width, m->bit_offset);
+		if (m->is_bitfield) bitfield_node(n, m->type, m->bit_width, m->bit_offset, m->bf_dense);
 		return n;
 	}
 	die("parse: struct has no member '%s'", mname); return NULL;
@@ -3094,8 +3110,8 @@ static Node *stmt(void) {
 			tk = tk->next; } } while (consume(","));
 		expect(";"); return node(ND_BLOCK);
 	}
-	if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) {   /* block-scope _Static_assert (e.g. in container_of's stmt-expr) — skip */
-		tk = tk->next; skip_parens(); consume(";"); return node(ND_BLOCK);
+	if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) {   /* block-scope (e.g. in container_of's stmt-expr) */
+		static_assert_decl(); return node(ND_BLOCK);
 	}
 	if (consume("goto"))     { Node *n = node(ND_GOTO);
 		if (consume("*")) {                                 /* GNU computed goto: `goto *p;` (p from &&label) */
@@ -3863,9 +3879,9 @@ static int str_decode(const char *s, unsigned char *out, int cap) {
 	}
 	return n;
 }
-static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo) {
+static InitPlace *pi_append(InitPlace **tail, int off, Type *ty, Node *expr, int bw, int bo, int dense) {
 	InitPlace *p = calloc(1, sizeof *p);
-	p->off = off; p->ty = ty; p->expr = expr; p->bit_width = bw; p->bit_offset = bo; p->sso = init_sso;
+	p->off = off; p->ty = ty; p->expr = expr; p->bit_width = bw; p->bit_offset = bo; p->bf_dense = dense; p->sso = init_sso;
 	(*tail)->next = p; *tail = p; return p;
 }
 struct pp_ent { int off, seq, bw; Type *ty; Node *expr; };
@@ -3904,7 +3920,7 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 		if (!*pending && tk->kind != TK_STR) { *pending = assign(); add_type(*pending); }   /* maybe a whole struct value (a string
 		                                                                                     * never is: it's a member char array's) */
 		if (*pending && (*pending)->type && (*pending)->type->kind == TY_STRUCT && (*pending)->type->size == ty->size) {   /* a whole struct value */
-			pi_append(tail, base, ty, *pending, 0, 0); *pending = NULL; return;
+			pi_append(tail, base, ty, *pending, 0, 0, 0); *pending = NULL; return;
 		}
 		int first = 1, uni = 1;
 		for (Member *m = ty->members; m; m = m->next) if (m->offset) uni = 0;
@@ -3913,7 +3929,7 @@ static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 			if (!first && !*pending && !elide_more()) return;
 			if (!first && uni) return;                         /* union: first member only */
 			first = 0;
-			if (m->is_bitfield) { Node *e = *pending ? *pending : assign(); *pending = NULL; pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset); }
+			if (m->is_bitfield) { Node *e = *pending ? *pending : assign(); *pending = NULL; pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset, m->bf_dense); }
 			else if (!*pending && (is("{") || (tk->kind == TK_STR && m->type->kind == TY_ARRAY))) parse_init(m->type, base + m->offset, tail);
 			else elide_init(m->type, base + m->offset, tail, pending);
 		}
@@ -3962,7 +3978,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 				}
 				if (at >= nm) die("parse: excess elements in struct initializer");
 				Member *m = marr[at];
-				if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset); }
+				if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset, m->bf_dense); }
 				else parse_init(m->type, base + m->offset, tail);
 				at++;
 				if (!consume(",")) break;
@@ -3979,7 +3995,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 				InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);   /* parse element once, replicate across the range */
 				for (int k = lo; k <= hi; k++) {
 					if (ty->len > 0 && k >= ty->len) continue;   /* sized array: drop excess elements */
-					for (InitPlace *p = th.next; p; p = p->next) { int s = init_sso; init_sso = p->sso; pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset); init_sso = s; }
+					for (InitPlace *p = th.next; p; p = p->next) { int s = init_sso; init_sso = p->sso; pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset, p->bf_dense); init_sso = s; }
 					if (k > maxidx) maxidx = k;
 				}
 				idx = hi + 1;
@@ -3999,7 +4015,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		if (!m) die("parse: struct has no member '%s'", mn);
 		consume("=");
 		int outer_sso = init_sso; init_sso = ty->sso;
-		if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset); }
+		if (m->is_bitfield) { Node *e = assign(); pi_append(tail, base + m->offset, m->type, e, m->bit_width, m->bit_offset, m->bf_dense); }
 		else parse_init(m->type, base + m->offset, tail);
 		init_sso = outer_sso;
 		return ty->size;
@@ -4008,14 +4024,14 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		int esz = ty->base->size;
 		expect("["); int lo = (int)eval_const(assign()); int hi = lo; if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("=");
 		InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);
-		for (int k = lo; k <= hi; k++) for (InitPlace *p = th.next; p; p = p->next) pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset);
+		for (int k = lo; k <= hi; k++) for (InitPlace *p = th.next; p; p = p->next) pi_append(tail, base + k * esz + p->off, p->ty, p->expr, p->bit_width, p->bit_offset, p->bf_dense);
 		return ty->size;
 	}
 	if (ty->kind == TY_ARRAY && tk->kind == TK_STR && tk->wide && ty->base->size == tk->wide) {   /* wchar_t arr[] = L"..." */
 		int wl; unsigned *w = strs_wide(&wl);
 		int total = ty->len > 0 ? ty->len : wl + 1;
 		if (ty->len == 0) { ty->len = total; ty->size = total * ty->base->size; }
-		for (int i = 0; i < wl && i < total; i++) pi_append(tail, base + i * ty->base->size, ty->base, num(w[i]), 0, 0);
+		for (int i = 0; i < wl && i < total; i++) pi_append(tail, base + i * ty->base->size, ty->base, num(w[i]), 0, 0, 0);
 		free(w);
 		return ty->size;
 	}
@@ -4023,7 +4039,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 		size_t n; unsigned char *dbuf = strs_bytes(&n); int dl = (int)n;
 		int total = ty->len > 0 ? ty->len : dl + 1;
 		if (ty->len == 0) { ty->len = total; ty->size = total; }
-		for (int i = 0; i < dl && i < total; i++) pi_append(tail, base + i, ty_char, num((unsigned char)dbuf[i]), 0, 0);
+		for (int i = 0; i < dl && i < total; i++) pi_append(tail, base + i, ty_char, num((unsigned char)dbuf[i]), 0, 0, 0);
 		free(dbuf);
 		return total;
 	}
@@ -4052,7 +4068,7 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 	if (is_vec(ty) && !is_vec(e->type) && init_nest) { elide_init(ty, base, tail, &e); return ty->size; }   /* elided braces */
 	if (is_vec(ty) || is_vec(e->type)) {   /* a whole vector value (a whole vector object from a scalar is an error, as in GCC) */
 		vec_assign_ok(ty, e->type, "an initializer");
-		pi_append(tail, base, ty, e, 0, 0); return ty->size;
+		pi_append(tail, base, ty, e, 0, 0, 0); return ty->size;
 	}
 	if ((ty->kind == TY_STRUCT || ty->kind == TY_ARRAY) && !(e->type && e->type->kind == TY_STRUCT && e->type->size == ty->size)) {
 		elide_init(ty, base, tail, &e);   /* brace elision: this scalar starts the aggregate's flattened member list */
@@ -4261,7 +4277,7 @@ static Node *lower_local(Node *dest, InitPlace *places, int total) {
 		free(a);
 		for (InitPlace *p = places; p; p = p->next) {
 			Node *dm = node(ND_MEMBER); dm->lhs = dest; dm->offset = p->off; dm->type = p->ty; dm->sso = p->sso;
-			if (p->bit_width) bitfield_node(dm, p->ty, p->bit_width, p->bit_offset);
+			if (p->bit_width) bitfield_node(dm, p->ty, p->bit_width, p->bit_offset, p->bf_dense);
 			c->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, dm, p->expr)); c = c->next;
 		}
 	}
@@ -4405,7 +4421,7 @@ Func *parse(Token *tok) {
 	}
 	Func head = {0}, *cur = &head;
 	while (tk->kind != TK_EOF) {
-		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { tk = tk->next; skip_parens(); consume(";"); continue; }
+		if (tk->kind == TK_IDENT && !strcmp(tk->text, "_Static_assert")) { static_assert_decl(); continue; }
 		if (is("asm")) {   /* file-scope basic asm: `asm("...");` — emit its text verbatim (kernel COND_SYSCALL .weak/.set) */
 			tk = tk->next; consume("volatile"); expect("(");
 			size_t cap = 1, bl = 0; for (Token *t = tk; t->kind == TK_STR; t = t->next) cap += strlen(t->sval);

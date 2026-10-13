@@ -42,8 +42,10 @@ int   wstr_decode(const char *raw, unsigned *out, int cap);   /* wide literal te
 /* ---- types (type.c) ------------------------------------------------------------------------------ */
 typedef enum { TY_INT, TY_CHAR, TY_SHORT, TY_LLONG, TY_FLOAT, TY_DOUBLE, TY_PTR, TY_ARRAY, TY_STRUCT, TY_VECTOR, TY_COMPLEX } TypeKind;   /* arithmetic kinds precede TY_PTR */
 /* A struct member. Ordinary members use `offset` (bytes). A BITFIELD (`is_bitfield`) instead occupies
- * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. */
-typedef struct Member { char name[IDMAX]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int is_anon; int align; int packed; int ealign; int promoted; int voff, vdepth; struct Member *next; } Member;   /* align: aligned(N) on the member; packed: packed on the member (alignment 1); ealign: the alignment the layout gave it; promoted: a lookup alias of an anonymous member's member (no storage of its own); voff: after a variable-length member, the frame slot holding its offset (0: `offset` is it), in function vdepth's frame */
+ * `bit_width` bits at `bit_offset` bits into the storage unit that starts at byte `offset`. `bf_dense`: it was
+ * laid out BIT BY BIT (packed / #pragma pack), so that declared unit may reach past the end of the object and
+ * need not be aligned — codegen must then touch only the bytes the field itself occupies. */
+typedef struct Member { char name[IDMAX]; struct Type *type; int offset; int is_bitfield; int bit_offset; int bit_width; int bf_dense; int is_anon; int align; int packed; int ealign; int promoted; int voff, vdepth; struct Member *next; } Member;   /* align: aligned(N) on the member; packed: packed on the member (alignment 1); ealign: the alignment the layout gave it; promoted: a lookup alias of an anonymous member's member (no storage of its own); voff: after a variable-length member, the frame slot holding its offset (0: `offset` is it), in function vdepth's frame */
 /* size drives load/store WIDTH (1/2/4/8 -> b/h/word/pair); is_unsigned drives sign-extension + narrowing.
  * align, when >0, is a forced byte alignment (from __attribute__((packed))=1 / ((aligned(N)))=N on a struct). */
 /* fn_ret: non-NULL only for a type made by a FUNCTION typedef (`typedef int fn_t(args);`) — naming a declaration with
@@ -152,6 +154,7 @@ typedef struct Node {
 	int asm_clobber;             /* ND_ASM: register mask from the clobber list (operands avoid them; r4-r10 saved) */
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot); struct ND_CALL: its result temp */
 	int bit_width, bit_offset;   /* ND_MEMBER on a bitfield: field width + bit offset in its unit (width 0 = not a bitfield) */
+	int bf_dense;                /* ND_MEMBER on a bitfield: packed, laid out bit by bit (see Member.bf_dense) */
 	struct Type *bf_type;        /* ND_MEMBER on a bitfield: its DECLARED type (unit width + extraction sign); n->type is
 	                              * the promoted type (C11 6.3.1.1p2: a <= int-sized field whose values fit in int is int) */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
