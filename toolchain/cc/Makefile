@@ -60,6 +60,11 @@ test: $(BUILD)/cc
 	case "$$secs" in "k:=.rodata tab:=.data.rel.ro,\"aw\",%progbits fns:=.data.rel.ro,\"aw\",%progbits cv:=.data w:=.data ") \
 	  echo "PASS const data: .rodata / .data.rel.ro (-fPIC, addresses) / .data (volatile, non-const)"; pass=$$((pass+1));; \
 	  *) echo "FAIL const data placement: $$secs"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -fPIC -o $$t/pp.s tests/pic_preempt.c && $(OURAS) -o $$t/pp.o $$t/pp.s; \
+	rel=$$(../readelf/build/readelf -r $$t/pp.o | awk '$$3 ~ /^R_ARM_(REL32|GOT_PREL)$$/ {printf "%s=%s ", $$5, $$3}'); \
+	case "$$rel" in ".rodata=R_ARM_REL32 glob_var=R_ARM_GOT_PREL hidden_var=R_ARM_REL32 .data=R_ARM_REL32 .rodata=R_ARM_REL32 ") \
+	  echo "PASS -fPIC addressing: PC-relative for a literal/static/hidden symbol, the GOT only for an interposable one"; pass=$$((pass+1));; \
+	  *) echo "FAIL -fPIC addressing: $$rel"; fail=$$((fail+1));; esac; \
 	$(BUILD)/cc -o $$t/vis.s tests/visibility.c; vis=$$(grep -oE '\.(hidden|protected|internal) [a-z_]+' $$t/vis.s | sort | tr '\n' ' '); \
 	case "$$vis" in ".hidden hidden_fn .protected prot_var ") echo "PASS visibility: .hidden / .protected emitted (none for an unused declaration, as GCC)"; pass=$$((pass+1));; \
 	  *) echo "FAIL visibility directives: '$$vis'"; fail=$$((fail+1));; esac; \

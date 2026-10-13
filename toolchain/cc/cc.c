@@ -19,10 +19,11 @@ void die(const char *fmt, ...) {
 	fputs("cc: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
-int pic = 0;   /* -fPIC: emit position-independent code (global/string access via the GOT) */
+int pic = 0;   /* -fPIC: position-independent code — a preemptible symbol through the GOT, the rest PC-relative */
 int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32), never movw/movt halves */
 int default_vis = 0;   /* -fvisibility= */
 const char *vis_directive(int vis) { return vis == VIS_HIDDEN ? ".hidden" : vis == VIS_INTERNAL ? ".internal" : vis == VIS_PROTECTED ? ".protected" : NULL; }
+int vis_local(int vis) { return vis == VIS_HIDDEN || vis == VIS_INTERNAL; }   /* invisible outside this module, so nothing can interpose it */
 int soft_float = 0;   /* -mfloat-abi=soft (the kernel): no VFP code or ABI; default hard (gnueabihf) */
 int general_regs_only = 0;   /* -mgeneral-regs-only: the FP registers are off limits, but the ABI stays hard-float
                               * (gcc keeps Tag_ABI_VFP_args) — our own kernel builds with this */

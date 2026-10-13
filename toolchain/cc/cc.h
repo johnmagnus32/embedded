@@ -192,6 +192,7 @@ typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gn
 enum { VIS_DEFAULT = 1, VIS_HIDDEN, VIS_INTERNAL, VIS_PROTECTED };
 extern int default_vis;                      /* -fvisibility=: a definition's visibility when it names none (0 = default) */
 const char *vis_directive(int vis);          /* ".hidden" / ".internal" / ".protected", or NULL for default/unset */
+int vis_local(int vis);                      /* 1 if the visibility hides the symbol from other modules (hidden/internal) */
 typedef struct ProtoVis { char name[IDMAX]; int vis; struct ProtoVis *next; } ProtoVis;
 extern ProtoVis *proto_vis;                   /* a prototype's visibility: emitted by gen() only if the symbol is used */
 

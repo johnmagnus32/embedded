@@ -49,6 +49,32 @@ static void sym_addr(const char *reg, const char *sym) {
 	int l = uniq();
 	fprintf(o, "\tldr %s, .L%d\n\tb .L%da\n.L%d:\n\t.word %s\n.L%da:\n", reg, l, l, l, sym, l);
 }
+static Func *gen_prog;   /* every function (a non-local goto looks up the frame of its label's function;
+                          * -fPIC asks whether a name is this file's own) */
+/* Can another module interpose this symbol? Under -fPIC only a preemptible symbol needs the GOT; a
+ * non-preemptible one (a local label — string/compound literal, static local —, a `static` definition, or
+ * one hidden/internal from other modules) is addressed PC-relative, as GCC does. The difference is not an
+ * optimization: a PC-relative address is correct the instant the code is loaded, while a GOT slot still
+ * holds a link-time address until something relocates it. Linux's decompressor runs C code
+ * (fdt_check_mem_start, atags_to_fdt) BEFORE head.S fixes up .got, and relies on literals being reachable
+ * there — "none of the code we're about to call uses any global variables" (head.S). */
+static int sym_preemptible(const char *name) {
+	if (name[0] == '.') return 0;                                 /* .LSTR<n> / .Lcl<n>: this file's own label */
+	for (Gvar *g = globals; g; g = g->next)
+		if (!strcmp(g->name, name))
+			return g->is_extern || !(g->is_static || vis_local(g->attr.vis ? g->attr.vis : default_vis));
+	for (Func *f = gen_prog; f; f = f->next)
+		if (!strcmp(f->name, name))
+			return !(f->is_static || vis_local(f->attr.vis ? f->attr.vis : default_vis));
+	return 1;                                                     /* not defined here: another module's */
+}
+/* `reg = &sym` PC-relative. The `add` sits exactly 8 bytes before the inline literal, so its pc equals the
+ * literal's own address and `.word sym - .` (R_ARM_REL32) is simply sym - pc. A branch skips the literal. */
+static void sym_addr_pcrel(const char *reg, const char *sym) {
+	int l = uniq();
+	fprintf(o, "\tldr %s, .L%d\n\tadd %s, pc, %s\n\tb .L%da\n.L%d:\n\t.word %s - .\n.L%da:\n",
+	        reg, l, reg, reg, l, l, sym, l);
+}
 /* Materialize a 32-bit constant into r0 with movw (+movt for the high half) — no literal pool needed. */
 static void load_imm(const char *reg, long v) {
 	unsigned u = (unsigned)v;
@@ -376,6 +402,7 @@ static void gen_addr(Node *n) {
 				        cur_func_id, g, cur_func_id, g, cur_func_id, g, asm_name(n->name), cur_func_id, g);
 			return;
 		}
+		if (pic && !sym_preemptible(n->name)) { sym_addr_pcrel("r0", asm_name(n->name)); return; }
 		if (pic) {
 			/* PIC: r0 = &sym via the GOT. The `add` sits exactly 8 bytes before the inline literal so
 			 * its pc equals the literal's address (P) — the R_ARM_GOT_PREL is then just GOT(sym)-P.
@@ -652,7 +679,6 @@ static long builtin_const_arg(Node *n) {
 	return n->args->val;
 }
 static int cur_alloca_slot;   /* frame slot holding the alloca floor (0 = the function uses no alloca) */
-static Func *gen_prog;        /* every function (a non-local goto looks up the frame of its label's function) */
 static Func *find_func(Func *prog, const char *name);
 static Node *vla_marks[256]; static int nvla_marks;   /* this function's VLA declarations, in source order */
 static int cur_setjmp_save;   /* frame slots for r4-r10 in a function using __builtin_setjmp (0 = none) */
