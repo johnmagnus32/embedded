@@ -19,10 +19,11 @@
 #define NOR_INITRD_OFF    0x850000u   /* initramfs.cpio.gz (to ~14.7 of 16 MiB)  */
 
 /* --- DRAM load addresses (match main.c / boot.cmd) ------------------------ */
-/* Above the DECOMPRESSED kernel (~56 MiB when built by our cc), not just above the zImage. */
+/* Clear of the DECOMPRESSED kernel (~56 MiB when built by our cc, so it ends near 0x43820000), with
+ * margin for the decompressor relocating itself past that end when loaded low. See the note in main.c. */
 #define NOR_KERNEL_ADDR   0x45000000u
-#define NOR_DTB_ADDR      0x44800000u
-#define NOR_INITRD_ADDR   0x44000000u
+#define NOR_DTB_ADDR      0x46800000u
+#define NOR_INITRD_ADDR   0x46000000u
 
 /* --- component table (little-endian) at NOR_TABLE_OFF --------------------- */
 #define NOR_TABLE_MAGIC   "GV3NOR1"   /* 8 bytes incl. NUL; NOT "eGON.BT0"     */

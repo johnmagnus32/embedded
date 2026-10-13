@@ -38,14 +38,23 @@ int printf(const char *fmt, ...);   /* tiny printf in dram_shim.c */
 
 #define DRAM_BASE  0x40000000u      /* CFG_SYS_SDRAM_BASE for 32-bit sunxi */
 
-/* Where we load the boot payload in DRAM (128 MiB at DRAM_BASE). Everything must sit ABOVE the
- * DECOMPRESSED kernel, because a zImage unpacks itself to DRAM_BASE+0x8000 and would otherwise write
- * over the DTB and the initramfs it was handed. The decompressed image is what sets the floor, and it
- * is far bigger than the zImage: 56 MiB for a sunxi_defconfig kernel built by OUR cc (gcc's is ~8),
- * so the floor is ~0x43800000 and the payload starts a margin above it. */
+/* Where we load the boot payload in DRAM (128 MiB at DRAM_BASE). Two floors, not one:
+ *
+ *   1. the DECOMPRESSED kernel, which a zImage unpacks to DRAM_BASE+0x8000 — 56 MiB for a
+ *      sunxi_defconfig built by OUR cc (gcc's is ~8), so it ends near 0x43820000; and
+ *   2. if the zImage itself sits inside that output range, the decompressor first RELOCATES ITSELF
+ *      past the output end — code, bss, stack and malloc arena — and inflates from there, so the
+ *      payload must clear <output end> + <zImage size> + its arena as well.
+ *
+ * KERNEL_ADDR below is above floor 1, so (2) does not apply here and the decompressor inflates in
+ * place. It bites the moment anything loads the zImage low: booting the same image via QEMU's
+ * `-kernel` (which loads at DRAM_BASE+0x10000) relocates 16 MiB of decompressor straight over the
+ * DTB, and then the kernel finds no device tree, __vet_atags zeroes its pointer, setup_arch falls
+ * back to the built-in 16 MiB ATAGs, and paging_init's PMD sweep unmaps the kernel's own data.
+ * Hence the margin here: both floors scale with our code size, and gcc's kernel never came close. */
 #define KERNEL_ADDR   0x45000000u
-#define DTB_ADDR      0x44800000u
-#define INITRD_ADDR   0x44000000u
+#define DTB_ADDR      0x46800000u
+#define INITRD_ADDR   0x46000000u
 #define KERNEL_MAX    0x01000000u   /* 16 MiB cap (zImage: 5.4M by gcc, 8.2M by ours) */
 #define DTB_MAX       0x00100000u   /* 1 MiB cap (dtb ~19K)                           */
 #define INITRD_MAX    0x00800000u   /* 8 MiB cap (initramfs: 1.2M busybox-only, 6.4M with console) */
@@ -205,6 +214,14 @@ void main(void)
 	isz = tbl.initrd_size;
 #endif
 
+	/* The zImage decompressor checks the word just PAST the image for OF_DT_MAGIC to find an appended
+	 * DTB (CONFIG_ARM_APPENDED_DTB). We append none, so that word must not look like one — but it is
+	 * whatever DRAM held, and this loader runs a memory test over DRAM first. Show it. */
+	{
+		const volatile uint32_t *past = (const volatile uint32_t *)(KERNEL_ADDR + ksz);
+		printf("past-image @ 0x%x: %x %x  (OF_DT_MAGIC = edfe0dd0)\n",
+		       (unsigned)(KERNEL_ADDR + ksz), (unsigned)past[0], (unsigned)past[1]);
+	}
 	printf("\nAll loaded into DRAM:\n");
 	printf("  kernel   @ 0x%x  (%u bytes)\n", KERNEL_ADDR, (unsigned)ksz);
 	printf("  dtb      @ 0x%x  (%u bytes)\n", DTB_ADDR,    (unsigned)dsz);
