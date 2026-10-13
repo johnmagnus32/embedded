@@ -98,4 +98,19 @@ about 60 mV at a 1 A peak.
    via within 1.2 mm of every signal via where there's room (the MCU's east escape column, slow GPIO, is ~3.5 mm),
    edge stitching every 2.5 mm, a 4 mm field grid. `planecheck.py` checks the reference planes under every track
    (no slots; no B.Cu track crosses the +1V2 island).
-7. Last: silk cleanup; the I2C rise-time check; final review.
+7. `silk.py`: label cleanup (switch refdes above their outlines, edge labels inboard, J7 / U2 refdes + J7 outline
+   and D1's in-pad dot to F.Fab). `lib_footprint_mismatch` is set to ignore in gb2.kicad_pro: every mismatch is a
+   deliberate board-side edit (silk moved to fab in dense areas, test-pad labels, J7's solid zone override; no pad
+   geometry differs - checked 2026-10-12).
+
+## Status (2026-10-12): routed, poured, DRC clean (0 errors, 0 warnings, 0 unconnected)
+
+Checks: `audit.py` (only explained detours: SWD 1.5x around the BAT trunk, PWR_SW 4 vias under the MCU, power
+trunks ~1.4x), `ipc_check.py` (all within the 10 C curve), `planecheck.py` (no plane slots; nothing crosses the
++1V2 island), `i2c_check.py` (t_r ~60 ns vs 300 ns). J1 (8.5 mm) clears the front shell by ~8 mm (draw_mech depth
+budget: 2090 glass ~16.7 mm above the board).
+
+Fab notes: order the JLC 4-layer 1.6 mm stackup the checks assume (JLC04161H-7628; the board file sets no stackup);
+parts on both sides (back: decap rings, BT830, test pads bare); 0.15 / 0.15 tracks, 0.45 / 0.25 vias.
+Open for a next revision: the power switch SW1 (bottom-left) sits far from its FET Q1 (top centre), which is what
+forces PWR_SW's long route.
