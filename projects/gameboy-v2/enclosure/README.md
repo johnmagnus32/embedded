@@ -27,8 +27,9 @@ mirror) is untouched. VS Code extension: **OCP CAD Viewer** (`bernhard-42.ocp-ca
 .venv/bin/python enclosure.py
 ```
 
-To see it live: open the **OCP CAD Viewer** from the VS Code sidebar (it listens on port 3939), then run
-`enclosure.py`; every run re-sends the model. Print from `out/*.3mf` (or `.stl`) in your slicer.
+To see it live, open this folder as its own VS Code window - `code projects/gameboy-v2/enclosure` - and open
+`enclosure.py`: `.vscode/settings.json` selects `.venv` as the interpreter, so the OCP CAD Viewer starts by itself
+(port 3939). Every run of `enclosure.py` re-sends the model. Print from `out/*.3mf` (or `.stl`) in your slicer.
 
 ## Frame and conventions
 
