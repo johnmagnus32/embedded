@@ -65,6 +65,15 @@ test: $(BUILD)/cc
 	case "$$rel" in ".rodata=R_ARM_REL32 glob_var=R_ARM_GOT_PREL hidden_var=R_ARM_REL32 .data=R_ARM_REL32 .rodata=R_ARM_REL32 ") \
 	  echo "PASS -fPIC addressing: PC-relative for a literal/static/hidden symbol, the GOT only for an interposable one"; pass=$$((pass+1));; \
 	  *) echo "FAIL -fPIC addressing: $$rel"; fail=$$((fail+1));; esac; \
+	printf 'int f(void){return nope(1);}\n' > $$t/impl.c; \
+	iw=$$($(BUILD)/cc $$t/impl.c -o $$t/impl.s 2>&1; echo "rc=$$?"); \
+	ie=$$($(BUILD)/cc -Werror=implicit-function-declaration $$t/impl.c -o $$t/impl.s 2>&1; echo "rc=$$?"); \
+	iq=$$($(BUILD)/cc -Wno-implicit-function-declaration $$t/impl.c -o $$t/impl.s 2>&1; echo "rc=$$?"); \
+	if printf '%s' "$$iw" | grep -q "warning: implicit declaration of function 'nope'" && printf '%s' "$$iw" | grep -q 'rc=0' \
+	   && printf '%s' "$$ie" | grep -q "implicit declaration of function 'nope'" && ! printf '%s' "$$ie" | grep -q 'rc=0' \
+	   && [ "$$iq" = "rc=0" ]; then \
+	  echo "PASS implicit declaration: warns by default (as gcc 13), errors under -Werror=, silent under -Wno-"; pass=$$((pass+1)); \
+	else echo "FAIL implicit declaration modes: default[$$iw] werror[$$ie] wno[$$iq]"; fail=$$((fail+1)); fi; \
 	$(BUILD)/cc -mno-unaligned-access -o $$t/ua.s tests/unaligned_access.c; \
 	$(OURAS) -o $$t/ua.o $$t/ua.s && $(OURLD) -Ttext 0x40000000 -o $$t/ua.elf $$t/crt.o $$t/ua.o $(RTLIB) 2>/dev/null; \
 	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/ua.elf >/dev/null 2>&1; uag=$$?; \

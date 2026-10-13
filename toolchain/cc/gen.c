@@ -1568,6 +1568,14 @@ static void gen_func(Func *f) {
 	}
 	if (homed) fprintf(o, "\tpush {r0, r1, r2, r3}\n%s", unwind_tables ? "\t.save {r0, r1, r2, r3}\n" : "");
 	if (f->vfp_save) fprintf(o, "\tvpush {d0-d7}\n%s", unwind_tables ? "\t.vsave {d0-d7}\n" : "");   /* VFP argument registers, below the homed r0-r3 */
+	if (f->attr.isr) {   /* __attribute__((interrupt)): an exception handler, not an AAPCS function */
+		if (f->nparams || f->vfp_save) die("cc: %s: an interrupt handler takes no arguments", cur_gen_func);
+		/* IRQ/FIQ/ABORT enter with lr one instruction PAST the one to resume at. Save every caller-saved
+		 * register the handler may clobber together with that return address, so the `^` form below can
+		 * restore them and CPSR (from SPSR) in one instruction — the only way to return from an exception. */
+		if (f->attr.isr == 1) fprintf(o, "\tsub lr, lr, #4\n");
+		fprintf(o, "\tpush {r0, r1, r2, r3, ip, lr}\n");
+	}
 	fprintf(o, "\tpush {r11, lr}\n%s\tmov r11, sp\n%s", unwind_tables ? "\t.save {r11, lr}\n" : "", unwind_tables ? "\t.setfp r11, sp\n" : "");
 	if (f->nested) fprintf(o, "\tstr ip, [sp, #-4]!\n");   /* the static chain: first slot, [r11, #-4] (before anything uses ip) */
 	if (frame - 4 * f->nested) emit_addimm("sp", "sp", -(frame - 4 * f->nested));   /* ip is free here; frame may exceed the imm range */
@@ -1583,7 +1591,8 @@ static void gen_func(Func *f) {
 	fprintf(o, "\tmov sp, r11\n\tpop {r11, lr}\n");            /* epilogue */
 	if (f->vfp_save) fprintf(o, "\tadd sp, sp, #64\n");      /* discard the saved d0-d7 */
 	if (homed) fprintf(o, "\tadd sp, sp, #16\n");            /* and the homed r0..r3 */
-	fprintf(o, "\tbx lr\n");
+	if (f->attr.isr) fprintf(o, "\tldmfd sp!, {r0, r1, r2, r3, ip, pc}^\n");   /* ^: and CPSR from SPSR */
+	else fprintf(o, "\tbx lr\n");
 	if (unwind_tables) fprintf(o, "\t.fnend\n");
 	fprintf(o, "\t.size %s, .-%s\n", sym, sym);    /* the symbol's size (debuggers, backtraces, a provider's exports) */
 	/* __attribute__((constructor/destructor)): a word pointing at it in .init_array / .fini_array, which the

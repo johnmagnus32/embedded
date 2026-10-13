@@ -288,7 +288,7 @@ static void decl_symbol_attrs(const char *cname, const Attr *a, int is_static) {
 	if (a->alias[0]) { if (!is_static && !a->weak) topasm("\t.global %s%s", name, ""); topasm("\t.set %s, %s", name, asm_name(a->alias)); strmap_put(&alias_targets, strdup(a->alias), (void *)1); }
 }
 static void attr_merge(Attr *to, const Attr *a) {
-	to->always_inline |= a->always_inline; to->gnu_inline |= a->gnu_inline; to->naked |= a->naked;
+	to->always_inline |= a->always_inline; to->gnu_inline |= a->gnu_inline; to->naked |= a->naked; if (a->isr) to->isr = a->isr;
 	to->weak |= a->weak; to->used |= a->used; to->returns_twice |= a->returns_twice; to->common |= a->common; if (a->align > to->align) to->align = a->align; if (a->pcs) to->pcs = a->pcs;
 	if (a->vis) to->vis = a->vis;
 	if (a->ctor) to->ctor = a->ctor;
@@ -392,6 +392,18 @@ static void attribute(void) {
 		}
 		else if (!strcmp(nm, "common")) decl_attr.common = 1;
 		else if (!strcmp(nm, "naked")) decl_attr.naked = 1;   /* the body's asm is the whole function (gen_func) */
+		else if (!strcmp(nm, "interrupt")) {   /* an exception handler: see Attr.isr. GCC's rule for the return
+		                                        * address — IRQ/FIQ/ABORT leave lr one instruction too far. */
+			decl_attr.isr = 1;
+			if (consume("(")) {
+				if (tk->kind != TK_STR) die("parse: interrupt() takes a string (\"IRQ\"/\"FIQ\"/\"ABORT\"/\"SWI\"/\"UNDEF\") (line %d)", tk->line);
+				const char *k = tk->sval;
+				if (!strcmp(k, "IRQ") || !strcmp(k, "FIQ") || !strcmp(k, "ABORT")) decl_attr.isr = 1;
+				else if (!strcmp(k, "SWI") || !strcmp(k, "UNDEF")) decl_attr.isr = 2;
+				else die("parse: interrupt(\"%s\"): not one of IRQ/FIQ/ABORT/SWI/UNDEF (line %d)", k, tk->line);
+				tk = tk->next; expect(")");
+			}
+		}
 		else if (!attr_ignorable(nm)) die("parse: unsupported attribute '%s' (line %d)", nm, tk->line);
 		else if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); }
 		if (!consume(",")) break;
@@ -1757,8 +1769,10 @@ static Node *builtin_lower(char *name) {
 					 * rewritten the name to memset, so there is no declaration to find and none is needed
 					 * — the compiler predeclares its own builtins, as GCC does. A __builtin_ it does not
 					 * know still reaches the linker, exactly as before. */
-					if (warn_implicit_fn && !via_builtin && strncmp(name, "__builtin_", 10))
-						die("parse: implicit declaration of function '%s' (line %d)", name, tk->line);
+					if (warn_implicit_fn && !via_builtin && strncmp(name, "__builtin_", 10)) {
+						if (warn_implicit_fn == 2) die("parse: implicit declaration of function '%s' (line %d)", name, tk->line);
+						warn("implicit declaration of function '%s' (line %d)", name, tk->line);
+					}
 					idcpy(n->name, name);             /* -Wno-implicit-function-declaration: the old direct call */
 				}
 			}

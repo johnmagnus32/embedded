@@ -14,13 +14,19 @@
 #include <pthread.h>
 #include "cc.h"
 
+void warn(const char *fmt, ...) {   /* a diagnostic that does NOT stop the compile (gcc's default for some) */
+	va_list ap; va_start(ap, fmt);
+	fputs("cc: warning: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap);
+}
 void die(const char *fmt, ...) {
 	va_list ap; va_start(ap, fmt);
 	fputs("cc: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
-int warn_implicit_fn = 1;   /* calling an undeclared function is an ERROR (gcc 14+ and C99 agree; gcc 13
-                             * only warns). -Wno-implicit-function-declaration / -Wno-implicit / -w turn it off. */
+/* Calling an undeclared function: 0 = silent (-Wno-implicit-function-declaration / -Wno-implicit / -w),
+ * 1 = WARN (the default, as gcc 13 does — old DJB-style C like runit's still relies on it), 2 = ERROR
+ * (-Werror=implicit-function-declaration, which the kernel passes, or a blanket -Werror). */
+int warn_implicit_fn = 1;
 int pic = 0;   /* -fPIC: position-independent code — a preemptible symbol through the GOT, the rest PC-relative */
 int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32), never movw/movt halves */
 int default_vis = 0;   /* -fvisibility= */
@@ -64,6 +70,8 @@ static void *compile(void *unused) {
 		      || !strcmp(argv[i], "-fno-PIE") || !strcmp(argv[i], "-fno-pie")) pic = 0;   /* negative CANCELS -fPIC */
 		else if (!strcmp(argv[i], "-Wno-implicit-function-declaration") || !strcmp(argv[i], "-Wno-implicit")
 		      || !strcmp(argv[i], "-w")) warn_implicit_fn = 0;
+		else if (!strcmp(argv[i], "-Werror=implicit-function-declaration") || !strcmp(argv[i], "-Werror")
+		      || !strcmp(argv[i], "-Werror=implicit")) warn_implicit_fn = 2;
 		else if (!strcmp(argv[i], "-mword-relocations")) word_relocs = 1;
 		else if (!strncmp(argv[i], "-fvisibility=", 13)) {
 			const char *v = argv[i] + 13;

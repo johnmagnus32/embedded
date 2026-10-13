@@ -189,6 +189,10 @@ typedef struct Node {
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
  * DCE; align -> aligned(N) (0 = natural); section -> placed in that section; alias -> `.set name, alias`. */
 typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gnu_inline, common, naked, returns_twice;
+	int isr;          /* interrupt("IRQ"/"FIQ"/"ABORT"/"SWI"/"UNDEF"): an exception handler. 1 = return via
+	                   * `lr - 4` (IRQ/FIQ/ABORT, where lr points one instruction too far), 2 = via lr itself
+	                   * (SWI/UNDEF). Either way the handler must save every register it touches and return
+	                   * with `ldmfd sp!, {..., pc}^`, which restores CPSR from SPSR. */
 	int ctor, dtor;   /* constructor/destructor: 0 none, -1 no priority, else the priority (its .init_array.NNNNN) */
 	char section[IDMAX], alias[IDMAX], cleanup[IDMAX]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
                                                                                          * packed: on a member (its alignment 1) or an enum (its smallest type);
@@ -263,7 +267,8 @@ typedef struct Gvar {
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
-extern int warn_implicit_fn;     /* 0 after -Wno-implicit-function-declaration: an undeclared call is allowed */
+extern int warn_implicit_fn;     /* an undeclared call: 0 silent, 1 warn (default, as gcc 13), 2 error (-Werror=) */
+void warn(const char *fmt, ...);
 extern int pic;                  /* -fPIC: global/string access goes through the GOT (position-independent) */
 extern int word_relocs;          /* -mword-relocations: addresses as literal words (U-Boot relocates only those) */
 

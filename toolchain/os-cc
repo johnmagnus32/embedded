@@ -170,7 +170,8 @@ while [ $# -gt 0 ]; do
     # cc1. Everything else is accepted and dropped: a build that asks for a warning we never emit should
     # compile, which is also how gcc treats a -Wno- it does not know.
     -Wno-implicit-function-declaration|-Wno-implicit|-w) cc1args+=("$a") ;;
-    -W|-W[a-z]*|-Werror|-Werror=*|-pedantic|-pedantic-errors) ;;
+    -Werror|-Werror=implicit-function-declaration|-Werror=implicit) cc1args+=("$a") ;;   # promotes the ones we DO emit
+    -W|-W[a-z]*|-Werror=*|-pedantic|-pedantic-errors) ;;
     # -g: as gcc's driver classifies it. A level or DWARF version we understand is accepted and warned about once
     # (debug_asked); a malformed or out-of-range one is an error, in gcc's words. Retired formats (-gstabs, -gcoff,
     # -gxcoff), which gcc still warns through, are refused here instead: nothing we build uses them, and they would
