@@ -367,11 +367,13 @@ static void select_section(void) {
 static const char *cur_stmt;   /* raw text of the current statement (labels peeled) — for expression operands */
 
 /* ---- data-directive expressions: `.word/.long e1, e2, ...` ---------------------------------------
- * A relocatable value is  c + addr(sym) - dot*P  (sym<0: none; P = the address of the word being emitted).
+ * A relocatable value is  c + addr(sym) + dot*P  (sym<0: none; P = the address of the word being emitted).
  * Enough for everything kernel asm puts in data: constants with ( ) and C operators (BUG's
  * `((0xe7f001f2) & 0xFFFFFFFF)`), `sym+k`, numeric local labels `1b` (in ANY section — they become the
  * label's section symbol + its offset), and PC-relative `9998b - .` (alternatives tables). */
-typedef struct { long c; int sym, dot, msym; u32 rtype; } RVal;   /* c + sym - msym - dot*P; rtype: explicit reloc from `sym(OP)` */
+/* c + sym - msym + dot*P; rtype: explicit reloc from `sym(OP)`. A bare `.` is dot=+1 and `-` subtracts it
+ * (e_add: `a.dot -= b.dot`), so `9998b - .` is dot=-1 and every consumer ADDS dot*P. */
+typedef struct { long c; int sym, dot, msym; u32 rtype; } RVal;
 static const char *ep;
 static void ews(void) { while (*ep == ' ' || *ep == '\t') ep++; }
 static RVal e_or(void);
@@ -897,9 +899,10 @@ static void do_directive(void) {
 		int i = sym_intern(toks[1]);
 		if (ntok == 3 && !strcmp(toks[2], ".")) {   /* `.set name, .` (with an expression — `. - start`, `. + 4` — below) */
 			syms[i].sec = cursec; syms[i].value = secs[cursec].len; syms[i].defined = 1;
-		} else if (ntok >= 3 && !(isalpha((unsigned char)toks[2][0]) || toks[2][0] == '_' || toks[2][0] == '.')) {   /* `.equ N, 16` / `.set N, 4*4`: absolute */
-			const char *q = strchr(cur_stmt, ','); if (!q) die(".set: expected 'name, value'");
-			syms[i].sec = SEC_ABS; syms[i].value = (u32)eval_const_expr(q + 1); syms[i].defined = 1;
+		/* An EXPRESSION is tested before the shape of toks[2], because soft_eval is the only path that can
+		 * DEFER a forward reference. Deciding on the first character instead sent `(end - start) >> 2` —
+		 * which opens with '(' — to the constant-only evaluator, where a label defined later is fatal,
+		 * while the identical expression without parentheses deferred correctly. GAS accepts both. */
 		} else if (ntok >= 4 || (ntok == 3 && strpbrk(toks[2], "+-*/()<>&|^~!"))) {   /* `.set x, . - start` / `sym + 4`: an expression */
 			const char *q = strchr(cur_stmt, ','); if (!q) die(".set: expected 'name, value'");
 			RVal sr; XVal v = { 0, -1, 0, -1, 0 }; int now = soft_eval(q + 1, &sr);
@@ -916,6 +919,9 @@ static void do_directive(void) {
 				dset = grow(dset, ndset, &dsetcap, sizeof *dset);
 				dset[ndset].sym = i; dset[ndset].text = strdup(q + 1); dset[ndset].sec = cursec; dset[ndset].at = (u32)secs[cursec].len; ndset++;
 			}
+		} else if (ntok >= 3 && !(isalpha((unsigned char)toks[2][0]) || toks[2][0] == '_' || toks[2][0] == '.')) {   /* `.equ N, 16`: a plain absolute value */
+			const char *q = strchr(cur_stmt, ','); if (!q) die(".set: expected 'name, value'");
+			syms[i].sec = SEC_ABS; syms[i].value = (u32)eval_const_expr(q + 1); syms[i].defined = 1;
 		} else if (ntok == 3 && sym_find(toks[2]) >= 0 && syms[sym_find(toks[2])].defined && syms[sym_find(toks[2])].sec == SEC_ABS) {
 			syms[i].sec = SEC_ABS; syms[i].value = syms[sym_find(toks[2])].value; syms[i].defined = 1;   /* an absolute target: its value now */
 		} else if (ntok >= 3) {   /* alias: copy the target's location/type — at the END (GAS: the target may come later) */

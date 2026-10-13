@@ -14,6 +14,10 @@ a:	.word 1 + 2 << 3, 6 - 2 & 3, 7 < 6, 2 == 2, 1 && 0, 0 || 3, 8 >> 1 + 1, ~0 + 
 	.word -(c - b), -(. - a), -(c - .)
 	.set later, c - a
 	.word later
+	.set pfwd, (c - a) >> 2		@ parenthesized AND forward: the dispatcher must still DEFER it. Choosing the
+	.word pfwd			@ branch on toks[2][0] sent a leading '(' to the constant-only evaluator and died,
+	.set pabs, (4 * 4) >> 2		@ while the same expression unparenthesized deferred fine.
+	.word pabs
 	mrc p15, 0, APSR_nzcv, c7, c14, 3
 	.space 300
 b:	nop
