@@ -12,8 +12,10 @@ if the netlist disagrees with gb3-bom.csv / gb3-nets.csv the schematic is stale 
   * a part on the board but not in the schematic is removed (board-only footprints such as LRA1/SPK1
     excepted); the others get the schematic's value and symbol link (a changed footprint stops the run);
   * every pad gets its schematic net (missing nets are created; KiCad drops emptied ones on save);
-  * MOVE: a part whose role changed is moved next to its new pin, unless it is in that neighbourhood
-    already (within MOVE_DONE).
+  * every footprint's "LCSC Part" field is set from gb3-bom.csv (the library values are wrong);
+  * MOVE: a part whose role changed is moved next to its new pin, only on the run that changes its nets
+    (so a later run never undoes hand placement) and only if it is not in that neighbourhood already;
+  * library-relative 3D model paths ("symbols/...") are made project-relative like the rest of the board.
 Re-runnable: a second run changes nothing. Placement of everything else is never touched.
 
 Run (KiCad closed):  <kicad python> sync_netlist.py [board.kicad_pcb]      (default gb3.kicad_pcb)
@@ -26,14 +28,19 @@ REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 FPLIBS = {n: os.path.join(REPO, "cad", "symbols", n + ".pretty") for n in ("easyeda2kicad", "manual")}
 KICAD_CLI = os.environ.get("KICAD_CLI", "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli")
 
+# Per-change tables (this change: step 1b, 2026-10-13; step 1 had R43-R46/TP1-TP3 and C33/C35/C42).
 # new part -> the pad it belongs beside (ref, pad)
-ANCHOR = {"R43": ("U13", "5"), "R44": ("U19", "17"), "R45": ("U1", "35"), "R46": ("U1", "33"),
-          "TP1": ("U1", "35"), "TP2": ("U1", "33"), "TP3": ("U1", "33")}
+ANCHOR = {"R47": ("U10", "14"), "R48": ("U4", "9"), "R49": ("Audio1", "4"), "R50": ("U1", "75"),
+          "R51": ("U6", "2"), "R52": ("USBC1", "A5"), "R53": ("USBC1", "B5"), "C92": ("U1", "89"),
+          "C93": ("D4", "5"), "TP4": ("U10", "13"), "TP5": ("U10", "2"), "TP6": ("R27", "2"),
+          "TP7": ("C62", "1"), "TP8": ("C34", "1"), "TP9": ("U1", "28"), "TP10": ("U1", "48"),
+          "TP11": ("C45", "1"), "TP12": ("U10", "17")}
 # existing part whose job changed -> its new pin
-MOVE = {"C33": ("U2", "4"), "C35": ("U1", "30"), "C42": ("U1", "28")}
+MOVE = {"C13": ("U1", "107"), "C39": ("U1", "116")}
 SEARCH = (1.5, 9.0)      # mm: ring radii searched for a free spot
 MOVE_DONE = 10.0         # mm, beyond SEARCH: a part already this close to its new pin stays put
 GAP = 0.25               # mm between bounding boxes
+HOLE_GAP = 0.5           # mm from a part's box to any drilled hole
 
 
 def rows(p):
@@ -81,10 +88,11 @@ def main():
     path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE, "gb3.kicad_pcb")
     d = os.path.dirname(path)
     present = json.loads(os.environ["SYNC_PRESENT"])   # refs on the board (pass 1 output); None in pass 1
-    comps, snets = {}, {}
+    comps, snets, lcsc = {}, {}, {}
     if present is not None:
         comps, snets = netlist(os.path.splitext(path)[0] + ".kicad_sch")
-        check(comps, snets, {r[0] for r in rows(os.path.join(d, "gb3-bom.csv"))}, rows(os.path.join(d, "gb3-nets.csv")))
+        lcsc.update({r[0]: r[2].strip() for r in rows(os.path.join(d, "gb3-bom.csv"))})
+        check(comps, snets, set(lcsc), rows(os.path.join(d, "gb3-nets.csv")))
 
     import pcbnew                       # footprints must be loaded BEFORE LoadBoard (KiCad 10 binding bug,
     MM, TO = pcbnew.FromMM, pcbnew.ToMM  # see place_transducers.py)
@@ -106,11 +114,16 @@ def main():
     fps = {fp.GetReference(): fp for fp in B.GetFootprints()}
     pads = {(fp.GetReference(), p.GetNumber()): p for fp in B.GetFootprints() for p in fp.Pads()}
 
+    holes = [(TO(p.GetPosition().x), TO(p.GetPosition().y), TO(max(p.GetDrillSize().x, p.GetDrillSize().y)) / 2)
+             for o in B.GetFootprints() for p in o.Pads() if p.GetDrillSize().x > 0]
+
     def free_spot(fp, ax, ay):
-        """first spot on rings around (ax, ay) where fp's bbox clears every same-side footprint."""
+        """first spot on rings around (ax, ay) where fp's bbox clears every same-side footprint (parts this
+        run deletes don't count) and every drilled hole on either side."""
         side = fp.GetLayer()
         others = [(o.GetBoundingBox(False, False), o) for o in B.GetFootprints()
-                  if o is not fp and o.GetLayer() == side]
+                  if o is not fp and o.GetLayer() == side
+                  and (o.GetReference() in comps or o.GetAttributes() & pcbnew.FP_BOARD_ONLY)]
         ps = pcbnew.SHAPE_POLY_SET(); B.GetBoardPolygonOutlines(ps, True)
         for r in [SEARCH[0] + 0.25 * k for k in range(int((SEARCH[1] - SEARCH[0]) / 0.25) + 1)]:
             for k in range(24):
@@ -122,6 +135,9 @@ def main():
                            ((bb.GetLeft(), bb.GetTop()), (bb.GetRight(), bb.GetTop()), (bb.GetLeft(), bb.GetBottom()), (bb.GetRight(), bb.GetBottom()))):
                     continue
                 if any(bb.Intersects(ob) for ob, _ in others): continue
+                l, t, r_, b = TO(bb.GetLeft()), TO(bb.GetTop()), TO(bb.GetRight()), TO(bb.GetBottom())
+                if any(l - hr - HOLE_GAP <= hx <= r_ + hr + HOLE_GAP and t - hr - HOLE_GAP <= hy <= b + hr + HOLE_GAP
+                       for hx, hy, hr in holes): continue
                 return x, y
         return None
 
@@ -154,10 +170,36 @@ def main():
         if fp.GetPath().AsString() != kpath:
             log.append("  link    %-5s -> %s (its symbol moved sheet)" % (ref, kpath)); fp.SetPath(pcbnew.KIID_PATH(kpath)); relinked += 1
 
-    # move parts whose role changed
+    # LCSC numbers: the easyeda2kicad footprints carry the number of whichever part was imported with them
+    # (every R0603 said C23219, a 620k) and fab tools read this field, so it is stamped from gb3-bom.csv;
+    # a part with no LCSC number (hand-fitted / bare pad) gets it blanked
+    stamped = 0
+    for ref, fp in sorted(fps.items()):
+        if ref not in lcsc: continue
+        have = fp.GetFieldText("LCSC Part") if fp.HasField("LCSC Part") else None
+        if have == lcsc[ref] or (have is None and not lcsc[ref]): continue
+        fp.SetField("LCSC Part", lcsc[ref]); stamped += 1
+        if have is None:                               # a new field is visible on silk by default
+            f = fp.GetField("LCSC Part"); f.SetVisible(False)
+            f.SetLayer(pcbnew.B_Fab if fp.GetLayer() == pcbnew.B_Cu else pcbnew.F_Fab)
+        log.append("  lcsc    %-5s %s -> %s" % (ref, have if have is not None else "-", lcsc[ref] or "(blank)"))
+
+    # 3D models: easyeda2kicad writes them relative to cad/, the board uses project-relative paths
+    models = 0
+    for ref, fp in sorted(fps.items()):
+        ms = fp.Models()
+        for i in range(len(ms)):                       # by index: iterating the vector yields copies
+            m = ms[i]
+            if m.m_Filename.startswith("symbols/"):
+                m.m_Filename = "${KIPRJMOD}/../../../../cad/" + m.m_Filename; models += 1
+
+    # move parts whose role changed - only on the run that changes their nets
+    moved = 0
     for ref, (aref, apad) in MOVE.items():
         fp, a = fps.get(ref), pads.get((aref, apad))
-        if fp is None or a is None: continue
+        if fp is None or a is None:
+            log.append("  WARNING MOVE %s -> %s.%s: no such part or pad" % (ref, aref, apad)); continue
+        if all(snets.get((ref, p.GetNumber())) in (None, p.GetNetname()) for p in fp.Pads()): continue
         ax, ay = TO(a.GetPosition().x), TO(a.GetPosition().y)
         d = math.hypot(TO(fp.GetPosition().x) - ax, TO(fp.GetPosition().y) - ay)
         if d <= MOVE_DONE: continue
@@ -166,6 +208,7 @@ def main():
         if spot is None:
             fp.SetPosition(pcbnew.VECTOR2I(int(MM(old[0])), int(MM(old[1]))))
             log.append("  MOVE    %-5s no free spot near %s.%s - left at (%.2f, %.2f)" % (ref, aref, apad, old[0], old[1])); continue
+        moved += 1
         log.append("  moved   %-5s (%.2f, %.2f) -> (%.2f, %.2f) beside %s.%s (was %.1f mm away)" % (ref, old[0], old[1], spot[0], spot[1], aref, apad, d))
 
     # remove (collected now, done last: B.Remove leaves the bindings untyped)
@@ -200,8 +243,8 @@ def main():
     pcbnew.SaveBoard(path, B)
     if keep is not None and open(pro, "rb").read() != keep:
         open(pro, "wb").write(keep)                    # SaveBoard rewrites the project file; it isn't ours to change
-    print("sync_netlist: %d added, %d removed, %d values/links updated, %d pad nets changed"
-          % (len(loaded), len(gone), relinked, changed))
+    print("sync_netlist: %d added, %d removed, %d moved, %d values/links updated, %d LCSC fields stamped, "
+          "%d 3D-model paths fixed, %d pad nets changed" % (len(loaded), len(gone), moved, relinked, stamped, models, changed))
     print("\n".join(log)); sys.stdout.flush(); os._exit(0)
 
 

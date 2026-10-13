@@ -408,15 +408,7 @@
       },
       {
         "netclass": "Power",
-        "pattern": "CH224K_VDD"
-      },
-      {
-        "netclass": "Power",
         "pattern": "PWR_BTN_3V3"
-      },
-      {
-        "netclass": "Power",
-        "pattern": "VBUS_SENSE"
       },
       {
         "netclass": "Power",

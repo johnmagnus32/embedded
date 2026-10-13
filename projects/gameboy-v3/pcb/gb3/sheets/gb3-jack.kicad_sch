@@ -232,6 +232,160 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "easyeda2kicad:RC0603JR-0710KL"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "RC0603JR-0710KL"
+				(at 0 -5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "easyeda2kicad:R0603"
+				(at 0 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
+				(at 0 -10.16 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "10KΩ 1% Resistor, 0603"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Manufacturer" "YAGEO(国巨)"
+				(at 0 -12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "RC0603JR-0710KL"
+				(at 0 -15.24 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC Part" "C99198"
+				(at 0 -17.78 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Resistors"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "RC0603JR-0710KL_0_1"
+				(rectangle
+					(start -2.54 1.02)
+					(end 2.54 -1.02)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5.08 0 180)
+					(length 2.54)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "power:GND"
 			(power global)
 			(pin_numbers
@@ -372,6 +526,16 @@
 	)
 	(wire
 		(pts
+			(xy 78.74 44.45) (xy 76.2 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "32cf06b6-25ed-5142-84ae-68dcca7fa878")
+	)
+	(wire
+		(pts
 			(xy 48.26 45.72) (xy 50.8 45.72)
 		)
 		(stroke
@@ -400,6 +564,36 @@
 		)
 		(uuid "cadea497-d06e-5be8-be26-e4a2ad75525d")
 	)
+	(wire
+		(pts
+			(xy 88.9 44.45) (xy 91.44 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f7693292-231a-5a90-90e5-5b4b7527cbec")
+	)
+	(label "JACK_SW"
+		(at 50.8 48.26 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "ae3ed386-0907-54ba-8891-e96f620a37bf")
+	)
+	(label "JACK_SW"
+		(at 76.2 44.45 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "e654ffc0-3303-5027-98ea-32e51930dc11")
+	)
 	(global_label "HP_L"
 		(shape bidirectional)
 		(at 50.8 50.8 0)
@@ -412,6 +606,28 @@
 		(uuid "2415911e-4527-5902-983a-29a80100edc3")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 50.8 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "JACK_DET"
+		(shape bidirectional)
+		(at 91.44 44.45 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7dcaeb66-f560-52e3-8bb7-ba6604f64b5a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 91.44 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -444,24 +660,92 @@
 			)
 		)
 	)
-	(global_label "JACK_DET"
-		(shape bidirectional)
-		(at 50.8 48.26 0)
-		(effects
-			(font
-				(size 1.27 1.27)
+	(symbol
+		(lib_id "easyeda2kicad:RC0603JR-0710KL")
+		(at 83.82 44.45 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "29072c87-f18f-533b-9cb9-4eab624b6e47")
+		(property "Reference" "R49"
+			(at 83.82 40.89 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
 			)
-			(justify left)
 		)
-		(uuid "ae3ed386-0907-54ba-8891-e96f620a37bf")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 50.8 48.26 0)
+		(property "Value" "10k"
+			(at 83.82 48.01 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:R0603"
+			(at 83.82 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
 				(font
 					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
+			(at 83.82 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "10KΩ 1% Resistor, 0603"
+			(at 83.82 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C99198"
+			(at 83.82 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "46a6c7a8-7cf0-493e-8d0c-4ffe4cc8f83f")
+		)
+		(pin "2"
+			(uuid "3ec3d4e5-1ce6-40ce-8755-d02223735f56")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/75a99963-e6e9-5e6d-bdc2-e7d43cb8adca"
+					(reference "R49")
+					(unit 1)
 				)
 			)
 		)
@@ -477,7 +761,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "89eded1b-4410-585f-891f-bb67b57bab61")
-		(property "Reference" "#PWR0415"
+		(property "Reference" "#PWR0419"
 			(at 50.8 43.18 0)
 			(hide yes)
 			(show_name no)
@@ -530,12 +814,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "439f0910-1f6c-4fd0-b23a-4c544d8a5eb0")
+			(uuid "8e9eddc1-6220-4447-9d60-33320a5dd78c")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/75a99963-e6e9-5e6d-bdc2-e7d43cb8adca"
-					(reference "#PWR0415")
+					(reference "#PWR0419")
 					(unit 1)
 				)
 			)
@@ -617,16 +901,16 @@
 			)
 		)
 		(pin "4"
-			(uuid "6237849a-0bd7-430c-a89e-26bd3c9d91c4")
+			(uuid "cf0950b4-9445-4f09-b927-a357f2e48030")
 		)
 		(pin "3"
-			(uuid "174c3213-e2c7-4740-97ef-717a616bfecc")
+			(uuid "5a0f8a5d-eeb4-4eb3-b100-99d08087b300")
 		)
 		(pin "2"
-			(uuid "90a388bd-bd9f-4eec-9c40-02797e21a63d")
+			(uuid "e4012fef-09d7-4a3c-872d-371c913b29b4")
 		)
 		(pin "1"
-			(uuid "cae042e5-3aaf-4c6b-9644-2dc9e50bca69")
+			(uuid "7ec2130c-2a0c-416e-9377-678a34a7d9c6")
 		)
 		(instances
 			(project "gb3"

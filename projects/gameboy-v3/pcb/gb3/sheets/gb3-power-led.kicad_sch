@@ -159,7 +159,7 @@
 			)
 			(embedded_fonts no)
 		)
-		(symbol "easyeda2kicad:19-213SYGC_S530-E2_5T"
+		(symbol "easyeda2kicad:19-213SYGC_S454_5T"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -175,7 +175,7 @@
 					)
 				)
 			)
-			(property "Value" "19-213SYGC/S530-E2/5T"
+			(property "Value" "19-213SYGC/S454/5T"
 				(at 0 -6.35 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -196,7 +196,7 @@
 					)
 				)
 			)
-			(property "Datasheet" "https://www.lcsc.com/datasheet/C2986027.pdf"
+			(property "Datasheet" "https://www.lcsc.com/datasheet/C2986057.pdf"
 				(at 0 -11.43 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -229,7 +229,7 @@
 					)
 				)
 			)
-			(property "MPN" "19-213SYGC/S530-E2/5T"
+			(property "MPN" "19-213SYGC/S454/5T"
 				(at 0 -16.51 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -240,7 +240,7 @@
 					)
 				)
 			)
-			(property "LCSC Part" "C2986027"
+			(property "LCSC Part" "C2986057"
 				(at 0 -19.05 0)
 				(show_name no)
 				(do_not_autoplace no)
@@ -251,7 +251,7 @@
 					)
 				)
 			)
-			(symbol "19-213SYGC_S530-E2_5T_0_1"
+			(symbol "19-213SYGC_S454_5T_0_1"
 				(polyline
 					(pts
 						(xy -2.29 2.54) (xy -1.27 2.03) (xy -1.78 1.52) (xy -2.29 2.54)
@@ -765,11 +765,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "492bc5ef-4fc2-4aa2-b0c4-ab169238149d")
-		)
 		(pin "1"
-			(uuid "bad35d9d-b19c-4cca-9c2f-7ecbf19a915d")
+			(uuid "13738e70-b806-4464-83f4-9c507f11940a")
+		)
+		(pin "2"
+			(uuid "c82da29a-f390-4230-8464-b15ec03567dc")
 		)
 		(instances
 			(project "gb3"
@@ -791,7 +791,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "43639b14-cfde-521d-9855-7509aabd2430")
-		(property "Reference" "#PWR0168"
+		(property "Reference" "#PWR0165"
 			(at 81.28 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -844,19 +844,19 @@
 			)
 		)
 		(pin "1"
-			(uuid "d47a21d1-d25b-4619-bf15-804b3d55e745")
+			(uuid "830f8a2e-3db7-436d-967c-41d3b4637dec")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9cdf9ead-680c-579d-a70f-d39a59055deb"
-					(reference "#PWR0168")
+					(reference "#PWR0165")
 					(unit 1)
 				)
 			)
 		)
 	)
 	(symbol
-		(lib_id "easyeda2kicad:19-213SYGC_S530-E2_5T")
+		(lib_id "easyeda2kicad:19-213SYGC_S454_5T")
 		(at 45.72 46.99 0)
 		(unit 1)
 		(body_style 1)
@@ -876,7 +876,7 @@
 				)
 			)
 		)
-		(property "Value" "19-213SYGC/S530-E2/5T"
+		(property "Value" "19-213SYGC/S454/5T"
 			(at 45.21 52.32 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -897,7 +897,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://www.lcsc.com/datasheet/C2986027.pdf"
+		(property "Datasheet" "https://www.lcsc.com/datasheet/C2986057.pdf"
 			(at 45.72 46.99 0)
 			(hide yes)
 			(show_name no)
@@ -918,7 +918,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C2986027"
+		(property "LCSC" "C2986057"
 			(at 45.72 46.99 0)
 			(hide yes)
 			(show_name no)
@@ -929,11 +929,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "11a91b39-b45c-4678-a626-ac53a654c6bb")
-		)
 		(pin "1"
-			(uuid "351b1795-e223-4a9a-b620-ffb75f6c8d04")
+			(uuid "e1cd047d-9c4d-4c45-b54c-ff87099aa2cc")
+		)
+		(pin "2"
+			(uuid "547b68cb-9503-4c80-be6c-0568c865d4f5")
 		)
 		(instances
 			(project "gb3"
@@ -955,7 +955,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "777a1cdc-4372-50d8-92ac-82708c77b9cc")
-		(property "Reference" "#PWR0169"
+		(property "Reference" "#PWR0166"
 			(at 38.1 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -1008,12 +1008,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "04868128-835e-417c-b0fe-bc9675c7ec18")
+			(uuid "dd87979b-b44f-4aa9-a17f-bc58f47e0f0c")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9cdf9ead-680c-579d-a70f-d39a59055deb"
-					(reference "#PWR0169")
+					(reference "#PWR0166")
 					(unit 1)
 				)
 			)

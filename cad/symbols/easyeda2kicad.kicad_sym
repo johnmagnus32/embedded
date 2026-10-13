@@ -10013,7 +10013,7 @@
     )
     (property
       "ki_description"
-      "1KΩ 1% Resistor, 0603 (CH224K VDD series R)"
+      "1KΩ 1% Resistor, 0603"
       (id 9)
       (at 0 0 0)
       (effects (font (size 1.27 1.27) ) hide)
@@ -14358,6 +14358,116 @@
         (length 2.54)
         (name "S" (effects (font (size 1.27 1.27))))
         (number "2" (effects (font (size 1.27 1.27))))
+      )
+    )
+  )
+
+  (symbol "19-213SYGC_S454_5T"
+    (in_bom yes)
+    (on_board yes)
+    (property
+      "Reference"
+      "U"
+      (id 0)
+      (at 0 3.81 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "Value"
+      "19-213SYGC/S454/5T"
+      (id 1)
+      (at 0 -6.35 0)
+      (effects (font (size 1.27 1.27) ) )
+    )
+    (property
+      "Footprint"
+      "easyeda2kicad:LED0603-RD"
+      (id 2)
+      (at 0 -8.89 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Datasheet"
+      "https://www.lcsc.com/datasheet/C2986057.pdf"
+      (id 3)
+      (at 0 -11.43 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "Manufacturer"
+      "EVERLIGHT(亿光)"
+      (id 4)
+      (at 0 -13.97 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "MPN"
+      "19-213SYGC/S454/5T"
+      (id 5)
+      (at 0 -16.51 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (property
+      "LCSC Part"
+      "C2986057"
+      (id 6)
+      (at 0 -19.05 0)
+      (effects (font (size 1.27 1.27) ) hide)
+    )
+    (symbol "19-213SYGC_S454_5T_0_1"
+      (polyline
+        (pts
+          (xy -0.51 0.76) (xy -2.29 2.54)
+        )
+        (stroke (width 0) (type default))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 0.51 1.78) (xy -1.27 3.56)
+        )
+        (stroke (width 0) (type default))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy -1.27 0.25) (xy -1.27 -2.79)
+        )
+        (stroke (width 0) (type default))
+        (fill (type none))
+      )
+      (polyline
+        (pts
+          (xy 1.27 -2.79) (xy -1.27 -1.27) (xy 1.27 0.25) (xy 1.27 -2.79)
+        )
+        (stroke (width 0) (type default))
+        (fill (type background))
+      )
+      (polyline
+        (pts
+          (xy -2.29 2.54) (xy -1.27 2.03) (xy -1.78 1.52) (xy -2.29 2.54)
+        )
+        (stroke (width 0) (type default))
+        (fill (type background))
+      )
+      (polyline
+        (pts
+          (xy -1.27 3.56) (xy -0.25 3.05) (xy -0.76 2.54) (xy -1.27 3.56)
+        )
+        (stroke (width 0) (type default))
+        (fill (type background))
+      )
+      (pin passive line
+        (at 5.08 -1.27 180)
+        (length 3.81)
+        (name "+" (effects (font (size 1.27 1.27))))
+        (number "2" (effects (font (size 1.27 1.27))))
+      )
+      (pin passive line
+        (at -5.08 -1.27 0)
+        (length 3.81)
+        (name "-" (effects (font (size 1.27 1.27))))
+        (number "1" (effects (font (size 1.27 1.27))))
       )
     )
   )

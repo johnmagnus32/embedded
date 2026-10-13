@@ -17,14 +17,14 @@ Complete SoC pin → net → destination map for the gameboy-v3 mainboard. Compa
 |-----|----------|--------------|-------------|
 | **RGB666 LCD** (TCON-LCD0) | PD0–17 data, PD18=DCLK, PD19=DE, PD20=HSYNC, PD21=VSYNC, **PD22=DISP** | see RGB666 table below | Zettler panel #25 via display FPC #26 (C9160) |
 | **SPI0-NOR** | PC2=CLK, PC3=CS, PC4=MOSI/IO0, PC5=MISO/IO1, PC6=WP/IO2, PC7=HOLD/IO3 | boot flash | W25Q128 #11. ⚠️ PC4/PC5 are also BOOT-SEL0/1 straps at reset |
-| **microSD SDC0** (mmc0) | PF0=DAT1, PF1=DAT0, PF2=CLK, PF3=CMD, PF4=DAT3, PF5=DAT2 | SD 4-bit | socket #12 + ESD #13 + pull-ups #14 |
+| **microSD SDC0** (mmc0) | PF0=DAT1, PF1=DAT0, PF2=CLK, PF3=CMD, PF4=DAT3, PF5=DAT2 | SD 4-bit | socket #12 + ESD #13 + pull-ups #14; **PF6 = card-detect** (GPIO, active-low, R48 #124) |
 | **UART0 console** | PE2=TX, PE3=RX | debug console | R45/R46 510 Ω series (#121) → TP1 TX / TP2 RX / TP3 GND bare pads on the back (#122) (console=ttyUSB1 on rig) |
 | **BT UART3 (HCI)** | PG0=TX, PG1=RX, PG2=RTS, PG3=CTS | 4-wire HCI | BT830 #99 (chosen over UART1 — its flow-ctrl PG6-9 clashes i2c1) |
 | **I2S1 audio** | PG12=LRCK, PG13=BCLK, PG15=DOUT; PG11=MCLK *(unused→static)*, PG14=DIN *(unused)* | I2S out (multi-drop) | MAX98357A amp #47 + PCM5102A DAC #103 (both receivers), series-R #104 |
 | **i2c1** (peripheral bus) | **PG8=SCL, PG9=SDA** | shared I2C, ≥400 kHz | PCA9555 0x20 #85 · MAX17048 0x36 #77 · FT7311 0x38 #25/#27 · INA226 0x40 #81 · DRV2605L 0x5A #41 · pull-ups #97 |
 | **i2c2** (IMU only) | **PE4=SCL, PE5=SDA** | dedicated I2C | LSM6DSOX 0x6A #35 |
 | **GPADC0** | dedicated ADC ball (pin 101) | unused (NC) | divider #75/#76 deleted 2026-10-13; MAX17048 #77 reports battery V + SOC |
-| **USB0 (USB-C)** | USB0-DP=pin115, USB0-DM=pin114 | USB2 + charge, nets `USB_D+`/`USB_D-` | receptacle #2 + ESD #98 + CC→CH224K #61 |
+| **USB0 (USB-C)** | USB0-DP=pin115, USB0-DM=pin114 | USB2 + charge, nets `USB_D+`/`USB_D-` | receptacle #2 + ESD #98 + CC → 2× 5.1 kΩ Rd #128 (5 V sink; CH224K deleted 2026-10-13) |
 
 ---
 
@@ -65,19 +65,20 @@ The **T113 side is fixed** by `lcd_rgb666_pins` (mainline): it drives the **top 
 
 ## Single GPIOs — *(proposed free-pin picks; confirm at capture)*
 
-Free banks after the buses: PE0/1/6-13, PB2-7, PF6, PG4/5/6/7/10/14 (~23 pins). Proposed:
+Free banks after the buses: PE0/1/6-13, PB2-7, PG4/5/6/7/10/14 (~22 pins; PF6 is the SD card-detect, with SDC0). Proposed:
 
 | Signal | Proposed pin | Destination | Note |
 |--------|-------------|-------------|------|
 | Panel **DISP** | **PD22** *(fixed)* | display FPC #26 pin 31 + 10 KΩ pull-up | display-on; floats dark otherwise |
-| Backlight **CTRL** | PE6 | TPS61165 #28 | PWM-capable GPIO (bit-banged EasyScale/pwm-gpio) |
+| Backlight **CTRL** | PE13 | TPS61165 #28 (+ R51 100 K pull-down #127) | **PWM5** (hardware PWM, 6.5–100 kHz; mainline driver still out of tree) or EasyScale/on-off |
 | **PCA9555-INT** | PE7 | expander #85 INT + pull-up #89 | EINT, interrupt-driven |
 | **touch-INT** | PE8 | touch FFC #27 pin 5 → FT7311 | EINT |
 | **touch-RST** | PE9 | touch FFC #27 pin 6 → FT7311 | output |
 | **power-btn EINT** | PE10 | button #92 (also drives STM6601 PB) | **must be a native wakeup-capable EINT** (verify) |
 | **STM6601 PSHOLD** | PE11 | #94 pin 4 | `gpio-poweroff` handshake |
-| **jack-detect** | PE12 | jack #115 detect switch | EINT; `SW_HEADPHONE_INSERT` |
-| **speaker-SD** | PE13 | MAX98357A #47 SD/MODE via 680 KΩ #48 in series (DS Fig 5) | **push-pull: high = mono run; low/Z (reset) = shutdown** (boots off) |
+| **jack-detect** | PE12 | jack #115 detect switch via R49 10 K series (#125) | EINT, bias-pull-up: high = inserted; `hp-det-gpios` or gpio-keys `SW_HEADPHONE_INSERT` (not both) |
+| **speaker-EN** | PE6 | MAX98357A #47 SD/MODE via 680 KΩ #48 in series (DS Fig 5) | **push-pull: high = mono run; low/Z (reset) = shutdown** (boots off) |
+| **SD card-detect** | PF6 | socket #12 pin 9 (N.O. to shell GND, closes on insert) + R48 10 K pull-up #124 | in, active-low; DT `cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>` |
 | **HP-EN** | PB2 | TPA6132A2 #110 EN (+ pull-down #114) | boots off; assert after DAC settles |
 | **PCM5102A XSMT** | PB3 | DAC #103 pin 17 + R44 10 K pull-down #120 | push-pull; boots muted; soft-mute when unplugged (not hard-high) |
 | **charger /PGOOD** | PB4 | BQ24073 #53 + pull-up #84 | input, open-drain |
@@ -86,7 +87,7 @@ Free banks after the buses: PE0/1/6-13, PB2-7, PF6, PG4/5/6/7/10/14 (~23 pins). 
 | **IMU INT1** | PE0 | LSM6DSOX #35 INT1 (+ 10 KΩ pulldown #40) | EINT (motion/FIFO-watermark IRQ); the pulldown also guarantees I2C-not-I3C at POR |
 | **IMU INT2** | PE1 | LSM6DSOX #35 INT2 | EINT (optional 2nd IRQ; leave for data-ready/wake) |
 
-Leaves spare: PB7, PF6, PG4, PG5, PG6, PG7, PG10, PG14 (~8 GPIO).
+Leaves spare: PB7, PG4, PG5, PG6, PG7, PG10, PG14 (~7 GPIO).
 
 *Optional/not-yet-assigned (readable another way, add a GPIO only if wanted):* charger **/CHG** (already on the LED node #79) and **INA226 ALERT** (INA226 is polled via I2C hwmon) — neither needs a pin; assign from the spares if you want them as interrupts.
 
@@ -110,7 +111,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 10 | PF3 | MMC0-CMD | SD CMD → socket #12 |
 | 11 | PF4 | MMC0-D3 | SD DAT3 → socket #12 |
 | 12 | PF5 | MMC0-D2 | SD DAT2 → socket #12 |
-| 13 | PF6 | — | *spare* |
+| 13 | PF6 | PF-EINT6 | **SD card-detect** ← socket #12 pin 9 + R48 10 KΩ pull-up |
 | 14 | PC7 | SPI0-HOLD/IO3 | NOR #11 |
 | 15 | PC6 | SPI0-WP/IO2 | NOR #11 |
 | 16 | PC5 | SPI0-MISO/IO1 | NOR #11 — ⚠️ also **BOOT-SEL1** strap |
@@ -126,10 +127,10 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 26 | *LDOA_OUT* | internal LDO-A | bypass → GND |
 | 27 | *RESET* | reset | RESET btn #22 + 100 nF; **10 KΩ pull-up → 1.8 V VCC-RTC (NOT 3.3 V)** |
 | 28 | *LDOA_OUT* | internal LDO-A | bypass → GND + C42 4.7 µF bulk |
-| 29 | *VCC-IO* | 3.3 V supply | +3V3 |
+| 29 | *LDO-IN* | internal LDOA/LDOB input, 3.3 V | +3V3 (+ C36 10 µF bulk) |
 | 30 | *LDOB_OUT* | internal LDO-B (1.5 V DDR) | bypass → GND + C35 10 µF bulk |
-| 31 | PE13 | (GPIO) | **speaker-SD** *(proposed)* → R14 680 K → MAX98357A #47 SD/MODE |
-| 32 | PE12 | (GPIO) | **jack-detect** *(proposed)* → jack #115 |
+| 31 | PE13 | PWM5 | **backlight-CTRL** → TPS61165 #28 CTRL (+ R51 100 K pull-down) |
+| 32 | PE12 | (GPIO) | **jack-detect** *(proposed)* ← R49 10 K ← jack #115 tip switch |
 | 33 | PE3 | UART0-RX | **console RX** ← R46 510 Ω ← TP2 |
 | 34 | *VCC* | 3.3 V supply | +3V3 |
 | 35 | PE2 | UART0-TX | **console TX** → R45 510 Ω → TP1 |
@@ -138,7 +139,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 38 | PE9 | (GPIO) | **touch-RST** *(proposed)* → #27 |
 | 39 | PE8 | (GPIO) | **touch-INT** *(proposed)* → #27 |
 | 40 | PE7 | (GPIO) | **PCA9555-INT** *(proposed)* → #85 |
-| 41 | PE6 | (GPIO) | **backlight-CTRL** *(proposed)* → #28 |
+| 41 | PE6 | (GPIO) | **speaker-EN** → R14 680 K → MAX98357A #47 SD/MODE |
 | 42 | PE5 | TWI2-SDA | **i2c2 SDA** → IMU #35 |
 | 43 | PE4 | TWI2-SCK | **i2c2 SCL** → IMU #35 |
 | 44 | PE0 | (GPIO/EINT) | **IMU-INT1** *(proposed)* → LSM6DSOX #35 (+ 10 KΩ pulldown #40) |
@@ -172,7 +173,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 72 | PD15 | LCD0-D21 | RGB data → panel |
 | 73 | PD16 | LCD0-D22 | RGB data → panel |
 | 74 | PD17 | LCD0-D23 | RGB data (ch-C MSB) → panel |
-| 75 | PD18 | LCD0-CLK | **RGB DCLK** → panel (DNP 0 Ω series-R here) |
+| 75 | PD18 | LCD0-CLK | **RGB DCLK** → R50 33 Ω at the pin → panel |
 | 76 | PD19 | LCD0-DE | **RGB DE** → panel |
 | 77 | *VCC* | 3.3 V supply | +3V3 |
 | 78 | `TVOUT0` | — | **NC** (CVBS out) |
@@ -180,13 +181,13 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 80 | PB6 | (GPIO) | **BT VREG_EN_RST#** *(proposed)* → #99 pin 8 |
 | 81 | *VDD-CORE* | 0.9 V core | +0V9 |
 | 82 | PB5 | (GPIO) | **MAX17048 ALRT** *(proposed)* → #77 + R43 pull-up |
-| 83 | *VCC* | 3.3 V supply | +3V3 |
+| 83 | *VCC-IO* | 3.3 V I/O supply | +3V3 |
 | 84 | PB4 | (GPIO) | **charger /PGOOD** *(proposed)* → #53/#84 |
 | 85 | PB3 | (GPIO) | **PCM5102A XSMT** *(proposed)* → #103 + R44 pull-down |
 | 86 | PB2 | (GPIO) | **HP-EN** *(proposed)* → #110 |
 | 87 | `MICIN3P` | — | **NC** (mic in) |
 | 88 | `MICIN3N` | — | **NC** (mic in) |
-| 89 | *LDOA_OUT* | internal LDO-A | bypass → GND |
+| 89 | *AVCC* | internal ALDO output, 1.8 V (on at reset) | **own node, do NOT tie to LDOA**: C19 100 nF + C92 2.2 µF → GND (MangoPi C11). GPADC/TPADC/codec unused |
 | 90 | *VRA2* | codec analog ref | 100 nF → GND (codec unused; match breakout) |
 | 91 | *GND* | ground | GND |
 | 92 | *VRA1* | codec analog ref | 100 nF → GND |
@@ -194,7 +195,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 94 | `FMINL` | — | **NC** (FM in) |
 | 95 | `LINEINR` | — | **NC** (line in) |
 | 96 | `LINEINL` | — | **NC** (line in) |
-| 97 | *LDOA_OUT* | internal LDO-A | bypass → GND |
+| 97 | *HPVCC* | internal HPLDO output, 1.8 V (off at reset) | **own node, do NOT tie to LDOA**: C20 100 nF → GND (codec HP out unused) |
 | 98 | `HPOUTR` | — | **NC** (internal codec HP out — unused; external DAC #103 instead) |
 | 99 | `HPOUTL` | — | **NC** |
 | 100 | `HPOUTFB` | — | **NC** |
@@ -204,7 +205,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 104 | `TP-Y1` | — | **NC** |
 | 105 | `TP-Y2` | — | **NC** |
 | 106 | `NC0` | — | **NC** |
-| 107 | *VCC* | 3.3 V supply | +3V3 |
+| 107 | *VCC-TVIN* | CVBS-ADC supply, 1.8 V (abs-max 2.16 V) | **LDOA** + C13 100 nF (TVIN unused, kept powered as MangoPi R71/C70) |
 | 108 | `TVIN0` | — | **NC** (CVBS in) |
 | 109 | `TVIN1` | — | **NC** |
 | 110 | `TVIN-VRP` | — | **NC** |
@@ -228,7 +229,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 128 | *VCC* | 3.3 V supply | +3V3 |
 | 129 | *GND pad* | thermal/GND | exposed die-attach pad → GND + via array |
 
-**Power/GND ball summary:** +3V3 = pins 29,34,66,77,83,107,128 · +0V9 core = 46,51,81,116,117 · internal LDO-A bypass = 20,26,28,50,65,89,97 · internal LDO-B (1.5 V DDR) bypass = 30,48,49 · GND = 91 + pad 129. Per-supply-pin 100 nF (#19). *(The breakout tied all +3V3 balls to one rail; if the datasheet distinguishes VCC-IO / VCC-PLL / AVCC, split at capture.)*
+**Power/GND ball summary:** +3V3 = pins 29 LDO-IN, 34 VCC-PE, 66 VCC-PD, 77 VCC-TVOUT, 83 VCC-IO, 128 VCC-PG (100 nF each: C8–C10, C12, C29, C30; bulk C36 at 29/34) · +0V9 core = 46, 51, 81, 116, 117 (C14–C18 + C39 10 µF at 116/117; C34 = the buck's COUT) · LDOA 1.8 V = 20, 26, 28, 50, 65, 107 (C23–C25 + C13; C42 4.7 µF at 26/28) · AVCC 89 and HPVCC 97 = their own internal-LDO nodes (C19 + C92; C20) · LDOB 1.5 V DDR = 30, 48, 49 (C26–C28 + C35 10 µF) · GND = 91 + pad 129. *(Decided 2026-10-13 against the datasheet pin list and MangoPi; the breakout's single +3V3 rail and its LDOA ties are not the reference.)*
 
 ---
 
@@ -239,4 +240,4 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 3. **FPC contact-side** — #26 (display) mounts top face, #27 (touch) bottom face (opposite orientation); test-fit before locking footprints + pin-1.
 4. **FT7311 touch I2C address** (0x38 assumed) — confirm on the panel via `i2cdetect`.
 5. **RESET pull-up rail** — to **1.8 V VCC-RTC**, not 3.3 V (confirm the breakout's actual net).
-6. **VRA1/VRA2 + AVCC** — internal codec unused; keep 100 nF bypass (matches breakout) and confirm the AVCC supply pin handling at capture.
+6. ~~**VRA1/VRA2 + AVCC**~~ — closed 2026-10-13: AVCC is the internal ALDO output, its own node with C19 100 nF + C92 2.2 µF (MangoPi); VRA1/VRA2 keep their 100 nF (codec unused).
