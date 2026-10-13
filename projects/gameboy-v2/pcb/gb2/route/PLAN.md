@@ -71,8 +71,9 @@ about 60 mV at a 1 A peak.
 - **Return paths:** a front-to-back via moves a signal's reference from In1 (GND) to In2 (+3V3). Near the MCU and
   FPGA the decaps carry the return across; on the long W1/E1 runs each cluster of signal vias gets a GND stitching
   via beside it.
-- **I2C** spans the board (IMU east; expander and haptics far west). Its capacitance and rise time get checked
-  against the pull-ups once it's routed.
+- **I2C** spans the board (IMU east; expander and haptics far west): ~115 mm per line, 6 vias. `route/i2c_check.py`
+  puts it at ~45–50 pF (the five pins are ~2/3 of it), so the 1.5 kΩ pull-ups give t_r ≈ 60 ns against Fast mode's
+  300 ns (checked on both JLC 4-layer stackups; LSM6DSOX / DRV2605L pin capacitance assumed 10 pF).
 
 ## Grounding
 

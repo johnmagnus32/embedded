@@ -115,7 +115,7 @@ LSM6DSOX IMU (0x6A), DRV2605L haptic driver (0x5A), and the PCA9555 expander (0x
 | 30 | 1 | Haptic VDD HF bypass | 100 nF 0603 | C14663 | VDD → GND | ✅ | JLC | HF bypass at VDD. |
 | 31 | 1 | Haptic VDD local bulk | 10 µF 0805 | C1713 | VDD → GND | ✅ | JLC | Local bulk — sources the pulsed motor/overdrive current. |
 | 32 | 1 | Actuator (LRA) | Vybronics VG0832022D — Ø8 mm coin LRA | DigiKey 9974288 | DRV2605L OUT± | ✅ | Hand | 235 Hz resonant, 1.8 Vrms, 22.5 Ω, 90 mArms max, wire leads (RED=+, BLUE=−). **Record 235 Hz → the DRV2605L LRA config** (resonant-freq register / drive-time). 3.3 V develops the 1.8 Vrms across OUT±. **Direct-solder the leads to OUT± (no connector).** |
-| 33 | 2 | Shared I2C pull-ups (SDA + SCL) | 1.5 kΩ 1% 0603 (0603WAF1501T5E) | C22843 | I2C1 SDA(PB7)/SCL(PB8) → 3V3 | ✅ | JLC | 1.5 kΩ meets the 400 kHz rise-time budget (10 kΩ fails; 2.2 kΩ also OK on v2's short bus). No tuning pads (dropped — 1.5 kΩ already meets the rise-time budget). |
+| 33 | 2 | Shared I2C pull-ups (SDA + SCL) | 1.5 kΩ 1% 0603 (0603WAF1501T5E) | C22843 | I2C1 SDA(PB7)/SCL(PB8) → 3V3 | ✅ | JLC | 1.5 kΩ meets the 400 kHz rise-time budget with ~5× margin on the routed board (2026-10-12, `gb2/route/i2c_check.py`: ~115 mm per line across the board, ~45–50 pF with the pins dominating → t_r ≈ 60 ns vs 300 ns; Fast mode would allow up to ~7 kΩ). Sink current 1.9 mA (≤ 3 mA). No tuning pads (dropped — 1.5 kΩ already meets the rise-time budget). |
 
 > **I2C address map (clash-free):** LSM6DSOX 0x6A · DRV2605L 0x5A · PCA9555 0x20. **Escape bus:** I2C3
 > (PA8 SCL + PC9 SDA, AF4 — PB4 now reads Vol+) is free if BT-EN stays off PA8; I2C2's SCL pin (PB10) is free again — the IMU INT moved to PB5 (2026-10-10).
