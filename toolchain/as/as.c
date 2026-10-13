@@ -252,6 +252,13 @@ static void tokenize(const char *line) {
 			/* a `#` immediate is an EXPRESSION: it keeps its spaces up to the next top-level comma
 			 * (`#(. - bar - 8) & 0xff`) — was split at the first space and silently mis-parsed */
 			if (*p == '\\' && p[1]) { p += 2; continue; }   /* skip an escaped char (incl. \") */
+			if (!inq && *p == '\'') {                       /* a character constant keeps its blanks AND commas:
+			                                                * `mov r0, #','` is one operand (GAS allows a bare 'c too) */
+				p++;
+				if (*p == '\\' && p[1]) p += 2; else if (*p) p++;
+				if (*p == '\'') p++;
+				continue;
+			}
 			if (*p == '"') inq = !inq;
 			if (!inq && *p == '(') depth++; else if (!inq && *p == ')' && depth) depth--;
 			p++;
@@ -1134,6 +1141,14 @@ static void expand_macro(Macro *m, const char *argline) {
 	  for (; *q; q++) {
 		if (inq) { scr[sn++] = *q; if (*q == '\\' && q[1]) scr[sn++] = *++q; else if (*q == inq) inq = 0; continue; }
 		if (*q == '"') { inq = '"'; scr[sn++] = *q; continue; }
+		if (*q == '\'') {                      /* a character constant: verbatim, blanks and commas included.
+		                                       * GAS also takes a bare `'a` with no closing quote. */
+			scr[sn++] = *q;
+			if (q[1] == '\\' && q[2]) { scr[sn++] = q[1]; scr[sn++] = q[2]; q += 2; }
+			else if (q[1]) { scr[sn++] = q[1]; q += 1; }
+			if (q[1] == '\'') { scr[sn++] = q[1]; q += 1; }
+			continue;
+		}
 		if (*q == ' ' || *q == '\t') {
 			const char *n = q; while (*n == ' ' || *n == '\t') n++;
 			char pv = sn ? scr[sn - 1] : 0, nx = *n;
@@ -1153,6 +1168,12 @@ static void expand_macro(Macro *m, const char *argline) {
 		}
 		const char *s0 = p; int depth = 0; char q = 0;
 		while (*p && (q || depth || (*p != ',' && *p != ' '))) {   /* a scrubbed blank separates too */
+			if (!q && *p == '\'') {                /* a character constant: 'x', '\n', or a bare 'x */
+				p++;
+				if (*p == '\\' && p[1]) p += 2; else if (*p) p++;
+				if (*p == '\'') p++;
+				continue;
+			}
 			if (q) { if (*p == '\\' && p[1]) p++; else if (*p == q) q = 0; }
 			else if (*p == '"') q = *p;
 			else if (*p == '(' || *p == '[' || *p == '{') depth++;
