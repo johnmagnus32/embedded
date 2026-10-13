@@ -23,7 +23,7 @@ Complete SoC pin → net → destination map for the gameboy-v3 mainboard. Compa
 | **I2S1 audio** | PG12=LRCK, PG13=BCLK, PG15=DOUT; PG11=MCLK *(unused→static)*, PG14=DIN *(unused)* | I2S out (multi-drop) | MAX98357A amp #47 + PCM5102A DAC #103 (both receivers), series-R #104 |
 | **i2c1** (peripheral bus) | **PG8=SCL, PG9=SDA** | shared I2C, ≥400 kHz | PCA9555 0x20 #85 · MAX17048 0x36 #77 · FT7311 0x38 #25/#27 · INA226 0x40 #81 · DRV2605L 0x5A #41 · pull-ups #97 |
 | **i2c2** (IMU only) | **PE4=SCL, PE5=SDA** | dedicated I2C | LSM6DSOX 0x6A #35 |
-| **GPADC0** | dedicated ADC ball (pin 101) | unused (NC) | divider #75/#76 deleted 2026-10-13; MAX17048 #77 reports battery V + SOC |
+| **GPADC0** | dedicated ADC ball (pin 101) | USB-C CC sense (the source's advertised current) | R56/R57 200 kΩ from CC1/CC2 + C94 100 nF (#135/#136, step 1c); the old battery divider #75/#76 was deleted (MAX17048 #77 reports battery V + SOC) |
 | **USB0 (USB-C)** | USB0-DP=pin115, USB0-DM=pin114 | USB2 + charge, nets `USB_D+`/`USB_D-` | receptacle #2 + ESD #98 + CC → 2× 5.1 kΩ Rd #128 (5 V sink; CH224K deleted 2026-10-13) |
 
 ---
@@ -86,8 +86,9 @@ Free banks after the buses: PE0/1/6-13, PB2-7, PG4/5/6/7/10/14 (~22 pins; PF6 is
 | **BT VREG_EN_RST#** | PB6 | BT830 #99 pin 8 | boot low, >5 ms, then high; ≤4.7 KΩ if strapped |
 | **IMU INT1** | PE0 | LSM6DSOX #35 INT1 (+ 10 KΩ pulldown #40) | EINT (motion/FIFO-watermark IRQ); the pulldown also guarantees I2C-not-I3C at POR |
 | **IMU INT2** | PE1 | LSM6DSOX #35 INT2 | EINT (optional 2nd IRQ; leave for data-ready/wake) |
+| **charger fast limit** | PB7 | Q1 2N7002 gate (#133) + R55 10 K pull-down (#134) → R54 1.8 K across the ILIM resistor | out, push-pull; low/Z = safe ~0.42 A, high = 1.34 A; never bias-pull-up (see BOM.md step 1c) |
 
-Leaves spare: PB7, PG4, PG5, PG6, PG7, PG10, PG14 (~7 GPIO).
+Leaves spare: PG4, PG5, PG6, PG7, PG10, PG14 (~6 GPIO; PG4/PG5/PG10 only once gb3's DT disables the inherited &mmc1).
 
 *Optional/not-yet-assigned (readable another way, add a GPIO only if wanted):* charger **/CHG** (already on the LED node #79) and **INA226 ALERT** (INA226 is polled via I2C hwmon) — neither needs a pin; assign from the spares if you want them as interrupts.
 
@@ -177,7 +178,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 76 | PD19 | LCD0-DE | **RGB DE** → panel |
 | 77 | *VCC* | 3.3 V supply | +3V3 |
 | 78 | `TVOUT0` | — | **NC** (CVBS out) |
-| 79 | PB7 | — | *spare* |
+| 79 | PB7 | (GPIO) | **charger fast limit** → Q1 gate (+ R55 10 K pull-down) |
 | 80 | PB6 | (GPIO) | **BT VREG_EN_RST#** *(proposed)* → #99 pin 8 |
 | 81 | *VDD-CORE* | 0.9 V core | +0V9 |
 | 82 | PB5 | (GPIO) | **MAX17048 ALRT** *(proposed)* → #77 + R43 pull-up |
@@ -199,7 +200,7 @@ Legend: **gpio** used · *fixed-fn* · `NC` no-connect. Nets are gameboy-v3 (dif
 | 98 | `HPOUTR` | — | **NC** (internal codec HP out — unused; external DAC #103 instead) |
 | 99 | `HPOUTL` | — | **NC** |
 | 100 | `HPOUTFB` | — | **NC** |
-| 101 | GPADC0 | ADC in | NC (divider #75/#76 deleted; MAX17048 #77 measures the cell) |
+| 101 | GPADC0 | ADC in | **USB-C CC sense** ← R56/R57 200 K from CC1/CC2 + C94 100 nF |
 | 102 | `TP-X1` | — | **NC** (resistive-touch ADC) |
 | 103 | `TP-X2` | — | **NC** |
 | 104 | `TP-Y1` | — | **NC** |

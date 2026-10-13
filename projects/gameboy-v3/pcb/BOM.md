@@ -109,7 +109,7 @@ Topology: battery ↔ **BQ24073 power-path → SYS (~3.0–4.4 V)** → **TPS630
 | 55 | 1 | Charger OUT cap | CL21A106KOQNNNE | C1713 | OUT (pins 10/11) → VSS | ✅ | JLC | 10 µF. **OUT = SYS node** → place close to IC. |
 | 56 | 1 | Charger BAT cap | CL21A106KOQNNNE | C1713 | BAT (pins 2/3) → VSS | ✅ | JLC | 10 µF, near the JST-PH (#74). |
 | 57 | 1 | ISET (charge current) | 0603WAF2001T5E | C22975 | ISET (pin 16) → VSS | ✅ | JLC | 2.0 kΩ 1% → ~445 mA (0.22C). **Mandatory — open = no charge.** |
-| 58 | 1 | ILIM (input limit) | 0603WAF1201T5E | C22765 | ILIM (pin 12) → VSS | ✅ | JLC | 1.2 kΩ → ~1.34 A input. **Never below 1.1 kΩ** (IN abs-max 1.6 A). Active only when EN2=1/EN1=0 (#60). |
+| 58 | 1 | ILIM (input limit) | 0603WAF3601T5E | C22980 | ILIM (pin 12) → VSS | ✅ | JLC | 3.6 kΩ → the **safe** input limit 366/424/483 mA (KILIM 1330/1525/1720 AΩ, DS p.12), always in circuit. R54 1.8 kΩ (#132) switched in parallel by Q1 (#133) gives the **fast** 1.2 kΩ → 1.24/1.34/1.45 A (step 1c; was a fixed 1.2 kΩ). **Never below 1.1 kΩ** (IN abs-max 1.6 A). Active only when EN2=1/EN1=0 (#60). |
 | 59 | 1 | TS battery-temperature NTC | KNTC0603/10KF3950 | C2892547 | TS (pin 1) → VSS | ✅ | JLC | 10 kΩ B3950 NTC (as gb2): pauses charging outside ≈3–47 °C (worst case 1–5 / 43–52 °C; 75 µA TS bias, VCOLD 2.1 V / VHOT 0.3 V, bq24074.pdf p.13); fail-safe (open = cold, short = hot). Back side at the battery-cutout edge, ≥ 20 mm from U10 (the cell sits in a through-cutout). 2026-10-13: was a fixed 10 kΩ, which never paused. |
 | 60 | 1 | EN2 strap | 0 Ω 0603 | C21189 | EN2 (pin 5) → OUT/SYS; EN1 (pin 6) → GND | ✅ | JLC | Puts charger in ILIM-resistor mode. EN1→GND is a net. |
 | 61 | 0 | ~~USB-PD sink~~ | ~~CH224K~~ | ~~C970725~~ | ~~CC1/CC2; CFG1 → 5 V~~ | — | — | **Deleted 2026-10-13:** the CH224K is discontinued (0 at JLC and LCSC), and the BQ24073 cuts off above 6.6 V, so PD above 5 V is unusable anyway → a 5 V USB-C sink with 2× 5.1 kΩ Rd (#128), as gb2 and the breakout. Was: an ESSOP-10 PD sink on CC1/CC2 requesting 5 V. |
@@ -334,4 +334,45 @@ The 17 "should-fix" items from the step-1 sweep, each re-derived from the datash
 
 **Purchases:** BT830 (#99) last-time buy now; the panel (#25) needs a channel other than Digi-Key; STM6601 (#94) pre-order at JLC or consign.
 
-**New open item:** in this EN1/EN2 mode the charger draws up to 1.34 A (ILIM) from any source, with no VIN-DPM, so a 500 mA USB port is overloaded. Decision pending.
+**Open item, closed in step 1c:** in this EN1/EN2 mode the charger drew up to 1.34 A (ILIM) from any source, with no VIN-DPM, so a 500 mA USB port was overloaded → the firmware-raised limit below.
+
+## Design-data closure, step 1c (2026-10-13 — user-approved): firmware-raised charger input limit
+
+The charger drew up to 1.34 A from any source while the handheld ran (no VIN-DPM in its ILIM mode), overloading 500 mA USB ports. With the handheld off it draws only the ~445 mA charge current, so a firmware-controlled limit is enough. Designed by one reviewer and checked by two independent skeptics (electrical and system).
+
+| # | Qty | Role | Part | LCSC | Net | Src | Fit | Notes |
+|---|----:|------|------|------|-----|:---:|-----|-------|
+| 132 | 1 | ILIM fast resistor | 0603WAF1801T5E | C4177 | ILIM → Q1 drain (CHG_ILIM_SW) | ✅ | JLC | 1.8 kΩ in parallel with R16 (#58) while Q1 conducts: 3.6k ∥ 1.8k = 1.2 kΩ → 1.24/1.34/1.45 A (KILIM 1500/1610/1720). Keep the ILIM copper (U10.12–R16–R54) ≤ 8 mm, one layer (DRU rule "Charger ILIM node"). refdes **R54**. |
+| 133 | 1 | ILIM fast switch | CJ 2N7002 | C8545 | gate CHG_FAST (PB7) · source GND · drain → R54 | ✅ | JLC | N-MOSFET, SOT-23 (pin 1 G, 2 S, 3 D): Vth 1.0–2.5 V, RDS(on) ≤ 7 Ω at 5 V, IDSS ≤ 80 nA (CJ DS p.2). Check its orientation in JLC's placement preview. refdes **Q1**. |
+| 134 | 1 | ILIM switch gate pull-down | RC0603JR-0710KL | C99198 | CHG_FAST → GND | ✅ | JLC | 10 kΩ at the gate: fast stays off while PB7 is Z (reset, boot, handheld off) — ≤ 0.10 V at the T113's 10 µA pad leakage, ≤ 0.40 V even with PB7's internal 80–120 kΩ pull-up on (a stock MangoPi U-Boot enables it) vs Vth ≥ 1.0 V. refdes **R55**. |
+| 135 | 2 | USB-C CC sense resistors | 0603WAF2003T5E | C25811 | USBC_CC1 / USBC_CC2 → USBC_CC_SENSE | ✅ | JLC | 200 kΩ from each CC into one node → GPADC0 (U1.101); the idle CC sits at 0 V on its Rd, so the node ≈ 0.506 × the active CC. The sense path keeps the effective Rd at 4.96–5.11 kΩ (Type-C: 5.1 kΩ ±10%). refdes **R56/R57**. |
+| 136 | 1 | CC sense filter cap | CC0603KRX7R9BB104 | C14663 | USBC_CC_SENSE → GND at U1.101 | ✅ | JLC | 100 nF, τ ≈ 10 ms (PD BMC bursts, noise) + charge reservoir for the ADC sample. refdes **C94**. |
+
+**How it works:**
+- **Safe** (PB7 low or Z: handheld off, reset, boot, a crashed policy): R16 alone → 366–483 mA, inside any USB port's 500 mA. With the handheld off the cell still charges at ≈ 0.42 A; the charger slows its safety timer in proportion when input-limited (SLUS810N p.25).
+- **Fast** (PB7 high): 1.24–1.45 A, only while VBUS is present (PGOOD) and the USB-C source advertises ≥ 1.5 A on CC.
+- **Node voltages on GPADC0:** Default sources (incl. legacy A-to-C cables) 0.15–0.29 V; 1.5 A 0.40–0.56 V; 3 A 0.72–0.99 V.
+- **Policy thresholds (raw counts, 12-bit, 0–1.8 V):** enter fast at ≥ 0.360 V (raw 819); back to safe below 0.335 V (raw 762); above 1.10 V (raw 2503) = invalid → safe.
+- **Measured margins:** 21–47 mV, including a powered cable's Ra on the idle CC. The ±10 mV ADC error and the 100 nA leakage are assumptions — check at bring-up.
+- **Blind spots:** a debug accessory or Y-cable pulling both CCs up reads one class high. A non-compliant A-to-C cable with a 10 kΩ pull-up reads as 3 A.
+
+**Firmware (to do when the image is brought up):**
+- **Kernel:** a config fragment with `CONFIG_SUN20I_GPADC=y` and `CONFIG_CHARGER_GPIO=y` (`sunxi_defconfig` has neither), plus a DT overlay in the gb3 image layer:
+  - `gpio-charger` with `gpios = <&pio 1 4 GPIO_ACTIVE_LOW>` (PB4 /PGOOD), `charge-current-limit-gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>` (PB7) and `charge-current-limit-mapping = <1340000 0x1>, <420000 0x0>`;
+  - `&gpadc { status = "okay"; channel@0 { reg = <0>; }; }`.
+  - Find the IIO device by name (`sun20i-gpadc`), not by index (the IMU registers IIO too).
+- **Policy, in powerd (`src/services/powerd.c`), driven by NETLINK uevents:**
+  - On daemon start, any charger change event, any read error or invalid reading, and before suspend, write the safe value first.
+  - With VBUS present: wait 150 ms, take the median of 8 readings 40 ms apart, enter fast at raw ≥ 819.
+  - While fast, sample every 10–20 ms and go safe after 2–3 consecutive readings below raw 762. Type-C requires a sink to follow a lowered Rp within tSinkAdj = 60 ms (R2.5 §4.6.2.1, Table 4-32); a laptop lowers its port when its adapter is removed.
+  - Collapse latch: if PGOOD drops within 5 s of going fast, stay safe until an unplug of ≥ 2 s.
+  - Optional user override, "fast on USB-A chargers", default off.
+  - Never set `bias-pull-up` on PB7.
+- **Hangs:** no watchdog is bound today (the sunxi wdt node is `reserved`; `sunxi_wdt` stops it at probe). A kernel panic reboots via `panic=10`; a hung powerd keeps its last state until a long press powers off. Feed `/dev/watchdog` from powerd if that matters.
+- **Custom kernel:** the `KERNEL=custom` path has no gpio-charger or GPADC driver, so it simply stays at the safe limit.
+
+**Bring-up:**
+- **Fit the cell:** with no cell (or a tripped PCM), the safe limit can't carry the ~1 A system load, so the board brown-out loops until the policy runs. Bring up with the cell fitted, or 3.7–4.0 V on CN1.
+- **Read GPADC0 with no source:** raw ≈ 25 means ~0.1 µA of leakage. Above ~150 nA, switch R56/R57 to 2× 100 kΩ.
+- **Compare against a DMM:** check the GPADC0 reading against a meter at the node with a 1.5 A and a 3 A source.
+- **Step PB7 under full load,** with and without a cell, and scope VBUS and OUT. TI documents no prohibition on switching RILIM while running, and both values are inside its validated 1.1–8 kΩ range.

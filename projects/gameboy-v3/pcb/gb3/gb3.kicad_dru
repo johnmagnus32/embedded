@@ -34,6 +34,13 @@
 	(condition "A.NetClass == 'Power'")
 	(constraint track_width (min 0.2mm) (opt 0.4mm)))
 
+# The charger's input-limit programming node (U10.12 ILIM, R16 3.6k, R54 1.8k via Q1): a high-impedance
+# current-sense node that sets the USB input limit, so keep it short and on one layer (step 1c).
+(rule "Charger ILIM node"
+	(condition "A.NetName == '/charger/CHG_ILIM'")
+	(constraint length (max 8mm))
+	(constraint via_count (max 0)))
+
 # ---------------------------------------------------------------- USB 2.0 HS
 
 # USB_D+ / USB_D- (renamed from USB_DP / USB_DM 2026-10-13: KiCad pairs nets only by a +/- or P/N

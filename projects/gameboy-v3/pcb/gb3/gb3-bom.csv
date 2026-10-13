@@ -94,10 +94,13 @@ C55,charger,C19666,easyeda2kicad:CL10A475KO8NNNC,Charger IN cap · CL10A475KO8NN
 C56,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger OUT cap · CL21A106KOQNNNE · #55
 C57,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger BAT cap · CL21A106KOQNNNE · #56
 R15,charger,C22975,easyeda2kicad:0603WAF2001T5E,ISET (charge current) · 0603WAF2001T5E · #57
-R16,charger,C22765,easyeda2kicad:0603WAF1201T5E,ILIM (input limit) · 0603WAF1201T5E · #58
+R16,charger,C22980,easyeda2kicad:0603WAF3601T5E,ILIM base (safe input limit) 3.6k · 0603WAF3601T5E · #58
 R17,charger,C2892547,easyeda2kicad:KNTC0603_10KF3950,TS battery-temperature NTC 10k B3950 (window ~3–47 °C; back side at the battery-cutout edge >=20 mm from U10) · KNTC0603/10KF3950 · #59
 R18,charger,C21189,easyeda2kicad:0603WAF0000T5E,EN2 strap · 0 Ω 0603 · #60
 R47,charger,C23231,easyeda2kicad:0603WAF6802T5E,TMR safety-timer 68k · 0603WAF6802T5E · #123
+R54,charger,C4177,easyeda2kicad:0603WAF1801T5E,ILIM fast R 1.8k (switched in by Q1; 3.6k||1.8k = 1.2k) · 0603WAF1801T5E · #132
+Q1,charger,C8545,easyeda2kicad:2N7002,ILIM fast switch N-MOSFET · CJ 2N7002 · #133
+R55,charger,C99198,easyeda2kicad:RC0603JR-0710KL,ILIM fast-switch gate pull-down 10k · RC0603JR-0710KL · #134
 U12,buck-boost,C202140,easyeda2kicad:TPS63021DSJR,3.3 V buck-boost · TPS63021DSJR · #66
 R22,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost FB tie · 0603WAF0000T5E · #67
 R23,buck-boost,C21189,easyeda2kicad:0603WAF0000T5E,Buck-boost PS/SYNC strap · 0603WAF0000T5E · #68
@@ -143,8 +146,11 @@ R30,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C pull-ups (SDA/SCL) · 0603WAF150
 R31,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C pull-ups (SDA/SCL) · 0603WAF1501T5E · #97
 D4,usb-c,C7519,easyeda2kicad:USBLC6-2SC6,USB2 D+/D− ESD array · USBLC6-2SC6 · #98
 C93,usb-c,C14663,easyeda2kicad:CC0603KRX7R9BB104,USBLC6 VBUS cap (CBUS) · CC0603KRX7R9BB104 · #130
+C94,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,CC-sense filter cap 100nF at U1.101 · CC0603KRX7R9BB104 · #136
 R52,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,USB-C CC1 Rd 5.1 kΩ (Type-C sink; gb2 R15 / breakout R1) · RC0603FR-075K1L · #128
 R53,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,USB-C CC2 Rd 5.1 kΩ (Type-C sink; gb2 R16 / breakout R2) · RC0603FR-075K1L · #128
+R56,usb-c,C25811,easyeda2kicad:0603WAF2003T5E,USB-C CC sense R 200k → GPADC0 · 0603WAF2003T5E · #135
+R57,usb-c,C25811,easyeda2kicad:0603WAF2003T5E,USB-C CC sense R 200k → GPADC0 · 0603WAF2003T5E · #135
 U18,bluetooth,,manual:BT830-SA-01-T_R,Bluetooth module · Ezurio BT830-SA-01 · #99 · matched hand-drawn symbol by name (BT830-SA-01-T_R)
 C70,bluetooth,C109456,easyeda2kicad:CC0603KRX5R6BB475,BT830 VREG_OUT_HV cap · CC0603KRX5R6BB475 · #100
 C71,bluetooth,C14663,easyeda2kicad:CC0603KRX7R9BB104,BT830 supply decoupling · CC0603KRX7R9BB104 · #101

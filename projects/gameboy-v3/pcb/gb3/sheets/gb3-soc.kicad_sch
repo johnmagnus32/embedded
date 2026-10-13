@@ -3,7 +3,7 @@
 	(generator "eeschema")
 	(generator_version "10.0")
 	(uuid "556cb15b-0444-5ca3-b0aa-88722258df1e")
-	(paper "User" 1085 281)
+	(paper "User" 1088 281)
 	(lib_symbols
 		(symbol "easyeda2kicad:0603WAF2400T5E"
 			(exclude_from_sim no)
@@ -5530,10 +5530,6 @@
 		(uuid "0c55c68f-f222-5fb6-823f-715ca2773089")
 	)
 	(no_connect
-		(at 85.09 118.11)
-		(uuid "156e4146-084f-5488-bb81-7f27dc7d5313")
-	)
-	(no_connect
 		(at 85.09 176.53)
 		(uuid "1a38bfad-7189-525b-a541-fce516f756bc")
 	)
@@ -5610,10 +5606,6 @@
 		(uuid "bd1f7be5-321f-564b-977e-256d4b0bdeb5")
 	)
 	(no_connect
-		(at 85.09 173.99)
-		(uuid "bf8dd8f9-deb8-52d5-97bc-3616f5292c58")
-	)
-	(no_connect
 		(at 85.09 92.71)
 		(uuid "d447fbf5-f5a1-581c-8668-907f438a2878")
 	)
@@ -5665,7 +5657,7 @@
 	)
 	(wire
 		(pts
-			(xy 751.84 45.72) (xy 754.38 45.72)
+			(xy 754.38 45.72) (xy 756.92 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5695,7 +5687,7 @@
 	)
 	(wire
 		(pts
-			(xy 543.56 45.72) (xy 546.1 45.72)
+			(xy 546.1 45.72) (xy 548.64 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5705,7 +5697,7 @@
 	)
 	(wire
 		(pts
-			(xy 825.5 45.72) (xy 822.96 45.72)
+			(xy 828.04 45.72) (xy 825.5 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5735,7 +5727,7 @@
 	)
 	(wire
 		(pts
-			(xy 116.84 44.45) (xy 114.3 44.45)
+			(xy 119.38 44.45) (xy 116.84 44.45)
 		)
 		(stroke
 			(width 0)
@@ -5755,7 +5747,7 @@
 	)
 	(wire
 		(pts
-			(xy 375.92 45.72) (xy 378.46 45.72)
+			(xy 378.46 45.72) (xy 381 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5785,7 +5777,7 @@
 	)
 	(wire
 		(pts
-			(xy 685.8 232.41) (xy 683.26 232.41)
+			(xy 731.52 232.41) (xy 728.98 232.41)
 		)
 		(stroke
 			(width 0)
@@ -5825,7 +5817,7 @@
 	)
 	(wire
 		(pts
-			(xy 568.96 232.41) (xy 571.5 232.41)
+			(xy 614.68 232.41) (xy 617.22 232.41)
 		)
 		(stroke
 			(width 0)
@@ -5835,7 +5827,7 @@
 	)
 	(wire
 		(pts
-			(xy 585.47 45.72) (xy 588.01 45.72)
+			(xy 588.01 45.72) (xy 590.55 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5845,7 +5837,7 @@
 	)
 	(wire
 		(pts
-			(xy 1002.03 45.72) (xy 1004.57 45.72)
+			(xy 1005.84 45.72) (xy 1008.38 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5855,7 +5847,7 @@
 	)
 	(wire
 		(pts
-			(xy 459.74 45.72) (xy 462.28 45.72)
+			(xy 462.28 45.72) (xy 464.82 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5875,7 +5867,7 @@
 	)
 	(wire
 		(pts
-			(xy 533.4 45.72) (xy 530.86 45.72)
+			(xy 535.94 45.72) (xy 533.4 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5885,7 +5877,7 @@
 	)
 	(wire
 		(pts
-			(xy 783.59 45.72) (xy 781.05 45.72)
+			(xy 786.13 45.72) (xy 783.59 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5945,7 +5937,7 @@
 	)
 	(wire
 		(pts
-			(xy 208.28 45.72) (xy 210.82 45.72)
+			(xy 212.09 45.72) (xy 214.63 45.72)
 		)
 		(stroke
 			(width 0)
@@ -5995,7 +5987,7 @@
 	)
 	(wire
 		(pts
-			(xy 240.03 45.72) (xy 237.49 45.72)
+			(xy 243.84 45.72) (xy 241.3 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6065,7 +6057,17 @@
 	)
 	(wire
 		(pts
-			(xy 960.12 45.72) (xy 962.66 45.72)
+			(xy 85.09 118.11) (xy 87.63 118.11)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "358b7152-47d5-5844-b72b-172fcd29060a")
+	)
+	(wire
+		(pts
+			(xy 963.93 45.72) (xy 966.47 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6085,7 +6087,7 @@
 	)
 	(wire
 		(pts
-			(xy 365.76 45.72) (xy 363.22 45.72)
+			(xy 368.3 45.72) (xy 365.76 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6095,7 +6097,7 @@
 	)
 	(wire
 		(pts
-			(xy 919.48 45.72) (xy 922.02 45.72)
+			(xy 922.02 45.72) (xy 924.56 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6115,7 +6117,7 @@
 	)
 	(wire
 		(pts
-			(xy 491.49 45.72) (xy 488.95 45.72)
+			(xy 494.03 45.72) (xy 491.49 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6165,7 +6167,7 @@
 	)
 	(wire
 		(pts
-			(xy 604.52 232.41) (xy 601.98 232.41)
+			(xy 651.51 232.41) (xy 648.97 232.41)
 		)
 		(stroke
 			(width 0)
@@ -6185,7 +6187,7 @@
 	)
 	(wire
 		(pts
-			(xy 501.65 45.72) (xy 504.19 45.72)
+			(xy 504.19 45.72) (xy 506.73 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6315,7 +6317,7 @@
 	)
 	(wire
 		(pts
-			(xy 877.57 45.72) (xy 880.11 45.72)
+			(xy 880.11 45.72) (xy 882.65 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6345,7 +6347,7 @@
 	)
 	(wire
 		(pts
-			(xy 793.75 45.72) (xy 796.29 45.72)
+			(xy 796.29 45.72) (xy 798.83 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6365,7 +6367,7 @@
 	)
 	(wire
 		(pts
-			(xy 449.58 45.72) (xy 447.04 45.72)
+			(xy 452.12 45.72) (xy 449.58 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6385,7 +6387,7 @@
 	)
 	(wire
 		(pts
-			(xy 281.94 45.72) (xy 279.4 45.72)
+			(xy 285.75 45.72) (xy 283.21 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6395,7 +6397,17 @@
 	)
 	(wire
 		(pts
-			(xy 558.8 232.41) (xy 556.26 232.41)
+			(xy 574.04 233.68) (xy 576.58 233.68)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "61a9799b-719d-5eaf-b218-023346c7d131")
+	)
+	(wire
+		(pts
+			(xy 604.52 232.41) (xy 601.98 232.41)
 		)
 		(stroke
 			(width 0)
@@ -6425,7 +6437,7 @@
 	)
 	(wire
 		(pts
-			(xy 659.13 45.72) (xy 656.59 45.72)
+			(xy 661.67 45.72) (xy 659.13 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6445,7 +6457,7 @@
 	)
 	(wire
 		(pts
-			(xy 640.08 236.22) (xy 640.08 238.76)
+			(xy 687.07 236.22) (xy 687.07 238.76)
 		)
 		(stroke
 			(width 0)
@@ -6515,7 +6527,7 @@
 	)
 	(wire
 		(pts
-			(xy 198.12 45.72) (xy 195.58 45.72)
+			(xy 201.93 45.72) (xy 199.39 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6525,7 +6537,7 @@
 	)
 	(wire
 		(pts
-			(xy 407.67 45.72) (xy 405.13 45.72)
+			(xy 410.21 45.72) (xy 407.67 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6545,7 +6557,7 @@
 	)
 	(wire
 		(pts
-			(xy 666.75 45.72) (xy 669.29 45.72)
+			(xy 669.29 45.72) (xy 671.83 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6585,7 +6597,7 @@
 	)
 	(wire
 		(pts
-			(xy 1033.78 45.72) (xy 1031.24 45.72)
+			(xy 1037.59 45.72) (xy 1035.05 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6615,7 +6627,7 @@
 	)
 	(wire
 		(pts
-			(xy 250.19 45.72) (xy 252.73 45.72)
+			(xy 254 45.72) (xy 256.54 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6665,7 +6677,7 @@
 	)
 	(wire
 		(pts
-			(xy 156.21 44.45) (xy 153.67 44.45)
+			(xy 158.75 44.45) (xy 156.21 44.45)
 		)
 		(stroke
 			(width 0)
@@ -6705,7 +6717,7 @@
 	)
 	(wire
 		(pts
-			(xy 909.32 45.72) (xy 906.78 45.72)
+			(xy 911.86 45.72) (xy 909.32 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6715,7 +6727,7 @@
 	)
 	(wire
 		(pts
-			(xy 867.41 45.72) (xy 864.87 45.72)
+			(xy 869.95 45.72) (xy 867.41 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6755,6 +6767,16 @@
 	)
 	(wire
 		(pts
+			(xy 563.88 233.68) (xy 561.34 233.68)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "90aaeefa-4a33-5fb2-9d09-c9a3c57a88b0")
+	)
+	(wire
+		(pts
 			(xy 85.09 72.39) (xy 87.63 72.39)
 		)
 		(stroke
@@ -6785,7 +6807,7 @@
 	)
 	(wire
 		(pts
-			(xy 991.87 45.72) (xy 989.33 45.72)
+			(xy 995.68 45.72) (xy 993.14 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6795,7 +6817,7 @@
 	)
 	(wire
 		(pts
-			(xy 575.31 45.72) (xy 572.77 45.72)
+			(xy 577.85 45.72) (xy 575.31 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6835,7 +6857,7 @@
 	)
 	(wire
 		(pts
-			(xy 835.66 45.72) (xy 838.2 45.72)
+			(xy 838.2 45.72) (xy 840.74 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6905,7 +6927,7 @@
 	)
 	(wire
 		(pts
-			(xy 166.37 44.45) (xy 168.91 44.45)
+			(xy 168.91 44.45) (xy 171.45 44.45)
 		)
 		(stroke
 			(width 0)
@@ -6915,7 +6937,7 @@
 	)
 	(wire
 		(pts
-			(xy 627.38 45.72) (xy 629.92 45.72)
+			(xy 629.92 45.72) (xy 632.46 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6935,7 +6957,7 @@
 	)
 	(wire
 		(pts
-			(xy 617.22 45.72) (xy 614.68 45.72)
+			(xy 619.76 45.72) (xy 617.22 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6955,7 +6977,7 @@
 	)
 	(wire
 		(pts
-			(xy 334.01 45.72) (xy 336.55 45.72)
+			(xy 336.55 45.72) (xy 339.09 45.72)
 		)
 		(stroke
 			(width 0)
@@ -6985,7 +7007,7 @@
 	)
 	(wire
 		(pts
-			(xy 1043.94 45.72) (xy 1046.48 45.72)
+			(xy 1047.75 45.72) (xy 1050.29 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7015,7 +7037,7 @@
 	)
 	(wire
 		(pts
-			(xy 699.77 45.72) (xy 697.23 45.72)
+			(xy 702.31 45.72) (xy 699.77 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7075,7 +7097,7 @@
 	)
 	(wire
 		(pts
-			(xy 949.96 45.72) (xy 947.42 45.72)
+			(xy 953.77 45.72) (xy 951.23 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7115,7 +7137,7 @@
 	)
 	(wire
 		(pts
-			(xy 127 44.45) (xy 129.54 44.45)
+			(xy 129.54 44.45) (xy 132.08 44.45)
 		)
 		(stroke
 			(width 0)
@@ -7135,7 +7157,7 @@
 	)
 	(wire
 		(pts
-			(xy 417.83 45.72) (xy 420.37 45.72)
+			(xy 420.37 45.72) (xy 422.91 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7145,7 +7167,7 @@
 	)
 	(wire
 		(pts
-			(xy 695.96 232.41) (xy 698.5 232.41)
+			(xy 741.68 232.41) (xy 744.22 232.41)
 		)
 		(stroke
 			(width 0)
@@ -7205,7 +7227,7 @@
 	)
 	(wire
 		(pts
-			(xy 292.1 45.72) (xy 294.64 45.72)
+			(xy 295.91 45.72) (xy 298.45 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7255,7 +7277,7 @@
 	)
 	(wire
 		(pts
-			(xy 741.68 45.72) (xy 739.14 45.72)
+			(xy 744.22 45.72) (xy 741.68 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7275,7 +7297,7 @@
 	)
 	(wire
 		(pts
-			(xy 709.93 45.72) (xy 712.47 45.72)
+			(xy 712.47 45.72) (xy 715.01 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7302,6 +7324,16 @@
 			(type default)
 		)
 		(uuid "cc2ab70c-dde8-5937-bea8-015066519139")
+	)
+	(wire
+		(pts
+			(xy 85.09 173.99) (xy 87.63 173.99)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d1cec5fa-f5e7-5bd5-b28c-2f14c393668b")
 	)
 	(wire
 		(pts
@@ -7345,7 +7377,7 @@
 	)
 	(wire
 		(pts
-			(xy 614.68 232.41) (xy 617.22 232.41)
+			(xy 661.67 232.41) (xy 664.21 232.41)
 		)
 		(stroke
 			(width 0)
@@ -7415,7 +7447,7 @@
 	)
 	(wire
 		(pts
-			(xy 664.21 236.22) (xy 664.21 238.76)
+			(xy 709.93 236.22) (xy 709.93 238.76)
 		)
 		(stroke
 			(width 0)
@@ -7505,7 +7537,7 @@
 	)
 	(wire
 		(pts
-			(xy 717.55 236.22) (xy 717.55 238.76)
+			(xy 764.54 236.22) (xy 764.54 238.76)
 		)
 		(stroke
 			(width 0)
@@ -7565,7 +7597,7 @@
 	)
 	(wire
 		(pts
-			(xy 730.25 236.22) (xy 730.25 238.76)
+			(xy 775.97 236.22) (xy 775.97 238.76)
 		)
 		(stroke
 			(width 0)
@@ -7585,7 +7617,7 @@
 	)
 	(wire
 		(pts
-			(xy 323.85 45.72) (xy 321.31 45.72)
+			(xy 326.39 45.72) (xy 323.85 45.72)
 		)
 		(stroke
 			(width 0)
@@ -7595,7 +7627,7 @@
 	)
 	(wire
 		(pts
-			(xy 652.78 236.22) (xy 652.78 238.76)
+			(xy 698.5 236.22) (xy 698.5 238.76)
 		)
 		(stroke
 			(width 0)
@@ -7624,7 +7656,7 @@
 		(uuid "08de7ffc-9db4-56c3-b671-c0b3c4f62706")
 	)
 	(label "UART0_RX"
-		(at 601.98 232.41 180)
+		(at 648.97 232.41 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7634,7 +7666,7 @@
 		(uuid "1480ec07-210f-5fca-85cf-0d8ebc4a0ba3")
 	)
 	(label "LCD0_CLK"
-		(at 683.26 232.41 180)
+		(at 728.98 232.41 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7644,7 +7676,7 @@
 		(uuid "2b408d43-c0ba-5128-af58-f1ec9e03f6bf")
 	)
 	(label "UART0_RX_PAD"
-		(at 652.78 238.76 270)
+		(at 698.5 238.76 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7674,7 +7706,7 @@
 		(uuid "2f06f549-5804-59d8-8927-86096bee57bc")
 	)
 	(label "UART0_RX_PAD"
-		(at 617.22 232.41 0)
+		(at 664.21 232.41 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7704,7 +7736,7 @@
 		(uuid "5d555281-b56a-5452-ba3a-209af50c1a5f")
 	)
 	(label "RESET"
-		(at 153.67 44.45 180)
+		(at 156.21 44.45 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7724,7 +7756,7 @@
 		(uuid "814ab3a1-ad81-52b5-a324-a948b06d228e")
 	)
 	(label "DDR_ZQ"
-		(at 114.3 44.45 180)
+		(at 116.84 44.45 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7734,7 +7766,7 @@
 		(uuid "afaec151-42a6-5cc2-99ad-d03cb6a8bbd6")
 	)
 	(label "UART0_TX_PAD"
-		(at 640.08 238.76 270)
+		(at 687.07 238.76 270)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7744,7 +7776,7 @@
 		(uuid "b5a2b447-099d-5fd8-91ec-62576a4258e7")
 	)
 	(label "UART0_TX_PAD"
-		(at 571.5 232.41 0)
+		(at 617.22 232.41 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -7774,7 +7806,7 @@
 		(uuid "d19657e4-c74a-53ff-905e-856fd83e2bc1")
 	)
 	(label "UART0_TX"
-		(at 556.26 232.41 180)
+		(at 601.98 232.41 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -8397,6 +8429,28 @@
 			)
 		)
 	)
+	(global_label "USBC_CC_SENSE"
+		(shape bidirectional)
+		(at 561.34 233.68 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "544f0200-f2e9-5f5a-99d8-b08e594b0123")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 561.34 233.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "SD_D0"
 		(shape bidirectional)
 		(at 41.91 63.5 180)
@@ -8739,6 +8793,28 @@
 		(uuid "941d3beb-6685-5033-906c-b12752149282")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 41.91 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "USBC_CC_SENSE"
+		(shape bidirectional)
+		(at 87.63 118.11 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "99ac141d-bda5-5128-be66-55b85f1d1543")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 87.63 118.11 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9235,7 +9311,7 @@
 	)
 	(global_label "RGB_DCLK"
 		(shape bidirectional)
-		(at 698.5 232.41 0)
+		(at 744.22 232.41 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -9244,7 +9320,7 @@
 		)
 		(uuid "cf7325a2-a02b-57ed-9ae9-1938cc83a159")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 698.5 232.41 0)
+			(at 744.22 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9519,6 +9595,28 @@
 			)
 		)
 	)
+	(global_label "CHG_FAST"
+		(shape bidirectional)
+		(at 87.63 173.99 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f54f32c8-05b4-58b4-8f42-53135df98978")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 87.63 173.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "USB_D-"
 		(shape bidirectional)
 		(at 87.63 85.09 0)
@@ -9649,7 +9747,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "818d099d-8563-4458-8465-8f92dfc08354")
+			(uuid "509fd0ed-60e8-41ef-9e1d-fa49e8dfe98a")
 		)
 		(instances
 			(project "gb3"
@@ -9662,7 +9760,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 580.39 45.72 0)
+		(at 582.93 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9672,7 +9770,7 @@
 		(dnp no)
 		(uuid "03b663cb-4c2e-5144-a029-274e0074ff58")
 		(property "Reference" "C18"
-			(at 580.39 41.15 0)
+			(at 582.93 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9682,7 +9780,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 580.39 50.29 0)
+			(at 582.93 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9692,7 +9790,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 580.39 45.72 0)
+			(at 582.93 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9703,7 +9801,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 580.39 45.72 0)
+			(at 582.93 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9714,7 +9812,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 580.39 45.72 0)
+			(at 582.93 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9725,7 +9823,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 580.39 45.72 0)
+			(at 582.93 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9736,10 +9834,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "4edf4f1b-8c4c-4b3a-8b39-35b1057d08eb")
+			(uuid "64698417-fa3d-4149-a779-88b3e3cc1892")
 		)
 		(pin "2"
-			(uuid "21ada953-ac14-4f5c-bc43-ecb358888338")
+			(uuid "88634e0d-d522-4dbd-b813-098cc1062ab4")
 		)
 		(instances
 			(project "gb3"
@@ -9814,7 +9912,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a3bdfb62-23b6-4a10-8311-6ee4857d86f2")
+			(uuid "0243b204-8733-43fc-83fe-39df0e1f4e58")
 		)
 		(instances
 			(project "gb3"
@@ -9827,7 +9925,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 195.58 45.72 90)
+		(at 199.39 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9837,7 +9935,7 @@
 		(dnp no)
 		(uuid "04cc5422-67d6-58cd-a82a-87c0721199fb")
 		(property "Reference" "#PWR0020"
-			(at 195.58 45.72 0)
+			(at 199.39 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9848,7 +9946,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 191.77 45.72 270)
+			(at 195.58 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9859,7 +9957,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 195.58 45.72 0)
+			(at 199.39 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9869,7 +9967,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 195.58 45.72 0)
+			(at 199.39 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9879,7 +9977,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 195.58 45.72 0)
+			(at 199.39 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9889,7 +9987,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "48c62b57-49d0-43a6-8dc4-a541dbdcc2cc")
+			(uuid "3b6de5bb-457c-4835-8f5d-7701a0ad863d")
 		)
 		(instances
 			(project "gb3"
@@ -9902,7 +10000,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 796.29 45.72 90)
+		(at 798.83 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9912,7 +10010,7 @@
 		(dnp no)
 		(uuid "05f44c26-50de-5137-94d4-4b5a2fe7ccb1")
 		(property "Reference" "#PWR0074"
-			(at 796.29 45.72 0)
+			(at 798.83 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9923,7 +10021,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 800.1 45.72 270)
+			(at 802.64 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9934,7 +10032,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 796.29 45.72 0)
+			(at 798.83 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9944,7 +10042,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 796.29 45.72 0)
+			(at 798.83 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9954,7 +10052,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 796.29 45.72 0)
+			(at 798.83 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9964,7 +10062,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "35cde804-3611-4e2f-a3f8-95957717a491")
+			(uuid "937e3494-abc2-4386-be56-2b2fd1acc0e3")
 		)
 		(instances
 			(project "gb3"
@@ -9977,7 +10075,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 830.58 45.72 0)
+		(at 833.12 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -9987,7 +10085,7 @@
 		(dnp no)
 		(uuid "07d03d49-3300-5553-bc68-e0fa03784f37")
 		(property "Reference" "C23"
-			(at 830.58 41.15 0)
+			(at 833.12 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -9997,7 +10095,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 830.58 50.29 0)
+			(at 833.12 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10007,7 +10105,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 830.58 45.72 0)
+			(at 833.12 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10018,7 +10116,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 830.58 45.72 0)
+			(at 833.12 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10029,7 +10127,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 830.58 45.72 0)
+			(at 833.12 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10040,7 +10138,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 830.58 45.72 0)
+			(at 833.12 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10051,10 +10149,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "1276c66e-86f3-4a86-ab99-bbbfe8aa570d")
+			(uuid "c92744f3-7cdc-4ed0-85a0-4dc5f369a8f8")
 		)
 		(pin "2"
-			(uuid "0eef882a-98ef-4f94-9200-7d83952f2ed4")
+			(uuid "1739506c-b300-4bd6-b989-3f61145a42d6")
 		)
 		(instances
 			(project "gb3"
@@ -10129,7 +10227,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "243a5067-88a5-48fd-aa2e-63aaaeb09ab2")
+			(uuid "4c260f5e-247a-4d01-a9bc-1b5792d2d3e1")
 		)
 		(instances
 			(project "gb3"
@@ -10142,7 +10240,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 754.38 45.72 90)
+		(at 756.92 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10152,7 +10250,7 @@
 		(dnp no)
 		(uuid "09d22744-175b-5c8b-9c3c-0b38db2fcd9c")
 		(property "Reference" "#PWR0073"
-			(at 754.38 45.72 0)
+			(at 756.92 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10163,7 +10261,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 758.19 45.72 270)
+			(at 760.73 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10174,7 +10272,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 754.38 45.72 0)
+			(at 756.92 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10184,7 +10282,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 754.38 45.72 0)
+			(at 756.92 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10194,7 +10292,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 754.38 45.72 0)
+			(at 756.92 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10204,7 +10302,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6f06ac4b-ad50-4b84-aa3c-1874ae458457")
+			(uuid "83f3820a-217a-407b-a6df-17675fbb02d2")
 		)
 		(instances
 			(project "gb3"
@@ -10291,10 +10389,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ed788cf7-99db-46c4-82c7-0760f59ffb67")
+			(uuid "9ebcddd3-d5f6-4a3e-997a-cad881188e02")
 		)
 		(pin "2"
-			(uuid "a54e01eb-9778-4e83-9073-8d4d7b26bb76")
+			(uuid "35e41a9c-722e-444a-bbbd-c2ec86d6d619")
 		)
 		(instances
 			(project "gb3"
@@ -10307,7 +10405,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 454.66 45.72 0)
+		(at 457.2 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10317,7 +10415,7 @@
 		(dnp no)
 		(uuid "0ea1d467-2671-5974-8abf-46936e3c7a2b")
 		(property "Reference" "C15"
-			(at 454.66 41.15 0)
+			(at 457.2 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10327,7 +10425,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 454.66 50.29 0)
+			(at 457.2 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10337,7 +10435,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 454.66 45.72 0)
+			(at 457.2 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10348,7 +10446,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 454.66 45.72 0)
+			(at 457.2 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10359,7 +10457,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 454.66 45.72 0)
+			(at 457.2 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10370,7 +10468,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 454.66 45.72 0)
+			(at 457.2 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10381,10 +10479,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "f5ac5dbb-23b9-4b9a-9b7a-b89c94fb370d")
+			(uuid "1add7bff-0db9-456b-9f68-bdf5a79304e0")
 		)
 		(pin "2"
-			(uuid "fd161f5b-211d-4cb2-b93d-d043842c5924")
+			(uuid "3c9e56ae-8c80-4dc3-b59d-5938d05deb8b")
 		)
 		(instances
 			(project "gb3"
@@ -10397,7 +10495,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOA")
-		(at 822.96 45.72 90)
+		(at 825.5 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10407,7 +10505,7 @@
 		(dnp no)
 		(uuid "0f2df07b-7b34-5809-8246-7fc1ae792a0a")
 		(property "Reference" "#PWR0010"
-			(at 822.96 45.72 0)
+			(at 825.5 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10418,7 +10516,7 @@
 			)
 		)
 		(property "Value" "LDOA"
-			(at 819.15 45.72 270)
+			(at 821.69 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10429,7 +10527,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 822.96 45.72 0)
+			(at 825.5 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10439,7 +10537,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 822.96 45.72 0)
+			(at 825.5 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10449,7 +10547,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 822.96 45.72 0)
+			(at 825.5 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10459,7 +10557,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "71985cf1-6b07-4222-a8c6-bcd20a855c49")
+			(uuid "d1fe8391-9776-405b-95d2-af81802da563")
 		)
 		(instances
 			(project "gb3"
@@ -10534,7 +10632,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "9005c48a-5127-4785-a4d1-c8ddb7d74d15")
+			(uuid "b22b0382-a2c4-466e-8ec2-26770e2b4c6f")
 		)
 		(instances
 			(project "gb3"
@@ -10621,10 +10719,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "934175d5-dc7f-45da-bc58-0f1760e2f75d")
+			(uuid "be8b00d4-bc37-4918-9e9f-1027e149e071")
 		)
 		(pin "2"
-			(uuid "cde06787-f44a-4932-ad08-0815b15a6000")
+			(uuid "3adb9c82-8a8e-43aa-b565-b2063c02b60f")
 		)
 		(instances
 			(project "gb3"
@@ -10646,7 +10744,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "13b7b04b-3550-53f7-9179-4328665040d5")
-		(property "Reference" "#FLG0106"
+		(property "Reference" "#FLG0107"
 			(at 154.94 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -10699,12 +10797,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "8eafcb53-ede1-4261-a6a1-23e723237512")
+			(uuid "c1f503a3-d1f2-4158-8779-4ed116cb4502")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0106")
+					(reference "#FLG0107")
 					(unit 1)
 				)
 			)
@@ -10712,7 +10810,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 129.54 44.45 90)
+		(at 132.08 44.45 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10722,7 +10820,7 @@
 		(dnp no)
 		(uuid "161c0db8-bd4a-5fed-a86f-c7ebec4e3c12")
 		(property "Reference" "#PWR0059"
-			(at 129.54 44.45 0)
+			(at 132.08 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10733,7 +10831,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 133.35 44.45 270)
+			(at 135.89 44.45 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10744,7 +10842,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 129.54 44.45 0)
+			(at 132.08 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10754,7 +10852,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 129.54 44.45 0)
+			(at 132.08 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10764,7 +10862,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 129.54 44.45 0)
+			(at 132.08 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10774,7 +10872,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "3c12e513-66c2-43f5-b7cd-c5e000082337")
+			(uuid "9455485e-6b61-4036-ba89-b10086b5aff6")
 		)
 		(instances
 			(project "gb3"
@@ -10787,7 +10885,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:RC0603JR-0710KL")
-		(at 161.29 44.45 0)
+		(at 163.83 44.45 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10797,7 +10895,7 @@
 		(dnp no)
 		(uuid "16872269-750d-5a1b-bdac-e41960ded60f")
 		(property "Reference" "R11"
-			(at 161.29 40.89 0)
+			(at 163.83 40.89 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10807,7 +10905,7 @@
 			)
 		)
 		(property "Value" "10k"
-			(at 161.29 48.01 0)
+			(at 163.83 48.01 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10817,7 +10915,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:R0603"
-			(at 161.29 44.45 0)
+			(at 163.83 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10828,7 +10926,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
-			(at 161.29 44.45 0)
+			(at 163.83 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10839,7 +10937,7 @@
 			)
 		)
 		(property "Description" "10KΩ 1% Resistor, 0603"
-			(at 161.29 44.45 0)
+			(at 163.83 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10850,7 +10948,7 @@
 			)
 		)
 		(property "LCSC" "C99198"
-			(at 161.29 44.45 0)
+			(at 163.83 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10861,10 +10959,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "19266cd5-efe7-4bd3-b325-be77662c433f")
+			(uuid "936ac887-a421-4815-a82c-974179e0af10")
 		)
 		(pin "2"
-			(uuid "bb7e5084-5f3c-47d6-b453-70fe7b760f19")
+			(uuid "8adc8807-f74b-4cdf-abb0-e0b3be6a8c12")
 		)
 		(instances
 			(project "gb3"
@@ -10877,7 +10975,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 962.66 45.72 90)
+		(at 966.47 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10887,7 +10985,7 @@
 		(dnp no)
 		(uuid "16fb0b40-3d54-5684-8323-fb5f6438237a")
 		(property "Reference" "#PWR0078"
-			(at 962.66 45.72 0)
+			(at 966.47 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10898,7 +10996,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 966.47 45.72 270)
+			(at 970.28 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10909,7 +11007,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 962.66 45.72 0)
+			(at 966.47 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10919,7 +11017,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 962.66 45.72 0)
+			(at 966.47 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10929,7 +11027,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 962.66 45.72 0)
+			(at 966.47 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10939,7 +11037,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "1955a844-9c78-4280-bdad-c8fca5d438d8")
+			(uuid "d00d3a21-9488-41b7-b7b2-3ec3f82b6533")
 		)
 		(instances
 			(project "gb3"
@@ -10952,7 +11050,7 @@
 	)
 	(symbol
 		(lib_id "power:HPVCC")
-		(at 697.23 45.72 90)
+		(at 699.77 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10961,8 +11059,8 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "18fd17e8-337a-50ec-b6c7-0e94e79c467a")
-		(property "Reference" "#PWR0098"
-			(at 697.23 45.72 0)
+		(property "Reference" "#PWR0099"
+			(at 699.77 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10973,7 +11071,7 @@
 			)
 		)
 		(property "Value" "HPVCC"
-			(at 693.42 45.72 270)
+			(at 695.96 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10984,7 +11082,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 697.23 45.72 0)
+			(at 699.77 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10994,7 +11092,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 697.23 45.72 0)
+			(at 699.77 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11004,7 +11102,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 697.23 45.72 0)
+			(at 699.77 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11014,12 +11112,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "1667294b-5b00-45c0-9023-4606859c0106")
+			(uuid "ac4abba3-fc78-455e-a4fa-00dd4761b968")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#PWR0098")
+					(reference "#PWR0099")
 					(unit 1)
 				)
 			)
@@ -11027,7 +11125,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOA")
-		(at 864.87 45.72 90)
+		(at 867.41 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11037,7 +11135,7 @@
 		(dnp no)
 		(uuid "18feb896-b6a1-56c6-80a3-62495774f955")
 		(property "Reference" "#PWR0011"
-			(at 864.87 45.72 0)
+			(at 867.41 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11048,7 +11146,7 @@
 			)
 		)
 		(property "Value" "LDOA"
-			(at 861.06 45.72 270)
+			(at 863.6 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11059,7 +11157,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 864.87 45.72 0)
+			(at 867.41 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11069,7 +11167,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 864.87 45.72 0)
+			(at 867.41 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11079,7 +11177,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 864.87 45.72 0)
+			(at 867.41 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11089,7 +11187,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "7087b6bb-86d6-445b-804d-59061eae1ce4")
+			(uuid "d868958d-9440-4acc-b287-6d482966578a")
 		)
 		(instances
 			(project "gb3"
@@ -11102,7 +11200,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 412.75 45.72 0)
+		(at 415.29 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11112,7 +11210,7 @@
 		(dnp no)
 		(uuid "1a55c1d2-b336-5dbe-9df3-c2b30083d10e")
 		(property "Reference" "C14"
-			(at 412.75 41.15 0)
+			(at 415.29 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11122,7 +11220,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 412.75 50.29 0)
+			(at 415.29 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11132,7 +11230,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 412.75 45.72 0)
+			(at 415.29 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11143,7 +11241,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 412.75 45.72 0)
+			(at 415.29 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11154,7 +11252,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 412.75 45.72 0)
+			(at 415.29 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11165,7 +11263,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 412.75 45.72 0)
+			(at 415.29 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11176,10 +11274,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "5b49f273-3bed-42e7-b313-cf21ebc689aa")
+			(uuid "56dac2b8-17da-45f5-8c9b-1c654e7e8a86")
 		)
 		(pin "2"
-			(uuid "0bf7f5f8-a66f-47bd-880b-faf3fce7c07f")
+			(uuid "0ee147bd-c3c7-4d7b-8d2f-0ae94536af4a")
 		)
 		(instances
 			(project "gb3"
@@ -11192,7 +11290,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOA")
-		(at 363.22 45.72 90)
+		(at 365.76 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11202,7 +11300,7 @@
 		(dnp no)
 		(uuid "1d9d9222-2752-5646-a9f0-8a9f123d88d7")
 		(property "Reference" "#PWR0009"
-			(at 363.22 45.72 0)
+			(at 365.76 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11213,7 +11311,7 @@
 			)
 		)
 		(property "Value" "LDOA"
-			(at 359.41 45.72 270)
+			(at 361.95 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11224,7 +11322,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 363.22 45.72 0)
+			(at 365.76 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11234,7 +11332,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 363.22 45.72 0)
+			(at 365.76 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11244,7 +11342,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 363.22 45.72 0)
+			(at 365.76 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11254,7 +11352,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "2572a5db-8e90-4958-991d-ee359bd6a76f")
+			(uuid "077f186f-2d7c-48a9-a872-451e5c3c1432")
 		)
 		(instances
 			(project "gb3"
@@ -11267,7 +11365,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 1038.86 45.72 0)
+		(at 1042.67 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11277,7 +11375,7 @@
 		(dnp no)
 		(uuid "21adf730-4ed3-5477-89f3-5369be4a24e7")
 		(property "Reference" "C28"
-			(at 1038.86 41.15 0)
+			(at 1042.67 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11287,7 +11385,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 1038.86 50.29 0)
+			(at 1042.67 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11297,7 +11395,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 1038.86 45.72 0)
+			(at 1042.67 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11308,7 +11406,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 1038.86 45.72 0)
+			(at 1042.67 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11319,7 +11417,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 1038.86 45.72 0)
+			(at 1042.67 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11330,7 +11428,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 1038.86 45.72 0)
+			(at 1042.67 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11341,10 +11439,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "13b19816-c64d-4809-8e63-107399cdb609")
+			(uuid "48d3026c-eb7f-4509-af4e-73366ea25c81")
 		)
 		(pin "2"
-			(uuid "6647622b-50ed-46e8-884d-005d092490b4")
+			(uuid "6f7207e0-6950-4ab5-8a72-0fbc98851836")
 		)
 		(instances
 			(project "gb3"
@@ -11357,7 +11455,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 287.02 45.72 0)
+		(at 290.83 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11367,7 +11465,7 @@
 		(dnp no)
 		(uuid "227bad04-a781-5069-9d61-5aa32299ba22")
 		(property "Reference" "C10"
-			(at 287.02 41.15 0)
+			(at 290.83 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11377,7 +11475,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 287.02 50.29 0)
+			(at 290.83 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11387,7 +11485,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 287.02 45.72 0)
+			(at 290.83 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11398,7 +11496,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 287.02 45.72 0)
+			(at 290.83 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11409,7 +11507,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 287.02 45.72 0)
+			(at 290.83 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11420,7 +11518,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 287.02 45.72 0)
+			(at 290.83 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11431,10 +11529,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "a33b2d5e-49a9-49d4-8a9f-9769caf5770c")
+			(uuid "b492fd51-494c-45df-b7bb-d7bf3530888e")
 		)
 		(pin "2"
-			(uuid "5bbc89d2-4e40-4b8b-b6c3-2dbfd46e5d83")
+			(uuid "2587b670-6e86-4d75-a084-a3428295fbce")
 		)
 		(instances
 			(project "gb3"
@@ -11509,7 +11607,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c7e24d65-f093-4a7f-a57b-c180de9cdb51")
+			(uuid "b4cc8355-0c85-46b7-9d47-42027a40e6ae")
 		)
 		(instances
 			(project "gb3"
@@ -11595,11 +11693,11 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "c0b0fb8a-f386-49cd-847c-3d48e67442b8")
-		)
 		(pin "2"
-			(uuid "215f64b1-9fe3-410c-b634-ffe9516839cf")
+			(uuid "c3208f5e-38fe-47e1-9a49-81b410047715")
+		)
+		(pin "1"
+			(uuid "676f36b3-5091-4ef1-8601-522da85b4527")
 		)
 		(instances
 			(project "gb3"
@@ -11685,11 +11783,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "05aeec52-def9-4b74-a988-b47c7b0a1c33")
-		)
 		(pin "1"
-			(uuid "94c293fb-ad27-4bb0-b196-01271313aed5")
+			(uuid "88fd25dc-a1fb-4850-9122-a8b93e62f31e")
+		)
+		(pin "2"
+			(uuid "89b50e20-b8fa-4aa8-9e6c-c7f43e319106")
 		)
 		(instances
 			(project "gb3"
@@ -11702,7 +11800,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 588.01 45.72 90)
+		(at 590.55 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11712,7 +11810,7 @@
 		(dnp no)
 		(uuid "26817e79-c4cd-5fe9-87d3-b083c9ceda1a")
 		(property "Reference" "#PWR0069"
-			(at 588.01 45.72 0)
+			(at 590.55 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11723,7 +11821,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 591.82 45.72 270)
+			(at 594.36 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11734,7 +11832,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 588.01 45.72 0)
+			(at 590.55 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11744,7 +11842,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 588.01 45.72 0)
+			(at 590.55 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11754,7 +11852,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 588.01 45.72 0)
+			(at 590.55 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11764,7 +11862,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "ffa46e10-ee16-4810-8bc9-f20a08e6d883")
+			(uuid "eda47f33-edc7-471e-9666-52af7c0cffc0")
 		)
 		(instances
 			(project "gb3"
@@ -11786,7 +11884,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "2957683c-2f26-5e31-83da-224f3937ee08")
-		(property "Reference" "#FLG0102"
+		(property "Reference" "#FLG0103"
 			(at 73.66 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -11839,12 +11937,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "cc76eadf-61b1-4f1f-ab91-bd7f7ee0c183")
+			(uuid "708db95a-3e6d-4e67-9d44-3ea4b468a3d5")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0102")
+					(reference "#FLG0103")
 					(unit 1)
 				)
 			)
@@ -11852,7 +11950,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 210.82 45.72 90)
+		(at 214.63 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -11862,7 +11960,7 @@
 		(dnp no)
 		(uuid "2df01b27-7b02-5281-ac63-dbcf2fbae967")
 		(property "Reference" "#PWR0060"
-			(at 210.82 45.72 0)
+			(at 214.63 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11873,7 +11971,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 214.63 45.72 270)
+			(at 218.44 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11884,7 +11982,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 210.82 45.72 0)
+			(at 214.63 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11894,7 +11992,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 210.82 45.72 0)
+			(at 214.63 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11904,7 +12002,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 210.82 45.72 0)
+			(at 214.63 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11914,7 +12012,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8020fa3c-396e-43ab-b5b9-1df55356273d")
+			(uuid "a13c6bbb-ea46-41ae-88cb-3a4c86798265")
 		)
 		(instances
 			(project "gb3"
@@ -11989,7 +12087,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "aa86d744-43b0-4e3d-a3c1-e32003d88787")
+			(uuid "11e10439-55ef-4fb7-a01c-64cbd7cb999b")
 		)
 		(instances
 			(project "gb3"
@@ -12002,7 +12100,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 237.49 45.72 90)
+		(at 241.3 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -12012,7 +12110,7 @@
 		(dnp no)
 		(uuid "31b16708-b52a-5a78-a461-802b3a650df8")
 		(property "Reference" "#PWR0021"
-			(at 237.49 45.72 0)
+			(at 241.3 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12023,7 +12121,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 233.68 45.72 270)
+			(at 237.49 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12034,7 +12132,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 237.49 45.72 0)
+			(at 241.3 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12044,7 +12142,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 237.49 45.72 0)
+			(at 241.3 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12054,7 +12152,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 237.49 45.72 0)
+			(at 241.3 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12064,7 +12162,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "ab359779-523e-42fb-b66d-f9d7a025fe96")
+			(uuid "5ada9688-108c-4fd7-a1af-a3b3c41c4744")
 		)
 		(instances
 			(project "gb3"
@@ -12139,7 +12237,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "0b779aa6-fbd8-4153-bd13-33f39081bcca")
+			(uuid "bdd240f3-2e5b-4be0-badc-8ec85e49d0ce")
 		)
 		(instances
 			(project "gb3"
@@ -12152,7 +12250,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 622.3 45.72 0)
+		(at 624.84 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -12162,7 +12260,7 @@
 		(dnp no)
 		(uuid "3279ff3e-1649-52ff-871c-b897445f77e5")
 		(property "Reference" "C19"
-			(at 622.3 41.15 0)
+			(at 624.84 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12172,7 +12270,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 622.3 50.29 0)
+			(at 624.84 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12182,7 +12280,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 622.3 45.72 0)
+			(at 624.84 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12193,7 +12291,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 622.3 45.72 0)
+			(at 624.84 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12204,7 +12302,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 622.3 45.72 0)
+			(at 624.84 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12215,7 +12313,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 622.3 45.72 0)
+			(at 624.84 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12226,10 +12324,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "cb03f463-fe0e-47a0-8f34-95b8cfde784b")
+			(uuid "212fe16d-48da-4891-845b-4c172401fa96")
 		)
 		(pin "2"
-			(uuid "885d5cda-24b8-4b6f-9c3d-7cf6ad7d5247")
+			(uuid "42890f33-96cd-4233-9015-3addd3fd1452")
 		)
 		(instances
 			(project "gb3"
@@ -12242,7 +12340,7 @@
 	)
 	(symbol
 		(lib_id "power:AVCC")
-		(at 656.59 45.72 90)
+		(at 659.13 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -12252,7 +12350,7 @@
 		(dnp no)
 		(uuid "342d46eb-f0b7-5dde-a600-0d2ced74fe2f")
 		(property "Reference" "#PWR0053"
-			(at 656.59 45.72 0)
+			(at 659.13 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12263,7 +12361,7 @@
 			)
 		)
 		(property "Value" "AVCC"
-			(at 652.78 45.72 270)
+			(at 655.32 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12274,7 +12372,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 656.59 45.72 0)
+			(at 659.13 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12284,7 +12382,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 656.59 45.72 0)
+			(at 659.13 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12294,7 +12392,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 656.59 45.72 0)
+			(at 659.13 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12304,7 +12402,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "890a9e2c-1c57-4175-93ce-5b8a25a137e6")
+			(uuid "17edb9f7-2784-45e2-8d2f-9f3b88a32972")
 		)
 		(instances
 			(project "gb3"
@@ -12379,7 +12477,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "d28a886b-308d-44d9-a96f-fcb7d0ef84fd")
+			(uuid "81f0a4bb-022d-4b46-ac4d-6dc430707e65")
 		)
 		(instances
 			(project "gb3"
@@ -12392,7 +12490,7 @@
 	)
 	(symbol
 		(lib_id "power:VRA2")
-		(at 781.05 45.72 90)
+		(at 783.59 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -12402,7 +12500,7 @@
 		(dnp no)
 		(uuid "38b66cbb-b862-5aea-81c0-77a52b5cc40f")
 		(property "Reference" "#PWR0055"
-			(at 781.05 45.72 0)
+			(at 783.59 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12413,7 +12511,7 @@
 			)
 		)
 		(property "Value" "VRA2"
-			(at 777.24 45.72 270)
+			(at 779.78 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12424,7 +12522,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 781.05 45.72 0)
+			(at 783.59 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12434,7 +12532,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 781.05 45.72 0)
+			(at 783.59 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12444,7 +12542,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 781.05 45.72 0)
+			(at 783.59 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12454,7 +12552,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "16bb47ac-ab00-436b-ab4f-67d38dd5a162")
+			(uuid "a07b01e5-6918-4a33-b336-60e042333bce")
 		)
 		(instances
 			(project "gb3"
@@ -12529,7 +12627,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "482a7297-4321-4b63-ba95-d06b08f6740e")
+			(uuid "5d47cfdb-df74-4a10-bb5b-9769da8e96de")
 		)
 		(instances
 			(project "gb3"
@@ -12604,7 +12702,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "44bfb7e5-fc3b-41a8-b543-0bfed280a40f")
+			(uuid "b0363c45-e412-4b3c-82e1-514af60e04a1")
 		)
 		(instances
 			(project "gb3"
@@ -12626,7 +12724,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "3bc897e7-c291-5f22-ae09-8273619b6187")
-		(property "Reference" "#FLG0110"
+		(property "Reference" "#FLG0111"
 			(at 236.22 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -12679,12 +12777,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "48b4fbd3-1565-4b9e-9750-8c742affd3b6")
+			(uuid "4e01dd48-1f44-42e4-98b3-97daedd9bc50")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0110")
+					(reference "#FLG0111")
 					(unit 1)
 				)
 			)
@@ -12692,7 +12790,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 496.57 45.72 0)
+		(at 499.11 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -12702,7 +12800,7 @@
 		(dnp no)
 		(uuid "3e56e2b4-cb88-512d-b630-c9c107f56540")
 		(property "Reference" "C16"
-			(at 496.57 41.15 0)
+			(at 499.11 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12712,7 +12810,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 496.57 50.29 0)
+			(at 499.11 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12722,7 +12820,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 496.57 45.72 0)
+			(at 499.11 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12733,7 +12831,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 496.57 45.72 0)
+			(at 499.11 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12744,7 +12842,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 496.57 45.72 0)
+			(at 499.11 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12755,7 +12853,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 496.57 45.72 0)
+			(at 499.11 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12766,10 +12864,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "9954b587-cf3f-4ff9-adc9-1698a28f7a3a")
+			(uuid "e897f39b-0c50-4ee0-91b0-919a904e5648")
 		)
 		(pin "2"
-			(uuid "bcf84a51-54e9-47e2-9d6f-66ec8d36e7ea")
+			(uuid "518e30f6-5045-4c31-930d-0267dff57b21")
 		)
 		(instances
 			(project "gb3"
@@ -12782,7 +12880,7 @@
 	)
 	(symbol
 		(lib_id "power:AVCC")
-		(at 614.68 45.72 90)
+		(at 617.22 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -12792,7 +12890,7 @@
 		(dnp no)
 		(uuid "3efc710d-b267-504d-aeb3-708052e4211d")
 		(property "Reference" "#PWR0052"
-			(at 614.68 45.72 0)
+			(at 617.22 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -12803,7 +12901,7 @@
 			)
 		)
 		(property "Value" "AVCC"
-			(at 610.87 45.72 270)
+			(at 613.41 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12814,7 +12912,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 614.68 45.72 0)
+			(at 617.22 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12824,7 +12922,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 614.68 45.72 0)
+			(at 617.22 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12834,7 +12932,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 614.68 45.72 0)
+			(at 617.22 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -12844,7 +12942,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "42c423fa-8fe5-44fd-8cfb-c0676932eaf0")
+			(uuid "1404399a-21ff-48ed-8cb7-339a853ef008")
 		)
 		(instances
 			(project "gb3"
@@ -12919,7 +13017,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "964b1166-3438-4df1-bef2-ba5c03f06620")
+			(uuid "819d14e1-da7c-437d-a605-10e75d13c7b0")
 		)
 		(instances
 			(project "gb3"
@@ -12994,7 +13092,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "fd569728-ab68-46e5-ada9-a5018c6cd6b4")
+			(uuid "bbf81727-3a39-4704-bc97-fe0d8424002a")
 		)
 		(instances
 			(project "gb3"
@@ -13069,7 +13167,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6858c865-3cdf-4d09-a0a7-69c413dbdb00")
+			(uuid "f36fb4a9-eac1-418d-a407-3deb1b491906")
 		)
 		(instances
 			(project "gb3"
@@ -13091,7 +13189,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "4631aad8-aab7-5b13-a8ff-a4f71b0cd874")
-		(property "Reference" "#FLG0099"
+		(property "Reference" "#FLG0100"
 			(at 12.7 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -13144,12 +13242,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "4b105ad9-a587-481f-9655-fa7f244b4ee2")
+			(uuid "c27a7caa-ac21-4ecc-817a-72da4adb99ae")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0099")
+					(reference "#FLG0100")
 					(unit 1)
 				)
 			)
@@ -13157,7 +13255,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOB")
-		(at 989.33 45.72 90)
+		(at 993.14 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -13167,7 +13265,7 @@
 		(dnp no)
 		(uuid "4a65af71-0724-5226-a006-4620ba0dfd31")
 		(property "Reference" "#PWR0037"
-			(at 989.33 45.72 0)
+			(at 993.14 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -13178,7 +13276,7 @@
 			)
 		)
 		(property "Value" "LDOB"
-			(at 985.52 45.72 270)
+			(at 989.33 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13189,7 +13287,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 989.33 45.72 0)
+			(at 993.14 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13199,7 +13297,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 989.33 45.72 0)
+			(at 993.14 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13209,7 +13307,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 989.33 45.72 0)
+			(at 993.14 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13219,7 +13317,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "9c374f7d-e30f-4fb8-89ec-6ca252d69fc5")
+			(uuid "35dddce1-bce3-4858-93c6-84d25f5f1b85")
 		)
 		(instances
 			(project "gb3"
@@ -13294,7 +13392,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8f5a1666-89e9-4d96-90aa-3fc9c2c58013")
+			(uuid "6a4a8b9c-9f7f-4c7f-962c-76103328d7d3")
 		)
 		(instances
 			(project "gb3"
@@ -13307,7 +13405,7 @@
 	)
 	(symbol
 		(lib_id "power:+0V9")
-		(at 488.95 45.72 90)
+		(at 491.49 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -13317,7 +13415,7 @@
 		(dnp no)
 		(uuid "4dad2d5c-c6ff-54c6-bcdf-6588a99e3e50")
 		(property "Reference" "#PWR0047"
-			(at 488.95 45.72 0)
+			(at 491.49 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -13328,7 +13426,7 @@
 			)
 		)
 		(property "Value" "+0V9"
-			(at 485.14 45.72 270)
+			(at 487.68 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13339,7 +13437,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 488.95 45.72 0)
+			(at 491.49 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13349,7 +13447,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 488.95 45.72 0)
+			(at 491.49 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13359,7 +13457,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 488.95 45.72 0)
+			(at 491.49 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13369,7 +13467,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "88f6d1cb-31f2-4e61-a46f-69e9c51d23fd")
+			(uuid "00a09253-3053-4777-ad88-9b50c55218f8")
 		)
 		(instances
 			(project "gb3"
@@ -13382,7 +13480,7 @@
 	)
 	(symbol
 		(lib_id "power:+0V9")
-		(at 572.77 45.72 90)
+		(at 575.31 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -13392,7 +13490,7 @@
 		(dnp no)
 		(uuid "5ab10c98-e91a-572e-bf10-3fe216838888")
 		(property "Reference" "#PWR0049"
-			(at 572.77 45.72 0)
+			(at 575.31 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -13403,7 +13501,7 @@
 			)
 		)
 		(property "Value" "+0V9"
-			(at 568.96 45.72 270)
+			(at 571.5 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13414,7 +13512,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 572.77 45.72 0)
+			(at 575.31 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13424,7 +13522,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 572.77 45.72 0)
+			(at 575.31 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13434,7 +13532,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 572.77 45.72 0)
+			(at 575.31 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13444,7 +13542,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "4407ca3d-c8f6-4992-9294-6b15405eefcc")
+			(uuid "699d7ea5-0d87-4a43-b4b1-e9e94ebc44d3")
 		)
 		(instances
 			(project "gb3"
@@ -13519,7 +13617,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "eafd5789-fc08-40f2-90c5-4b8f3926df37")
+			(uuid "29c5571c-1d10-4b2a-a7b0-9e931be0ecbb")
 		)
 		(instances
 			(project "gb3"
@@ -13594,7 +13692,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "44369083-4c51-4eb1-901c-8ab22d363a22")
+			(uuid "c942734c-3393-4081-9bfa-65cfa01fad54")
 		)
 		(instances
 			(project "gb3"
@@ -13607,7 +13705,7 @@
 	)
 	(symbol
 		(lib_id "manual:TestPoint")
-		(at 717.55 233.68 0)
+		(at 764.54 233.68 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -13617,7 +13715,7 @@
 		(dnp no)
 		(uuid "60396255-af63-5f96-b47e-ca882db6f883")
 		(property "Reference" "TP9"
-			(at 717.55 229.11 0)
+			(at 764.54 229.11 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13627,7 +13725,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 717.55 236.22 0)
+			(at 764.54 236.22 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13637,7 +13735,7 @@
 			)
 		)
 		(property "Footprint" "manual:TestPoint_Pad_D1.5mm"
-			(at 717.55 233.68 0)
+			(at 764.54 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -13648,7 +13746,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 717.55 233.68 0)
+			(at 764.54 233.68 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -13658,7 +13756,7 @@
 			)
 		)
 		(property "Description" "Bare-copper probe pad (no part placed, no LCSC)"
-			(at 717.55 233.68 0)
+			(at 764.54 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -13669,7 +13767,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "159612b4-86ee-48b4-aa7f-2449a208525f")
+			(uuid "0e85990f-48ec-406e-a979-e901a02e60fe")
 		)
 		(instances
 			(project "gb3"
@@ -13744,7 +13842,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "e18e4604-9dc8-4d3e-8807-73f2341541b1")
+			(uuid "e69d6ca6-cd89-4930-b4e3-da86ddc75b61")
 		)
 		(instances
 			(project "gb3"
@@ -13819,7 +13917,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "d86d47c7-eaf5-41fa-9c97-0f2a81501c54")
+			(uuid "6f99a5ff-f044-4645-9b26-bc71e969e961")
 		)
 		(instances
 			(project "gb3"
@@ -13841,7 +13939,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "64550b0e-dc7e-5484-bb1f-28b5ecd72367")
-		(property "Reference" "#PWR0097"
+		(property "Reference" "#PWR0098"
 			(at 87.63 128.27 0)
 			(hide yes)
 			(show_name no)
@@ -13894,12 +13992,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "ebd09251-cc1d-46fa-8b25-1f8bf8bd2bb9")
+			(uuid "d5977ccd-bc01-43d3-a882-898555cd4ad4")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#PWR0097")
+					(reference "#PWR0098")
 					(unit 1)
 				)
 			)
@@ -13969,7 +14067,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8bbad075-3a49-4559-ad73-b776e30cb6dd")
+			(uuid "b8feed98-f1ae-4376-91ec-83de9467f575")
 		)
 		(instances
 			(project "gb3"
@@ -14044,7 +14142,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "967f0a9a-8664-4bbc-af27-3f259c14556e")
+			(uuid "bd77a9a0-281c-4361-974e-9ab0745f92bf")
 		)
 		(instances
 			(project "gb3"
@@ -14057,7 +14155,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 788.67 45.72 0)
+		(at 791.21 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14067,7 +14165,7 @@
 		(dnp no)
 		(uuid "6fc20a66-1093-502e-b107-45ae40673532")
 		(property "Reference" "C22"
-			(at 788.67 41.15 0)
+			(at 791.21 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14077,7 +14175,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 788.67 50.29 0)
+			(at 791.21 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14087,7 +14185,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 788.67 45.72 0)
+			(at 791.21 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14098,7 +14196,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 788.67 45.72 0)
+			(at 791.21 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14109,7 +14207,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 788.67 45.72 0)
+			(at 791.21 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14120,7 +14218,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 788.67 45.72 0)
+			(at 791.21 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14131,10 +14229,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "dd4bf28a-c748-445a-92dc-4a0e6bf18b87")
+			(uuid "18429872-c6ac-4e67-ac33-b2d169d6bc6e")
 		)
 		(pin "2"
-			(uuid "f1337e74-0f0d-4c8b-9d9b-406e184f274e")
+			(uuid "227767ec-db3d-4f39-8c8d-f6b84eb127a8")
 		)
 		(instances
 			(project "gb3"
@@ -14147,7 +14245,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 712.47 45.72 90)
+		(at 715.01 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14157,7 +14255,7 @@
 		(dnp no)
 		(uuid "72324f13-24d5-5d7f-8305-06099896264c")
 		(property "Reference" "#PWR0072"
-			(at 712.47 45.72 0)
+			(at 715.01 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14168,7 +14266,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 716.28 45.72 270)
+			(at 718.82 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14179,7 +14277,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 712.47 45.72 0)
+			(at 715.01 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14189,7 +14287,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 712.47 45.72 0)
+			(at 715.01 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14199,7 +14297,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 712.47 45.72 0)
+			(at 715.01 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14209,7 +14307,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "fde8583d-adab-4e19-b4dc-c7e9d81759f7")
+			(uuid "c3c3fd1a-27c6-4600-9f01-fa26c2a9572d")
 		)
 		(instances
 			(project "gb3"
@@ -14231,7 +14329,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "75cd67f7-8225-517c-a799-68021c9eb539")
-		(property "Reference" "#FLG0111"
+		(property "Reference" "#FLG0112"
 			(at 256.54 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -14284,12 +14382,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "41321632-a832-44b0-84dd-dc4f4a1fc00a")
+			(uuid "cf0b0aff-c826-4a99-bdd9-7cab7d5f9696")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0111")
+					(reference "#FLG0112")
 					(unit 1)
 				)
 			)
@@ -14306,7 +14404,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "76333ba6-f3b0-57ee-b025-022005d67a3c")
-		(property "Reference" "#FLG0105"
+		(property "Reference" "#FLG0106"
 			(at 134.62 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -14359,12 +14457,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "1296812f-9324-4a81-8158-32fe041703b1")
+			(uuid "797fd33f-fb9b-43b7-acd5-12006c61e7e2")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0105")
+					(reference "#FLG0106")
 					(unit 1)
 				)
 			)
@@ -14372,7 +14470,7 @@
 	)
 	(symbol
 		(lib_id "manual:TestPoint")
-		(at 730.25 233.68 0)
+		(at 775.97 233.68 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14382,7 +14480,7 @@
 		(dnp no)
 		(uuid "764ab889-fb0a-5a8c-9eb6-bedf755f0f6e")
 		(property "Reference" "TP10"
-			(at 730.25 229.11 0)
+			(at 775.97 229.11 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14392,7 +14490,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 730.25 236.22 0)
+			(at 775.97 236.22 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14402,7 +14500,7 @@
 			)
 		)
 		(property "Footprint" "manual:TestPoint_Pad_D1.5mm"
-			(at 730.25 233.68 0)
+			(at 775.97 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14413,7 +14511,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 730.25 233.68 0)
+			(at 775.97 233.68 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14423,7 +14521,7 @@
 			)
 		)
 		(property "Description" "Bare-copper probe pad (no part placed, no LCSC)"
-			(at 730.25 233.68 0)
+			(at 775.97 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14434,7 +14532,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "11c9dd0c-2bf4-465a-8f56-de3f51056294")
+			(uuid "50df5df4-f0ef-49a0-a403-048d7a65b802")
 		)
 		(instances
 			(project "gb3"
@@ -14447,7 +14545,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 746.76 45.72 0)
+		(at 749.3 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14457,7 +14555,7 @@
 		(dnp no)
 		(uuid "79e6d393-8f6f-5604-a2c7-61018c456773")
 		(property "Reference" "C21"
-			(at 746.76 41.15 0)
+			(at 749.3 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14467,7 +14565,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 746.76 50.29 0)
+			(at 749.3 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14477,7 +14575,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 746.76 45.72 0)
+			(at 749.3 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14488,7 +14586,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 746.76 45.72 0)
+			(at 749.3 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14499,7 +14597,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 746.76 45.72 0)
+			(at 749.3 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14510,7 +14608,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 746.76 45.72 0)
+			(at 749.3 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14521,10 +14619,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "95a70dfc-10d9-4d06-adea-411afc06224d")
+			(uuid "efec8f5d-6459-478b-8e0c-fef3e4d54e95")
 		)
 		(pin "2"
-			(uuid "062606b4-a73b-4dfa-ba98-4dd158c1b8eb")
+			(uuid "f1bcd239-cdf5-4216-b570-998e4bfc9478")
 		)
 		(instances
 			(project "gb3"
@@ -14599,7 +14697,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "86c684dc-22cd-4fbc-81a2-e8de56b39082")
+			(uuid "b806bbad-e0f0-43cf-9189-e77c9ef2f3c2")
 		)
 		(instances
 			(project "gb3"
@@ -14612,7 +14710,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOB")
-		(at 1031.24 45.72 90)
+		(at 1035.05 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14622,7 +14720,7 @@
 		(dnp no)
 		(uuid "7c482faa-6262-52e4-b901-148e0292897b")
 		(property "Reference" "#PWR0038"
-			(at 1031.24 45.72 0)
+			(at 1035.05 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14633,7 +14731,7 @@
 			)
 		)
 		(property "Value" "LDOB"
-			(at 1027.43 45.72 270)
+			(at 1031.24 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14644,7 +14742,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 1031.24 45.72 0)
+			(at 1035.05 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14654,7 +14752,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 1031.24 45.72 0)
+			(at 1035.05 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14664,7 +14762,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 1031.24 45.72 0)
+			(at 1035.05 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14674,7 +14772,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "97888f98-3f89-4ba5-a920-5c1317b0bd53")
+			(uuid "731bf6ee-8cbd-4f0d-a335-f5c6252e5f7e")
 		)
 		(instances
 			(project "gb3"
@@ -14687,7 +14785,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 328.93 45.72 0)
+		(at 331.47 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14697,7 +14795,7 @@
 		(dnp no)
 		(uuid "7ca0d9da-a450-513e-8430-a8aa15eaa9c2")
 		(property "Reference" "C12"
-			(at 328.93 41.15 0)
+			(at 331.47 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14707,7 +14805,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 328.93 50.29 0)
+			(at 331.47 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14717,7 +14815,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 328.93 45.72 0)
+			(at 331.47 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14728,7 +14826,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 328.93 45.72 0)
+			(at 331.47 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14739,7 +14837,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 328.93 45.72 0)
+			(at 331.47 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14750,7 +14848,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 328.93 45.72 0)
+			(at 331.47 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14760,11 +14858,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "b6c0b6fe-2de7-4cd3-98f2-c3d4c33ce73e")
-		)
 		(pin "1"
-			(uuid "d5650aad-78e0-4107-a37b-916641940d80")
+			(uuid "9aa8c298-f8e5-4c22-9f6f-0732b78eff08")
+		)
+		(pin "2"
+			(uuid "a3cfd2f3-30f8-45ca-b3fd-f8ee8b6ece72")
 		)
 		(instances
 			(project "gb3"
@@ -14839,7 +14937,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c4794536-b1f1-4602-90d7-57e08e6e98dc")
+			(uuid "1b8c63d1-b14b-49f1-8fe1-5ee7141c6cbd")
 		)
 		(instances
 			(project "gb3"
@@ -14852,7 +14950,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0805KKX7R9BB225")
-		(at 662.94 45.72 0)
+		(at 665.48 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14862,7 +14960,7 @@
 		(dnp no)
 		(uuid "7d461984-a0ec-5865-a4c9-3ebba49d3963")
 		(property "Reference" "C92"
-			(at 662.94 41.15 0)
+			(at 665.48 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14872,7 +14970,7 @@
 			)
 		)
 		(property "Value" "2.2µF"
-			(at 662.94 50.29 0)
+			(at 665.48 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14882,7 +14980,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0805"
-			(at 662.94 45.72 0)
+			(at 665.48 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14893,7 +14991,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_2-2uF-225-10-50V_C125847.html"
-			(at 662.94 45.72 0)
+			(at 665.48 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14904,7 +15002,7 @@
 			)
 		)
 		(property "Description" "YAGEO CC0805KKX7R9BB225 — BL boost output cap, 2.2uF 50V X7R 0805"
-			(at 662.94 45.72 0)
+			(at 665.48 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14915,7 +15013,7 @@
 			)
 		)
 		(property "LCSC" "C125847"
-			(at 662.94 45.72 0)
+			(at 665.48 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14926,10 +15024,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "89778d06-b75d-493b-9704-38b6caf02859")
+			(uuid "f65d63f2-3cd7-4447-a7d4-8ee1a6f094f6")
 		)
 		(pin "2"
-			(uuid "1f7cd932-7cee-4685-bf05-825d2764901f")
+			(uuid "9ff1cdc5-cede-49b7-90ef-cbe6fa65f9fd")
 		)
 		(instances
 			(project "gb3"
@@ -14942,7 +15040,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 1046.48 45.72 90)
+		(at 1050.29 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -14952,7 +15050,7 @@
 		(dnp no)
 		(uuid "80562aa1-c5b1-5f09-bdda-c0cfd75712d5")
 		(property "Reference" "#PWR0080"
-			(at 1046.48 45.72 0)
+			(at 1050.29 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -14963,7 +15061,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 1050.29 45.72 270)
+			(at 1054.1 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14974,7 +15072,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 1046.48 45.72 0)
+			(at 1050.29 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14984,7 +15082,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 1046.48 45.72 0)
+			(at 1050.29 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -14994,7 +15092,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 1046.48 45.72 0)
+			(at 1050.29 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15004,7 +15102,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "1e7a26c0-0319-4020-8622-6b2114dcf460")
+			(uuid "5b89357f-1a77-4a94-b10c-bedbd2d25527")
 		)
 		(instances
 			(project "gb3"
@@ -15017,7 +15115,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 669.29 45.72 90)
+		(at 671.83 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -15027,7 +15125,7 @@
 		(dnp no)
 		(uuid "80a9b72f-16c1-5d21-bfce-9530a2370bfc")
 		(property "Reference" "#PWR0071"
-			(at 669.29 45.72 0)
+			(at 671.83 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15038,7 +15136,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 673.1 45.72 270)
+			(at 675.64 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15049,7 +15147,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 669.29 45.72 0)
+			(at 671.83 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15059,7 +15157,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 669.29 45.72 0)
+			(at 671.83 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15069,7 +15167,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 669.29 45.72 0)
+			(at 671.83 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15079,7 +15177,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "7fb9397e-a9c4-4d5f-a88d-f64e9b208839")
+			(uuid "f8d92df5-0aa9-433f-964a-ce1351623c42")
 		)
 		(instances
 			(project "gb3"
@@ -15092,7 +15190,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOB")
-		(at 730.25 238.76 180)
+		(at 775.97 238.76 180)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -15102,7 +15200,7 @@
 		(dnp no)
 		(uuid "811b7872-7e7b-5000-a214-bff1cb024f6e")
 		(property "Reference" "#PWR0035"
-			(at 730.25 238.76 0)
+			(at 775.97 238.76 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15113,7 +15211,7 @@
 			)
 		)
 		(property "Value" "LDOB"
-			(at 730.25 242.57 0)
+			(at 775.97 242.57 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15123,7 +15221,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 730.25 238.76 0)
+			(at 775.97 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15133,7 +15231,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 730.25 238.76 0)
+			(at 775.97 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15143,7 +15241,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 730.25 238.76 0)
+			(at 775.97 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15153,7 +15251,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "69eda12a-dd85-40ee-8983-bd38b1908d24")
+			(uuid "a07d59a3-8cb4-4803-b3fd-585bc791f129")
 		)
 		(instances
 			(project "gb3"
@@ -15240,10 +15338,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "c50557ea-6f37-44ed-b7c8-05b01a49e973")
+			(uuid "6c15186a-c39c-4d2b-804b-5e9ff0075c13")
 		)
 		(pin "2"
-			(uuid "0fc035e1-a9e2-414a-a419-245e3f3ba5cb")
+			(uuid "484dbad5-93e5-4b33-aebd-161c98b39ec7")
 		)
 		(instances
 			(project "gb3"
@@ -15256,7 +15354,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 914.4 45.72 0)
+		(at 916.94 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -15266,7 +15364,7 @@
 		(dnp no)
 		(uuid "839f0d20-6ba2-5274-aa17-41183f61fec8")
 		(property "Reference" "C25"
-			(at 914.4 41.15 0)
+			(at 916.94 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15276,7 +15374,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 914.4 50.29 0)
+			(at 916.94 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15286,7 +15384,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 914.4 45.72 0)
+			(at 916.94 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15297,7 +15395,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 914.4 45.72 0)
+			(at 916.94 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15308,7 +15406,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 914.4 45.72 0)
+			(at 916.94 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15319,7 +15417,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 914.4 45.72 0)
+			(at 916.94 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15330,10 +15428,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ab2a4d18-d017-455d-9072-dd59be3bcf6d")
+			(uuid "b0453712-f550-437e-8ef6-d6a4aebbb25c")
 		)
 		(pin "2"
-			(uuid "99bde650-7e29-4e65-977c-6e27bde3e42f")
+			(uuid "3feaa529-9e2f-4a96-b016-36ba95de63fa")
 		)
 		(instances
 			(project "gb3"
@@ -15346,7 +15444,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 546.1 45.72 90)
+		(at 548.64 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -15356,7 +15454,7 @@
 		(dnp no)
 		(uuid "859893c6-4439-527f-8528-7efaba1d2426")
 		(property "Reference" "#PWR0068"
-			(at 546.1 45.72 0)
+			(at 548.64 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15367,7 +15465,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 549.91 45.72 270)
+			(at 552.45 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15378,7 +15476,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 546.1 45.72 0)
+			(at 548.64 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15388,7 +15486,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 546.1 45.72 0)
+			(at 548.64 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15398,7 +15496,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 546.1 45.72 0)
+			(at 548.64 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15408,7 +15506,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "da51319f-7c98-4846-a9ba-b046d29c6107")
+			(uuid "7a68fb81-c99f-4651-b1dc-7f02703602c7")
 		)
 		(instances
 			(project "gb3"
@@ -15430,7 +15528,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "87917dc8-335c-5973-921a-cc2bd2249868")
-		(property "Reference" "#FLG0100"
+		(property "Reference" "#FLG0101"
 			(at 33.02 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -15483,12 +15581,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "8bf3b95c-5b3a-4afd-8b90-f95800fb67ac")
+			(uuid "e2089133-d0f9-4110-8cc2-829054761694")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0100")
+					(reference "#FLG0101")
 					(unit 1)
 				)
 			)
@@ -15570,21 +15668,96 @@
 			)
 		)
 		(pin "1"
-			(uuid "05c888f3-5c6d-47dd-8c6e-609b85dc215e")
+			(uuid "d7e38fb5-e205-4308-bcde-d1d0e671b48e")
 		)
 		(pin "2"
-			(uuid "9a341bfb-cead-4722-bd09-fea8a0a481ff")
+			(uuid "1b6139a0-c271-4848-b7fd-a182d7a74d10")
 		)
 		(pin "3"
-			(uuid "7a6f1237-30ff-4c8e-9581-000828df1355")
+			(uuid "3ab30984-59e7-4120-b370-18d947f95b59")
 		)
 		(pin "4"
-			(uuid "e2b095a8-03b4-44e7-ba8b-e7fa0e669cee")
+			(uuid "efa1352c-971c-40c8-9b3f-83dbf570d4d5")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
 					(reference "SW1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 576.58 233.68 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "8ab369e4-d017-5d3a-9459-89f5424f897f")
+		(property "Reference" "#PWR0095"
+			(at 576.58 233.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 580.39 233.68 270)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 576.58 233.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 576.58 233.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 576.58 233.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "200e1a53-2fc3-4401-8b7b-76cc2ee03ce4")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
+					(reference "#PWR0095")
 					(unit 1)
 				)
 			)
@@ -15654,7 +15827,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "ca14cb10-e9df-448d-9c92-22a3b7e3aefa")
+			(uuid "357fb5ad-c4cc-4737-8d2b-076144adbcb7")
 		)
 		(instances
 			(project "gb3"
@@ -15667,7 +15840,7 @@
 	)
 	(symbol
 		(lib_id "manual:TestPoint")
-		(at 664.21 233.68 0)
+		(at 709.93 233.68 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -15677,7 +15850,7 @@
 		(dnp no)
 		(uuid "8f1a927d-4f08-5216-908e-2016207c62a0")
 		(property "Reference" "TP3"
-			(at 664.21 229.11 0)
+			(at 709.93 229.11 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15687,7 +15860,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 664.21 236.22 0)
+			(at 709.93 236.22 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15697,7 +15870,7 @@
 			)
 		)
 		(property "Footprint" "manual:TestPoint_Pad_D1.5mm"
-			(at 664.21 233.68 0)
+			(at 709.93 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15708,7 +15881,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 664.21 233.68 0)
+			(at 709.93 233.68 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -15718,7 +15891,7 @@
 			)
 		)
 		(property "Description" "Bare-copper probe pad (no part placed, no LCSC)"
-			(at 664.21 233.68 0)
+			(at 709.93 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -15729,7 +15902,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "83092ada-5573-4f78-8bcb-73cdd41e873c")
+			(uuid "7a779e1c-ccca-4d29-bc8d-ca3e07d02dfd")
 		)
 		(instances
 			(project "gb3"
@@ -15751,7 +15924,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "917babed-9a1a-5ac3-8eaf-215abd99ec72")
-		(property "Reference" "#FLG0101"
+		(property "Reference" "#FLG0102"
 			(at 53.34 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -15804,12 +15977,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "7b302b76-cf08-4f16-9294-baebd0e6db56")
+			(uuid "125168b6-0569-425e-b896-2da51ccbd95d")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0101")
+					(reference "#FLG0102")
 					(unit 1)
 				)
 			)
@@ -15826,7 +15999,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "9232184a-2835-5188-8835-c6e3ca36ef3e")
-		(property "Reference" "#PWR0095"
+		(property "Reference" "#PWR0096"
 			(at 87.63 140.97 0)
 			(hide yes)
 			(show_name no)
@@ -15879,12 +16052,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "ff3928be-49a9-47a2-98f8-619426593b96")
+			(uuid "5f1baef9-6916-499a-89c0-16a8287b559b")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#PWR0095")
+					(reference "#PWR0096")
 					(unit 1)
 				)
 			)
@@ -15954,7 +16127,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c9101fa5-fc24-413f-a586-6b3a81f2da8b")
+			(uuid "2ebc84c4-f5a9-4933-93c0-53eb9c2f7ec7")
 		)
 		(instances
 			(project "gb3"
@@ -16029,7 +16202,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6664aafd-2458-4457-8cc6-48f6ca4f9d54")
+			(uuid "53bf8b2a-fa5e-44bd-869c-b3e5ee9444a7")
 		)
 		(instances
 			(project "gb3"
@@ -16104,7 +16277,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "fe81ba6d-876b-4fb5-b5e2-f257b2e4e454")
+			(uuid "c8e2cf8a-db04-4b88-ac84-6ca03e5582aa")
 		)
 		(instances
 			(project "gb3"
@@ -16117,7 +16290,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 880.11 45.72 90)
+		(at 882.65 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -16127,7 +16300,7 @@
 		(dnp no)
 		(uuid "9722cb59-f255-51b9-8efb-fae8094cc479")
 		(property "Reference" "#PWR0076"
-			(at 880.11 45.72 0)
+			(at 882.65 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -16138,7 +16311,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 883.92 45.72 270)
+			(at 886.46 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16149,7 +16322,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 880.11 45.72 0)
+			(at 882.65 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16159,7 +16332,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 880.11 45.72 0)
+			(at 882.65 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16169,7 +16342,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 880.11 45.72 0)
+			(at 882.65 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16179,7 +16352,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "7bc6e36e-88fc-482a-8211-59277af972b1")
+			(uuid "bd2259cb-bd59-4a58-b9c5-5a8926ac7310")
 		)
 		(instances
 			(project "gb3"
@@ -16192,7 +16365,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 664.21 238.76 0)
+		(at 709.93 238.76 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -16202,7 +16375,7 @@
 		(dnp no)
 		(uuid "9c38d40d-934f-55a2-a3c6-51e3f94bc815")
 		(property "Reference" "#PWR0058"
-			(at 664.21 238.76 0)
+			(at 709.93 238.76 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -16213,7 +16386,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 664.21 242.57 0)
+			(at 709.93 242.57 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16223,7 +16396,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 664.21 238.76 0)
+			(at 709.93 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16233,7 +16406,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 664.21 238.76 0)
+			(at 709.93 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16243,7 +16416,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 664.21 238.76 0)
+			(at 709.93 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16253,12 +16426,102 @@
 			)
 		)
 		(pin "1"
-			(uuid "46bd7f60-dd45-4e4b-8850-443262e72c40")
+			(uuid "baf0f474-240a-4922-a546-4ac8fd639e05")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
 					(reference "#PWR0058")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
+		(at 568.96 233.68 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "9d26818e-2845-57ae-b7a7-07d7a81250f3")
+		(property "Reference" "C94"
+			(at 568.96 229.11 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "100nF"
+			(at 568.96 238.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:C0603"
+			(at 568.96 233.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
+			(at 568.96 233.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
+			(at 568.96 233.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C14663"
+			(at 568.96 233.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "8a8d7eed-66fd-4995-9b23-c7b402c387b2")
+		)
+		(pin "2"
+			(uuid "f54190b3-4544-41cc-8fd8-90347ed2ec22")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
+					(reference "C94")
 					(unit 1)
 				)
 			)
@@ -16340,10 +16603,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "14af64f1-3162-4478-ab33-0a36e621f96c")
+			(uuid "ab16e736-8b52-494d-9069-36de34b2e6f2")
 		)
 		(pin "2"
-			(uuid "084a852c-1446-4bb8-890e-8f4d9409acba")
+			(uuid "c53f99d7-fb6a-4695-9af7-de6e5438b67f")
 		)
 		(instances
 			(project "gb3"
@@ -16430,10 +16693,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "e5a10a79-1f37-43aa-8124-485a8179632e")
+			(uuid "59bae383-15d6-4fdf-849e-1ecae2ca2df4")
 		)
 		(pin "2"
-			(uuid "47c141df-c252-49d0-9484-5628985ea3fb")
+			(uuid "2d70b6e8-e6b8-4716-b87d-fe2d6621d754")
 		)
 		(instances
 			(project "gb3"
@@ -16446,7 +16709,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 336.55 45.72 90)
+		(at 339.09 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -16456,7 +16719,7 @@
 		(dnp no)
 		(uuid "a01b0361-4141-506e-8c92-1c45e07c026b")
 		(property "Reference" "#PWR0063"
-			(at 336.55 45.72 0)
+			(at 339.09 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -16467,7 +16730,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 340.36 45.72 270)
+			(at 342.9 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16478,7 +16741,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 336.55 45.72 0)
+			(at 339.09 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16488,7 +16751,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 336.55 45.72 0)
+			(at 339.09 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16498,7 +16761,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 336.55 45.72 0)
+			(at 339.09 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -16508,7 +16771,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "08ce32b9-56e3-412b-aaec-9dda52771352")
+			(uuid "0c6dd470-e3b4-4176-8b11-df55a45c9230")
 		)
 		(instances
 			(project "gb3"
@@ -16595,391 +16858,391 @@
 			)
 		)
 		(pin "1"
-			(uuid "054e92bf-08a0-427f-8595-a7b4e86af660")
+			(uuid "9693ce1c-7430-4c87-a0ea-5d2c8f564356")
 		)
 		(pin "2"
-			(uuid "54a697d8-212c-447c-8ad0-a0e0f1de7e27")
+			(uuid "d123fdd4-78d5-427c-a4bc-a80110081ac5")
 		)
 		(pin "3"
-			(uuid "ae7e8a90-1d00-40ed-a73a-2b592293695b")
+			(uuid "ee6a58b0-09e5-4db1-b842-69ed19558613")
 		)
 		(pin "4"
-			(uuid "e3776f31-fc4b-4af0-abcf-6e288c115650")
+			(uuid "d2440628-0b34-4bc0-b1b7-6d6519f757d7")
 		)
 		(pin "5"
-			(uuid "2d5d6848-e19a-4bfb-a222-09d8ef43e5e5")
+			(uuid "6b57ff50-46f3-491c-ad35-21de44632ae4")
 		)
 		(pin "6"
-			(uuid "15553eb2-db5a-4d4d-af90-c5bcbc6fbf95")
+			(uuid "0fac4111-e961-4886-80e8-f87892ea15ad")
 		)
 		(pin "7"
-			(uuid "aab60ad8-d6a6-42b8-b2a3-1788e32205fe")
+			(uuid "bf69ab75-3e71-4dbb-ad86-cf1f675bc113")
 		)
 		(pin "8"
-			(uuid "17e2e02f-84c3-4cfd-ba77-4bdf7c2bb109")
+			(uuid "0738e6b3-a025-4d85-87a6-5bff699e6d17")
 		)
 		(pin "9"
-			(uuid "6c721dc8-3fad-4a23-9016-f1c44a91a8e1")
+			(uuid "fe596473-67e2-47cb-8421-5e12034b8216")
 		)
 		(pin "10"
-			(uuid "ad3baa34-6d99-461f-b92c-82082ce1d359")
+			(uuid "95c213ae-f12c-4a89-811c-5e7eb775fa2f")
 		)
 		(pin "11"
-			(uuid "a7865d56-ba57-4a37-84e3-e7db05541514")
+			(uuid "0e4e3ec6-215d-4e8f-9705-4ecfe932922f")
 		)
 		(pin "12"
-			(uuid "535e0196-4d21-4531-9d11-428fa3e1c800")
+			(uuid "13f66b4a-e300-4ace-86ab-4b558295c795")
 		)
 		(pin "13"
-			(uuid "2e36c7a7-ba59-4796-9e78-04127f408a14")
+			(uuid "e407eac8-496a-4f02-89d6-ad9bce195bf8")
 		)
 		(pin "14"
-			(uuid "9469a8bc-5b62-4ff8-b27f-244a222522a3")
+			(uuid "6a330249-c993-4b75-83fb-905bdd6316ee")
 		)
 		(pin "15"
-			(uuid "5272a19f-4d99-43f5-9317-867326aad0c0")
+			(uuid "5f9cbeea-cf64-463d-a239-211088283f1c")
 		)
 		(pin "16"
-			(uuid "de635852-d78d-4d0f-a909-ca64b8e1d5ed")
+			(uuid "a35a3e94-f217-4251-9e3a-16f15925b7f5")
 		)
 		(pin "17"
-			(uuid "0ed7f5dd-bd49-4847-a490-e7e2dd7c7f7f")
+			(uuid "b89d54d0-44ed-4e00-93a9-528ed88b83e7")
 		)
 		(pin "18"
-			(uuid "107d54d5-f626-4af3-98ed-065099191d8e")
+			(uuid "ef905c0c-c54e-4479-aa25-b4ca39536179")
 		)
 		(pin "19"
-			(uuid "2c6d1d6c-2afa-4476-9c99-0c47d6ea477f")
+			(uuid "dfc98bea-1cd3-4e13-883a-959367c24669")
 		)
 		(pin "20"
-			(uuid "6462e53e-0fba-498e-a83b-a398459eac05")
+			(uuid "5a28fc06-78cc-4795-bd51-c17f6c4c1e60")
 		)
 		(pin "21"
-			(uuid "22e9d5e3-6e7d-4544-912d-e4c687a07f88")
+			(uuid "40802344-fbf6-4e61-8787-eb485a6011ff")
 		)
 		(pin "22"
-			(uuid "5cce28c5-8b2b-476a-b9e6-0fc8d4ca734e")
+			(uuid "1737d531-2aae-48e1-9d69-f66ce6358d05")
 		)
 		(pin "23"
-			(uuid "d19a831d-d858-48d6-b5ef-52edd7ccedae")
+			(uuid "d2b8ab72-3679-481e-94eb-6c99899d9ac4")
 		)
 		(pin "24"
-			(uuid "eddfaeec-cb65-4cff-9467-bf0bf17088c0")
+			(uuid "a37ee6cc-1c7c-4095-8e19-4e24c1b07ef8")
 		)
 		(pin "25"
-			(uuid "0244c9c4-85db-425b-aaef-0e2828f64ee1")
+			(uuid "c3d2c74c-7f3d-4206-adc7-09150c83a46c")
 		)
 		(pin "26"
-			(uuid "015a59f4-2fc1-4e35-b6c8-43326135c66f")
+			(uuid "4f658da7-94a2-4649-a945-cb3caa73eaac")
 		)
 		(pin "27"
-			(uuid "97952b45-557b-4d29-a73f-7d2d5c0bc738")
+			(uuid "686d9736-40de-4f22-92e5-e02500fd95f1")
 		)
 		(pin "28"
-			(uuid "37ac3060-8c15-40cb-8d98-a28c2c02cf17")
+			(uuid "54ec6c7a-a136-4819-8ab5-69e1c251263f")
 		)
 		(pin "29"
-			(uuid "88e44ae1-6cd1-4b5e-bf6b-c758fe65d1f6")
+			(uuid "c5a7758d-958a-4800-bc3a-bd812302db24")
 		)
 		(pin "30"
-			(uuid "e1e18149-b220-40ee-ad36-5ee30880e7f6")
+			(uuid "95c9aca3-d5c8-4629-abf6-41a2bde25fd9")
 		)
 		(pin "31"
-			(uuid "455cd9e9-8368-4bfd-a76c-bf788271ea78")
+			(uuid "3e7ef12b-52e7-40ea-ba92-6fcde3f4fe13")
 		)
 		(pin "32"
-			(uuid "0d57fcf4-8bdd-49bb-8cf2-a95e5a84e9bc")
+			(uuid "1bb058ea-9476-4052-9696-f5625ac8cfa2")
 		)
 		(pin "33"
-			(uuid "7214d80e-e9de-4788-b56c-82ea53bead99")
+			(uuid "19894081-fe2a-44ec-a055-0aa32e3fdaf6")
 		)
 		(pin "34"
-			(uuid "740592a3-749b-4ac3-a807-e14eeec0443d")
+			(uuid "0e58a59e-3fd3-48a2-bd46-57fe8b02e90c")
 		)
 		(pin "35"
-			(uuid "424d22b2-3825-4f39-a073-13a5e863d958")
+			(uuid "2386ebb6-a33e-4b73-832e-7b1def628282")
 		)
 		(pin "36"
-			(uuid "4eb73152-7301-46fa-a154-26faa53437ce")
+			(uuid "d4656bda-9079-404d-86f0-50caa870528f")
 		)
 		(pin "37"
-			(uuid "ea95fab1-d550-4f3e-911c-fc0c5a85605b")
+			(uuid "3a9544f4-0020-44ed-b53c-403b2e16a8e8")
 		)
 		(pin "38"
-			(uuid "6572afff-dc0c-4641-88f5-5f5a3e5ecbd5")
+			(uuid "e654b3fc-87a3-431e-894e-216df07afc38")
 		)
 		(pin "39"
-			(uuid "8a144537-4f37-4d0f-8f34-0480b318b5a5")
+			(uuid "04a725e4-f3f4-4c5f-9859-51fd41e108a8")
 		)
 		(pin "40"
-			(uuid "1708d538-865d-451f-82b8-4a9394244ba5")
+			(uuid "4b836e3f-2b87-49fe-a0da-b3eb46ab620e")
 		)
 		(pin "41"
-			(uuid "752e4686-88e1-4970-8979-c6d261a82858")
+			(uuid "04eee6d0-ba8a-46cd-af8a-a79030763b2c")
 		)
 		(pin "42"
-			(uuid "5e6077c9-4274-4f30-97ff-7251c87ccaf5")
+			(uuid "b81ae629-d8ca-4ee0-861a-883da95fca28")
 		)
 		(pin "43"
-			(uuid "29cddf3c-a235-4207-b785-131ae3328bb5")
+			(uuid "a9079d41-e478-4c6d-a7e4-627dcc4308cd")
 		)
 		(pin "44"
-			(uuid "62e28912-f955-4e12-9a87-f4ae6f1c6945")
+			(uuid "84507472-c6f8-457b-84d2-5dec6668c443")
 		)
 		(pin "45"
-			(uuid "c5cf14ca-25f4-45e3-b143-c78935fc0806")
+			(uuid "879fb6db-de7c-4060-9042-79c788f49cf6")
 		)
 		(pin "46"
-			(uuid "8c34cf94-ced8-4e0e-a8bd-815e4b4ba7c0")
+			(uuid "97a1f5ea-2a86-4d9a-9013-cbae45b998b7")
 		)
 		(pin "47"
-			(uuid "6aa29488-5d08-4d5a-81b8-e951346da52b")
+			(uuid "e4a34215-ff35-4b5b-a7f7-5b5a6962b07c")
 		)
 		(pin "48"
-			(uuid "9d3d8c6c-9c0d-4f10-b41c-c021a46bb8ee")
+			(uuid "84bdf7b2-2224-478c-90ae-b27ed7d97eaa")
 		)
 		(pin "49"
-			(uuid "6054b0c4-493e-4de7-ac7a-405c0c988b7a")
+			(uuid "097a19f9-57b0-40ee-aa17-7b3d4ce3e906")
 		)
 		(pin "50"
-			(uuid "36729fd1-a13c-4fce-a500-e90841cb7d72")
+			(uuid "df7a0b28-bd08-4bc2-87bc-40ddfee1c28c")
 		)
 		(pin "51"
-			(uuid "37687a1f-3f2d-48c7-8ddf-3949ed9ae4ea")
+			(uuid "eb450310-15ea-4ee2-96e6-8d0fd6f3173f")
 		)
 		(pin "52"
-			(uuid "0e457a27-4f05-4743-9c9d-81d0b5954f4e")
+			(uuid "26814f44-a7f9-420e-b257-0034e70ce690")
 		)
 		(pin "53"
-			(uuid "94148098-d026-48bb-b739-f4cdbc887254")
+			(uuid "9862cd7a-5763-46f9-9be5-627cbe14df23")
 		)
 		(pin "54"
-			(uuid "4f733c2c-6f88-4f81-ba0d-0dc59d561317")
+			(uuid "8ff6f442-22c2-47b6-89f6-35a2838556b0")
 		)
 		(pin "55"
-			(uuid "bfcf9728-8b30-4e7d-9012-3cd4bc44d700")
+			(uuid "52cf498e-7187-4810-b02a-4b5a5ba514cf")
 		)
 		(pin "56"
-			(uuid "b8d5fdae-f508-4596-adbc-c963f86e7cc1")
+			(uuid "a1ce7eed-dc94-4924-8e17-62872bd15135")
 		)
 		(pin "57"
-			(uuid "d52a6b87-2b4b-41ef-b03c-7dfe231f4178")
+			(uuid "9b3ddf38-30e0-44ad-99f0-e959bf219eb4")
 		)
 		(pin "58"
-			(uuid "2dfb17b0-031b-47fc-9629-9fdd9a66efd1")
+			(uuid "504e2a7c-67d8-42c0-a80e-c4809767035d")
 		)
 		(pin "59"
-			(uuid "36d50d6f-509d-474d-8646-15d9d102014c")
+			(uuid "7d5ba2b6-2873-4636-9da9-2de7315284b5")
 		)
 		(pin "60"
-			(uuid "a5fedfc8-d082-49d7-9ca2-1872e378ba38")
+			(uuid "0c1534e9-12f8-4773-8707-61f9183a5118")
 		)
 		(pin "61"
-			(uuid "5d0b11c6-3bea-4006-9a6c-2dedadc10aa7")
+			(uuid "89ec7e67-2732-4699-8a50-0ca49d9f39c4")
 		)
 		(pin "62"
-			(uuid "747752d0-3321-46d0-a617-ffe5a55008bd")
+			(uuid "fb264104-faee-4bbc-b129-5d9cd6a025b7")
 		)
 		(pin "63"
-			(uuid "d6fc163d-c3b3-4277-8041-18d54e5e5e62")
+			(uuid "76b19828-f630-4a0e-a8c4-16461b54bdd7")
 		)
 		(pin "64"
-			(uuid "95d51744-94e5-486f-8e09-5a23c6663b13")
+			(uuid "594e7f07-9f9c-4d65-8a7d-3bf5503de743")
 		)
 		(pin "65"
-			(uuid "86cca3c7-b5ab-4ba1-a785-e7cf090484d2")
+			(uuid "7956d939-9cde-4437-883b-0ea8cd03a738")
 		)
 		(pin "66"
-			(uuid "fdd1384f-90ad-4940-9cb0-a2f1be763ae2")
+			(uuid "fe0ec84b-cf1c-4c6b-a749-1aa0bccd0ea0")
 		)
 		(pin "67"
-			(uuid "1e926d16-22ce-4aef-ab51-6dd04e1fb3e6")
+			(uuid "4a5f2b62-113a-4bdd-bcd0-d542ca1edb0f")
 		)
 		(pin "68"
-			(uuid "8dc33eaf-851d-4109-97fa-173593c07d65")
+			(uuid "d6ca5f9f-1f6c-4e81-8e36-74a90e63e869")
 		)
 		(pin "69"
-			(uuid "9de34b63-a53a-40b8-adc1-4b46b4f4b40c")
+			(uuid "ace65bdb-5b57-4838-868a-c813df09d094")
 		)
 		(pin "70"
-			(uuid "c29e070c-8347-4c7b-9101-4f491f7ff28d")
+			(uuid "335f3dc0-3143-4eda-aca6-d5d07e84d19a")
 		)
 		(pin "71"
-			(uuid "eb4a8c44-85ee-4ea2-89fb-ee4f9e416ab2")
+			(uuid "b6b3c14d-8c30-4759-8767-648545730a83")
 		)
 		(pin "72"
-			(uuid "019f0bd9-b8c9-4f83-8151-39c15dd434b7")
+			(uuid "d05729ce-1799-4b48-9a92-916f61b2c421")
 		)
 		(pin "73"
-			(uuid "77f01bb1-1f0e-4453-9d7a-fabb77464d6a")
+			(uuid "a88260c6-2c63-4ce9-a74b-5f8c467efe01")
 		)
 		(pin "74"
-			(uuid "7a2c63b7-209c-4ee5-93de-e712289f6e30")
+			(uuid "11a2e489-1ab6-4fb0-9977-c49c46bb9291")
 		)
 		(pin "75"
-			(uuid "151b6c08-e69b-4841-9670-3ddb223c2b1e")
+			(uuid "916bdc0f-1b1e-4857-a15a-18ca5732afb6")
 		)
 		(pin "76"
-			(uuid "47747030-8391-4c50-b3d6-a769117aea58")
+			(uuid "08600f58-ab60-4d69-a17d-8e0263b0b201")
 		)
 		(pin "77"
-			(uuid "b503b112-fa5e-48c5-a364-fdf8db68e427")
+			(uuid "f048c8e6-51c6-4ebd-af30-9707c361eccc")
 		)
 		(pin "78"
-			(uuid "3683714f-6269-4e1f-9ea3-037346ad940b")
+			(uuid "cf2b3d58-3fd7-4825-b68d-3b8d709b39f0")
 		)
 		(pin "79"
-			(uuid "880932b1-68e4-47e6-8c8d-acb7cceff2de")
+			(uuid "ff9099f3-4f85-4e4f-b387-2b981c06e9d7")
 		)
 		(pin "80"
-			(uuid "e97ef882-11e7-47d3-99a0-db2098823f61")
+			(uuid "6cb7bdbe-51ae-4905-a4d1-8a7210f964b1")
 		)
 		(pin "81"
-			(uuid "c9fb0246-01bd-4308-a6f3-acab299a1b86")
+			(uuid "0708a468-c701-4d39-9b87-f72466a96384")
 		)
 		(pin "82"
-			(uuid "d2fa4c2d-8594-4e95-9fd0-aed8d64fd248")
+			(uuid "5781c994-984b-4290-b8d9-c4fb105ef58d")
 		)
 		(pin "83"
-			(uuid "aa74416a-8d73-43bf-bddd-bedfa9a56f89")
+			(uuid "84b6a9b3-2c09-468f-a6cb-f74097fcc7e9")
 		)
 		(pin "84"
-			(uuid "f62488f2-ca10-40fe-991f-2de989bd3c08")
+			(uuid "51440145-0be8-49c3-b9d6-d57634b10ded")
 		)
 		(pin "85"
-			(uuid "11bc1e0b-a3f2-4bc9-8b3b-b0467e6f0ed8")
+			(uuid "d71a76f5-9701-4f88-bcc9-7df87370d754")
 		)
 		(pin "86"
-			(uuid "7222e925-282c-4d5c-9237-2c91d0280603")
+			(uuid "2ec23bdb-3e5a-4286-a9f0-4d8abf34a58a")
 		)
 		(pin "87"
-			(uuid "3acbbd00-cfab-4ce2-8ee0-ab93313d5ed0")
+			(uuid "7414d157-ddbc-4f1c-b36e-5485c7cb0e34")
 		)
 		(pin "88"
-			(uuid "62cba446-1d23-4fbf-9916-3bb689a18a88")
+			(uuid "7e8cf739-4a09-4b40-9b17-5c714eb851a9")
 		)
 		(pin "89"
-			(uuid "92f777d6-ed7d-40db-88f5-28ef395af600")
+			(uuid "cdadce54-c673-47ad-bba3-4cd5594def06")
 		)
 		(pin "90"
-			(uuid "dddb7adf-17d8-4e4a-964b-6f82abfd4115")
+			(uuid "9139ebb5-1f8c-4997-8cc2-4a466af19777")
 		)
 		(pin "91"
-			(uuid "d130969c-1a0f-4680-84df-465036976204")
+			(uuid "3c6c6e46-c284-4e53-b53e-e1f9f591b97e")
 		)
 		(pin "92"
-			(uuid "040204f1-d939-4fcd-9d28-3a49ee19558e")
+			(uuid "d41bca89-fd36-43a7-a0bd-c2aa06afdc46")
 		)
 		(pin "93"
-			(uuid "451ba358-a49c-46b2-b4cc-628c027fa1f4")
+			(uuid "cb2fe7da-2c90-40a3-9975-727dafb86f49")
 		)
 		(pin "94"
-			(uuid "73e9d926-d1a9-42c8-95ed-5a0669cbf720")
+			(uuid "e1d6d488-836f-493b-8827-bd712a38d131")
 		)
 		(pin "95"
-			(uuid "3daa1bd7-2a87-4832-b677-508b3ffd9f36")
+			(uuid "c67f84a8-2286-492e-abc9-1c06258fe595")
 		)
 		(pin "96"
-			(uuid "2cb58ff5-6d0a-4e69-bfb7-ce273ba45dc2")
+			(uuid "68ef6d36-eda8-4ba9-abfc-5503ffef59bd")
 		)
 		(pin "97"
-			(uuid "58bd2bad-21e0-4c59-bc50-d4057372012c")
+			(uuid "88653e1f-8327-4ef7-a7cf-590c968d937f")
 		)
 		(pin "98"
-			(uuid "e38e7856-6a50-41b5-ae0d-60ce7a76dfd5")
+			(uuid "39d7f18f-db8a-4a48-941d-eb0934b5ceeb")
 		)
 		(pin "99"
-			(uuid "a0609c8c-3ed7-4cd6-8bf2-08edde1f1c64")
+			(uuid "8802e757-9154-4506-bcb8-16ccaf7986c8")
 		)
 		(pin "100"
-			(uuid "ba4954a4-e0db-477a-8dd3-26db6b6f2ade")
+			(uuid "9dd3eb71-20b1-42c4-bcce-71480b6b166b")
 		)
 		(pin "101"
-			(uuid "0ee61872-18d1-4004-80eb-be43bd845dfb")
+			(uuid "5b7ca349-319a-4c90-99e2-4256cf104225")
 		)
 		(pin "102"
-			(uuid "55f135be-a7bc-4bcb-bfa4-221450737c0d")
+			(uuid "53e7b4d7-14af-428c-a208-4366367f8436")
 		)
 		(pin "103"
-			(uuid "3c1d4e11-0a7c-454b-be02-20c8a2d1dd1b")
+			(uuid "8581f476-04fc-4072-804f-b860e89d9811")
 		)
 		(pin "104"
-			(uuid "76571a3d-be2e-44e0-995d-f983799545b7")
+			(uuid "21615bc0-ad82-459f-8762-ca92e018d3a2")
 		)
 		(pin "105"
-			(uuid "b3cb8e26-581a-420d-a429-e3528e9b6012")
+			(uuid "a01ae54e-766c-4f41-ada1-e4fca6275e28")
 		)
 		(pin "106"
-			(uuid "faf6a064-a776-43d3-ac83-defb630793e5")
+			(uuid "91f62f8c-2f1c-49fc-b55e-15a3d86689df")
 		)
 		(pin "107"
-			(uuid "1b258f24-9304-425d-bc70-c75f4b75a669")
+			(uuid "08e36346-0b33-4f7c-9110-199ad1849bd8")
 		)
 		(pin "108"
-			(uuid "86aaef0d-ef92-4ceb-adec-b618ec7ec7a5")
+			(uuid "e7f9bc68-1e04-41bd-a409-ba9eb0af1f10")
 		)
 		(pin "109"
-			(uuid "0a051c13-90cf-4763-89a1-6fdd2fe965b1")
+			(uuid "8fd38a16-978d-4f68-b867-b05b0fe4e18a")
 		)
 		(pin "110"
-			(uuid "c1732be9-7a4a-4a54-8463-14d165111c20")
+			(uuid "7278969c-43e7-4b71-ad09-a59aa7ddf8df")
 		)
 		(pin "111"
-			(uuid "38e49b10-e513-4f1b-a34a-6022f1dece1e")
+			(uuid "93e934e9-789b-485e-8f46-323f179e2f98")
 		)
 		(pin "112"
-			(uuid "d66a4e7f-1c5f-47ef-bf76-4d3df753b685")
+			(uuid "1e3dbb4c-b8be-41b6-8f60-62af8c244244")
 		)
 		(pin "113"
-			(uuid "3868bee0-bb07-4d04-a7a7-243f321429d5")
+			(uuid "f0cfb59e-860d-47a2-aede-08fb09fae339")
 		)
 		(pin "114"
-			(uuid "a0c0d636-9beb-4cbf-ab96-791ffee2a800")
+			(uuid "eb384e5d-dd86-4a91-a3ed-b95b9ad8edff")
 		)
 		(pin "115"
-			(uuid "db77d439-53b7-4b57-87e5-969c895e9a98")
+			(uuid "7e85f909-80eb-43ac-8585-ea180824aa7f")
 		)
 		(pin "116"
-			(uuid "953ec15d-5d7e-4f9b-aed5-6f0bbf60da14")
+			(uuid "04fba42d-1541-4ffe-837d-2115e81515f1")
 		)
 		(pin "117"
-			(uuid "ff360bc1-270f-4fc9-9119-6949569caf96")
+			(uuid "fe0577f3-a814-4dcb-997a-78291d3c1846")
 		)
 		(pin "118"
-			(uuid "f7fad104-967e-4e9a-8cb6-c4e748cc53ad")
+			(uuid "b36b312d-306f-42e4-99b4-76469a68c3f9")
 		)
 		(pin "119"
-			(uuid "ddb91e05-0962-4f16-9287-09553ee65da8")
+			(uuid "4c1c57d1-9e9f-4fa0-a869-9acaa3511f0d")
 		)
 		(pin "120"
-			(uuid "a858e3e5-138b-4f82-86a5-7e56c1127753")
+			(uuid "69e26a1e-1bb2-4ba2-8d96-168571d8bdca")
 		)
 		(pin "121"
-			(uuid "479c70ed-88fb-4fa6-a217-156a229fe531")
+			(uuid "6be63661-184d-4028-8a75-438500e9d61f")
 		)
 		(pin "122"
-			(uuid "5a4a121a-928f-4259-88f7-740209805410")
+			(uuid "887adb3f-3c63-48cc-825e-4115ac031b60")
 		)
 		(pin "123"
-			(uuid "1058f02f-4e7a-4ace-a015-80d3cd277e02")
+			(uuid "a3832cb4-d931-4e2d-8e91-3f2bf910bca1")
 		)
 		(pin "124"
-			(uuid "6a381710-1d98-4eaa-b778-9f4f0408f11f")
+			(uuid "31ec9172-3682-419b-9036-738f29faeaa9")
 		)
 		(pin "125"
-			(uuid "e22de93e-a1ec-4e12-851c-7a759f68ba25")
+			(uuid "85b8b6c4-6e6a-4870-bf88-ade3b9663e64")
 		)
 		(pin "126"
-			(uuid "8543fdcf-29f0-41ef-9176-48294c99f6ae")
+			(uuid "1575d761-60f8-4f75-b193-d2e0dbcaa3cb")
 		)
 		(pin "127"
-			(uuid "00413098-4513-4640-a2b8-0605ffa70fbf")
+			(uuid "62ab079e-04c1-45df-acfc-39661ad44219")
 		)
 		(pin "128"
-			(uuid "c83e8dab-aec0-4a28-b6a9-cc2b2f0346d1")
+			(uuid "a52a0d21-a579-4699-98db-87449f7995ff")
 		)
 		(pin "129"
-			(uuid "eefeb96f-d530-477a-ba83-985c731128f2")
+			(uuid "fd52f07d-cd4c-4f4e-868d-eaec42784a36")
 		)
 		(instances
 			(project "gb3"
@@ -17065,11 +17328,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "2d83f7f3-9577-48d9-a82d-f3a49ea24474")
-		)
 		(pin "1"
-			(uuid "c1d513d0-44b8-4730-bef3-41c983fbf1f9")
+			(uuid "215f01a0-91e5-4dcf-ae6b-21c4cfbb32ac")
+		)
+		(pin "2"
+			(uuid "4429bfa2-5c96-4409-b86e-ec18e8a860af")
 		)
 		(instances
 			(project "gb3"
@@ -17144,7 +17407,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "5b581f5e-edee-4703-96b7-d887677a4f90")
+			(uuid "80baad6a-a0a5-44db-b6f1-bf17ebb105fa")
 		)
 		(instances
 			(project "gb3"
@@ -17157,7 +17420,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 420.37 45.72 90)
+		(at 422.91 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17167,7 +17430,7 @@
 		(dnp no)
 		(uuid "a6ce9db3-fd04-57c0-ad55-bbdc2e4fe058")
 		(property "Reference" "#PWR0065"
-			(at 420.37 45.72 0)
+			(at 422.91 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17178,7 +17441,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 424.18 45.72 270)
+			(at 426.72 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17189,7 +17452,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 420.37 45.72 0)
+			(at 422.91 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17199,7 +17462,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 420.37 45.72 0)
+			(at 422.91 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17209,7 +17472,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 420.37 45.72 0)
+			(at 422.91 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17219,7 +17482,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "609b1bf6-e2fe-458b-8bd8-123c336a8292")
+			(uuid "5ef95437-4b8b-4dc6-89de-b7443115f84b")
 		)
 		(instances
 			(project "gb3"
@@ -17232,7 +17495,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 1004.57 45.72 90)
+		(at 1008.38 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17242,7 +17505,7 @@
 		(dnp no)
 		(uuid "a791d08c-d61c-539f-9e53-d14d5555d685")
 		(property "Reference" "#PWR0079"
-			(at 1004.57 45.72 0)
+			(at 1008.38 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17253,7 +17516,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 1008.38 45.72 270)
+			(at 1012.19 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17264,7 +17527,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 1004.57 45.72 0)
+			(at 1008.38 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17274,7 +17537,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 1004.57 45.72 0)
+			(at 1008.38 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17284,7 +17547,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 1004.57 45.72 0)
+			(at 1008.38 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17294,7 +17557,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "4dd5cd51-a963-425d-858e-9d5a9793c780")
+			(uuid "559dfa01-0442-4da7-884d-9424135a879e")
 		)
 		(instances
 			(project "gb3"
@@ -17307,7 +17570,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOA")
-		(at 906.78 45.72 90)
+		(at 909.32 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17317,7 +17580,7 @@
 		(dnp no)
 		(uuid "aad5d6af-2a1d-5edf-97ad-65a3c8469539")
 		(property "Reference" "#PWR0012"
-			(at 906.78 45.72 0)
+			(at 909.32 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17328,7 +17591,7 @@
 			)
 		)
 		(property "Value" "LDOA"
-			(at 902.97 45.72 270)
+			(at 905.51 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17339,7 +17602,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 906.78 45.72 0)
+			(at 909.32 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17349,7 +17612,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 906.78 45.72 0)
+			(at 909.32 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17359,7 +17622,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 906.78 45.72 0)
+			(at 909.32 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17369,7 +17632,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "bc0fbfdc-5876-4892-8cd4-361b330c656f")
+			(uuid "4a166960-d70d-4bcc-a94f-64bcc42bbbca")
 		)
 		(instances
 			(project "gb3"
@@ -17455,11 +17718,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "1fcd823c-326f-45cf-ae63-04f918ada533")
-		)
 		(pin "1"
-			(uuid "0d9c6729-718b-452e-9ba6-e71067c1d7c7")
+			(uuid "ac8dffd7-b107-421b-ae15-321eb5f4463d")
+		)
+		(pin "2"
+			(uuid "4c856649-403d-40d2-8616-946023fa3277")
 		)
 		(instances
 			(project "gb3"
@@ -17534,7 +17797,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "3f4c29f9-dc80-4931-9cfb-1bb6c0129e9a")
+			(uuid "11530bea-fe26-4820-bf99-8fe5f29a1c24")
 		)
 		(instances
 			(project "gb3"
@@ -17609,7 +17872,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8fb6ab3e-2565-472c-9054-a1e556f6842b")
+			(uuid "1233ad03-eed6-4bf7-9f1f-97ce7503f089")
 		)
 		(instances
 			(project "gb3"
@@ -17622,7 +17885,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 996.95 45.72 0)
+		(at 1000.76 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17632,7 +17895,7 @@
 		(dnp no)
 		(uuid "b1840956-e6d6-5519-b2c1-6347da8c21f8")
 		(property "Reference" "C27"
-			(at 996.95 41.15 0)
+			(at 1000.76 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17642,7 +17905,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 996.95 50.29 0)
+			(at 1000.76 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17652,7 +17915,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 996.95 45.72 0)
+			(at 1000.76 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17663,7 +17926,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 996.95 45.72 0)
+			(at 1000.76 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17674,7 +17937,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 996.95 45.72 0)
+			(at 1000.76 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17685,7 +17948,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 996.95 45.72 0)
+			(at 1000.76 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17695,11 +17958,11 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "cdf72fc0-e70c-4c02-831c-e1ef3fbdb798")
-		)
 		(pin "2"
-			(uuid "e04f06f0-18f2-483e-a748-63ed2b110e58")
+			(uuid "968cf815-335b-464d-a883-1505291ccd4c")
+		)
+		(pin "1"
+			(uuid "d3499e36-64c5-428d-9fa2-3fa7ebc66388")
 		)
 		(instances
 			(project "gb3"
@@ -17712,7 +17975,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOB")
-		(at 947.42 45.72 90)
+		(at 951.23 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17722,7 +17985,7 @@
 		(dnp no)
 		(uuid "b40b1c07-fc10-5c55-b03b-29ed1dee4c96")
 		(property "Reference" "#PWR0036"
-			(at 947.42 45.72 0)
+			(at 951.23 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17733,7 +17996,7 @@
 			)
 		)
 		(property "Value" "LDOB"
-			(at 943.61 45.72 270)
+			(at 947.42 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17744,7 +18007,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 947.42 45.72 0)
+			(at 951.23 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17754,7 +18017,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 947.42 45.72 0)
+			(at 951.23 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17764,7 +18027,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 947.42 45.72 0)
+			(at 951.23 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17774,7 +18037,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "b725ca1d-0613-4f25-b287-bbc6928d1eb9")
+			(uuid "64958273-5974-4ce2-9b6c-83cd5783ec41")
 		)
 		(instances
 			(project "gb3"
@@ -17787,7 +18050,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:0603WAF330JT5E")
-		(at 690.88 232.41 0)
+		(at 736.6 232.41 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17797,7 +18060,7 @@
 		(dnp no)
 		(uuid "b485bf39-a3a7-5d08-bbe1-e8bd86df2637")
 		(property "Reference" "R50"
-			(at 690.88 228.85 0)
+			(at 736.6 228.85 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17807,7 +18070,7 @@
 			)
 		)
 		(property "Value" "33Ω"
-			(at 690.88 235.97 0)
+			(at 736.6 235.97 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17817,7 +18080,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:R0603"
-			(at 690.88 232.41 0)
+			(at 736.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17828,7 +18091,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_33R-33R0-1_C23140.html"
-			(at 690.88 232.41 0)
+			(at 736.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17839,7 +18102,7 @@
 			)
 		)
 		(property "Description" "33Ω 1% 0603"
-			(at 690.88 232.41 0)
+			(at 736.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17850,7 +18113,7 @@
 			)
 		)
 		(property "LCSC" "C23140"
-			(at 690.88 232.41 0)
+			(at 736.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17861,10 +18124,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "c8897ad4-d394-4b93-963d-aa11dc59f654")
+			(uuid "3f781550-5ce5-4d6b-9171-0fdd480c7a42")
 		)
 		(pin "2"
-			(uuid "50fed198-2007-461f-b8d1-ee16e7120271")
+			(uuid "e50a5f1e-89e3-45f5-9f43-0043ec30cf27")
 		)
 		(instances
 			(project "gb3"
@@ -17877,7 +18140,7 @@
 	)
 	(symbol
 		(lib_id "power:+0V9")
-		(at 447.04 45.72 90)
+		(at 449.58 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -17887,7 +18150,7 @@
 		(dnp no)
 		(uuid "b6fa5bb5-1857-519f-9cd4-7f2f4ca1d341")
 		(property "Reference" "#PWR0046"
-			(at 447.04 45.72 0)
+			(at 449.58 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -17898,7 +18161,7 @@
 			)
 		)
 		(property "Value" "+0V9"
-			(at 443.23 45.72 270)
+			(at 445.77 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17909,7 +18172,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 447.04 45.72 0)
+			(at 449.58 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17919,7 +18182,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 447.04 45.72 0)
+			(at 449.58 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17929,7 +18192,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 447.04 45.72 0)
+			(at 449.58 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -17939,7 +18202,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "184dcc7b-50ca-4547-8483-65c2fdf602f4")
+			(uuid "5d7cabdf-a669-4969-b80b-da7037d7db95")
 		)
 		(instances
 			(project "gb3"
@@ -18014,7 +18277,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "e016a778-9283-404f-b619-15d52265c805")
+			(uuid "49385f32-d898-4894-a98f-a741477a1241")
 		)
 		(instances
 			(project "gb3"
@@ -18027,7 +18290,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 462.28 45.72 90)
+		(at 464.82 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18037,7 +18300,7 @@
 		(dnp no)
 		(uuid "bb81339c-8a44-5f71-8450-1f4dcfa29508")
 		(property "Reference" "#PWR0066"
-			(at 462.28 45.72 0)
+			(at 464.82 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18048,7 +18311,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 466.09 45.72 270)
+			(at 468.63 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18059,7 +18322,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 462.28 45.72 0)
+			(at 464.82 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18069,7 +18332,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 462.28 45.72 0)
+			(at 464.82 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18079,7 +18342,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 462.28 45.72 0)
+			(at 464.82 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18089,7 +18352,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "e9be46b4-4977-49dd-94d8-b1678e9121ca")
+			(uuid "207f71d7-f4a8-4a7b-b7f2-96b7e8d73787")
 		)
 		(instances
 			(project "gb3"
@@ -18102,7 +18365,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 378.46 45.72 90)
+		(at 381 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18112,7 +18375,7 @@
 		(dnp no)
 		(uuid "bbe66e60-ee8f-5c26-bca5-cc17894f48b0")
 		(property "Reference" "#PWR0064"
-			(at 378.46 45.72 0)
+			(at 381 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18123,7 +18386,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 382.27 45.72 270)
+			(at 384.81 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18134,7 +18397,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 378.46 45.72 0)
+			(at 381 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18144,7 +18407,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 378.46 45.72 0)
+			(at 381 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18154,7 +18417,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 378.46 45.72 0)
+			(at 381 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18164,7 +18427,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "215d7232-248f-49fd-a8c7-11ed236d1e13")
+			(uuid "fe04b628-f8b4-4059-a09b-55aa95aac89f")
 		)
 		(instances
 			(project "gb3"
@@ -18177,7 +18440,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 838.2 45.72 90)
+		(at 840.74 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18187,7 +18450,7 @@
 		(dnp no)
 		(uuid "bd5b718b-bb0a-507f-8c94-75fc97a66d11")
 		(property "Reference" "#PWR0075"
-			(at 838.2 45.72 0)
+			(at 840.74 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18198,7 +18461,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 842.01 45.72 270)
+			(at 844.55 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18209,7 +18472,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 838.2 45.72 0)
+			(at 840.74 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18219,7 +18482,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 838.2 45.72 0)
+			(at 840.74 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18229,7 +18492,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 838.2 45.72 0)
+			(at 840.74 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18239,7 +18502,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "697c416e-930a-4db1-bbc1-d8e746d340eb")
+			(uuid "af99ac75-c8a4-480b-89ae-7834fa7feb80")
 		)
 		(instances
 			(project "gb3"
@@ -18252,7 +18515,7 @@
 	)
 	(symbol
 		(lib_id "power:VRA1")
-		(at 739.14 45.72 90)
+		(at 741.68 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18261,8 +18524,8 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "c0f7ff6a-b272-507d-8f67-e35e10a19c38")
-		(property "Reference" "#PWR0096"
-			(at 739.14 45.72 0)
+		(property "Reference" "#PWR0097"
+			(at 741.68 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18273,7 +18536,7 @@
 			)
 		)
 		(property "Value" "VRA1"
-			(at 735.33 45.72 270)
+			(at 737.87 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18284,7 +18547,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 739.14 45.72 0)
+			(at 741.68 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18294,7 +18557,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 739.14 45.72 0)
+			(at 741.68 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18304,7 +18567,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 739.14 45.72 0)
+			(at 741.68 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18314,12 +18577,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "75a38ea3-a6c5-431c-8555-4e5ff72bccb9")
+			(uuid "da37643b-9c0e-405b-9ba4-f7a1c7c206ec")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#PWR0096")
+					(reference "#PWR0097")
 					(unit 1)
 				)
 			)
@@ -18327,7 +18590,7 @@
 	)
 	(symbol
 		(lib_id "manual:TestPoint")
-		(at 640.08 233.68 0)
+		(at 687.07 233.68 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18337,7 +18600,7 @@
 		(dnp no)
 		(uuid "c0fde1d8-28e9-55f6-8d42-c98fb766b554")
 		(property "Reference" "TP1"
-			(at 640.08 229.11 0)
+			(at 687.07 229.11 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18347,7 +18610,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 640.08 236.22 0)
+			(at 687.07 236.22 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18357,7 +18620,7 @@
 			)
 		)
 		(property "Footprint" "manual:TestPoint_Pad_D1.5mm"
-			(at 640.08 233.68 0)
+			(at 687.07 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18368,7 +18631,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 640.08 233.68 0)
+			(at 687.07 233.68 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18378,7 +18641,7 @@
 			)
 		)
 		(property "Description" "Bare-copper probe pad (no part placed, no LCSC)"
-			(at 640.08 233.68 0)
+			(at 687.07 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18389,7 +18652,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "79e0177a-93a4-4cfb-8d9b-20c94b76483b")
+			(uuid "df0c1c9b-6592-416d-a625-49b108cdafa3")
 		)
 		(instances
 			(project "gb3"
@@ -18476,10 +18739,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "6710a141-3f92-4907-a058-3be40468e7af")
+			(uuid "afa2f803-665b-4623-9bb1-ab1662d42936")
 		)
 		(pin "2"
-			(uuid "137bb503-0b17-46fb-82ba-91c2bf949c25")
+			(uuid "167357d9-5942-469b-b9c5-76a2978a403d")
 		)
 		(instances
 			(project "gb3"
@@ -18492,7 +18755,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 872.49 45.72 0)
+		(at 875.03 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18502,7 +18765,7 @@
 		(dnp no)
 		(uuid "cb124157-28a5-5ed9-b59d-da4f51db4645")
 		(property "Reference" "C24"
-			(at 872.49 41.15 0)
+			(at 875.03 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18512,7 +18775,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 872.49 50.29 0)
+			(at 875.03 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18522,7 +18785,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 872.49 45.72 0)
+			(at 875.03 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18533,7 +18796,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 872.49 45.72 0)
+			(at 875.03 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18544,7 +18807,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 872.49 45.72 0)
+			(at 875.03 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18555,7 +18818,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 872.49 45.72 0)
+			(at 875.03 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18566,10 +18829,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "8eadcfc2-6e8d-44cc-a275-9772b87b0d8e")
+			(uuid "6753e031-bc5a-450c-858f-fd727b80ff78")
 		)
 		(pin "2"
-			(uuid "316bf980-e2e5-430e-94fa-a2cec926f09c")
+			(uuid "ccdb328d-2e1c-4b12-a676-a20d6b1bd9a4")
 		)
 		(instances
 			(project "gb3"
@@ -18644,7 +18907,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8b2d6c7e-9548-4242-97cd-5590f31ed9b5")
+			(uuid "f2993e8c-8131-438a-baf2-8ce8bb337ea1")
 		)
 		(instances
 			(project "gb3"
@@ -18719,7 +18982,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "82eaf887-f03c-4dfc-93a5-c8eba4c37fb4")
+			(uuid "36bfc3f7-06b2-4098-a973-0664a0eaa8d2")
 		)
 		(instances
 			(project "gb3"
@@ -18732,7 +18995,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOA")
-		(at 717.55 238.76 180)
+		(at 764.54 238.76 180)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18742,7 +19005,7 @@
 		(dnp no)
 		(uuid "ce80ee5d-b742-507e-a32a-6e936d60de07")
 		(property "Reference" "#PWR0007"
-			(at 717.55 238.76 0)
+			(at 764.54 238.76 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18753,7 +19016,7 @@
 			)
 		)
 		(property "Value" "LDOA"
-			(at 717.55 242.57 0)
+			(at 764.54 242.57 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18763,7 +19026,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 717.55 238.76 0)
+			(at 764.54 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18773,7 +19036,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 717.55 238.76 0)
+			(at 764.54 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18783,7 +19046,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 717.55 238.76 0)
+			(at 764.54 238.76 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18793,7 +19056,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c10056a4-896d-44e3-9376-dde7d1db0445")
+			(uuid "ec7b7db4-578c-4dbd-92ad-72dd114293ef")
 		)
 		(instances
 			(project "gb3"
@@ -18806,7 +19069,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 504.19 45.72 90)
+		(at 506.73 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18816,7 +19079,7 @@
 		(dnp no)
 		(uuid "ce90353f-ef05-589f-a366-dfe5e702dcc9")
 		(property "Reference" "#PWR0067"
-			(at 504.19 45.72 0)
+			(at 506.73 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18827,7 +19090,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 508 45.72 270)
+			(at 510.54 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18838,7 +19101,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 504.19 45.72 0)
+			(at 506.73 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18848,7 +19111,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 504.19 45.72 0)
+			(at 506.73 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18858,7 +19121,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 504.19 45.72 0)
+			(at 506.73 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18868,7 +19131,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6c55bc77-509b-40d4-a7cc-7bd182b2426d")
+			(uuid "c29f406e-f9d3-4736-9d76-81ecf424e26b")
 		)
 		(instances
 			(project "gb3"
@@ -18943,7 +19206,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "4bec92ba-059c-4a5e-a900-66108dbc71c5")
+			(uuid "f8a7e8b2-83b8-4d82-b09c-729d90199558")
 		)
 		(instances
 			(project "gb3"
@@ -18956,7 +19219,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 538.48 45.72 0)
+		(at 541.02 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -18966,7 +19229,7 @@
 		(dnp no)
 		(uuid "cfed32bf-7181-5de1-848c-821f0df99951")
 		(property "Reference" "C17"
-			(at 538.48 41.15 0)
+			(at 541.02 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18976,7 +19239,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 538.48 50.29 0)
+			(at 541.02 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -18986,7 +19249,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 538.48 45.72 0)
+			(at 541.02 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -18997,7 +19260,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 538.48 45.72 0)
+			(at 541.02 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19008,7 +19271,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 538.48 45.72 0)
+			(at 541.02 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19019,7 +19282,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 538.48 45.72 0)
+			(at 541.02 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19030,10 +19293,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ab1d734b-336a-47f4-aa99-fcca59752a77")
+			(uuid "58b2c1b6-d960-4d31-b6af-17a22e330102")
 		)
 		(pin "2"
-			(uuid "7d565706-d07c-40e9-aecc-8103e06189f1")
+			(uuid "495ccf7a-990e-4661-bdd9-94d18e8b4f5e")
 		)
 		(instances
 			(project "gb3"
@@ -19046,7 +19309,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 245.11 45.72 0)
+		(at 248.92 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -19056,7 +19319,7 @@
 		(dnp no)
 		(uuid "d08cd14b-bb4d-5e9a-8da5-8ce77da4c3e1")
 		(property "Reference" "C9"
-			(at 245.11 41.15 0)
+			(at 248.92 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19066,7 +19329,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 245.11 50.29 0)
+			(at 248.92 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19076,7 +19339,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 245.11 45.72 0)
+			(at 248.92 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19087,7 +19350,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 245.11 45.72 0)
+			(at 248.92 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19098,7 +19361,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 245.11 45.72 0)
+			(at 248.92 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19109,7 +19372,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 245.11 45.72 0)
+			(at 248.92 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19119,11 +19382,11 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "a146e131-9d59-4521-ba44-e74fb67b7f72")
-		)
 		(pin "2"
-			(uuid "dd4e3622-e232-47b3-a229-8abc75cc4d4c")
+			(uuid "700e13cd-09ac-4a39-bad2-ac212f0b7656")
+		)
+		(pin "1"
+			(uuid "d8501e11-10aa-416a-8aec-d1c0d68b8bbf")
 		)
 		(instances
 			(project "gb3"
@@ -19210,10 +19473,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "baac6628-5b4e-4b21-b6f7-9b86d8371504")
+			(uuid "4648f651-5064-4ed7-8730-284adb3befb9")
 		)
 		(pin "2"
-			(uuid "a117707a-478c-4dd4-89eb-34cab820ea65")
+			(uuid "ba9c71f2-4ff6-4599-8ada-956a3971d4e4")
 		)
 		(instances
 			(project "gb3"
@@ -19288,7 +19551,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "748291ad-4be9-407b-aed3-729153b21d35")
+			(uuid "9751c7cc-f6e0-4a50-b22d-420de2344e30")
 		)
 		(instances
 			(project "gb3"
@@ -19310,7 +19573,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "d308cbfc-72f8-5a5b-8a51-f4f86e5e80b1")
-		(property "Reference" "#FLG0107"
+		(property "Reference" "#FLG0108"
 			(at 175.26 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -19363,12 +19626,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "c3bb460c-576f-426e-9c6a-706d87e30d5e")
+			(uuid "c2cdc15d-b204-429b-8956-3c421cf7e9c4")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0107")
+					(reference "#FLG0108")
 					(unit 1)
 				)
 			)
@@ -19376,7 +19639,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:0603WAF2400T5E")
-		(at 121.92 44.45 0)
+		(at 124.46 44.45 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -19386,7 +19649,7 @@
 		(dnp no)
 		(uuid "d5c79d4d-113e-5ab6-a1f1-efcc06d0e7da")
 		(property "Reference" "R5"
-			(at 121.92 40.89 0)
+			(at 124.46 40.89 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19396,7 +19659,7 @@
 			)
 		)
 		(property "Value" "240Ω"
-			(at 121.92 48.01 0)
+			(at 124.46 48.01 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19406,7 +19669,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:R0603"
-			(at 121.92 44.45 0)
+			(at 124.46 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19417,7 +19680,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_240R-2400-1_C23350.html"
-			(at 121.92 44.45 0)
+			(at 124.46 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19428,7 +19691,7 @@
 			)
 		)
 		(property "Description" "240Ω 1% Resistor, 0603 (DDR ZQ calibration)"
-			(at 121.92 44.45 0)
+			(at 124.46 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19439,7 +19702,7 @@
 			)
 		)
 		(property "LCSC" "C23350"
-			(at 121.92 44.45 0)
+			(at 124.46 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19450,10 +19713,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "70e38f98-9d54-45bd-915b-8e8a1e1eb42f")
+			(uuid "877158d4-49f8-4882-8c2b-9791955f3d8c")
 		)
 		(pin "2"
-			(uuid "17a7516b-2c99-4037-a173-ffb83ce251ea")
+			(uuid "95022cb1-de2f-4028-9156-b574af1dc313")
 		)
 		(instances
 			(project "gb3"
@@ -19528,7 +19791,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "7e1f17e2-7541-4f12-803c-3f147ed6d537")
+			(uuid "d8efd07c-6a9c-44b3-9bd8-3a7f48c0fd2b")
 		)
 		(instances
 			(project "gb3"
@@ -19603,7 +19866,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8490b803-87e3-4c60-ac0d-c578b538e709")
+			(uuid "e4d82839-3377-4aaf-9091-a637db906b66")
 		)
 		(instances
 			(project "gb3"
@@ -19616,7 +19879,7 @@
 	)
 	(symbol
 		(lib_id "power:LDOA")
-		(at 168.91 44.45 270)
+		(at 171.45 44.45 270)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -19626,7 +19889,7 @@
 		(dnp no)
 		(uuid "d70f39f6-2fa5-5dc8-81fe-037de64f3dd4")
 		(property "Reference" "#PWR0008"
-			(at 168.91 44.45 0)
+			(at 171.45 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19637,7 +19900,7 @@
 			)
 		)
 		(property "Value" "LDOA"
-			(at 172.72 44.45 90)
+			(at 175.26 44.45 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19648,7 +19911,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 168.91 44.45 0)
+			(at 171.45 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19658,7 +19921,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 168.91 44.45 0)
+			(at 171.45 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19668,7 +19931,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 168.91 44.45 0)
+			(at 171.45 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19678,7 +19941,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "50babfc5-2df9-496b-8ba0-ecd606d12810")
+			(uuid "e5a0a9fa-3128-4ced-8192-a62341afc80e")
 		)
 		(instances
 			(project "gb3"
@@ -19691,7 +19954,7 @@
 	)
 	(symbol
 		(lib_id "power:+0V9")
-		(at 530.86 45.72 90)
+		(at 533.4 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -19701,7 +19964,7 @@
 		(dnp no)
 		(uuid "d78d9d91-61f8-5e00-8be2-cfcf57c4db0c")
 		(property "Reference" "#PWR0048"
-			(at 530.86 45.72 0)
+			(at 533.4 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19712,7 +19975,7 @@
 			)
 		)
 		(property "Value" "+0V9"
-			(at 527.05 45.72 270)
+			(at 529.59 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19723,7 +19986,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 530.86 45.72 0)
+			(at 533.4 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19733,7 +19996,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 530.86 45.72 0)
+			(at 533.4 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19743,7 +20006,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 530.86 45.72 0)
+			(at 533.4 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19753,7 +20016,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "81dea4e1-4bdf-4633-b690-2d7c6f159797")
+			(uuid "479ab464-9b93-4567-a6c3-7f42d2c10e25")
 		)
 		(instances
 			(project "gb3"
@@ -19828,7 +20091,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "0d0bb17a-47ae-4713-b553-431fab83881f")
+			(uuid "b24204dd-0b33-4e03-90dd-5442c7d81f2f")
 		)
 		(instances
 			(project "gb3"
@@ -19903,7 +20166,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "f1a3c40e-5faa-404d-adc0-6460c62f56d8")
+			(uuid "4f57ed7e-2763-4813-9e57-63cbc6646236")
 		)
 		(instances
 			(project "gb3"
@@ -19916,7 +20179,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:0603WAF5100T5E")
-		(at 609.6 232.41 0)
+		(at 656.59 232.41 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -19926,7 +20189,7 @@
 		(dnp no)
 		(uuid "da03fcf7-67e5-5f2d-9231-1e931e2bbfb7")
 		(property "Reference" "R46"
-			(at 609.6 228.85 0)
+			(at 656.59 228.85 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19936,7 +20199,7 @@
 			)
 		)
 		(property "Value" "510Ω"
-			(at 609.6 235.97 0)
+			(at 656.59 235.97 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -19946,7 +20209,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:R0603"
-			(at 609.6 232.41 0)
+			(at 656.59 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19957,7 +20220,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_510R-5100-1_C23193.html"
-			(at 609.6 232.41 0)
+			(at 656.59 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19968,7 +20231,7 @@
 			)
 		)
 		(property "Description" "510Ω 1% Resistor, 0603"
-			(at 609.6 232.41 0)
+			(at 656.59 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19979,7 +20242,7 @@
 			)
 		)
 		(property "LCSC" "C23193"
-			(at 609.6 232.41 0)
+			(at 656.59 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -19989,11 +20252,11 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "4c340d7e-8ee4-4b51-b505-3a7d25fff9b8")
-		)
 		(pin "2"
-			(uuid "cdd349b9-71d3-4ab6-a7fa-57b9109ddfba")
+			(uuid "2e066ed5-fa52-4746-bcf0-0cc2bebbf3bc")
+		)
+		(pin "1"
+			(uuid "43d39a9b-68dc-47c8-b37c-de206e93ce72")
 		)
 		(instances
 			(project "gb3"
@@ -20015,7 +20278,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "daa4a1c7-f18f-5959-bfc3-0097e52a8d5d")
-		(property "Reference" "#FLG0103"
+		(property "Reference" "#FLG0104"
 			(at 93.98 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -20068,12 +20331,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "9c880d3b-0ec6-48b8-9ca6-281b59ac7f18")
+			(uuid "0d4ea3cd-9d15-4211-bb20-196521ec1014")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0103")
+					(reference "#FLG0104")
 					(unit 1)
 				)
 			)
@@ -20143,7 +20406,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c2d9b174-0bd3-43ca-a20b-10075686ae7c")
+			(uuid "6e55f745-cf70-4d36-ad8f-afa49ed6267a")
 		)
 		(instances
 			(project "gb3"
@@ -20156,7 +20419,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 279.4 45.72 90)
+		(at 283.21 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -20166,7 +20429,7 @@
 		(dnp no)
 		(uuid "dbb5c38b-d7da-5e89-8df3-cef116b55943")
 		(property "Reference" "#PWR0022"
-			(at 279.4 45.72 0)
+			(at 283.21 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20177,7 +20440,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 275.59 45.72 270)
+			(at 279.4 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20188,7 +20451,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 279.4 45.72 0)
+			(at 283.21 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20198,7 +20461,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 279.4 45.72 0)
+			(at 283.21 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20208,7 +20471,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 279.4 45.72 0)
+			(at 283.21 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20218,7 +20481,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "0e29fdfc-3b4b-4eb4-a437-403f64e6ee11")
+			(uuid "d522138b-68dd-4250-b098-bb051c1efb8c")
 		)
 		(instances
 			(project "gb3"
@@ -20293,7 +20556,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "49318702-45b6-42a3-b2c0-66f693722e47")
+			(uuid "39fab88a-7a04-473d-995e-90661f55d507")
 		)
 		(instances
 			(project "gb3"
@@ -20368,7 +20631,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "db4e9095-61dc-4f9f-b822-81e8804ce95e")
+			(uuid "41ee902f-606c-4fcd-a453-900da674ada7")
 		)
 		(instances
 			(project "gb3"
@@ -20381,7 +20644,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:0603WAF5100T5E")
-		(at 563.88 232.41 0)
+		(at 609.6 232.41 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -20391,7 +20654,7 @@
 		(dnp no)
 		(uuid "dd4bde97-b794-5b11-a106-adcc027f7920")
 		(property "Reference" "R45"
-			(at 563.88 228.85 0)
+			(at 609.6 228.85 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20401,7 +20664,7 @@
 			)
 		)
 		(property "Value" "510Ω"
-			(at 563.88 235.97 0)
+			(at 609.6 235.97 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20411,7 +20674,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:R0603"
-			(at 563.88 232.41 0)
+			(at 609.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20422,7 +20685,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_510R-5100-1_C23193.html"
-			(at 563.88 232.41 0)
+			(at 609.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20433,7 +20696,7 @@
 			)
 		)
 		(property "Description" "510Ω 1% Resistor, 0603"
-			(at 563.88 232.41 0)
+			(at 609.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20444,7 +20707,7 @@
 			)
 		)
 		(property "LCSC" "C23193"
-			(at 563.88 232.41 0)
+			(at 609.6 232.41 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20455,10 +20718,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ad1d664e-e666-4366-a840-0d2179ef53ec")
+			(uuid "995aba32-f146-4b2d-9ac1-183fe3e85f0f")
 		)
 		(pin "2"
-			(uuid "460fa270-f477-4707-8792-f8ffb13fa0de")
+			(uuid "a99730de-6008-4914-995f-95f07a31c11a")
 		)
 		(instances
 			(project "gb3"
@@ -20533,7 +20796,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "83c772d8-fe04-4dfe-bfde-6db1ff95008d")
+			(uuid "c54943b8-64bf-41d6-8468-8ec548711642")
 		)
 		(instances
 			(project "gb3"
@@ -20546,7 +20809,7 @@
 	)
 	(symbol
 		(lib_id "power:+3V3")
-		(at 321.31 45.72 90)
+		(at 323.85 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -20556,7 +20819,7 @@
 		(dnp no)
 		(uuid "df6fa065-fec6-514d-aaba-f87dbc183630")
 		(property "Reference" "#PWR0023"
-			(at 321.31 45.72 0)
+			(at 323.85 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20567,7 +20830,7 @@
 			)
 		)
 		(property "Value" "+3V3"
-			(at 317.5 45.72 270)
+			(at 320.04 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20578,7 +20841,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 321.31 45.72 0)
+			(at 323.85 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20588,7 +20851,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 321.31 45.72 0)
+			(at 323.85 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20598,7 +20861,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 321.31 45.72 0)
+			(at 323.85 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20608,7 +20871,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "47e9f472-1aa3-4e3d-ae93-f2e005bbba58")
+			(uuid "e76b3f22-60e3-403a-9816-292b6e4a5f7c")
 		)
 		(instances
 			(project "gb3"
@@ -20621,7 +20884,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 252.73 45.72 90)
+		(at 256.54 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -20631,7 +20894,7 @@
 		(dnp no)
 		(uuid "dfd098f4-d7a5-509c-9fab-0d144d6cd4d8")
 		(property "Reference" "#PWR0061"
-			(at 252.73 45.72 0)
+			(at 256.54 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20642,7 +20905,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 256.54 45.72 270)
+			(at 260.35 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20653,7 +20916,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 252.73 45.72 0)
+			(at 256.54 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20663,7 +20926,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 252.73 45.72 0)
+			(at 256.54 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20673,7 +20936,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 252.73 45.72 0)
+			(at 256.54 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20683,7 +20946,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "f1b36ec3-054d-4878-91d2-0164bfa5c0aa")
+			(uuid "50c51956-7bfc-41b6-a5f8-3a5986528d45")
 		)
 		(instances
 			(project "gb3"
@@ -20758,7 +21021,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "65168b20-25d5-490b-81e2-e1412da64a92")
+			(uuid "c9c49f81-c90e-440c-853f-c112d60a9e86")
 		)
 		(instances
 			(project "gb3"
@@ -20833,7 +21096,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "d502c445-9524-46f4-a548-2c25a51cb695")
+			(uuid "e1826d2e-c18f-4752-8e9d-1e39c2993805")
 		)
 		(instances
 			(project "gb3"
@@ -20846,7 +21109,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 955.04 45.72 0)
+		(at 958.85 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -20856,7 +21119,7 @@
 		(dnp no)
 		(uuid "e3e76c07-f919-507f-8a10-f807190aff94")
 		(property "Reference" "C26"
-			(at 955.04 41.15 0)
+			(at 958.85 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20866,7 +21129,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 955.04 50.29 0)
+			(at 958.85 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -20876,7 +21139,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 955.04 45.72 0)
+			(at 958.85 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20887,7 +21150,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 955.04 45.72 0)
+			(at 958.85 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20898,7 +21161,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 955.04 45.72 0)
+			(at 958.85 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20909,7 +21172,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 955.04 45.72 0)
+			(at 958.85 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -20919,11 +21182,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "35f3e1f5-65e6-4f94-a518-efbef5a12a6a")
-		)
 		(pin "1"
-			(uuid "4e1ad4d2-d5d4-485b-87d9-7e1dbe617183")
+			(uuid "31364971-ccfc-480d-883b-eed3a370cb29")
+		)
+		(pin "2"
+			(uuid "320d3b52-490d-4c6a-bf98-128a595b5486")
 		)
 		(instances
 			(project "gb3"
@@ -20945,7 +21208,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "e52aa1e0-3d59-5f59-8333-7d625f333d89")
-		(property "Reference" "#FLG0109"
+		(property "Reference" "#FLG0110"
 			(at 215.9 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -20998,12 +21261,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "80ee8d34-c9f9-4972-9ea0-730565d0702f")
+			(uuid "ee323b9e-77b1-4557-bd9d-f2a3afd7ac2d")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0109")
+					(reference "#FLG0110")
 					(unit 1)
 				)
 			)
@@ -21020,7 +21283,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "e5538d90-08e9-537e-b458-c690e90d0f8a")
-		(property "Reference" "#FLG0108"
+		(property "Reference" "#FLG0109"
 			(at 195.58 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -21073,12 +21336,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "59e31420-4ed7-4320-b1f5-ac64563f25dd")
+			(uuid "fe8956a2-145e-4882-bf7b-3a4418499242")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0108")
+					(reference "#FLG0109")
 					(unit 1)
 				)
 			)
@@ -21086,7 +21349,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 203.2 45.72 0)
+		(at 207.01 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -21096,7 +21359,7 @@
 		(dnp no)
 		(uuid "e7b05eb1-ff49-51d9-a89d-2e9507e43425")
 		(property "Reference" "C8"
-			(at 203.2 41.15 0)
+			(at 207.01 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21106,7 +21369,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 203.2 50.29 0)
+			(at 207.01 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21116,7 +21379,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 203.2 45.72 0)
+			(at 207.01 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21127,7 +21390,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 203.2 45.72 0)
+			(at 207.01 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21138,7 +21401,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 203.2 45.72 0)
+			(at 207.01 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21149,7 +21412,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 203.2 45.72 0)
+			(at 207.01 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21160,10 +21423,10 @@
 			)
 		)
 		(pin "2"
-			(uuid "783adbd5-080f-4bcb-8bfa-5d78d4568e85")
+			(uuid "af49a55f-249c-4134-b44b-508936f8b11e")
 		)
 		(pin "1"
-			(uuid "1a9c5e5a-6445-4a7c-815b-ef08af572c49")
+			(uuid "82960f61-9c80-470d-bb4d-fb5641a81edb")
 		)
 		(instances
 			(project "gb3"
@@ -21176,7 +21439,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 370.84 45.72 0)
+		(at 373.38 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -21186,7 +21449,7 @@
 		(dnp no)
 		(uuid "e9db9772-5328-5374-a66f-46c86e4a2d7f")
 		(property "Reference" "C13"
-			(at 370.84 41.15 0)
+			(at 373.38 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21196,7 +21459,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 370.84 50.29 0)
+			(at 373.38 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21206,7 +21469,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 370.84 45.72 0)
+			(at 373.38 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21217,7 +21480,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 370.84 45.72 0)
+			(at 373.38 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21228,7 +21491,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 370.84 45.72 0)
+			(at 373.38 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21239,7 +21502,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 370.84 45.72 0)
+			(at 373.38 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21250,10 +21513,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "917d6a4e-156d-4c5a-a98b-b9beb7e0a653")
+			(uuid "329fb7ea-5936-4f77-888d-04942349c8b9")
 		)
 		(pin "2"
-			(uuid "f54c7884-bc39-4b3b-b54f-32a79eb7de89")
+			(uuid "877b7a58-b4b7-4e90-84b0-a6c5a82d5595")
 		)
 		(instances
 			(project "gb3"
@@ -21328,7 +21591,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "b17b285e-8ec8-4592-96a8-f5bde23f063f")
+			(uuid "c9109f24-ebfc-4a8f-b975-14a2a194020b")
 		)
 		(instances
 			(project "gb3"
@@ -21403,7 +21666,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "c997f28a-07f9-4ddd-9837-bdf8248096af")
+			(uuid "12b5666f-aabe-4188-bdb4-2de21aed994f")
 		)
 		(instances
 			(project "gb3"
@@ -21478,7 +21741,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "a4828b64-a376-4299-8269-e1389dea41e1")
+			(uuid "16292d39-8a0d-4c33-a6d6-cf00ae10ca23")
 		)
 		(instances
 			(project "gb3"
@@ -21491,7 +21754,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:CC0603KRX7R9BB104")
-		(at 704.85 45.72 0)
+		(at 707.39 45.72 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -21501,7 +21764,7 @@
 		(dnp no)
 		(uuid "ecb6ef86-9770-5e86-9510-033da7ad85d0")
 		(property "Reference" "C20"
-			(at 704.85 41.15 0)
+			(at 707.39 41.15 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21511,7 +21774,7 @@
 			)
 		)
 		(property "Value" "100nF"
-			(at 704.85 50.29 0)
+			(at 707.39 50.29 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21521,7 +21784,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:C0603"
-			(at 704.85 45.72 0)
+			(at 707.39 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21532,7 +21795,7 @@
 			)
 		)
 		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_100nF-104-10-50V_C14663.html"
-			(at 704.85 45.72 0)
+			(at 707.39 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21543,7 +21806,7 @@
 			)
 		)
 		(property "Description" "100nF 50V X7R Ceramic Capacitor, 0603"
-			(at 704.85 45.72 0)
+			(at 707.39 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21554,7 +21817,7 @@
 			)
 		)
 		(property "LCSC" "C14663"
-			(at 704.85 45.72 0)
+			(at 707.39 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21565,10 +21828,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ebb75a70-f97c-4274-92c0-7f704055831e")
+			(uuid "6f892a6a-9ad4-44e0-8816-3e0d59d94b31")
 		)
 		(pin "2"
-			(uuid "29cec947-5e2e-4084-aa94-a9ae67d0770d")
+			(uuid "fbe40289-0c15-49e2-bab0-8a72e038ef0c")
 		)
 		(instances
 			(project "gb3"
@@ -21590,7 +21853,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "ee5db63f-fb83-52fc-8178-ca0b81288a72")
-		(property "Reference" "#FLG0104"
+		(property "Reference" "#FLG0105"
 			(at 114.3 6.35 0)
 			(hide yes)
 			(show_name no)
@@ -21643,12 +21906,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "e9e127a5-79ae-4ee3-939d-9c219ae3e1aa")
+			(uuid "2a585cd3-0a90-4198-b20a-6fca7157b769")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/9f051a66-d7b0-5e6e-8d54-438d3a56fc0a"
-					(reference "#FLG0104")
+					(reference "#FLG0105")
 					(unit 1)
 				)
 			)
@@ -21656,7 +21919,7 @@
 	)
 	(symbol
 		(lib_id "manual:TestPoint")
-		(at 652.78 233.68 0)
+		(at 698.5 233.68 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -21666,7 +21929,7 @@
 		(dnp no)
 		(uuid "efd7a691-3ad6-5ca2-b281-d07b106edd3d")
 		(property "Reference" "TP2"
-			(at 652.78 229.11 0)
+			(at 698.5 229.11 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21676,7 +21939,7 @@
 			)
 		)
 		(property "Value" "TestPoint"
-			(at 652.78 236.22 0)
+			(at 698.5 236.22 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21686,7 +21949,7 @@
 			)
 		)
 		(property "Footprint" "manual:TestPoint_Pad_D1.5mm"
-			(at 652.78 233.68 0)
+			(at 698.5 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21697,7 +21960,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 652.78 233.68 0)
+			(at 698.5 233.68 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21707,7 +21970,7 @@
 			)
 		)
 		(property "Description" "Bare-copper probe pad (no part placed, no LCSC)"
-			(at 652.78 233.68 0)
+			(at 698.5 233.68 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21718,7 +21981,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "1f0d9229-6bbc-489f-8b18-518cc70ffbf9")
+			(uuid "cf5e776c-fd95-4037-b745-0f4c29d12dc0")
 		)
 		(instances
 			(project "gb3"
@@ -21731,7 +21994,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 629.92 45.72 90)
+		(at 632.46 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -21741,7 +22004,7 @@
 		(dnp no)
 		(uuid "f3330cb0-9014-5b5f-b48f-f1fada08ce96")
 		(property "Reference" "#PWR0070"
-			(at 629.92 45.72 0)
+			(at 632.46 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21752,7 +22015,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 633.73 45.72 270)
+			(at 636.27 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21763,7 +22026,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 629.92 45.72 0)
+			(at 632.46 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21773,7 +22036,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 629.92 45.72 0)
+			(at 632.46 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21783,7 +22046,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 629.92 45.72 0)
+			(at 632.46 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21793,7 +22056,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6fc6cd0a-3cb3-41ae-81ec-1cfa22a03c9b")
+			(uuid "ce1e7f8b-3218-4968-843d-327897cac4c9")
 		)
 		(instances
 			(project "gb3"
@@ -21880,10 +22143,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "b597facd-0e98-406a-81bc-142291f1207e")
+			(uuid "77485e16-04b1-4b6c-873c-d32f012d4972")
 		)
 		(pin "2"
-			(uuid "86202fb9-925e-4ec7-95c1-29dad4be307c")
+			(uuid "f866618b-d792-4832-89a3-e7443c10eb8b")
 		)
 		(instances
 			(project "gb3"
@@ -21896,7 +22159,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 294.64 45.72 90)
+		(at 298.45 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -21906,7 +22169,7 @@
 		(dnp no)
 		(uuid "fa523189-7287-5b62-aab0-c6b359ac7eb1")
 		(property "Reference" "#PWR0062"
-			(at 294.64 45.72 0)
+			(at 298.45 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -21917,7 +22180,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 298.45 45.72 270)
+			(at 302.26 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21928,7 +22191,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 294.64 45.72 0)
+			(at 298.45 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21938,7 +22201,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 294.64 45.72 0)
+			(at 298.45 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21948,7 +22211,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 294.64 45.72 0)
+			(at 298.45 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -21958,7 +22221,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6c7b3d18-80e4-4059-9b59-2d9748fbf4e0")
+			(uuid "75775a1b-f200-48f5-a15a-229262e45d1e")
 		)
 		(instances
 			(project "gb3"
@@ -22033,7 +22296,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "aef9933c-4c6a-4333-b9e4-930353ff59ec")
+			(uuid "c2d9dedd-389a-470f-8def-4d1386b9c7ee")
 		)
 		(instances
 			(project "gb3"
@@ -22108,7 +22371,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "13425c50-4a2c-4c28-97c5-4098ab9e6339")
+			(uuid "c08b238b-9151-416d-82ad-6f564c7be151")
 		)
 		(instances
 			(project "gb3"
@@ -22121,7 +22384,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 922.02 45.72 90)
+		(at 924.56 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -22131,7 +22394,7 @@
 		(dnp no)
 		(uuid "fd171498-4af3-5f4c-a777-83d7e778b3fe")
 		(property "Reference" "#PWR0077"
-			(at 922.02 45.72 0)
+			(at 924.56 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -22142,7 +22405,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 925.83 45.72 270)
+			(at 928.37 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22153,7 +22416,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 922.02 45.72 0)
+			(at 924.56 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22163,7 +22426,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 922.02 45.72 0)
+			(at 924.56 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22173,7 +22436,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 922.02 45.72 0)
+			(at 924.56 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22183,7 +22446,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "5e611234-4253-4721-a71a-0a25b796f98c")
+			(uuid "8f8ec5b9-2e79-4c72-b037-f92f72ae4b1a")
 		)
 		(instances
 			(project "gb3"
@@ -22196,7 +22459,7 @@
 	)
 	(symbol
 		(lib_id "power:+0V9")
-		(at 405.13 45.72 90)
+		(at 407.67 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -22206,7 +22469,7 @@
 		(dnp no)
 		(uuid "fe936a3e-2c4b-5720-b857-f5757dd60d28")
 		(property "Reference" "#PWR0045"
-			(at 405.13 45.72 0)
+			(at 407.67 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -22217,7 +22480,7 @@
 			)
 		)
 		(property "Value" "+0V9"
-			(at 401.32 45.72 270)
+			(at 403.86 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22228,7 +22491,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 405.13 45.72 0)
+			(at 407.67 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22238,7 +22501,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 405.13 45.72 0)
+			(at 407.67 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22248,7 +22511,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 405.13 45.72 0)
+			(at 407.67 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22258,7 +22521,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "3c469a0f-dd47-421e-981e-e2411f44ea66")
+			(uuid "6a8318bf-b07a-48a2-8015-35561f4ab727")
 		)
 		(instances
 			(project "gb3"

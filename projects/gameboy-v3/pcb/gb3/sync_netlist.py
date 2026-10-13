@@ -28,15 +28,13 @@ REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 FPLIBS = {n: os.path.join(REPO, "cad", "symbols", n + ".pretty") for n in ("easyeda2kicad", "manual")}
 KICAD_CLI = os.environ.get("KICAD_CLI", "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli")
 
-# Per-change tables (this change: step 1b, 2026-10-13; step 1 had R43-R46/TP1-TP3 and C33/C35/C42).
+# Per-change tables (this change: step 1c, 2026-10-13; step 1b had R47-R53/C92/C93/TP4-TP12 + C13/C39,
+# step 1 R43-R46/TP1-TP3 + C33/C35/C42). New parts are added in refdes order, so R55 can anchor to Q1.
 # new part -> the pad it belongs beside (ref, pad)
-ANCHOR = {"R47": ("U10", "14"), "R48": ("U4", "9"), "R49": ("Audio1", "4"), "R50": ("U1", "75"),
-          "R51": ("U6", "2"), "R52": ("USBC1", "A5"), "R53": ("USBC1", "B5"), "C92": ("U1", "89"),
-          "C93": ("D4", "5"), "TP4": ("U10", "13"), "TP5": ("U10", "2"), "TP6": ("R27", "2"),
-          "TP7": ("C62", "1"), "TP8": ("C34", "1"), "TP9": ("U1", "28"), "TP10": ("U1", "48"),
-          "TP11": ("C45", "1"), "TP12": ("U10", "17")}
+ANCHOR = {"Q1": ("U10", "12"), "R54": ("R16", "1"), "R55": ("Q1", "1"), "R56": ("R52", "1"),
+          "R57": ("R53", "1"), "C94": ("U1", "101")}
 # existing part whose job changed -> its new pin
-MOVE = {"C13": ("U1", "107"), "C39": ("U1", "116")}
+MOVE = {}
 SEARCH = (1.5, 9.0)      # mm: ring radii searched for a free spot
 MOVE_DONE = 10.0         # mm, beyond SEARCH: a part already this close to its new pin stays put
 GAP = 0.25               # mm between bounding boxes

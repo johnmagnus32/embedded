@@ -3,8 +3,162 @@
 	(generator "eeschema")
 	(generator_version "10.0")
 	(uuid "7504bbfb-6cdc-542c-a297-ebd6e57f4849")
-	(paper "User" 297 210)
+	(paper "User" 382 210)
 	(lib_symbols
+		(symbol "easyeda2kicad:0603WAF2003T5E"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "0603WAF2003T5E"
+				(at 0 -5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "easyeda2kicad:R0603"
+				(at 0 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_200KR-2003-1_C25811.html"
+				(at 0 -10.16 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "200KΩ (2003) ±1%"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Manufacturer" "UNI-ROYAL(厚声)"
+				(at 0 -12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "0603WAF2003T5E"
+				(at 0 -15.24 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC Part" "C25811"
+				(at 0 -17.78 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Resistors"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "0603WAF2003T5E_0_1"
+				(rectangle
+					(start -2.54 1.02)
+					(end 2.54 -1.02)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5.08 0 180)
+					(length 2.54)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "easyeda2kicad:CC0603KRX7R9BB104"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -1637,6 +1791,16 @@
 	)
 	(wire
 		(pts
+			(xy 279.4 44.45) (xy 276.86 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "672d2128-f191-5d8b-89ea-6d180cfba1b2")
+	)
+	(wire
+		(pts
 			(xy 123.19 55.88) (xy 125.73 55.88)
 		)
 		(stroke
@@ -1657,6 +1821,16 @@
 	)
 	(wire
 		(pts
+			(xy 289.56 44.45) (xy 292.1 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "777a682a-6a29-5211-84a8-d212231ffa54")
+	)
+	(wire
+		(pts
 			(xy 41.91 71.12) (xy 39.37 71.12)
 		)
 		(stroke
@@ -1664,6 +1838,16 @@
 			(type default)
 		)
 		(uuid "7b87342e-2ef1-538e-a126-f4b3812a1174")
+	)
+	(wire
+		(pts
+			(xy 335.28 44.45) (xy 337.82 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "845df5a1-e307-540c-b6fe-e51a374a4bb7")
 	)
 	(wire
 		(pts
@@ -1727,6 +1911,16 @@
 	)
 	(wire
 		(pts
+			(xy 325.12 44.45) (xy 322.58 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "b89bc509-7966-586b-99ca-3dea53e966a4")
+	)
+	(wire
+		(pts
 			(xy 41.91 63.5) (xy 39.37 63.5)
 		)
 		(stroke
@@ -1774,6 +1968,26 @@
 			(type default)
 		)
 		(uuid "e17c1a63-f034-5e1a-a087-670c0fd352dc")
+	)
+	(label "USBC_CC1"
+		(at 276.86 44.45 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "0657f068-c42a-52c3-87eb-47edfa323983")
+	)
+	(label "USBC_CC2"
+		(at 322.58 44.45 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "417dc51a-5694-50d8-b9aa-85f972ae04a8")
 	)
 	(label "USBC_CC1"
 		(at 39.37 53.34 180)
@@ -1859,6 +2073,28 @@
 			)
 		)
 	)
+	(global_label "USBC_CC_SENSE"
+		(shape bidirectional)
+		(at 292.1 44.45 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7359f512-2304-5aaa-9f68-ad63a1b56777")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 292.1 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "USB_D+"
 		(shape bidirectional)
 		(at 125.73 48.26 0)
@@ -1893,6 +2129,28 @@
 		(uuid "aeda932c-71cb-5d9a-b0ac-ae9c29552bc7")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 87.63 63.5 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "USBC_CC_SENSE"
+		(shape bidirectional)
+		(at 337.82 44.45 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b15d9b86-1c00-58ec-9d5d-0876b9cf64e7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 337.82 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1992,6 +2250,96 @@
 		)
 	)
 	(symbol
+		(lib_id "easyeda2kicad:0603WAF2003T5E")
+		(at 284.48 44.45 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "05cb6905-24bc-504d-babd-c332c54cfa8a")
+		(property "Reference" "R56"
+			(at 284.48 40.89 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "200k"
+			(at 284.48 48.01 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:R0603"
+			(at 284.48 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_200KR-2003-1_C25811.html"
+			(at 284.48 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "200KΩ (2003) ±1%"
+			(at 284.48 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25811"
+			(at 284.48 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "83343cf1-f748-42ac-8335-d3ab68a1587d")
+		)
+		(pin "2"
+			(uuid "b10db948-b1cd-424e-b15b-a1c68e5a1301")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
+					(reference "R56")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+5V")
 		(at 39.37 48.26 90)
 		(unit 1)
@@ -2002,7 +2350,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "0f5d75e5-8333-53a9-b941-b6587bc0e7d9")
-		(property "Reference" "#PWR0122"
+		(property "Reference" "#PWR0123"
 			(at 39.37 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -2055,12 +2403,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "11339e19-b882-4821-a517-975f83380021")
+			(uuid "980e2e97-3b2f-4932-9107-2deca48c60f9")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0122")
+					(reference "#PWR0123")
 					(unit 1)
 				)
 			)
@@ -2077,7 +2425,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "14d46103-ad73-5674-b0b4-13bf7a83c293")
-		(property "Reference" "#PWR0118"
+		(property "Reference" "#PWR0119"
 			(at 87.63 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -2130,12 +2478,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "b18469c1-4a14-4077-81d3-0c4bb10145d4")
+			(uuid "1ebc4cb7-64f3-41d0-b89e-9107b8ceacbd")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0118")
+					(reference "#PWR0119")
 					(unit 1)
 				)
 			)
@@ -2217,10 +2565,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "4bc3bcec-771f-40eb-b34e-68e22f2af88e")
+			(uuid "606ce9d8-2509-4cd3-ae17-f5e18129d6d4")
 		)
 		(pin "2"
-			(uuid "8a2183e3-f9d6-41ab-88b4-666e01511e95")
+			(uuid "9e2dcae3-dbbe-4115-bfd5-32367a971b8b")
 		)
 		(instances
 			(project "gb3"
@@ -2242,7 +2590,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "3d261e15-f467-56c3-bf10-dcb0deca17e0")
-		(property "Reference" "#PWR0124"
+		(property "Reference" "#PWR0125"
 			(at 125.73 55.88 0)
 			(hide yes)
 			(show_name no)
@@ -2295,12 +2643,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "76a2263a-9f40-443a-9b46-7b276f47e035")
+			(uuid "ccb96b8d-2b95-4eec-8fa8-4bd308a088d9")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0124")
+					(reference "#PWR0125")
 					(unit 1)
 				)
 			)
@@ -2317,7 +2665,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "5dd4659a-649a-59f0-b616-b12588232287")
-		(property "Reference" "#PWR0114"
+		(property "Reference" "#PWR0115"
 			(at 62.23 68.58 0)
 			(hide yes)
 			(show_name no)
@@ -2370,12 +2718,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "a7e79ecc-2822-428d-8b65-014f41a3bf39")
+			(uuid "6a2a1a59-9a23-40cb-91b7-9fabe7f93286")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0114")
+					(reference "#PWR0115")
 					(unit 1)
 				)
 			)
@@ -2392,7 +2740,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "606dd3ab-f42e-5676-aec7-cbf0bee134a4")
-		(property "Reference" "#PWR0121"
+		(property "Reference" "#PWR0122"
 			(at 250.19 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -2445,12 +2793,102 @@
 			)
 		)
 		(pin "1"
-			(uuid "6e8fc2dd-968b-4394-9f9a-e3ba431bdfa4")
+			(uuid "b4f34f55-5992-46d9-a2fb-fa387c598aaf")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0121")
+					(reference "#PWR0122")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "easyeda2kicad:0603WAF2003T5E")
+		(at 330.2 44.45 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "699aeefc-0752-56f1-8ad4-ec21bc1ab3cf")
+		(property "Reference" "R57"
+			(at 330.2 40.89 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "200k"
+			(at 330.2 48.01 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:R0603"
+			(at 330.2 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_200KR-2003-1_C25811.html"
+			(at 330.2 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "200KΩ (2003) ±1%"
+			(at 330.2 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25811"
+			(at 330.2 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "c94aa026-3ff2-4e19-a6fd-1d7dc141bf22")
+		)
+		(pin "2"
+			(uuid "709c8ae1-0b21-437c-ab6c-8f1808fd79d4")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
+					(reference "R57")
 					(unit 1)
 				)
 			)
@@ -2467,7 +2905,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "6a7c5ca6-6b67-5328-8f25-5b31df205dca")
-		(property "Reference" "#PWR0120"
+		(property "Reference" "#PWR0121"
 			(at 208.28 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -2520,12 +2958,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "bcf963d2-f98b-4acb-9d31-784a8009de64")
+			(uuid "eeb37825-2abd-47b8-808e-f809cc46e9b3")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0120")
+					(reference "#PWR0121")
 					(unit 1)
 				)
 			)
@@ -2606,11 +3044,11 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "59ce462f-6f41-4c36-962e-39759b167b46")
-		)
 		(pin "2"
-			(uuid "f3dfc609-a9dd-422c-9ef8-53a5eabbd9e1")
+			(uuid "3f5c5669-8264-4f0b-86dc-d6704ba8c544")
+		)
+		(pin "1"
+			(uuid "ec4df4b6-3899-4cc8-9a55-42052bf39e92")
 		)
 		(instances
 			(project "gb3"
@@ -2632,7 +3070,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "9e3a53b4-01f7-5e01-8409-0b54b8dd4539")
-		(property "Reference" "#PWR0113"
+		(property "Reference" "#PWR0114"
 			(at 62.23 71.12 0)
 			(hide yes)
 			(show_name no)
@@ -2685,12 +3123,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "0bf020f6-f84b-4fa8-9a5e-b4d50a051096")
+			(uuid "a051bc51-3274-4c61-ba14-b76b6a672226")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0113")
+					(reference "#PWR0114")
 					(unit 1)
 				)
 			)
@@ -2771,53 +3209,53 @@
 				)
 			)
 		)
-		(pin "A7"
-			(uuid "650c7b70-0c3e-4037-9daa-efb9eef3d952")
-		)
-		(pin "A6"
-			(uuid "34eba35d-4f58-489c-8145-f21c5f2f5a0f")
-		)
-		(pin "A5"
-			(uuid "55739a14-d7ee-41ab-be90-d7d4330a8af5")
-		)
-		(pin "A4B9"
-			(uuid "702e25ed-93a2-4339-9220-45abbd0ee1d2")
-		)
-		(pin "A1B12"
-			(uuid "9340ce20-f2c1-44e7-a5b4-a3a1f5f0bf08")
-		)
 		(pin "4"
-			(uuid "a05fedb9-a62a-467f-a3b0-7c92bc8332d9")
+			(uuid "5662c797-af0a-465c-a934-30461f471dec")
 		)
 		(pin "3"
-			(uuid "74203ce8-ca0d-4f35-af57-79777628e5cd")
-		)
-		(pin "2"
-			(uuid "1b101c41-4f96-4073-b2f0-20dedec76fd0")
-		)
-		(pin "1"
-			(uuid "fc2d4595-900c-441f-b5e3-1eff0e639a74")
-		)
-		(pin "A8"
-			(uuid "49af80b2-3971-4838-b722-2c5a41cc391b")
-		)
-		(pin "B1A12"
-			(uuid "f9d1af56-2862-4207-b90d-62b64090fd3d")
-		)
-		(pin "B4A9"
-			(uuid "b1da146d-12e1-4dc4-969a-d0594c442704")
-		)
-		(pin "B5"
-			(uuid "473aab0c-babe-4e3f-a0e2-a19d27c9d65d")
-		)
-		(pin "B6"
-			(uuid "76496454-a7a5-4685-ad85-3431ca01a2f3")
-		)
-		(pin "B7"
-			(uuid "0205a567-08e4-4c24-b651-23ea5fdcf523")
+			(uuid "301b4efb-3277-4698-86b0-4fbeb99d8c27")
 		)
 		(pin "B8"
-			(uuid "5272c748-e5a4-4e6a-bcb8-29711f6b0620")
+			(uuid "954bc32c-9db4-450d-b373-e82fd899338a")
+		)
+		(pin "B7"
+			(uuid "4a51846c-4eee-4a5b-9204-5cec587ce24c")
+		)
+		(pin "B6"
+			(uuid "d855cf77-6a1c-45fb-88e8-58ca7e525e46")
+		)
+		(pin "B5"
+			(uuid "9cf04692-c4bc-44a4-8413-b7267df01cba")
+		)
+		(pin "B4A9"
+			(uuid "3d102d22-5936-48e8-aac3-1365eda533d2")
+		)
+		(pin "B1A12"
+			(uuid "9fbf60d0-6f20-496d-ab4a-c1344e5cdbe2")
+		)
+		(pin "A8"
+			(uuid "0659965e-d221-46d4-a840-3a91d83a8b7e")
+		)
+		(pin "A7"
+			(uuid "5894e45d-ab8e-4d8b-b794-8269c0b398da")
+		)
+		(pin "A6"
+			(uuid "37d4f31c-e17f-418a-aa46-3c9c9eda7b97")
+		)
+		(pin "A5"
+			(uuid "27c597ab-b4da-4170-a323-ff088c1f8ad7")
+		)
+		(pin "A4B9"
+			(uuid "426d21dc-663f-4002-a3ad-5a8616c1a56c")
+		)
+		(pin "A1B12"
+			(uuid "343c96a9-34b8-4a45-b60e-bfa6ff7eca47")
+		)
+		(pin "2"
+			(uuid "47ef6ca6-3d95-44fd-ada6-e51376ed0654")
+		)
+		(pin "1"
+			(uuid "34e8b4af-9759-46d5-88ad-54802b0485d5")
 		)
 		(instances
 			(project "gb3"
@@ -2839,7 +3277,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "9f5f5f0c-46bd-5caa-8d34-f91d0ebefeb5")
-		(property "Reference" "#PWR0123"
+		(property "Reference" "#PWR0124"
 			(at 39.37 71.12 0)
 			(hide yes)
 			(show_name no)
@@ -2892,12 +3330,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "d3cc0971-165a-4f35-a294-dd3408ade326")
+			(uuid "584bd318-1a25-41ff-b236-5fd6849395b3")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0123")
+					(reference "#PWR0124")
 					(unit 1)
 				)
 			)
@@ -2914,7 +3352,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "a3ae7d1b-7cb0-501c-a6dd-b064f83dc164")
-		(property "Reference" "#PWR0115"
+		(property "Reference" "#PWR0116"
 			(at 62.23 66.04 0)
 			(hide yes)
 			(show_name no)
@@ -2967,12 +3405,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "eb1a4e24-1cbd-4346-8e62-2e7469bc040c")
+			(uuid "59bd5eb6-6338-4b64-9935-3a04600ec2fe")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0115")
+					(reference "#PWR0116")
 					(unit 1)
 				)
 			)
@@ -2989,7 +3427,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "bc32e55c-65e5-5bb7-9b4c-4172b3d2d6ce")
-		(property "Reference" "#PWR0117"
+		(property "Reference" "#PWR0118"
 			(at 39.37 73.66 0)
 			(hide yes)
 			(show_name no)
@@ -3042,12 +3480,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "2e3c49f1-228f-42e6-b7c0-f4c626dabdd2")
+			(uuid "abdb5ea4-b0b4-4eb1-aaa6-e4d4e436e83b")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0117")
+					(reference "#PWR0118")
 					(unit 1)
 				)
 			)
@@ -3064,7 +3502,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "c0da03d7-d820-5d75-884b-d7cb6a1f6e63")
-		(property "Reference" "#PWR0116"
+		(property "Reference" "#PWR0117"
 			(at 39.37 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -3117,12 +3555,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "47331f0d-038a-4423-8cf2-f6bfde23fbe8")
+			(uuid "afe511c4-9d7a-4ec8-b178-4d4dd47f08a2")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0116")
+					(reference "#PWR0117")
 					(unit 1)
 				)
 			)
@@ -3204,22 +3642,22 @@
 			)
 		)
 		(pin "1"
-			(uuid "74611ae4-7d2c-4680-b711-f3423785e28a")
+			(uuid "04790706-5731-4ceb-9795-e13a6a38b653")
 		)
 		(pin "2"
-			(uuid "f2622db6-a70b-48db-b73a-666a4711f208")
+			(uuid "90357815-211b-46d0-946e-3affc148e15b")
 		)
 		(pin "3"
-			(uuid "90942930-b9fa-4a7f-8312-a1520b2be8aa")
+			(uuid "bac74336-09d6-485f-b2ac-2020dad463d9")
 		)
 		(pin "4"
-			(uuid "c797b1cd-04e8-4742-8e72-289824944416")
+			(uuid "d1209b3a-0503-4a37-aafd-79d61491e6df")
 		)
 		(pin "5"
-			(uuid "d93198da-992c-45a8-af9e-719fd3173606")
+			(uuid "959fbcc9-e17d-49fb-ab98-73b7b73b3dd5")
 		)
 		(pin "6"
-			(uuid "a04add40-6434-45b9-ac1f-7ed98c91bf0d")
+			(uuid "a050ebd1-ac41-404e-8808-411dd2dd3835")
 		)
 		(instances
 			(project "gb3"
@@ -3241,7 +3679,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "c622b971-c6d8-57a2-8338-68ff5beafac2")
-		(property "Reference" "#PWR0125"
+		(property "Reference" "#PWR0126"
 			(at 151.13 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -3294,12 +3732,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "261c2342-37ba-4f0f-8c3a-faaee3cf4085")
+			(uuid "274d5adb-a98a-4aa6-937c-8bba9e6ecb78")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0125")
+					(reference "#PWR0126")
 					(unit 1)
 				)
 			)
@@ -3316,7 +3754,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "e167b5d5-e8b5-5b25-ab70-81f1025aaefc")
-		(property "Reference" "#PWR0119"
+		(property "Reference" "#PWR0120"
 			(at 166.37 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -3369,12 +3807,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "6f73359f-a2f3-409b-8da0-76422ff92d1a")
+			(uuid "f9d338dd-768f-46cf-b75b-61ae4a9452ae")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0119")
+					(reference "#PWR0120")
 					(unit 1)
 				)
 			)
@@ -3456,10 +3894,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "2f739253-ce17-4393-865a-ec0ef3fc80d5")
+			(uuid "584c832e-691b-48fa-bf5c-59e9869f6764")
 		)
 		(pin "2"
-			(uuid "5e1f4168-9a91-4435-b175-a0b7e61a8a8f")
+			(uuid "38a72920-3407-40e4-b83a-c412bf5a63f4")
 		)
 		(instances
 			(project "gb3"
@@ -3481,7 +3919,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "f953bb9d-509b-5b83-ac7e-8771a99b0254")
-		(property "Reference" "#PWR0112"
+		(property "Reference" "#PWR0113"
 			(at 62.23 73.66 0)
 			(hide yes)
 			(show_name no)
@@ -3534,12 +3972,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "a7b4c5cc-53b7-4744-ade4-d891608503b0")
+			(uuid "08992502-4fec-4bb6-a102-3398614d25c4")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/57b2cd8c-6809-56a7-af66-489fe4d0565d"
-					(reference "#PWR0112")
+					(reference "#PWR0113")
 					(unit 1)
 				)
 			)

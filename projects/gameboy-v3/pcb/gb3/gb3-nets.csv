@@ -77,17 +77,17 @@ U1,75,LCD0_CLK,,PD18 LCD0-CLK → R50 33R at the pin → RGB_DCLK → panel
 U1,76,RGB_DE,,PD19 LCD0-DE → panel
 U1,77,+3V3,pwr,VCC-TVOUT = 3.3V (datasheet typ 3.3); TVOUT block unused but supply kept at 3.3V
 U1,78,,,spare/NC — TVOUT0 CVBS output unused
-U1,79,,,spare/NC — PB7 free GPIO
+U1,79,CHG_FAST,,"PB7 out → Q1 2N7002 gate (R55 10k pull-down at the FET): high = fast input limit (ILIM 3.6k||1.8k = 1.2k → 1.24/1.34/1.45 A); low or Z (reset, boot, system off) = safe 3.6k (0.37/0.42/0.48 A). Push-pull; never bias-pull-up (10k keeps the gate ≤ 0.40 V even against the 80–120k internal pull-up). DT gpio-charger charge-current-limit-gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>"
 U1,80,BT_EN_RST,,PB6 → BT830 VREG_EN_RST# (boot low >5ms then high)
 U1,81,+0V9,pwr,VDD-SYS2 = 0.9V core/system rail (see pin 46). VERIFY vs t113-breakout
 U1,82,GAUGE_ALRT,,PB5 (PB-EINT5) → MAX17048 ALRT + R43 pull-up (open-drain in; DT IRQ_TYPE_LEVEL_LOW + wakeup-source)
 U1,83,+3V3,pwr,VCC-IO = 3.3V digital I/O supply
-U1,84,CHG_PGOOD,,PB4 → BQ24073 PGOOD + pull-up (open-drain in)
+U1,84,CHG_PGOOD,,PB4 (PB-EINT4) → BQ24073 /PGOOD + R28 pull-up (open-drain in); DT gpio-charger gpios = <&pio 1 4 GPIO_ACTIVE_LOW> (online + wakeup IRQ)
 U1,85,DAC_XSMT,,PB3 → PCM5102A XSMT (soft-mute); drive push-pull; R44 10k pull-down = muted at reset
 U1,86,HP_EN,,PB2 → TPA6132A2 EN (+ pull-down)
 U1,87,,,spare/NC — MICIN3P (internal codec mic-in unused)
 U1,88,,,spare/NC — MICIN3N unused
-U1,89,AVCC,pwr,AVCC 1.8V (DS Table 5-2: 1.782/1.8/1.818; abs-max 2.16V) = internal ALDO output (DS §2.9.1 'Internal ALDO output for AVCC'; POWER_REG 0x0348 ALDO_EN=1 at 1.80V from reset). Own node: C19 100nF + C92 2.2uF -> GND (MangoPi C11 2.2uF). Do NOT merge with LDOA: the breakout's LDOA tie parallels two regulator outputs and is not the reference (MangoPi keeps AVCC1.8 separate; DevTerm-R01 feeds AVCC from ALDO via R273 0R with its LDOA link RS126 marked NC/0R). GPADC/TPADC/codec unused
+U1,89,AVCC,pwr,AVCC 1.8V (DS Table 5-2: 1.782/1.8/1.818; abs-max 2.16V) = internal ALDO output (DS §2.9.1 'Internal ALDO output for AVCC'; POWER_REG 0x0348 ALDO_EN=1 at 1.80V from reset). Own node: C19 100nF + C92 2.2uF -> GND (MangoPi C11 2.2uF). Do NOT merge with LDOA: the breakout's LDOA tie parallels two regulator outputs and is not the reference (MangoPi keeps AVCC1.8 separate; DevTerm-R01 feeds AVCC from ALDO via R273 0R with its LDOA link RS126 marked NC/0R). GPADC0 reference for the USB-C CC sense (step 1c); TPADC/codec unused
 U1,90,VRA2,pwr,VRA2 — codec analog reference — 100nF→GND per PINOUT open-item; internal codec unused (section-local net). Confirm bypass cap exists
 U1,91,GND,gnd,AGND — ground family
 U1,92,VRA1,pwr,VRA1 — codec analog reference — 100nF→GND per PINOUT open-item; internal codec unused (section-local net). Confirm bypass cap exists
@@ -99,7 +99,7 @@ U1,97,HPVCC,pwr,HPVCC 1.8V (DS Table 5-2: 1.764/1.8/1.836) = internal HPLDO outp
 U1,98,,,spare/NC — HPOUTR internal codec HP out unused
 U1,99,,,spare/NC — HPOUTL unused
 U1,100,,,spare/NC — HPOUTFB unused
-U1,101,,,spare/NC — GPADC0 unused: battery V + SOC% from U13 MAX17048 VCELL/SOC (i2c1 0x36); BAT_SENSE divider (was R24/R25 = BOM #75/#76) deleted
+U1,101,USBC_CC_SENSE,,"GPADC0 (AI, 0–AVCC 1.8 V) ← USB-C CC sense node ≈ 0.506 × V(active CC) (the other CC sits at 0 V on its Rd) via R56/R57 200k; C94 100nF at the pin (tau 10 ms). Enter fast ≥ 0.360 V (raw 819), back to safe < 0.335 V (raw 762); > 1.10 V (raw 2503) or a read error = invalid → safe (DS Table 5-7: 12-bit, 0–AVCC). While fast, sample every 10–20 ms (Type-C tSinkAdj ≤ 60 ms). DT &gpadc channel@0; IIO device name sun20i-gpadc"
 U1,102,,,spare/NC — TP-X1 resistive-touch ADC unused
 U1,103,,,spare/NC — TP-X2 unused
 U1,104,,,spare/NC — TP-Y1 unused
@@ -152,13 +152,13 @@ USBC1,3,GND,gnd,EH shield/retention post -> GND
 USBC1,4,GND,gnd,EH shield/retention post -> GND
 USBC1,A1B12,GND,gnd,GND — ground family
 USBC1,A4B9,+5V,pwr,VBUS — rail: USB-C 5V input
-USBC1,A5,USBC_CC1,,"CC1 -> Rd 5.1k R52 to GND (Type-C sink, 5 V only; no PD controller)"
+USBC1,A5,USBC_CC1,,"CC1 -> Rd 5.1k R52 to GND (Type-C sink, 5 V only; no PD controller) + R56 200k sense → GPADC0"
 USBC1,A6,USB_D+,,DP1; USB2-only reversible -> DP1=DP2 board-shorted; path via ESD D4 to T113 USB0-DP
 USBC1,A7,USB_D-,,DN1; DN1=DN2 board-shorted; path via ESD D4 to T113 USB0-DM
 USBC1,A8,,,spare/NC — SBU1 unused (no alt-mode / analog-audio adapter)
 USBC1,B1A12,GND,gnd,GND — ground family
 USBC1,B4A9,+5V,pwr,VBUS — rail: USB-C 5V input
-USBC1,B5,USBC_CC2,,CC2 -> Rd 5.1k R53 to GND
+USBC1,B5,USBC_CC2,,CC2 -> Rd 5.1k R53 to GND + R57 200k sense → GPADC0
 USBC1,B6,USB_D+,,DP2 shorted to DP1 (reversible USB2)
 USBC1,B7,USB_D-,,DN2 shorted to DN1
 USBC1,B8,,,spare/NC — SBU2 unused
@@ -461,7 +461,7 @@ U10,8,GND,gnd,VSS — ground family
 U10,9,CHG_LED_K,,"~{CHG} — /CHG open-drain, sinks charge-status LED U14 cathode"
 U10,10,SYS_SRC,pwr,"charger OUT = supply/upstream side of INA226 shunt (SYS_SRC), before R27; distinct from post-shunt SYS distribution"
 U10,11,SYS_SRC,pwr,"charger OUT (pins 10,11)"
-U10,12,CHG_ILIM,,ILIM -> R16 1.2k -> GND (input current limit ~1.34A)
+U10,12,CHG_ILIM,,"ILIM → R16 3.6k → GND = safe 366/424/483 mA (KILIM 1330/1525/1720, DS p.12); + R54 1.8k via Q1 while CHG_FAST is high → 1.2k = 1.24/1.34/1.45 A (KILIM 1500/1610/1720). ILIM mode (EN2=1/EN1=0): no VIN-DPM (DS p.22)"
 U10,13,+5V,pwr,charger IN from USB-C VBUS (+5V); C55 IN cap
 U10,14,CHG_TMR,,TMR -> R47 68k -> GND: tMAXCHG = 10*KTMR*RTMR = 6.8/9.1/11.3 h; tPRECHG = 41/54/68 min (DS p.13; eq 6/7 p.27). Floating default 4/5/6 h can expire before the cell is full
 U10,15,GND,gnd,TD — tied low = termination enabled (BQ24073: TD must not float; DS p.9)
@@ -475,7 +475,7 @@ C57,1,BAT,pwr,"charger BAT cap 10uF -> GND, near JST CN1"
 C57,2,GND,gnd,
 R15,1,CHG_ISET,,ISET program R 2.0k
 R15,2,GND,gnd,
-R16,1,CHG_ILIM,,ILIM program R 1.2k
+R16,1,CHG_ILIM,,"ILIM base R 3.6k: always in = the safe limit (handheld off, reset, PB7 low)"
 R16,2,GND,gnd,
 R17,1,CHG_TS,,TS NTC 10k B3950 - at the battery-cutout edge >=20 mm from U10
 R17,2,GND,gnd,
@@ -483,6 +483,13 @@ R18,1,CHG_EN2,,EN2 0R strap
 R18,2,SYS_SRC,pwr,"strap EN2 to OUT node (SYS_SRC); SYS also acceptable (~same voltage), BOM says OUT/SYS"
 R47,1,CHG_TMR,,TMR safety-timer 68k
 R47,2,GND,gnd,
+R54,1,CHG_ILIM,,ILIM fast R 1.8k: in parallel with R16 while Q1 conducts (3.6k||1.8k = 1.2k). Keep the CHG_ILIM copper (U10.12–R16.1–here) ≤ 8 mm
+R54,2,CHG_ILIM_SW,,to Q1 drain
+Q1,1,CHG_FAST,,2N7002 gate ← PB7 (U1.79) via the long CHG_FAST trace; R55 beside this pin
+Q1,2,GND,gnd,2N7002 source → GND
+Q1,3,CHG_ILIM_SW,,"2N7002 drain → R54.2 (≤ ILIM pin voltage, < 1 mA; IDSS ≤ 80 nA)"
+R55,1,CHG_FAST,,10k gate pull-down at Q1: fast path off while PB7 is Z (reset/boot/system off) or the trace is open; ≤ 0.10 V at the T113's 10 uA max pad leakage and ≤ 0.40 V even with PB7's internal 80–120k pull-up on (DS Table 5-4; stock MangoPi U-Boot CONS_INDEX=4 sets it) vs 2N7002 Vth ≥ 1.0 V (CJ DS p.2)
+R55,2,GND,gnd,
 U12,1,SYS,pwr,VINA — rail: #66 buck-boost in=SYS
 U12,2,GND,gnd,GND — ground family
 U12,3,BB_FB,,FB -> R22 0R -> +3V3 (external rail sense for fixed-output DSJ part)
@@ -674,10 +681,16 @@ D4,5,+5V,pwr,USBLC6 VBUS rail-clamp = USB-C VBUS (+5V)
 D4,6,USB_D+,,USBLC6-2SC6 I/O1 (same net as pin1); ESD taps the DP line pass-through to T113
 C93,1,+5V,pwr,100nF VBUS HF cap at D4.5 (USBLC6 VBUS) - ST Fig 18 CBUS; not bulk: hard-started VBUS stays <10uF (USB 2.0 7.2.4.1)
 C93,2,GND,gnd,
-R52,1,USBC_CC1,,Rd 5.1k: CC1 -> GND
+C94,1,USBC_CC_SENSE,,"100nF at U1.101 GPADC0 (≤ 5 mm): tau = 102k × 100nF = 10 ms (PD BMC bursts, noise) + charge reservoir for the ADC sample cap"
+C94,2,GND,gnd,
+R52,1,USBC_CC1,,Rd 5.1k: CC1 -> GND (|| 405k sense path → 4.96–5.11k effective; Type-C 5.1k ±10%)
 R52,2,GND,gnd,
-R53,1,USBC_CC2,,Rd 5.1k: CC2 -> GND
+R53,1,USBC_CC2,,Rd 5.1k: CC2 -> GND (|| 405k sense path)
 R53,2,GND,gnd,
+R56,1,USBC_CC1,,"CC1 sense 200k, beside the Rd R52 (keeps the CC stub short)"
+R56,2,USBC_CC_SENSE,,sense node → U1.101 GPADC0
+R57,1,USBC_CC2,,"CC2 sense 200k, beside the Rd R53"
+R57,2,USBC_CC_SENSE,,sense node → U1.101 GPADC0
 U18,1,+3V3,pwr,rail: BT830 note: VDD_PADS=3.3V
 U18,2,GND,gnd,GND — ground family
 U18,3,,,PIO2 unused -> spare/NC (datasheet recommends NC)
