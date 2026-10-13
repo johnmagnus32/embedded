@@ -65,6 +65,16 @@ test: $(BUILD)/cc
 	case "$$rel" in ".rodata=R_ARM_REL32 glob_var=R_ARM_GOT_PREL hidden_var=R_ARM_REL32 .data=R_ARM_REL32 .rodata=R_ARM_REL32 ") \
 	  echo "PASS -fPIC addressing: PC-relative for a literal/static/hidden symbol, the GOT only for an interposable one"; pass=$$((pass+1));; \
 	  *) echo "FAIL -fPIC addressing: $$rel"; fail=$$((fail+1));; esac; \
+	$(BUILD)/cc -mno-unaligned-access -o $$t/ua.s tests/unaligned_access.c; \
+	$(OURAS) -o $$t/ua.o $$t/ua.s && $(OURLD) -Ttext 0x40000000 -o $$t/ua.elf $$t/crt.o $$t/ua.o $(RTLIB) 2>/dev/null; \
+	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/ua.elf >/dev/null 2>&1; uag=$$?; \
+	uaw=$$(awk '/^rd_check:/,0' $$t/ua.s | grep -cE '(ldr|str) r[0-9]+, \\[r[0-9]+\\]'); \
+	ualdrb=$$(grep -c 'ldrb' $$t/ua.s); \
+	if [ "$$uag" = 42 ] && [ "$$ualdrb" -gt 0 ]; then echo "PASS -mno-unaligned-access: packed members accessed byte-wise, values unchanged"; pass=$$((pass+1)); \
+	else echo "FAIL -mno-unaligned-access: exit $$uag (want 42), ldrb count $$ualdrb (want >0)"; fail=$$((fail+1)); fi; \
+	$(BUILD)/cc -o $$t/uaw.s tests/unaligned_access.c; \
+	if [ "$$(grep -c ldrb $$t/uaw.s)" -lt "$$ualdrb" ]; then echo "PASS -munaligned-access default: the same code uses wide accesses, as gcc's default does"; pass=$$((pass+1)); \
+	else echo "FAIL the default should use FEWER byte accesses than -mno-unaligned-access"; fail=$$((fail+1)); fi; \
 	$(BUILD)/cc -o $$t/pb.s tests/packed_bitfield.c; \
 	bf="$$(awk '/^q_wr:/,/\.size q_wr/' $$t/pb.s | grep -c strb) $$(awk '/^q_wr:/,/\.size q_wr/' $$t/pb.s | grep -cE 'str r[0-9a-z]+, \\[r[0-3]') $$(awk '/^q_rd:/,/\.size q_rd/' $$t/pb.s | grep -c ldrb)"; \
 	case "$$bf" in "3 0 3") echo "PASS packed bit-field access: byte-wise over the field's own 3 bytes, never the unit's 4th"; pass=$$((pass+1));; \

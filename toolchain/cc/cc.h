@@ -155,6 +155,9 @@ typedef struct Node {
 	int offset;                  /* ND_VAR: byte offset from fp (negative = local slot); struct ND_CALL: its result temp */
 	int bit_width, bit_offset;   /* ND_MEMBER on a bitfield: field width + bit offset in its unit (width 0 = not a bitfield) */
 	int bf_dense;                /* ND_MEMBER on a bitfield: packed, laid out bit by bit (see Member.bf_dense) */
+	int mem_align;               /* ND_MEMBER: the alignment the LAYOUT gave it, when that is narrower than the
+	                              * type's own (a packed member) — 0 means natural. -mno-unaligned-access splits
+	                              * an access this narrow into bytes; by default, as gcc, we access it wide. */
 	struct Type *bf_type;        /* ND_MEMBER on a bitfield: its DECLARED type (unit width + extraction sign); n->type is
 	                              * the promoted type (C11 6.3.1.1p2: a <= int-sized field whose values fit in int is int) */
 	struct Node *cond, *then, *els;  /* ND_IF / ND_WHILE / ND_FOR (cond + then/body, els for if)  */
@@ -260,6 +263,7 @@ typedef struct Gvar {
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
+extern int warn_implicit_fn;     /* 0 after -Wno-implicit-function-declaration: an undeclared call is allowed */
 extern int pic;                  /* -fPIC: global/string access goes through the GOT (position-independent) */
 extern int word_relocs;          /* -mword-relocations: addresses as literal words (U-Boot relocates only those) */
 

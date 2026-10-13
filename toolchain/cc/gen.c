@@ -315,12 +315,48 @@ static void swap_value(int size) {   /* r0(:r1) */
 	else swap_reg("r0", size);
 }
 static int reversed(Node *lv) { return lv && (lv->kind == ND_MEMBER || lv->kind == ND_DEREF) && lv->sso; }
+/* -mno-unaligned-access: ARMv7 permits unaligned LDR/STR on Normal memory, so by default (and like gcc's
+ * -munaligned-access) we emit them. When the flag is given, every access whose KNOWN alignment is narrower
+ * than its width must be split into bytes instead — a packed struct member is the case that occurs. The
+ * alternative, accepting the flag and ignoring it, is worse than refusing it: cc-option then believes the
+ * feature is on and the object records Tag_CPU_unaligned_access = 0, a claim other tools read. */
+static void load_bytes(Type *ty) {   /* r0 = addr -> r0(:r1) = value, a byte at a time */
+	int n = ty->size;
+	fprintf(o, "\tmov r3, r0\n");
+	for (int w = 0; w < (n == 8 ? 2 : 1); w++) {
+		const char *d = w ? "r1" : "r0";
+		int nb = n == 8 ? 4 : n;
+		fprintf(o, "	ldrb %s, [r3, #%d]\n", d, w * 4);
+		for (int i = 1; i < nb; i++) fprintf(o, "	ldrb ip, [r3, #%d]\n	orr %s, %s, ip, lsl #%d\n", w * 4 + i, d, d, 8 * i);
+	}
+	if (n < 4 && !ty->is_unsigned) fprintf(o, n == 2 ? "	sxth r0, r0\n" : "	sxtb r0, r0\n");
+}
+static void store_bytes(Type *ty, const char *addr) {   /* value r0(:r1), address in `addr`; value preserved */
+	int n = ty->size;
+	for (int w = 0; w < (n == 8 ? 2 : 1); w++) {
+		const char *v = w ? "r1" : "r0";
+		int nb = n == 8 ? 4 : n;
+		for (int i = 0; i < nb; i++) {
+			if (i == 0) fprintf(o, "	strb %s, [%s, #%d]\n", v, addr, w * 4);
+			else fprintf(o, "	lsr ip, %s, #%d\n	strb ip, [%s, #%d]\n", v, 8 * i, addr, w * 4 + i);
+		}
+	}
+}
+/* Does this lvalue sit at an alignment too narrow for a single access of its width? */
+static int unaligned_lv(Node *lv, Type *ty) {
+	if (!no_unaligned || !lv || !lv->mem_align || ty->size < 2) return 0;
+	if (lv->mem_align >= (ty->size == 8 ? 4 : ty->size)) return 0;
+	if (reversed(lv)) die("cc: -mno-unaligned-access with a reverse-storage-order member is not supported");
+	return 1;
+}
 static void load_lv(Node *lv, Type *ty) {   /* r0 = &lvalue -> r0(:r1) = its value */
+	if (unaligned_lv(lv, ty)) { load_bytes(ty); return; }
 	if (!reversed(lv) || ty->size == 1) { load(ty); return; }
 	if (ty->size == 2) { fprintf(o, "\tldrh r0, [r0]\n\trev16 r0, r0\n"); if (!ty->is_unsigned) fprintf(o, "\tsxth r0, r0\n"); return; }
 	load(ty); swap_value(ty->size);
 }
 static void store_lv(Node *lv, Type *ty) {   /* as store(); r0(:r1) keeps the value */
+	if (unaligned_lv(lv, ty)) { store_bytes(ty, ty->size == 8 ? "r2" : "r1"); return; }
 	if (!reversed(lv) || ty->size == 1) { store(ty); return; }
 	swap_value(ty->size); store(ty); swap_value(ty->size);
 }
@@ -358,12 +394,18 @@ static void mem_op(const char *op, const char *reg, const char *base, int off) {
 }
 /* Copy `size` bytes [src+soff] -> [dst+doff]; dst/src must not be r2 (the scratch). Big copies call memcpy
  * (as GCC does), which clobbers r0-r3/r12/lr — callers treat every register as clobbered. */
-static void emit_copy(const char *dst, int doff, const char *src, int soff, int size) {
+static void emit_copy_al(const char *dst, int doff, const char *src, int soff, int size, int align);
+static void emit_copy(const char *dst, int doff, const char *src, int soff, int size) { emit_copy_al(dst, doff, src, soff, size, 4); }
+static void emit_copy_al(const char *dst, int doff, const char *src, int soff, int size, int align) {
 	if (size > 64 || doff + size > 4095 || soff + size > 4095) {   /* big, or past the ldr/str immediate range */
 		fprintf(o, "\tmov r3, %s\n", src); emit_addimm("r0", dst, doff); emit_addimm("r1", "r3", soff);
 		load_imm("r2", size); emit_libcall("memcpy"); return;
 	}
 	int i;
+	if (no_unaligned && align < 4) {   /* byte by byte: a packed aggregate has no alignment to rely on */
+		for (i = 0; i < size; i++) fprintf(o, "\tldrb r2, [%s, #%d]\n\tstrb r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
+		return;
+	}
 	for (i = 0; i + 4 <= size; i += 4) fprintf(o, "\tldr r2, [%s, #%d]\n\tstr r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
 	for (; i < size; i++) fprintf(o, "\tldrb r2, [%s, #%d]\n\tstrb r2, [%s, #%d]\n", src, soff + i, dst, doff + i);
 }
@@ -897,7 +939,7 @@ static void gen_expr1(Node *n) {
 			gen_addr(n->lhs); fprintf(o, "\tpush {r0}\n");   /* dest addr */
 			WITH_TEMPS(gen_expr(n->rhs));                    /* a struct-typed rhs leaves its ADDRESS in r0 */
 			fprintf(o, "\tpop {r1}\n");                      /* r1 = dest, r0 = src */
-			emit_copy("r1", 0, "r0", 0, n->lhs->type->size);
+			emit_copy_al("r1", 0, "r0", 0, n->lhs->type->size, align_of(n->lhs->type));
 			return;
 		}
 		if (n->rhs->twice) {                                 /* x = setjmp(b), x = ({ … vfork() … }): the value first, with

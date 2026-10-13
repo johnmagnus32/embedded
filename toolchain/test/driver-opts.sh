@@ -104,5 +104,21 @@ o=$("${CC}" -c $t/h.lo -o $t/z.o 2>&1); orc=$?
 cp $t/h.c $t/src.lo   # the same suffix, but C: -x says so, and then it is compiled
 "${CC}" -c -x c $t/src.lo -o $t/z.o 2>/dev/null && "${GNU}nm" $t/z.o | grep -q ' T helper$' && ok || no "-x c must compile a .lo as C"
 
+# 9. The PIC family is ORDER-DEPENDENT: gcc is last-one-wins, so a negative must be able to CANCEL an earlier
+#    -fPIC. We used to send the negatives to the preprocessor only, leaving cc1's `pic` write-once — a GOT
+#    reference emitted into an object the build believes is non-PIC, which is how the decompressor broke once
+#    already. Compare the GOT-relocation COUNT, which is what the difference actually is.
+printf 'extern int g;\nint *addr(void){return &g;}\n' > $t/pic.c
+gotn() { local cc=$1; shift; "$cc" "$@" -S -O2 -o $t/pic.s $t/pic.c 2>/dev/null || { echo ERR; return; }
+	grep -cE 'GOT' $t/pic.s; }
+for spec in "-fPIC" "-fpic" "-fno-PIC" "-fno-pic" "-fPIC -fno-PIC" "-fno-PIC -fPIC" "-fPIC -fno-pie" "-fno-pie -fPIC" "-fPIE -fno-PIE"; do
+	read -r -a A <<< "$spec"
+	g=$(gotn "${GNU}gcc" -marm "${A[@]}"); o=$(gotn "${CC}" "${A[@]}")
+	# gcc counts a GOT entry and its _GLOBAL_OFFSET_TABLE_ base separately; only "any vs none" is comparable
+	gb=$([ "$g" = 0 ] && echo none || echo some); ob=$([ "$o" = 0 ] && echo none || echo some)
+	[ "$g" != ERR ] && [ "$o" != ERR ] && [ "$gb" = "$ob" ] && ok \
+	  || no "PIC order '$spec': gcc $g ($gb), ours $o ($ob)"
+done
+
 echo "driver options: $pass passed, $fail failed"
 [ $fail -eq 0 ]

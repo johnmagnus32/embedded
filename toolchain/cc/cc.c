@@ -19,6 +19,8 @@ void die(const char *fmt, ...) {
 	fputs("cc: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
+int warn_implicit_fn = 1;   /* calling an undeclared function is an ERROR (gcc 14+ and C99 agree; gcc 13
+                             * only warns). -Wno-implicit-function-declaration / -Wno-implicit / -w turn it off. */
 int pic = 0;   /* -fPIC: position-independent code — a preemptible symbol through the GOT, the rest PC-relative */
 int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32), never movw/movt halves */
 int default_vis = 0;   /* -fvisibility= */
@@ -58,6 +60,10 @@ static void *compile(void *unused) {
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-o") && i + 1 < argc) out = argv[++i];
 		else if (!strcmp(argv[i], "-fPIC") || !strcmp(argv[i], "-fpic")) pic = 1;
+		else if (!strcmp(argv[i], "-fno-PIC") || !strcmp(argv[i], "-fno-pic")   /* gcc: last one wins, so a later */
+		      || !strcmp(argv[i], "-fno-PIE") || !strcmp(argv[i], "-fno-pie")) pic = 0;   /* negative CANCELS -fPIC */
+		else if (!strcmp(argv[i], "-Wno-implicit-function-declaration") || !strcmp(argv[i], "-Wno-implicit")
+		      || !strcmp(argv[i], "-w")) warn_implicit_fn = 0;
 		else if (!strcmp(argv[i], "-mword-relocations")) word_relocs = 1;
 		else if (!strncmp(argv[i], "-fvisibility=", 13)) {
 			const char *v = argv[i] + 13;

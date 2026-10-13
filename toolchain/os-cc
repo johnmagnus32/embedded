@@ -121,8 +121,7 @@ while [ $# -gt 0 ]; do
     -mgeneral-regs-only) cppargs+=("$a"); cc1args+=("$a") ;;   # the FP registers are off limits (our own kernel
                                                        # builds with it); gcc leaves the hard-float ABI alone and
                                                        # emits byte-identical code for integer-only input
-    -mno-unaligned-access) unsupported "$a" "our cc may use unaligned word accesses" ;;
-    -munaligned-access) cppargs+=("$a"); cc1args+=("$a") ;;
+    -mno-unaligned-access|-munaligned-access) cppargs+=("$a"); cc1args+=("$a") ;;   # cc1 implements both: under -mno-, an access at a known-underaligned place is split into bytes
     -marm) cppargs+=("$a"); cc1args+=("$a") ;;
     -mthumb) unsupported "$a" "our cc generates ARM code" ;;
     -mabi=aapcs-linux) ;;                              # the ABI we implement (int-sized enums, 4-byte wchar_t)
@@ -135,7 +134,7 @@ while [ $# -gt 0 ]; do
     -O|-O[0-9]|-Os|-Oz|-Og|-Ofast) cppargs+=("$a"); cc1args+=("$a") ;;
     -O*) unsupported "$a" ;;
     -fPIC|-fpic|-fPIE|-fpie) cppargs+=("$a"); cc1args+=(-fPIC) ;;
-    -fno-pic|-fno-PIC|-fno-pie|-fno-PIE) cppargs+=("$a") ;;
+    -fno-pic|-fno-PIC|-fno-pie|-fno-PIE) cppargs+=("$a"); cc1args+=(-fno-PIC) ;;   # cc1 too: gcc is last-one-wins, so this must be able to CANCEL an earlier -fPIC
     -fvisibility=*) cc1args+=("$a") ;;
     -fshort-wchar|-fno-short-wchar) cppargs+=("$a"); cc1args+=("$a") ;;
     -funwind-tables|-fasynchronous-unwind-tables|-fno-unwind-tables|-fno-asynchronous-unwind-tables) cc1args+=("$a") ;;
@@ -166,7 +165,12 @@ while [ $# -gt 0 ]; do
     -f*) unsupported "$a" ;;
     -Wa,*) IFS=, read -r -a wa <<< "${a#-Wa,}"; asargs+=("${wa[@]}") ;;   # the assembler rejects what it doesn't know
     -Wl,*) IFS=, read -r -a wl <<< "${a#-Wl,}"; ldextra+=("${wl[@]}") ;;
-    -W|-w|-W[a-z]*|-Werror|-Werror=*|-pedantic|-pedantic-errors) ;;   # (after -Wa, / -Wl, / -Wp,: we emit no warnings)
+    # Warning options (after -Wa, / -Wl, / -Wp,). We implement a FEW diagnostics as hard errors, so the
+    # options that turn those on are already satisfied and only the ones that turn them OFF need to reach
+    # cc1. Everything else is accepted and dropped: a build that asks for a warning we never emit should
+    # compile, which is also how gcc treats a -Wno- it does not know.
+    -Wno-implicit-function-declaration|-Wno-implicit|-w) cc1args+=("$a") ;;
+    -W|-W[a-z]*|-Werror|-Werror=*|-pedantic|-pedantic-errors) ;;
     # -g: as gcc's driver classifies it. A level or DWARF version we understand is accepted and warned about once
     # (debug_asked); a malformed or out-of-range one is an error, in gcc's words. Retired formats (-gstabs, -gcoff,
     # -gxcoff), which gcc still warns through, are refused here instead: nothing we build uses them, and they would

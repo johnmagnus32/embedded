@@ -1752,7 +1752,15 @@ static Node *builtin_lower(char *name) {
 			} else {
 				Gvar *gv = global_find(name);
 				if (gv) { Node *c = node(ND_GVAR); idcpy(c->name, name); c->type = gv->type; n->lhs = c; }   /* a real fn-ptr global -> indirect */
-				else idcpy(n->name, name);            /* an as-yet-undeclared external -> direct call */
+				else {                                /* no declaration anywhere: C99 removed the implicit `int f()` */
+					/* `via_builtin`: the source said __builtin_memset and builtin_lower() has already
+					 * rewritten the name to memset, so there is no declaration to find and none is needed
+					 * — the compiler predeclares its own builtins, as GCC does. A __builtin_ it does not
+					 * know still reaches the linker, exactly as before. */
+					if (warn_implicit_fn && !via_builtin && strncmp(name, "__builtin_", 10))
+						die("parse: implicit declaration of function '%s' (line %d)", name, tk->line);
+					idcpy(n->name, name);             /* -Wno-implicit-function-declaration: the old direct call */
+				}
 			}
 			int pk = peak_begin(); n->args = call_args(); args_peak = peak_end(pk);   /* (the slots its arguments' code used) */
 			if (!n->lhs) n->unproto = func_unprototyped(n->name);
@@ -1813,6 +1821,7 @@ static Node *struct_member(Node *base, const char *mname) {
 		}
 		Node *n = node(ND_MEMBER); n->lhs = base; n->offset = m->offset; n->type = m->type; n->sso = base->type->sso;
 		if (m->is_bitfield) bitfield_node(n, m->type, m->bit_width, m->bit_offset, m->bf_dense);
+		else if (m->ealign && m->ealign < align_of(m->type)) n->mem_align = m->ealign;   /* a packed member: see Node.mem_align */
 		return n;
 	}
 	die("parse: struct has no member '%s'", mname); return NULL;
