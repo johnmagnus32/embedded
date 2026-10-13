@@ -779,7 +779,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "0443ecda-4de4-5dd3-ae53-ce959623feb2")
-		(property "Reference" "#PWR0146"
+		(property "Reference" "#PWR0147"
 			(at 68.58 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -832,12 +832,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "c7b4152f-36ef-435d-b8f3-bf1e0cb8c06f")
+			(uuid "55c58d54-e016-4d15-a925-ca5095eaf7f1")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/092ca5f4-bd6b-53a5-bd84-df59c01b3f1d"
-					(reference "#PWR0146")
+					(reference "#PWR0147")
 					(unit 1)
 				)
 			)
@@ -854,7 +854,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "9861b3f4-ab8a-584a-96c5-ead844fe346b")
-		(property "Reference" "#PWR0147"
+		(property "Reference" "#PWR0148"
 			(at 38.1 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -907,12 +907,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "7dd855f7-0cf4-4dc6-9932-3b363808261e")
+			(uuid "458200bd-624f-4cff-9ee1-d43e02881200")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/092ca5f4-bd6b-53a5-bd84-df59c01b3f1d"
-					(reference "#PWR0147")
+					(reference "#PWR0148")
 					(unit 1)
 				)
 			)
@@ -993,29 +993,29 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "80388ec0-796b-4870-bb5f-f67471c54da6")
-		)
-		(pin "2"
-			(uuid "4702b56b-d95c-4986-9a87-e3aaa8b051c6")
-		)
-		(pin "3"
-			(uuid "51a74c92-24c1-4675-9196-b33e003efd0a")
-		)
-		(pin "4"
-			(uuid "7ddc6c42-2785-413a-ab85-115d6ad3c50b")
-		)
-		(pin "5"
-			(uuid "b59ca1df-87cf-4922-aa56-c6e7ea935af5")
-		)
-		(pin "6"
-			(uuid "7226adda-09bf-4bfd-9064-5f54164b3863")
+		(pin "8"
+			(uuid "61dd7b6e-0048-49c5-b647-57a7b365869f")
 		)
 		(pin "7"
-			(uuid "ffa854ca-9852-45db-8737-6df39e141c77")
+			(uuid "e45356ce-dfa6-45e4-938d-1ecd3d421cb5")
 		)
-		(pin "8"
-			(uuid "07c8fbe2-4932-4dbc-9fef-c8a7794b47be")
+		(pin "6"
+			(uuid "cff2c687-7130-46c1-9423-47dd242b2306")
+		)
+		(pin "5"
+			(uuid "3743594c-30af-48e2-aa3c-7a96079654e4")
+		)
+		(pin "4"
+			(uuid "7b046a93-62c4-470d-9bed-225399a67209")
+		)
+		(pin "3"
+			(uuid "1b2b6687-bb19-44e0-b508-ae10cb417476")
+		)
+		(pin "2"
+			(uuid "95d84d27-d8f7-4956-9fa4-1b4255df2561")
+		)
+		(pin "1"
+			(uuid "389e4aa9-8e6b-4ce5-9ed0-ad89c552628f")
 		)
 		(instances
 			(project "gb3"

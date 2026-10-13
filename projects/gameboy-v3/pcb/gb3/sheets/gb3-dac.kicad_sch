@@ -3,7 +3,7 @@
 	(generator "eeschema")
 	(generator_version "10.0")
 	(uuid "8976ded4-cd47-5855-b553-f6552b78e264")
-	(paper "User" 771 210)
+	(paper "User" 813 210)
 	(lib_symbols
 		(symbol "easyeda2kicad:0603WAF0000T5E"
 			(exclude_from_sim no)
@@ -1577,6 +1577,160 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "easyeda2kicad:RC0603JR-0710KL"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "RC0603JR-0710KL"
+				(at 0 -5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "easyeda2kicad:R0603"
+				(at 0 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
+				(at 0 -10.16 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "10KΩ 1% Resistor, 0603"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Manufacturer" "YAGEO(国巨)"
+				(at 0 -12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "RC0603JR-0710KL"
+				(at 0 -15.24 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC Part" "C99198"
+				(at 0 -17.78 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Resistors"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "RC0603JR-0710KL_0_1"
+				(rectangle
+					(start -2.54 1.02)
+					(end 2.54 -1.02)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5.08 0 180)
+					(length 2.54)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "power:+3V3"
 			(power global)
 			(pin_numbers
@@ -1936,6 +2090,16 @@
 	)
 	(wire
 		(pts
+			(xy 772.16 44.45) (xy 774.7 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1fca1acc-5be0-57a1-a890-18a6758c4c62")
+	)
+	(wire
+		(pts
 			(xy 321.31 45.72) (xy 323.85 45.72)
 		)
 		(stroke
@@ -2163,6 +2327,16 @@
 			(type default)
 		)
 		(uuid "940ef730-4d13-55d4-b856-ab0ced100d5e")
+	)
+	(wire
+		(pts
+			(xy 762 44.45) (xy 759.46 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "945a0363-0481-5ee6-9705-60403eabde24")
 	)
 	(wire
 		(pts
@@ -2698,6 +2872,28 @@
 			)
 		)
 	)
+	(global_label "DAC_XSMT"
+		(shape bidirectional)
+		(at 759.46 44.45 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "ad2bb258-ff98-52d4-82f5-eadee7774f85")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 759.46 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "DAC_OUTL_F"
 		(shape bidirectional)
 		(at 604.52 44.45 0)
@@ -2784,7 +2980,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "77562f87-710a-4a10-b8ea-36a355e058d2")
+			(uuid "77bf8151-38bd-4e12-aa1e-e3646a26c927")
 		)
 		(instances
 			(project "gb3"
@@ -2871,10 +3067,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "dcc9775a-e1a1-4950-9f8e-c090fcd2994e")
+			(uuid "4e5d2cec-51bf-4907-9537-fe613fb378ac")
 		)
 		(pin "2"
-			(uuid "258ff8ee-7b56-466e-b494-1fab22a34abb")
+			(uuid "b91f2cf4-b348-4b8e-8d61-75f67ead3239")
 		)
 		(instances
 			(project "gb3"
@@ -2949,7 +3145,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "cb1cad18-bbe4-4480-9522-448c32ca694f")
+			(uuid "4952f276-5835-42e6-81d8-8975284c08e7")
 		)
 		(instances
 			(project "gb3"
@@ -3036,10 +3232,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "e3845ace-7812-4f03-b4fc-854aa6c7b0ef")
+			(uuid "1f16fa02-2baa-4a07-bb8d-66e9e64f6ff8")
 		)
 		(pin "2"
-			(uuid "3c691406-433b-4466-b113-cdc5ac493e82")
+			(uuid "98921fe9-4ef2-4e0a-9367-17db9433d37b")
 		)
 		(instances
 			(project "gb3"
@@ -3126,10 +3322,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "4f775d5e-0e65-4278-b348-2508bdb6c8cd")
+			(uuid "22189b21-a934-4f51-a063-b08b30c0a75d")
 		)
 		(pin "2"
-			(uuid "c57ba382-15e9-40b6-b00a-e103b60fe8d8")
+			(uuid "6beaf0e3-c5ff-4428-a4e5-0f5b090e601a")
 		)
 		(instances
 			(project "gb3"
@@ -3216,10 +3412,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "ac5451ad-e812-4bd5-9450-c53b61958fde")
+			(uuid "a538dd46-8aad-419f-930d-62b6bffb8471")
 		)
 		(pin "2"
-			(uuid "c1c738d4-4a80-49d8-928b-d5076dfa49e7")
+			(uuid "cd480481-1e80-4166-ab76-56c7ecc44f19")
 		)
 		(instances
 			(project "gb3"
@@ -3294,7 +3490,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "b04eacdd-6e32-4af3-8c3b-74f7625ba388")
+			(uuid "70605143-0010-481e-a8f9-6e5a2dd48c33")
 		)
 		(instances
 			(project "gb3"
@@ -3369,7 +3565,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "2d3e8619-061f-4c40-9d82-88ec6333bb62")
+			(uuid "d3f4ccdf-21a9-4d3a-84be-6be00497ac3c")
 		)
 		(instances
 			(project "gb3"
@@ -3444,7 +3640,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "98e488fe-a284-4790-8a3b-e46333783a99")
+			(uuid "c6ee13fe-4e70-4821-ac33-e9cad470d0c6")
 		)
 		(instances
 			(project "gb3"
@@ -3531,10 +3727,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "385eef13-93e9-4317-b131-49a4938a98c3")
+			(uuid "5c8d8639-a12e-4991-a31e-e8b5a9fcf471")
 		)
 		(pin "2"
-			(uuid "1f8f8846-cdb4-4187-9c66-b657c9cb10cc")
+			(uuid "f2ef8d31-8d0f-494e-874d-466fdb2d93ed")
 		)
 		(instances
 			(project "gb3"
@@ -3609,7 +3805,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "d693814e-9371-4c67-b213-218a54ede46c")
+			(uuid "f8c5df99-e5fe-476c-ac37-2fdc8b8faa83")
 		)
 		(instances
 			(project "gb3"
@@ -3684,7 +3880,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "3ccae677-fa95-4574-9926-c549355611a7")
+			(uuid "bfc78fe0-7ee9-4a98-98cd-b16093ced9dc")
 		)
 		(instances
 			(project "gb3"
@@ -3771,10 +3967,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "290ec356-7622-438e-964a-fdd9bf846995")
+			(uuid "b6a4d085-d1c0-4f60-89b9-58e861a11db4")
 		)
 		(pin "2"
-			(uuid "f259a353-7acf-4a93-9354-5f5107fcafb2")
+			(uuid "744a698f-0d0c-4041-b6d4-b15dac2e9e9e")
 		)
 		(instances
 			(project "gb3"
@@ -3849,7 +4045,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "097ecf25-ef75-4120-8994-47e99617d60b")
+			(uuid "d8e41857-9143-4d98-9d4a-d91bfc14a4e3")
 		)
 		(instances
 			(project "gb3"
@@ -3924,7 +4120,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "6365ba70-4866-4232-b2cc-da9cb916670c")
+			(uuid "9412cd9d-6503-401a-8356-534167a10ca2")
 		)
 		(instances
 			(project "gb3"
@@ -4011,10 +4207,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "bb126490-306c-49a8-a9e1-fc2487b554f8")
+			(uuid "10f4a371-4de9-46e5-b4ed-9226ff9bdc20")
 		)
 		(pin "2"
-			(uuid "7c73325c-05a0-40d6-a0d6-726bb21e8ed3")
+			(uuid "6cabc1aa-14f6-40bc-993f-69c973a64e8a")
 		)
 		(instances
 			(project "gb3"
@@ -4089,7 +4285,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "97bc9485-a1a9-4f73-9c68-6865531ad1bd")
+			(uuid "7d823a62-15a3-4ce6-964a-f0a7b3a9d728")
 		)
 		(instances
 			(project "gb3"
@@ -4164,7 +4360,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "5391d642-997d-45a5-8ec1-728c8b6dc1f5")
+			(uuid "26d41a8a-5b00-4bd9-935c-9cb9d0b3a299")
 		)
 		(instances
 			(project "gb3"
@@ -4251,10 +4447,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "c0f800e7-2fb4-4a06-be95-79de0389a5c9")
+			(uuid "dcfa325b-5f4d-490f-8328-d90d5598ff19")
 		)
 		(pin "2"
-			(uuid "a375c964-ee5e-4562-a20f-f3b2772a8e25")
+			(uuid "1d70071f-484f-4a61-942a-8fac1c664404")
 		)
 		(instances
 			(project "gb3"
@@ -4329,7 +4525,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "7f25e3ef-71ed-4a5a-901b-38a7360f233c")
+			(uuid "c31361a7-12ce-4127-921b-cdd952fbb57c")
 		)
 		(instances
 			(project "gb3"
@@ -4404,7 +4600,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "7e9c4499-5fc5-451e-857c-27db6b6a521f")
+			(uuid "4103157f-5d3b-4c89-a528-d4ec2fa020b9")
 		)
 		(instances
 			(project "gb3"
@@ -4479,12 +4675,102 @@
 			)
 		)
 		(pin "1"
-			(uuid "2a15e407-eee5-43f4-9637-1d9c20f4fd51")
+			(uuid "4e27ac9b-01d7-4135-b7a1-74fd01d48036")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/e4411810-c89b-59cb-9c51-c42c170725c0"
 					(reference "#PWR0395")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "easyeda2kicad:RC0603JR-0710KL")
+		(at 767.08 44.45 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "965e9b98-b370-5cdc-b503-3642f694a271")
+		(property "Reference" "R44"
+			(at 767.08 40.89 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10k"
+			(at 767.08 48.01 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:R0603"
+			(at 767.08 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
+			(at 767.08 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "10KΩ 1% Resistor, 0603"
+			(at 767.08 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C99198"
+			(at 767.08 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "5f867ef5-4b9b-4b56-ab0a-8a2876304461")
+		)
+		(pin "2"
+			(uuid "71609e5c-27a8-482f-bb38-0a23b8f60f62")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/e4411810-c89b-59cb-9c51-c42c170725c0"
+					(reference "R44")
 					(unit 1)
 				)
 			)
@@ -4566,10 +4852,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "b6e193cd-0399-422f-8432-ddaa3ea2798c")
+			(uuid "b3ea1eab-26a6-4e0f-a2c3-ff329d84f36e")
 		)
 		(pin "2"
-			(uuid "9343c1e4-1e8c-4be5-a214-485823690f5e")
+			(uuid "3c4364f7-dd8b-438d-bd1d-28a6443d3f0a")
 		)
 		(instances
 			(project "gb3"
@@ -4656,10 +4942,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "e4cf3e39-40ab-4436-b962-fcac53880362")
+			(uuid "5c02ac8b-912f-4275-b0a2-96629677aec4")
 		)
 		(pin "2"
-			(uuid "191fd5f1-30b0-4ce9-b6bd-2058ad1acdd8")
+			(uuid "722c517f-c0e5-4160-92a1-77dc26c77b23")
 		)
 		(instances
 			(project "gb3"
@@ -4746,10 +5032,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "cb3c6b06-364a-4a33-a7be-b38e9e551d67")
+			(uuid "6ff5fa5e-14bb-4cfa-9bf0-ac4864cecff0")
 		)
 		(pin "2"
-			(uuid "27377bf4-0968-4227-868a-0393bbaadf52")
+			(uuid "ad1846a9-ff55-4411-ac3f-a5bf1dbab17b")
 		)
 		(instances
 			(project "gb3"
@@ -4836,10 +5122,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "34df7893-d251-4dc7-b2f1-226223d58c70")
+			(uuid "fe75fc89-7681-4ec6-916e-b4458528ae90")
 		)
 		(pin "2"
-			(uuid "aba5f036-ca19-4a77-810b-d49f64a209af")
+			(uuid "4c7cad74-328e-4942-ae95-a66e4c039160")
 		)
 		(instances
 			(project "gb3"
@@ -4926,10 +5212,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "33ad4329-5e5f-448a-8d76-623b95bfd4f7")
+			(uuid "b177bb2d-4661-4a46-ac21-01cf7d558c11")
 		)
 		(pin "2"
-			(uuid "65f1e2a9-1eb5-485b-ac74-9fbf93fd072b")
+			(uuid "3780e849-b48f-441b-a403-da8cd9cd1d79")
 		)
 		(instances
 			(project "gb3"
@@ -5004,7 +5290,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "27cc49b3-4888-4fd0-a074-70ffc83167a7")
+			(uuid "ff7b4bb0-ecf8-496f-9ea5-0bf86a46f4d0")
 		)
 		(instances
 			(project "gb3"
@@ -5079,7 +5365,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "f0dc040b-b614-469f-a9d6-0f104302c1e3")
+			(uuid "1c20ed7d-b2b3-4a12-8dd1-924210e4821c")
 		)
 		(instances
 			(project "gb3"
@@ -5166,10 +5452,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "768991e2-9ddf-485c-b20c-85b013ace337")
+			(uuid "f1338b1d-4a2c-4355-b05e-0f6347a650d8")
 		)
 		(pin "2"
-			(uuid "1211164e-b82c-45d9-a3f1-4dcfe285d9da")
+			(uuid "240cd485-2815-4686-9c60-dc848cbc7d39")
 		)
 		(instances
 			(project "gb3"
@@ -5244,12 +5530,87 @@
 			)
 		)
 		(pin "1"
-			(uuid "8b43cb00-0d37-4a19-a43c-bb1f7b63ebcb")
+			(uuid "2a065b2c-f5de-4395-90f5-60fc0807293b")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/e4411810-c89b-59cb-9c51-c42c170725c0"
 					(reference "#PWR0375")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 774.7 44.45 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "be1008b9-f726-5eb5-888d-0dcddc867beb")
+		(property "Reference" "#PWR0399"
+			(at 774.7 44.45 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 778.51 44.45 270)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 774.7 44.45 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 774.7 44.45 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 774.7 44.45 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f7deeb81-8942-42e2-81f0-555881e8e1b4")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/e4411810-c89b-59cb-9c51-c42c170725c0"
+					(reference "#PWR0399")
 					(unit 1)
 				)
 			)
@@ -5331,10 +5692,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "3a613728-4a65-42b8-8b42-b3a3019a7819")
+			(uuid "da5272f1-9957-4098-bd43-dbf2fb572968")
 		)
 		(pin "2"
-			(uuid "78042deb-3279-4fe0-a170-a094645a0388")
+			(uuid "ed1779f2-1edf-4c9f-b3c4-c538c9613471")
 		)
 		(instances
 			(project "gb3"
@@ -5409,7 +5770,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "75821ee0-2dac-4b9b-949d-564a61c62eb7")
+			(uuid "d58f16ff-8894-41fa-bb3f-d2ba77f056d3")
 		)
 		(instances
 			(project "gb3"
@@ -5484,7 +5845,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "66823688-b72c-435b-87c1-22a22dec7b2d")
+			(uuid "2150b97c-511d-411c-82de-bc5cbd8b7f80")
 		)
 		(instances
 			(project "gb3"
@@ -5571,10 +5932,10 @@
 			)
 		)
 		(pin "1"
-			(uuid "8dea7a17-9b5d-4ab7-bd28-f52af6b2e53c")
+			(uuid "dd933090-f38a-4e41-b406-204d74578ad0")
 		)
 		(pin "2"
-			(uuid "7508cc74-3fce-4e3c-905d-a9d0b9d34acd")
+			(uuid "2cd53b6f-9d12-4520-9f19-7a8d7cedde0b")
 		)
 		(instances
 			(project "gb3"
@@ -5649,7 +6010,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "f23fc1f9-6974-4ec0-9540-f66fa56c9535")
+			(uuid "0856a0cf-e92c-490e-bedc-7ab1a87d279b")
 		)
 		(instances
 			(project "gb3"
@@ -5724,7 +6085,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "da4e3763-ff67-4b0a-840d-8252d0c8e4e3")
+			(uuid "0279aba1-718e-438c-b885-9184113fc5b5")
 		)
 		(instances
 			(project "gb3"
@@ -5799,7 +6160,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "9fd109a9-f4ba-4e22-bc90-f3c824f524ac")
+			(uuid "84be72bf-4a87-4c5f-8a32-86fa3bbdcf81")
 		)
 		(instances
 			(project "gb3"
@@ -5885,65 +6246,65 @@
 				)
 			)
 		)
-		(pin "13"
-			(uuid "8e5846c2-dde7-4c84-b677-a20d88a1ce8f")
-		)
-		(pin "12"
-			(uuid "1efcd83f-6953-403e-97b5-396e8392635c")
-		)
-		(pin "11"
-			(uuid "0df8ef5c-b531-469a-9dbb-a1822f6f35d0")
-		)
-		(pin "10"
-			(uuid "e1fc4e06-1cab-4cdd-9cd2-aa4845038d6b")
-		)
-		(pin "9"
-			(uuid "6c543aa5-bf93-4164-a108-7829f3c89d3f")
-		)
-		(pin "8"
-			(uuid "8db3e4a4-74ac-442b-8be0-4a67b75ae2ce")
-		)
-		(pin "7"
-			(uuid "8a76479a-061c-4b64-8795-432cddf9f7af")
-		)
-		(pin "6"
-			(uuid "e6da607c-3738-4aaf-be33-9372971ef4da")
-		)
-		(pin "5"
-			(uuid "a20ba1aa-c1f5-4491-b83c-622911e988f2")
-		)
-		(pin "4"
-			(uuid "e195afca-b891-43c6-b621-47d43a37169e")
-		)
-		(pin "3"
-			(uuid "aca6ebdc-4be5-4506-96c4-98fc2214d006")
+		(pin "1"
+			(uuid "380bcc34-3184-48c9-b963-1179b6c636f0")
 		)
 		(pin "2"
-			(uuid "c069088a-8fc0-4e90-981e-f6d4c35b1876")
+			(uuid "3cf69dba-8dc0-439b-8093-24bd09ac9e7e")
 		)
-		(pin "1"
-			(uuid "446b9f50-e08d-4f92-845d-f5db25441987")
+		(pin "3"
+			(uuid "f39b99df-e922-4830-8f39-d3c7e6c5bddd")
+		)
+		(pin "4"
+			(uuid "41d12dac-829d-4f8d-a8fc-1161afa64972")
+		)
+		(pin "5"
+			(uuid "5de14212-1fcb-4ff1-80c6-72fc54a736d0")
+		)
+		(pin "6"
+			(uuid "9be9eef7-a06e-44b3-8623-656ccd24d7b2")
+		)
+		(pin "7"
+			(uuid "d7e57725-f0d9-47df-af22-73bdf80bed8f")
+		)
+		(pin "8"
+			(uuid "6ed64d32-cb2d-4201-a88b-840123e77a2a")
+		)
+		(pin "9"
+			(uuid "c77c4964-c4ae-4fc5-8ba2-9985114485b2")
+		)
+		(pin "10"
+			(uuid "f974e673-17d4-49df-84db-337ad2b903a0")
+		)
+		(pin "11"
+			(uuid "7a355de4-07ef-4f6e-a5c3-9cb6ad06ece2")
+		)
+		(pin "12"
+			(uuid "e53dc3b0-0a23-4d7e-93b4-835b82f0bb8a")
+		)
+		(pin "13"
+			(uuid "650387be-a61a-4041-a5f1-a94b39dc00f2")
 		)
 		(pin "14"
-			(uuid "29fe5c3e-8a24-48f8-8ba4-2bfb9b67c384")
+			(uuid "1b139072-4260-43e2-a8fb-c5bd3be669c6")
 		)
 		(pin "15"
-			(uuid "3702e9a6-ff58-4df9-866d-72a388c593c7")
+			(uuid "8407b79d-0e43-4521-966f-14afd5f14113")
 		)
 		(pin "16"
-			(uuid "29c47308-2074-4d54-a6f5-15df3a47503c")
+			(uuid "2fe0bfa7-7254-4c65-a1f4-98d451cd2895")
 		)
 		(pin "17"
-			(uuid "e7246c87-f677-4ed6-b355-1ad0ba34293c")
+			(uuid "8057ff63-0c4c-450d-9693-19cae8e91e60")
 		)
 		(pin "18"
-			(uuid "07b03689-e323-47ae-ba6d-dff55653a049")
+			(uuid "b4031967-731f-4649-8e22-79c935fda378")
 		)
 		(pin "19"
-			(uuid "796ea593-94b4-4115-8a2b-520f012dea95")
+			(uuid "b768db9c-bec5-485e-a1ec-02ee2f119184")
 		)
 		(pin "20"
-			(uuid "13643073-78db-470f-a97b-5fc32cbb6899")
+			(uuid "3105d7eb-67ff-4c9d-9d41-032a9d5ff076")
 		)
 		(instances
 			(project "gb3"
@@ -6018,7 +6379,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8cd923d9-3700-4636-83aa-053a70c628d0")
+			(uuid "c4229f6c-286b-4606-b0b3-867a05e588a9")
 		)
 		(instances
 			(project "gb3"
@@ -6093,7 +6454,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "f42d0b1f-fc19-4a4b-856c-0d07d6b5ecc2")
+			(uuid "04536f3f-2cb9-4bde-9fc9-2bde487fb6a1")
 		)
 		(instances
 			(project "gb3"
@@ -6168,7 +6529,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "5ac19b2a-7489-467f-b360-4a0c9b867ae7")
+			(uuid "dd1cc89a-d339-4fc9-b03a-e99233954aa8")
 		)
 		(instances
 			(project "gb3"
@@ -6243,7 +6604,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "b399645d-3ec0-42dc-9862-5eec17274f0a")
+			(uuid "b33ba11f-b68a-4507-822d-c218f2becfd1")
 		)
 		(instances
 			(project "gb3"

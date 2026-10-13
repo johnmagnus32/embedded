@@ -31,8 +31,8 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 | 17 | 2 | 24 MHz load caps | 0402CG220J500NT | C1555 | HOSC | ✅ | JLC | 22 pF C0G 0402. |
 | 18 | 2 | RTC load caps | 0402CG180J500NT | C1549 | RTC xtal | ✅ | JLC | 18 pF C0G 0402. |
 | 19 | ~25 | Decoupling | CC0603KRX7R9BB104 | C14663 | per-power-pin | ✅ | JLC | 100 nF 0603 X7R (per-ball + flash + SD). |
-| 20 | ~9 | Bulk | CL21A106KOQNNNE | C1713 | bulk | ✅ | JLC | 10 µF 16 V 0805. **Place one on 5 V VBUS + one on SYS (Rev-A brownout fix); one = core-buck (#3) output.** |
-| 21 | ~4 | Bulk | CC0603KRX5R6BB475 | C109456 | general bulk | ✅ | JLC | 4.7 µF 0603 X5R. |
+| 20 | ~9 | Bulk | CL21A106KOQNNNE | C1713 | bulk | ✅ | JLC | 10 µF 16 V 0805. **Place one on 5 V VBUS + one on SYS (Rev-A brownout fix); one = core-buck (#3) output.** One = FP6161 CIN at U2.4 VIN (C33); one = LDOB-OUT bulk at U1.30 (C35). |
+| 21 | ~4 | Bulk | CC0603KRX5R6BB475 | C109456 | general bulk | ✅ | JLC | 4.7 µF 0603 X5R. One = LDOA-OUT bulk at U1.28 (C42). |
 | 22 | 1 | RESET button | TS-1187A-B-A-B | C318884 | RESET | ✅ | JLC | 6×6 mm tactile. |
 | 23 | 1 | Power LED | 19-213SYGC | C2986027 | status | ✅ | JLC | Green 0603. |
 | 24 | 1 | Power-LED resistor | 0603WAF5100T5E | C23193 | LED limit | ✅ | JLC | 510 Ω. |
@@ -90,7 +90,7 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 | # | Qty | Role | Part | LCSC # | Interface / net | Src | Fit | Note |
 |---|-----|------|------|--------|-----------------|-----|-----|------|
 | 47 | 1 | Class-D amp | MAX98357AETE+T | C910544 | I2S1 (BCLK/LRCLK/DIN) | ✅ | JLC | `maxim,max98357a`; no MCLK. **VDD on SYS.** EP → GND pour + thermal vias (audio GND return). Output kept filterless. |
-| 48 | 1 | Amp SD/MODE strap | RS-03K6803FT | C140074 | SD/MODE → 3.3 V | ✅ | JLC | 680 KΩ (#5) → (L/2+R/2) mono. **Mute-GPIO must be open-drain/hi-Z** (hi-Z = mono/run via this R; drive low = shutdown, for jack-detect). **[AUDIT] Populate THIS one; DNP #5 (duplicate 680 K).** |
+| 48 | 1 | Amp SD/MODE series R | RS-03K6803FT | C140074 | PE13 (SPK_EN) → SD/MODE | ✅ | JLC | 680 KΩ in series from PE13, MAX98357A DS Fig 5: PE13 high (3.3 V) → SD_MODE 0.38–0.47 V = (L/2+R/2) mono; PE13 low or Z (reset) → internal 100 k pull-down = shutdown, so the amp **boots off**. **Drive PE13 push-pull** (2026-10-13; was SD/MODE → 3.3 V with an open-drain mute GPIO, which ran the amp from reset). **[AUDIT] Populate THIS one; DNP #5 (duplicate 680 K).** |
 | 49 | 1 | Amp GAIN_SLOT strap | net (no part) | — (net) | GAIN_SLOT → VDD | ✅ | JLC | **VDD tie = 6 dB** (0 dBFS ≈ 0.8 W into 8 Ω, no clip). NOT 15 dB. |
 | 50 | 1 | Amp VDD bypass | CC0603KRX7R9BB104 | C14663 | VDD | ✅ | JLC | 100 nF. |
 | 51 | 1 | Amp VDD bulk | CL21A106KPFNNNE | C17024 | VDD | ✅ | JLC | 10 µF. |
@@ -100,11 +100,11 @@ charge/power-path, onboard Bluetooth. **115 parts, all sourced.** Datasheets in 
 
 ## 5. Battery — charge + power-path + fuel gauge (1S LiPo)
 
-Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS63021 buck-boost → 3.3 V** (sole 3.3 V source) + **FP6161 → 0.9 V core** (#3). USB-C 5 V (via CH224K) charges/supplements; does not power rails directly.
+Topology: battery ↔ **BQ24073 power-path → SYS (~3.0–4.4 V)** → **TPS63021 buck-boost → 3.3 V** (sole 3.3 V source) + **FP6161 → 0.9 V core** (#3). USB-C 5 V (via CH224K) charges/supplements; does not power rails directly.
 
 | # | Qty | Role | Part | LCSC # | Interface / net | Src | Fit | Note |
 |---|-----|------|------|--------|-----------------|-----|-----|------|
-| 53 | 1 | Power-path charger | BQ24074RGTR | C54313 | autonomous; /CHG,/PGOOD open-drain | ✅ | JLC | QFN-16-EP. System on **OUT = SYS** (OUT regulates ~4.4 V w/o cell). **CE→GND** (must not float). **🔴 EN1→GND, EN2→HIGH (strap to OUT via #60, NOT IN — EN abs-max 7 V) — else charger boots at 100 mA and ILIM is inert.** ISET #57, ILIM #58, TS #59. **EP → VSS with a via array** (heat path). |
+| 53 | 1 | Power-path charger | BQ24073RGTR | C15220 | autonomous; /CHG,/PGOOD open-drain | ✅ | JLC | QFN-16-EP. **2026-10-13: BQ24074 (C54313) is out of stock → BQ24073** (bq24074.pdf p.6: same footprint and VOUT(REG) 4.4 V; OVP 6.6 V vs 10.5 V, fine on 5 V VBUS; gameboy-v2 made the same swap). **Pin 15 is TD on the '073 (ITERM on the '074): TD → GND = termination on, at the fixed 10 % (p.9: do not leave TD unconnected).** System on **OUT = SYS** (OUT regulates ~4.4 V w/o cell). **CE→GND** (must not float). **🔴 EN1→GND, EN2→HIGH (strap to OUT via #60, NOT IN — EN abs-max 7 V) — else charger boots at 100 mA and ILIM is inert.** ISET #57, ILIM #58, TS #59. **EP → VSS with a via array** (heat path). |
 | 54 | 1 | Charger IN cap | CL10A475KO8NNNC | C19666 | IN (pin 13) → VSS | ✅ | JLC | 4.7 µF **16 V** X5R (must stay <10 µF for USB-IF inrush; 16 V for OVP window). Place local. |
 | 55 | 1 | Charger OUT cap | CL21A106KOQNNNE | C1713 | OUT (pins 10/11) → VSS | ✅ | JLC | 10 µF. **OUT = SYS node** → place close to IC. |
 | 56 | 1 | Charger BAT cap | CL21A106KOQNNNE | C1713 | BAT (pins 2/3) → VSS | ✅ | JLC | 10 µF, near the JST-PH (#74). |
@@ -125,10 +125,10 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 | 71 | 3 | Buck-boost output caps | CL21A226MAQNNNE | C45783 | VOUT (pins 4/5) → PGND | ✅ | JLC | 3×22 µF 25 V — stability-critical (Table-1). Min 2×22 µF. Place close. |
 | 72 | 1 | Buck-boost inductor | MWSA0503S-1R5MT | C408407 | L1/L2 | ✅ | JLC | 1.5 µH, Isat 9 A (≥4.5 A floor). 5.4×5.2 mm — flag size for layout. |
 | 73 | 1 | LiPo cell | **PKCELL LP-803860** (2000 mAh, 1S) | — (PKCELL, datasheet on file) | JST-PH 2-pin | ✅ | Hand | 3.7 V, integral PCM (R5402N101KD + SME8205). **Form factor datasheet-verified: max 62 × 38.5 × 8.5 mm** (L×W×T); leads 24 AWG ~100 mm exit a short (38.5 mm) end → place CN1 there. **PCB anchored to this footprint** — enclosure pocket ~64 × 40 × 10 mm (incl. ~10 % swell). Current: 1C = 2 A continuous ≈ the ~1.8 A worst-case peak — **OK**: the TPS63021 buck-boost holds 3.3 V through SYS sag and the PCM OCP trips well above 2 A (typical play ~1 A). A 2C `803860` is optional extra margin (same size → no board change). ⚠️ On arrival confirm PCM OCP >2 A + polarity red=+→BAT. |
-| 74 | 1 | Battery connector | S2B-PH-SM4-TB(LF)(SN) | C295747 | mates #73 | ✅ | JLC | JST-PH 2 mm, right-angle SMD. **⚠️ POLARITY: red = + → BQ24074 BAT (reversed = destroyed cell).** |
-| 75 | 1 | Fuel divider R_top | 0603WAF1803T5E | C22827 | BAT → GPADC0 | ✅ | JLC | 180 kΩ. Backup voltage sense (4.2 V→1.50 V, under 1.8 V AVCC). |
-| 76 | 1 | Fuel divider R_bot | 0603WAF1003T5E | C25803 | GPADC0 → GND | ✅ | JLC | 100 kΩ (ratio 0.357). |
-| 77 | 1 | Fuel gauge (SoC %) | MAX17048G+T10 | C2682616 | i2c1 0x36 | ✅ | JLC | `maxim,max17048`, DFN-8-EP. **VDD (pin 3) → battery+ (power + cell-sense); CELL (pin 2) = NO-CONNECT; QSTRT (6) → GND; CTG (1) → GND; ALRT (5) → GPIO (opt, needs pull-up).** EP → GND. |
+| 74 | 1 | Battery connector | S2B-PH-SM4-TB(LF)(SN) | C295747 | mates #73 | ✅ | JLC | JST-PH 2 mm, right-angle SMD. **⚠️ POLARITY: red = + → BQ24073 BAT (reversed = destroyed cell).** |
+| 75 | 0 | ~~Fuel divider R_top~~ | ~~0603WAF1803T5E~~ | ~~C22827~~ | ~~BAT → GPADC0~~ | — | — | **Deleted 2026-10-13** (was R24): the MAX17048 (#77) already reports VCELL + SOC over I²C; GPADC0 (U1.101) is NC. |
+| 76 | 0 | ~~Fuel divider R_bot~~ | ~~0603WAF1003T5E~~ | ~~C25803~~ | ~~GPADC0 → GND~~ | — | — | **Deleted 2026-10-13** (was R25), with #75. |
+| 77 | 1 | Fuel gauge (SoC %) | MAX17048G+T10 | C2682616 | i2c1 0x36 | ✅ | JLC | `maxim,max17048`, DFN-8-EP. **VDD (pin 3) → battery+ (power + cell-sense); CELL (pin 2) = NO-CONNECT; QSTRT (6) → GND; CTG (1) → GND; ALRT (5) → PB5 + R43 10 k pull-up (#119).** EP → GND. |
 | 78 | 1 | MAX17048 VDD bypass | CL10A105KB8NNNC | C15849 | VDD (pin 3) → GND | ✅ | JLC | 1 µF at pin 3 (not CELL). |
 | 79 | 1 | Charge-status LED | 19-213SYGC/S530-E2/5T | C2986027 | /CHG (open-drain) → LED → 3V3 | ✅ | JLC | Lit while charging (0 GPIO). |
 | 80 | 1 | Charge-LED resistor | 0603WAF5100T5E | C23193 | LED limit | ✅ | JLC | 510 Ω. |
@@ -193,7 +193,7 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 
 **Integration notes (multi-pin modules):**
 - **BT830 (#99):** UART3 with 4-wire HW flow control (RTS/CTS); `VREG_EN_RST#` (pin 8) driven from a GPIO (boot low, hold >5 ms, then high — do NOT strap through 10 kΩ; ≤4.7 kΩ if strapped). `VREG_IN_HV`(9)=3.3 V, `VDD_PADS`(1)=3.3 V. `VREG_OUT_HV`(10) needs #100. `SPI_PCM#_SEL`(28) → GND (or leave; internal pulldown).
-- **PCM5102A (#103):** **SCK(12)→GND** (MCLK-less internal PLL; float/high = dead). FMT(16)/FLT(11)/DEMP(10)→GND. **XSMT(17)→a GPIO** (not hard-high; soft-mute the DAC when headphones unplugged). **Constraint: run I2S1 at 64fs (or 32fs), fs ≥ 16 kHz** or the DAC PLL won't lock.
+- **PCM5102A (#103):** **SCK(12)→GND** (MCLK-less internal PLL; float/high = dead). FMT(16)/FLT(11)/DEMP(10)→GND. **XSMT(17)→PB3 + R44 10 k pull-down (#120)** (boots soft-muted; not hard-high; soft-mute the DAC when headphones unplugged). **Constraint: run I2S1 at 64fs (or 32fs), fs ≥ 16 kHz** or the DAC PLL won't lock.
 - **TPA6132A2 (#110):** inverting single-ended — DAC → #108 RC → #111 coupling cap → INL−(1)/INR−(4); INL+(2)/INR+(3) → GND. OUTL(16)/OUTR(5) → jack tip/ring direct (no caps); SGND(15) → sleeve. G0(6)=G1(7)→GND (−6 dB). EP → GND + vias (never VDD). Cap ALSA softvol max (amp clips into 16 Ω at full DAC scale).
 - **Audio routing (software):** speaker amp #47 + DAC #103 share I2S1 (both receivers) → route by enable/disable. Jack detect (#115) → `gpio-keys SW_HEADPHONE_INSERT`; IN → speaker off (SD low) + HP on (EN high); OUT → reverse. **3 native GPIOs: jack-detect (in), speaker-SD (open-drain out), HP-EN (out).** Analog HP audio has no external ESD array (relies on the amp's ±8 kV); route HP traces away from switchers/backlight/RF, clean SGND return.
 
@@ -201,7 +201,7 @@ Topology: battery ↔ **BQ24074 power-path → SYS (~3.0–4.4 V)** → **TPS630
 
 ## Schematic & routing notes
 
-**Power tree:** battery ↔ BQ24074 → **SYS (~3.0–4.4 V)** → TPS63021 buck-boost → **3.3 V** (sole source) + FP6161 → **0.9 V core**. Internal LDOs make 1.8 V + 1.5 V-DDR from 3.3 V. Rails to widen/thermal: 3.3 V (~1.1 A worst) + SYS. Exposed-pad thermal-via arrays on **FP6161 (#3), TPS63021 (#66), BQ24074 (#53), MAX98357A (#47)**. 4-layer minimum.
+**Power tree:** battery ↔ BQ24073 → **SYS (~3.0–4.4 V)** → TPS63021 buck-boost → **3.3 V** (sole source) + FP6161 → **0.9 V core**. Internal LDOs make 1.8 V + 1.5 V-DDR from 3.3 V. Rails to widen/thermal: 3.3 V (~1.1 A worst) + SYS. Exposed-pad thermal-via arrays on **FP6161 (#3), TPS63021 (#66), BQ24074 (#53), MAX98357A (#47)**. 4-layer minimum.
 
 **Pinmux (mainline `pinctrl-sun20i-d1`; 72 bonded GPIO, PD bank full):**
 - RGB666 LCD = **PD0-21**, DISP = **PD22** · SPI0-NOR = **PC2-5** · microSD = **PF0-5** · UART0 console = **PE2/3**
@@ -242,7 +242,7 @@ A per-subsystem netlist-correctness audit (vs. component datasheets) found two p
 
 **Also applied to `gb3-nets.csv` (net-only, NO new parts):** VCC-RTC→LDOA merge (blocker: was a dead island), SW1 pad-pairing (later corrected to `{1,2}=RESET/{3,4}=GND` per datasheet — see round 3), R21 wired as a real series `VBUS_SENSE`, C19–C22 decoupling re-pointed to AVCC/HPVCC/VRA1/VRA2, and R38 = wiring the **existing #33** Rset (FB→GND, backlight blocker).
 
-**NOT added (judged unnecessary):** MAX17048 ALRT pull-up — #77 marks ALRT optional (polled over I²C).
+~~**NOT added (judged unnecessary):** MAX17048 ALRT pull-up — #77 marks ALRT optional (polled over I²C).~~ Reversed 2026-10-13: ALRT latches low until the host clears it, so it needs the pull-up → #119 (R43).
 
 **Still needs a copper/footprint decision (not changed here):** FPC1 touch contact-side, CN1 battery polarity, `SD_CD` routing, C32 10 µF on VBUS.
 
@@ -260,4 +260,26 @@ Verified against maker datasheets (C318884 TS-1187A, C127481 ALPS SKRTLBE010, C1
 - **ALPS SKRT (SW12–16)** — confirmed `{1,3}` common / `{2}` = switched pole; netlist (signal on pin 2, GND on 1/3 + lugs) is correct. No change.
 - **PJ-327C-4A jack (Audio1)** — confirmed stereo w/ tip switch: `1=sleeve, 2=tip(L), 3=ring(R), 4=tip-switch` (one NC pair {2,4}); netlist matches. Final continuity-meter check at assembly.
 
-Still open for the reviewer (not netlist-fixable): battery current margin + PCM OCP, DRV2605L LRA clamp firmware, symbol pin counts (P1=42/FPC1=6+2, FPC1=8), FT7311 VDD headroom, AVCC 0.47–1 µF bulk (optional), `GAUGE_ALRT`/`SD_CD` pull-ups, and doc nits (PINOUT.md +3V3 census lists pin 107 which is 1.8 V; PCA9555 pull-up ≈33 k). **JACK_DET** = tip-switch **normalled to the live TPA6132 OUTL** (not a fixed level) — if the DirectPath amp is hi-Z in shutdown, a PE12 pull-up can mis-read unplugged as inserted; this 4-pin jack has no ground-switch to reroute against. **Bench-check OUTL's shutdown state on the breakout, or only sample detect with the amp enabled** (not purely a software/pull detail).
+Still open for the reviewer (not netlist-fixable): battery current margin + PCM OCP, DRV2605L LRA clamp firmware, symbol pin counts (P1=42/FPC1=6+2, FPC1=8), FT7311 VDD headroom, AVCC 0.47–1 µF bulk (optional), `SD_CD` pull-up (`GAUGE_ALRT` done: #119), and doc nits (PINOUT.md +3V3 census lists pin 107 which is 1.8 V; PCA9555 pull-up ≈33 k). **JACK_DET** = tip-switch **normalled to the live TPA6132 OUTL** (not a fixed level) — if the DirectPath amp is hi-Z in shutdown, a PE12 pull-up can mis-read unplugged as inserted; this 4-pin jack has no ground-switch to reroute against. **Bench-check OUTL's shutdown state on the breakout, or only sample detect with the amp enabled** (not purely a software/pull detail).
+
+## Design-data closure, step 1 (2026-10-13 — user-approved)
+
+Six open schematic decisions + four fab blockers, each verified against the datasheets by an independent check. Mirrored in `gb3/gb3-bom.csv` + `gb3/gb3-nets.csv`; board updated by `gb3/sync_netlist.py`.
+
+| # | Qty | Role | Part | LCSC | Net | Src | Fit | Notes |
+|---|----:|------|------|------|-----|:---:|-----|-------|
+| 119 | 1 | MAX17048 ALRT pull-up | RC0603JR-0710KL | C99198 | GAUGE_ALRT → 3.3 V | ✅ | JLC | 10 KΩ. ALRT is open-drain and latches low until the host clears CONFIG.ALRT (DS p14). Pulled to +3V3 (PB5's VCC-IO rail), not BAT. refdes **R43**. |
+| 120 | 1 | PCM5102A XSMT pull-down | RC0603JR-0710KL | C99198 | DAC_XSMT → GND | ✅ | JLC | 10 KΩ. The DAC boots soft-muted (PB3 is Z at reset) and un-mutes only when PB3 drives high. No cap on XSMT. refdes **R44**. |
+| 121 | 2 | UART0 console series R | 0603WAF5100T5E | C23193 | UART0_TX/RX → TP1/TP2 | ✅ | JLC | 510 Ω. Back-power protection (t113-breakout REV-B Fix 2: PE3's ESD diode back-powered a Rev-A board from the USB-UART adapter). refdes **R45/R46**. |
+| 122 | 3 | Console probe pads | bare pad (`manual:TestPoint`) | — | UART0_TX_PAD / UART0_RX_PAD / GND | — | not placed | 1.5 mm bare pads on the back: TP1 = TX, TP2 = RX, TP3 = GND. Footprint is `exclude_from_bom`; keep them out of the JLC CPL as well. |
+
+**Net-only changes (no new parts):**
+- **Speaker amp SD/MODE → DS Fig 5** (#48): PE13 (`SPK_EN`) → R14 680 K → SD_MODE (`SPK_SD`); the amp boots in shutdown. Firmware: PE13 push-pull output, high = on.
+- **`USB_DP`/`USB_DM` → `USB_D+`/`USB_D-`**, so KiCad pairs them: netclass patterns and the "USB pair" rule in `gb3.kicad_dru` (gap, uncoupled length, in-pair skew) updated.
+- **BAT_SENSE divider deleted** (#75/#76, R24/R25); U1.101 GPADC0 = NC.
+- **Internal LDO bulk:** C35 (#20, 10 µF) → LDOB at U1.30, C42 (#21, 4.7 µF) → LDOA at U1.28. Both were spare +3V3 bulk.
+- **FP6161 input cap:** C33 (#20) → CIN at U2.4 VIN, moved from the soc sheet to core-buck.
+- **Charger** BQ24074 → BQ24073 (#53), pin 15 TD → GND.
+- **Kept as is:** U12 (TPS63021) PG stays NC. It is a current-limit flag, not power-good (DS §7.3.4), and NC is allowed. T113 RGB666 R/B channel identity was re-checked and is correct.
+
+**Devicetree / firmware:** PB5 = MAX17048 IRQ (`IRQ_TYPE_LEVEL_LOW`, `wakeup-source`); PB3 = XSMT, push-pull, default low; PE13 = speaker enable, push-pull, default low; GPADC0 unused.

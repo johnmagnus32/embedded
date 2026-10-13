@@ -3,7 +3,7 @@
 	(generator "eeschema")
 	(generator_version "10.0")
 	(uuid "9712d1fd-c1fd-5dd8-b241-651afb8cdaae")
-	(paper "User" 361 210)
+	(paper "User" 399 210)
 	(lib_symbols
 		(symbol "easyeda2kicad:0603WAF1503T5E"
 			(exclude_from_sim no)
@@ -676,6 +676,197 @@
 				)
 				(pin passive line
 					(at 5.08 0 180)
+					(length 2.54)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "easyeda2kicad:CL21A106KOQNNNE"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "C"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "CL21A106KOQNNNE"
+				(at 0 -5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "easyeda2kicad:C0805"
+				(at 0 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_SAMSUNG_CL21A106KOQNNNE_10uF-106-10-16V_C1713.html"
+				(at 0 -10.16 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "10µF 16V X5R Ceramic Capacitor, 0805"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Manufacturer" "SAMSUNG(三星)"
+				(at 0 -12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "CL21A106KOQNNNE"
+				(at 0 -15.24 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC Part" "C1713"
+				(at 0 -17.78 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Multilayer Ceramic Capacitors MLCC - SMD/SMT"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "CL21A106KOQNNNE_0_1"
+				(polyline
+					(pts
+						(xy -1.27 0) (xy -0.51 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -0.51 2.03) (xy -0.51 -2.03)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.51 2.03) (xy 0.51 -2.03)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.51 0) (xy 1.27 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(pin passive line
+					(at -3.81 0 0)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 3.81 0 180)
 					(length 2.54)
 					(name "2"
 						(effects
@@ -1778,6 +1969,16 @@
 	)
 	(wire
 		(pts
+			(xy 358.14 45.72) (xy 360.68 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c7487291-e86e-538e-bc4f-fa4be51e5395")
+	)
+	(wire
+		(pts
 			(xy 113.03 44.45) (xy 115.57 44.45)
 		)
 		(stroke
@@ -1795,6 +1996,16 @@
 			(type default)
 		)
 		(uuid "cda94311-abed-5f7d-bfe8-79f4b46b8765")
+	)
+	(wire
+		(pts
+			(xy 350.52 45.72) (xy 347.98 45.72)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d18ad552-be98-5521-a2c2-91d3cc7d785e")
 	)
 	(wire
 		(pts
@@ -2034,15 +2245,90 @@
 			)
 		)
 		(pin "1"
-			(uuid "5fd0a835-15b4-4794-9cd6-04f7e4d4a7c8")
+			(uuid "594e68e2-256c-43cf-8413-bd64f1384734")
 		)
 		(pin "2"
-			(uuid "f3952b75-7d65-4568-8971-9af14883b4c4")
+			(uuid "8a5ff428-4830-49aa-9ac2-4c9a3130675e")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
 					(reference "L1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 360.68 45.72 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "3a436dcd-a316-5a35-a230-ed3eb5a98ad7")
+		(property "Reference" "#PWR0144"
+			(at 360.68 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 364.49 45.72 270)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 360.68 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 360.68 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 360.68 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "9d919aa8-327a-4588-85ff-79f3e404c25c")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
+					(reference "#PWR0144")
 					(unit 1)
 				)
 			)
@@ -2124,19 +2410,19 @@
 			)
 		)
 		(pin "1"
-			(uuid "aee3e6d3-701d-41e3-8724-8b8a8cd7c86e")
+			(uuid "c9de1251-a848-411b-bb0b-7dc1c2f66d22")
 		)
 		(pin "2"
-			(uuid "f7d4265e-9eac-46da-99c6-9f17da77db93")
+			(uuid "730fa00f-5e82-408e-bce1-1bedc0ba3062")
 		)
 		(pin "3"
-			(uuid "44f6c370-22c8-4c78-b55a-7d900c7b2c67")
+			(uuid "7666590e-df55-48e5-90aa-430bbf121784")
 		)
 		(pin "4"
-			(uuid "074b80ac-d00e-4968-a064-df69eec5fbd0")
+			(uuid "c8381c7b-e23f-4fe7-afe9-9de000225518")
 		)
 		(pin "5"
-			(uuid "bed83ce7-b5c3-430f-8ed6-a454b3543763")
+			(uuid "7e66133f-fbaa-4b56-bd13-8608810b697b")
 		)
 		(instances
 			(project "gb3"
@@ -2223,10 +2509,10 @@
 			)
 		)
 		(pin "2"
-			(uuid "6428ca18-de22-4403-aebe-d99d8d65f8d9")
+			(uuid "ad8ac9ec-18e4-48f0-b3ef-3a26981ad1ad")
 		)
 		(pin "1"
-			(uuid "d070438a-09db-46d8-b534-ab263a75c15a")
+			(uuid "14138e07-c38d-4936-8ca9-978f28fb98a6")
 		)
 		(instances
 			(project "gb3"
@@ -2248,7 +2534,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "4f5a55b0-1bf2-5c08-a198-070b941d54c2")
-		(property "Reference" "#PWR0140"
+		(property "Reference" "#PWR0139"
 			(at 184.15 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -2301,12 +2587,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "9705ca88-3eb4-4804-9ef3-5c4cac5e4f62")
+			(uuid "68db374d-881a-4f8e-849b-7d07afb04166")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
-					(reference "#PWR0140")
+					(reference "#PWR0139")
 					(unit 1)
 				)
 			)
@@ -2323,7 +2609,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "5dd40530-9242-552f-8795-0864efc1274c")
-		(property "Reference" "#PWR0143"
+		(property "Reference" "#PWR0142"
 			(at 157.48 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -2376,12 +2662,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "730c3706-ac93-4bd3-8658-cd85500221eb")
+			(uuid "262d55bf-c565-4a4a-81fe-cd4bb8f0060d")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
-					(reference "#PWR0143")
+					(reference "#PWR0142")
 					(unit 1)
 				)
 			)
@@ -2462,11 +2748,11 @@
 				)
 			)
 		)
-		(pin "1"
-			(uuid "07e5d75d-c24d-41be-ac51-8eb922ef16e4")
-		)
 		(pin "2"
-			(uuid "9bc254e7-8865-40cf-b80b-0fd62c68ba4f")
+			(uuid "5f2303d2-be3b-452e-8300-1e703632a5fd")
+		)
+		(pin "1"
+			(uuid "bee0c4d7-8d77-469c-a8a3-82033c33fece")
 		)
 		(instances
 			(project "gb3"
@@ -2488,7 +2774,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "653b0cb8-366f-51b9-9b2f-c56f80b4f6d6")
-		(property "Reference" "#PWR0144"
+		(property "Reference" "#PWR0143"
 			(at 322.58 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -2541,12 +2827,102 @@
 			)
 		)
 		(pin "1"
-			(uuid "2ebae069-d12a-4599-85eb-3cc00b4655e4")
+			(uuid "eb1b468b-01bc-45bc-8e29-03e8afa957af")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
-					(reference "#PWR0144")
+					(reference "#PWR0143")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "easyeda2kicad:CL21A106KOQNNNE")
+		(at 354.33 45.72 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "90792d2a-53d7-51dc-ab8a-f3990e358def")
+		(property "Reference" "C33"
+			(at 354.33 41.15 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "10µF"
+			(at 354.33 50.29 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:C0805"
+			(at 354.33 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_SAMSUNG_CL21A106KOQNNNE_10uF-106-10-16V_C1713.html"
+			(at 354.33 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "10µF 16V X5R Ceramic Capacitor, 0805"
+			(at 354.33 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1713"
+			(at 354.33 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "083f60f8-a027-4c01-9bce-fc88ff78ae47")
+		)
+		(pin "2"
+			(uuid "8e7c47d2-143d-4d8a-935f-e7bf81259c1b")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
+					(reference "C33")
 					(unit 1)
 				)
 			)
@@ -2627,11 +3003,11 @@
 				)
 			)
 		)
-		(pin "2"
-			(uuid "efe61df5-f033-4579-b86a-6207cf404f0e")
-		)
 		(pin "1"
-			(uuid "7cce79c0-1ed3-4cb7-ae3b-fed294f3cebb")
+			(uuid "a42420ae-eaa0-4273-9af7-20d23871882e")
+		)
+		(pin "2"
+			(uuid "b583591f-44c8-42d7-b659-1846e59febc2")
 		)
 		(instances
 			(project "gb3"
@@ -2718,10 +3094,10 @@
 			)
 		)
 		(pin "2"
-			(uuid "20c1ff88-b601-429f-aaa2-0bcebad737a6")
+			(uuid "0c3dc6f6-a9c0-4487-be4e-ad915f5e5daa")
 		)
 		(pin "1"
-			(uuid "a479709a-02c6-466e-b0b4-03756f8444be")
+			(uuid "018ca0c0-34c4-4e9e-adfa-0257da687330")
 		)
 		(instances
 			(project "gb3"
@@ -2796,7 +3172,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "4cb067c7-f2b1-4db8-acdb-3179037e5bdc")
+			(uuid "3785115f-5331-4159-9d31-df3084022031")
 		)
 		(instances
 			(project "gb3"
@@ -2818,7 +3194,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "a3d835ea-f4eb-57f5-be2f-9ce497d5fa7a")
-		(property "Reference" "#PWR0139"
+		(property "Reference" "#PWR0138"
 			(at 115.57 44.45 0)
 			(hide yes)
 			(show_name no)
@@ -2871,12 +3247,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "e7ddc144-124e-43d9-9850-c03ac413e9fe")
+			(uuid "8e639052-3f9f-4046-ab8f-d29c09dbd13e")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
-					(reference "#PWR0139")
+					(reference "#PWR0138")
 					(unit 1)
 				)
 			)
@@ -2958,15 +3334,90 @@
 			)
 		)
 		(pin "1"
-			(uuid "4f43d243-8937-454a-a821-9bf3468dd797")
+			(uuid "5e82b87e-2214-4622-a75d-dd16b1b5bfa5")
 		)
 		(pin "2"
-			(uuid "824ef736-1472-4916-9a14-16bcfcab33aa")
+			(uuid "6b4d7667-b63c-4d82-8964-cc30df308aaa")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
 					(reference "C2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:SYS")
+		(at 347.98 45.72 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "b24d6588-47ec-559d-b29a-2a029f375841")
+		(property "Reference" "#PWR0146"
+			(at 347.98 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "SYS"
+			(at 344.17 45.72 270)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 347.98 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 347.98 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 347.98 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "fd7d3361-d880-4af9-94c4-0e32487a7fdf")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
+					(reference "#PWR0146")
 					(unit 1)
 				)
 			)
@@ -2983,7 +3434,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "bdae9f28-2489-5f97-b83c-17ebb48ccae8")
-		(property "Reference" "#PWR0142"
+		(property "Reference" "#PWR0141"
 			(at 39.37 48.26 0)
 			(hide yes)
 			(show_name no)
@@ -3036,12 +3487,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "cb7395a6-6a27-4351-8bdc-ef65f1d878ff")
+			(uuid "ddfc6fc6-3759-4c76-87a3-1e87f9e7144c")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
-					(reference "#PWR0142")
+					(reference "#PWR0141")
 					(unit 1)
 				)
 			)
@@ -3058,7 +3509,7 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "c941dceb-a17f-51b8-a23d-26b3d121332f")
-		(property "Reference" "#PWR0141"
+		(property "Reference" "#PWR0140"
 			(at 224.79 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -3111,12 +3562,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "6862d4f1-b0d5-4dea-a3fd-6ad0b208f17a")
+			(uuid "91857a70-1dbc-46fe-a418-76b9759b004e")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/ad536048-6d0f-5ee7-a091-7be361300934"
-					(reference "#PWR0141")
+					(reference "#PWR0140")
 					(unit 1)
 				)
 			)

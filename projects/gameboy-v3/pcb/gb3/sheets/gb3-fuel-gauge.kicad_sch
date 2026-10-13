@@ -5,314 +5,6 @@
 	(uuid "6a3bb95d-353c-5ded-8192-219cb2486951")
 	(paper "User" 297 210)
 	(lib_symbols
-		(symbol "easyeda2kicad:0603WAF1003T5E"
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "R"
-				(at 0 5.08 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "0603WAF1003T5E"
-				(at 0 -5.08 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" "easyeda2kicad:R0603"
-				(at 0 -7.62 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_100KR-1003-1_C25803.html"
-				(at 0 -10.16 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Description" "100KΩ 1% Resistor, 0603 (fuel-gauge divider R_bot)"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Manufacturer" "UNI-ROYAL(厚声)"
-				(at 0 -12.7 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "MPN" "0603WAF1003T5E"
-				(at 0 -15.24 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "LCSC Part" "C25803"
-				(at 0 -17.78 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "Resistors"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "0603WAF1003T5E_0_1"
-				(rectangle
-					(start -2.54 1.02)
-					(end 2.54 -1.02)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type background)
-					)
-				)
-				(pin passive line
-					(at -5.08 0 0)
-					(length 2.54)
-					(name "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 5.08 0 180)
-					(length 2.54)
-					(name "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
-		(symbol "easyeda2kicad:0603WAF1803T5E"
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "R"
-				(at 0 5.08 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "0603WAF1803T5E"
-				(at 0 -5.08 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" "easyeda2kicad:R0603"
-				(at 0 -7.62 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_180KR-1803-1_C22827.html"
-				(at 0 -10.16 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Description" "180KΩ 1% Resistor, 0603 (fuel-gauge divider R_top)"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Manufacturer" "UNI-ROYAL(厚声)"
-				(at 0 -12.7 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "MPN" "0603WAF1803T5E"
-				(at 0 -15.24 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "LCSC Part" "C22827"
-				(at 0 -17.78 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "Resistors"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "0603WAF1803T5E_0_1"
-				(rectangle
-					(start -2.54 1.02)
-					(end 2.54 -1.02)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type background)
-					)
-				)
-				(pin passive line
-					(at -5.08 0 0)
-					(length 2.54)
-					(name "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 5.08 0 180)
-					(length 2.54)
-					(name "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
 		(symbol "easyeda2kicad:CL10A105KB8NNNC"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -795,6 +487,299 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "easyeda2kicad:RC0603JR-0710KL"
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "RC0603JR-0710KL"
+				(at 0 -5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" "easyeda2kicad:R0603"
+				(at 0 -7.62 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
+				(at 0 -10.16 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "10KΩ 1% Resistor, 0603"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Manufacturer" "YAGEO(国巨)"
+				(at 0 -12.7 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "MPN" "RC0603JR-0710KL"
+				(at 0 -15.24 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "LCSC Part" "C99198"
+				(at 0 -17.78 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "Resistors"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "RC0603JR-0710KL_0_1"
+				(rectangle
+					(start -2.54 1.02)
+					(end 2.54 -1.02)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 5.08 0 180)
+					(length 2.54)
+					(name "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "power:+3V3"
+			(power global)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "#PWR"
+				(at 0 -3.81 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "+3V3"
+				(at 0 3.556 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"+3V3\""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "global power"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "+3V3_0_1"
+				(polyline
+					(pts
+						(xy -0.762 1.27) (xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 2.54) (xy 0.762 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "+3V3_1_1"
+				(pin power_in line
+					(at 0 0 90)
+					(length 0)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "power:BAT"
 			(power global)
 			(pin_numbers
@@ -1063,12 +1048,12 @@
 		(uuid "56630c00-c215-53bb-97fe-369a25aa0d61")
 	)
 	(no_connect
-		(at 125.73 50.8)
+		(at 40.64 50.8)
 		(uuid "46f41823-e5a5-500a-b6f9-1bd7a60408aa")
 	)
 	(wire
 		(pts
-			(xy 125.73 53.34) (xy 123.19 53.34)
+			(xy 40.64 53.34) (xy 38.1 53.34)
 		)
 		(stroke
 			(width 0)
@@ -1078,17 +1063,17 @@
 	)
 	(wire
 		(pts
-			(xy 85.09 44.45) (xy 82.55 44.45)
+			(xy 153.67 44.45) (xy 156.21 44.45)
 		)
 		(stroke
 			(width 0)
 			(type default)
 		)
-		(uuid "1e0c1e7a-5730-5e56-a540-d328a79e8389")
+		(uuid "15fc2578-3931-50c8-8c3c-1349d939580c")
 	)
 	(wire
 		(pts
-			(xy 194.31 45.72) (xy 196.85 45.72)
+			(xy 109.22 45.72) (xy 111.76 45.72)
 		)
 		(stroke
 			(width 0)
@@ -1098,7 +1083,17 @@
 	)
 	(wire
 		(pts
-			(xy 151.13 50.8) (xy 153.67 50.8)
+			(xy 143.51 44.45) (xy 140.97 44.45)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "233c0fe7-48c1-50c6-a78e-e6eec709cfa9")
+	)
+	(wire
+		(pts
+			(xy 66.04 50.8) (xy 68.58 50.8)
 		)
 		(stroke
 			(width 0)
@@ -1108,7 +1103,7 @@
 	)
 	(wire
 		(pts
-			(xy 184.15 45.72) (xy 181.61 45.72)
+			(xy 99.06 45.72) (xy 96.52 45.72)
 		)
 		(stroke
 			(width 0)
@@ -1118,7 +1113,7 @@
 	)
 	(wire
 		(pts
-			(xy 151.13 53.34) (xy 153.67 53.34)
+			(xy 66.04 53.34) (xy 68.58 53.34)
 		)
 		(stroke
 			(width 0)
@@ -1128,7 +1123,7 @@
 	)
 	(wire
 		(pts
-			(xy 151.13 45.72) (xy 153.67 45.72)
+			(xy 66.04 45.72) (xy 68.58 45.72)
 		)
 		(stroke
 			(width 0)
@@ -1138,7 +1133,7 @@
 	)
 	(wire
 		(pts
-			(xy 125.73 48.26) (xy 123.19 48.26)
+			(xy 40.64 48.26) (xy 38.1 48.26)
 		)
 		(stroke
 			(width 0)
@@ -1148,17 +1143,7 @@
 	)
 	(wire
 		(pts
-			(xy 40.64 44.45) (xy 38.1 44.45)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "98bc536b-b360-59b2-b628-bd0a2d8175f8")
-	)
-	(wire
-		(pts
-			(xy 151.13 48.26) (xy 153.67 48.26)
+			(xy 66.04 48.26) (xy 68.58 48.26)
 		)
 		(stroke
 			(width 0)
@@ -1168,7 +1153,7 @@
 	)
 	(wire
 		(pts
-			(xy 125.73 55.88) (xy 123.19 55.88)
+			(xy 40.64 55.88) (xy 38.1 55.88)
 		)
 		(stroke
 			(width 0)
@@ -1178,17 +1163,7 @@
 	)
 	(wire
 		(pts
-			(xy 50.8 44.45) (xy 53.34 44.45)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "d2818de5-7514-5f16-aa2d-401daa59b978")
-	)
-	(wire
-		(pts
-			(xy 151.13 55.88) (xy 153.67 55.88)
+			(xy 66.04 55.88) (xy 68.58 55.88)
 		)
 		(stroke
 			(width 0)
@@ -1196,28 +1171,18 @@
 		)
 		(uuid "dc5d4fdb-1267-5701-a5ff-af0c3b9194f0")
 	)
-	(wire
-		(pts
-			(xy 95.25 44.45) (xy 97.79 44.45)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "df063b6a-eb75-5864-bba4-da964cb47b5c")
-	)
-	(global_label "BAT_SENSE"
+	(global_label "GAUGE_ALRT"
 		(shape bidirectional)
-		(at 53.34 44.45 0)
+		(at 140.97 44.45 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
-		(uuid "2078ab0f-775c-5d5c-801d-1545746adcb5")
+		(uuid "117c2211-c6ca-5f87-a616-cf4b54eeee7d")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 53.34 44.45 0)
+			(at 140.97 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1230,7 +1195,7 @@
 	)
 	(global_label "I2C1_SDA"
 		(shape bidirectional)
-		(at 153.67 48.26 0)
+		(at 68.58 48.26 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1239,7 +1204,7 @@
 		)
 		(uuid "56dce009-9e4e-5cce-bd54-50e075a00e91")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 153.67 48.26 0)
+			(at 68.58 48.26 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1252,7 +1217,7 @@
 	)
 	(global_label "GAUGE_ALRT"
 		(shape bidirectional)
-		(at 153.67 55.88 0)
+		(at 68.58 55.88 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1261,7 +1226,7 @@
 		)
 		(uuid "71a4fa59-3ee8-5d7d-8fce-74e6e00103a4")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 153.67 55.88 0)
+			(at 68.58 55.88 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1274,7 +1239,7 @@
 	)
 	(global_label "I2C1_SCL"
 		(shape bidirectional)
-		(at 153.67 50.8 0)
+		(at 68.58 50.8 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -1283,29 +1248,7 @@
 		)
 		(uuid "adb30ba0-7aa2-5336-945c-0c8ef647fed8")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 153.67 50.8 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
-	(global_label "BAT_SENSE"
-		(shape bidirectional)
-		(at 82.55 44.45 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "ccf9d8be-bea5-58a8-807f-6c3cba5a5944")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 82.55 44.45 0)
+			(at 68.58 50.8 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1318,7 +1261,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 196.85 45.72 90)
+		(at 111.76 45.72 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1327,233 +1270,8 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "01293c05-24d1-5b3b-891f-e234985a782d")
-		(property "Reference" "#PWR0282"
-			(at 196.85 45.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "GND"
-			(at 200.66 45.72 270)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 196.85 45.72 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 196.85 45.72 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 196.85 45.72 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "e0c062f6-a2e3-418f-92b2-506df1acec82")
-		)
-		(instances
-			(project "gb3"
-				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "#PWR0282")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 97.79 44.45 90)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "06d4cb30-c8a8-54d4-90d6-d4ec03d627cf")
-		(property "Reference" "#PWR0277"
-			(at 97.79 44.45 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "GND"
-			(at 101.6 44.45 270)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 97.79 44.45 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 97.79 44.45 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 97.79 44.45 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "4df8ff60-a736-450d-8505-2506f0b9d8c5")
-		)
-		(instances
-			(project "gb3"
-				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "#PWR0277")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:BAT")
-		(at 181.61 45.72 90)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "095478cf-59bd-57a9-9e16-abb9ae5580f5")
-		(property "Reference" "#PWR0285"
-			(at 181.61 45.72 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "BAT"
-			(at 177.8 45.72 270)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
-		(property "Footprint" ""
-			(at 181.61 45.72 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 181.61 45.72 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 181.61 45.72 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "2b4f2530-616d-4504-93fe-64d8486af9e9")
-		)
-		(instances
-			(project "gb3"
-				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "#PWR0285")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:BAT")
-		(at 38.1 44.45 90)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "1096aa0b-4e8a-54c9-abc7-c1ca07210795")
 		(property "Reference" "#PWR0283"
-			(at 38.1 44.45 0)
+			(at 111.76 45.72 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1563,19 +1281,19 @@
 				)
 			)
 		)
-		(property "Value" "BAT"
-			(at 34.29 44.45 270)
+		(property "Value" "GND"
+			(at 115.57 45.72 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
 				(font
 					(size 1.27 1.27)
 				)
-				(justify right)
+				(justify left)
 			)
 		)
 		(property "Footprint" ""
-			(at 38.1 44.45 0)
+			(at 111.76 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1585,7 +1303,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 38.1 44.45 0)
+			(at 111.76 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1595,7 +1313,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 38.1 44.45 0)
+			(at 111.76 45.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1605,7 +1323,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "8dddc4a6-13e7-4b29-b750-a3111c60dfa0")
+			(uuid "bc3dfc5b-ab95-4610-8529-7d2a1c633fca")
 		)
 		(instances
 			(project "gb3"
@@ -1617,8 +1335,8 @@
 		)
 	)
 	(symbol
-		(lib_id "easyeda2kicad:CL10A105KB8NNNC")
-		(at 189.23 45.72 0)
+		(lib_id "easyeda2kicad:RC0603JR-0710KL")
+		(at 148.59 44.45 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1626,9 +1344,9 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "12a16da1-0039-531b-b56a-814e7d347636")
-		(property "Reference" "C65"
-			(at 189.23 41.15 0)
+		(uuid "08504ee7-9be1-5fdf-a720-70c7d61b08dd")
+		(property "Reference" "R43"
+			(at 148.59 40.89 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1637,8 +1355,8 @@
 				)
 			)
 		)
-		(property "Value" "1µF"
-			(at 189.23 50.29 0)
+		(property "Value" "10k"
+			(at 148.59 48.01 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1647,8 +1365,8 @@
 				)
 			)
 		)
-		(property "Footprint" "easyeda2kicad:C0603"
-			(at 189.23 45.72 0)
+		(property "Footprint" "easyeda2kicad:R0603"
+			(at 148.59 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1658,8 +1376,8 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_SAMSUNG_CL10A105KB8NNNC_1uF-105-10-50V_C15849.html"
-			(at 189.23 45.72 0)
+		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount_10K-103-5_C99198.html"
+			(at 148.59 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1669,8 +1387,8 @@
 				)
 			)
 		)
-		(property "Description" "1uF 16V X5R Ceramic Capacitor, 0603 (haptic REG cap)"
-			(at 189.23 45.72 0)
+		(property "Description" "10KΩ 1% Resistor, 0603"
+			(at 148.59 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1680,8 +1398,8 @@
 				)
 			)
 		)
-		(property "LCSC" "C15849"
-			(at 189.23 45.72 0)
+		(property "LCSC" "C99198"
+			(at 148.59 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1692,10 +1410,175 @@
 			)
 		)
 		(pin "1"
-			(uuid "ec76c0f2-7f0d-4a3a-8c01-95008f07731e")
+			(uuid "c40b94e1-75fc-401a-970f-d44b49f09482")
 		)
 		(pin "2"
-			(uuid "55aceca7-3b35-4ad9-b9f0-9df1ff283777")
+			(uuid "4620744e-65d4-4332-a5fe-e2f91beed9d5")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
+					(reference "R43")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:BAT")
+		(at 96.52 45.72 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "095478cf-59bd-57a9-9e16-abb9ae5580f5")
+		(property "Reference" "#PWR0285"
+			(at 96.52 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "BAT"
+			(at 92.71 45.72 270)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 96.52 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 96.52 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 96.52 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "20623bcc-67c3-4e78-8fcd-e9c0994ad5a1")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
+					(reference "#PWR0285")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "easyeda2kicad:CL10A105KB8NNNC")
+		(at 104.14 45.72 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "12a16da1-0039-531b-b56a-814e7d347636")
+		(property "Reference" "C65"
+			(at 104.14 41.15 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1µF"
+			(at 104.14 50.29 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "easyeda2kicad:C0603"
+			(at 104.14 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "https://lcsc.com/product-detail/Multilayer-Ceramic-Capacitors-MLCC-SMD-SMT_SAMSUNG_CL10A105KB8NNNC_1uF-105-10-50V_C15849.html"
+			(at 104.14 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "1uF 16V X5R Ceramic Capacitor, 0603 (haptic REG cap)"
+			(at 104.14 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C15849"
+			(at 104.14 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e090fef9-3ed9-45fc-831e-5fee86902cb4")
+		)
+		(pin "2"
+			(uuid "a9ce217a-fe1d-4bc7-ab2c-071c393836d3")
 		)
 		(instances
 			(project "gb3"
@@ -1707,38 +1590,18 @@
 		)
 	)
 	(symbol
-		(lib_id "easyeda2kicad:0603WAF1003T5E")
-		(at 90.17 44.45 0)
+		(lib_id "power:+3V3")
+		(at 156.21 44.45 270)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "2099ae76-6067-5b20-b54b-a44b89db9b25")
-		(property "Reference" "R25"
-			(at 90.17 40.89 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "100k"
-			(at 90.17 48.01 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "easyeda2kicad:R0603"
-			(at 90.17 44.45 0)
+		(uuid "2c943119-0a02-589b-ba7d-189781790c50")
+		(property "Reference" "#PWR0278"
+			(at 156.21 44.45 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1748,9 +1611,19 @@
 				)
 			)
 		)
-		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_100KR-1003-1_C25803.html"
-			(at 90.17 44.45 0)
-			(hide yes)
+		(property "Value" "+3V3"
+			(at 160.02 44.45 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 156.21 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1759,9 +1632,8 @@
 				)
 			)
 		)
-		(property "Description" "100KΩ 1% Resistor, 0603 (fuel-gauge divider R_bot)"
-			(at 90.17 44.45 0)
-			(hide yes)
+		(property "Datasheet" ""
+			(at 156.21 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1770,9 +1642,8 @@
 				)
 			)
 		)
-		(property "LCSC" "C25803"
-			(at 90.17 44.45 0)
-			(hide yes)
+		(property "Description" ""
+			(at 156.21 44.45 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1782,15 +1653,12 @@
 			)
 		)
 		(pin "1"
-			(uuid "d4b70696-d405-4643-af29-c72169971b61")
-		)
-		(pin "2"
-			(uuid "2229973f-d759-4711-875e-82f17fd6a20f")
+			(uuid "a7adc178-0165-4ab8-a4b8-dd4c5e73cdfa")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "R25")
+					(reference "#PWR0278")
 					(unit 1)
 				)
 			)
@@ -1798,7 +1666,7 @@
 	)
 	(symbol
 		(lib_id "power:BAT")
-		(at 123.19 53.34 90)
+		(at 38.1 53.34 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1808,7 +1676,7 @@
 		(dnp no)
 		(uuid "5a5aa5c9-aa12-529a-b011-230de5c15d9e")
 		(property "Reference" "#PWR0284"
-			(at 123.19 53.34 0)
+			(at 38.1 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1819,7 +1687,7 @@
 			)
 		)
 		(property "Value" "BAT"
-			(at 119.38 53.34 270)
+			(at 34.29 53.34 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1830,7 +1698,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 123.19 53.34 0)
+			(at 38.1 53.34 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1840,7 +1708,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 123.19 53.34 0)
+			(at 38.1 53.34 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1850,7 +1718,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 123.19 53.34 0)
+			(at 38.1 53.34 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1860,7 +1728,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "e48670af-b36a-43f8-be10-1e12b8f5222d")
+			(uuid "70d6a074-9da4-42e7-94ef-7b624b7972aa")
 		)
 		(instances
 			(project "gb3"
@@ -1873,7 +1741,7 @@
 	)
 	(symbol
 		(lib_id "easyeda2kicad:MAX17048G+T10")
-		(at 138.43 50.8 0)
+		(at 53.34 50.8 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1883,7 +1751,7 @@
 		(dnp no)
 		(uuid "5b9c205a-3e19-5f2d-8fa6-fcc74401ed20")
 		(property "Reference" "U13"
-			(at 138.43 40.64 0)
+			(at 53.34 40.64 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1893,7 +1761,7 @@
 			)
 		)
 		(property "Value" "MAX17048G+T10"
-			(at 138.43 60.96 0)
+			(at 53.34 60.96 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1903,7 +1771,7 @@
 			)
 		)
 		(property "Footprint" "easyeda2kicad:TDFN-8_L2.0-W2.0-P0.50-BL-EP1.2"
-			(at 138.43 50.8 0)
+			(at 53.34 50.8 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1914,7 +1782,7 @@
 			)
 		)
 		(property "Datasheet" "https://www.lcsc.com/datasheet/C2682616.pdf"
-			(at 138.43 50.8 0)
+			(at 53.34 50.8 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1925,7 +1793,7 @@
 			)
 		)
 		(property "Description" "Maxim MAX17048G+T10 — 1-cell Li battery fuel gauge, TDFN"
-			(at 138.43 50.8 0)
+			(at 53.34 50.8 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1936,7 +1804,7 @@
 			)
 		)
 		(property "LCSC" "C2682616"
-			(at 138.43 50.8 0)
+			(at 53.34 50.8 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1947,31 +1815,31 @@
 			)
 		)
 		(pin "9"
-			(uuid "0ab26a4e-6d60-4dbb-8ef5-d2093485ce10")
-		)
-		(pin "8"
-			(uuid "64668a3a-ead3-4873-8a90-0f48f29368f7")
-		)
-		(pin "7"
-			(uuid "cf425ad4-148f-4303-9301-3ce4e2aedae1")
-		)
-		(pin "6"
-			(uuid "938b7f2d-b1b6-4495-b898-ceef0cb52a6e")
-		)
-		(pin "4"
-			(uuid "d1819bd7-dab4-430a-be3a-9d8a7e02164e")
-		)
-		(pin "3"
-			(uuid "97b055cd-e547-418d-a075-302266968196")
-		)
-		(pin "5"
-			(uuid "5f546f0f-1980-49ac-af6c-d5b2d16c1967")
-		)
-		(pin "2"
-			(uuid "56cd81c2-76a6-456e-b681-ac25e43af929")
+			(uuid "7aa39036-405d-4a7f-bc1e-f21614928e4f")
 		)
 		(pin "1"
-			(uuid "e0ba2244-1c99-4bdf-bf3d-8657366c2541")
+			(uuid "aceb981c-f6f8-44ef-884c-56ddefa5a278")
+		)
+		(pin "2"
+			(uuid "fbcb285d-ba1a-46d5-9fb2-845d89dc9ce1")
+		)
+		(pin "3"
+			(uuid "20bf1a03-8255-4e04-a828-07495e0b9a25")
+		)
+		(pin "4"
+			(uuid "786466fd-4068-4d27-8b1e-97153ab87a8d")
+		)
+		(pin "5"
+			(uuid "257670da-1513-422a-b112-579c7d24e840")
+		)
+		(pin "6"
+			(uuid "f4397926-6d6c-4ebd-ba4f-142f57ed1033")
+		)
+		(pin "7"
+			(uuid "e6d1c4c6-cf04-4cbf-afab-9903d19801dd")
+		)
+		(pin "8"
+			(uuid "12b0e100-f95e-4682-94ef-017e7a7da781")
 		)
 		(instances
 			(project "gb3"
@@ -1984,7 +1852,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 153.67 53.34 90)
+		(at 68.58 53.34 90)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1993,248 +1861,8 @@
 		(in_pos_files yes)
 		(dnp no)
 		(uuid "84dd62b4-1202-5e56-8b27-5a3ded88467d")
-		(property "Reference" "#PWR0280"
-			(at 153.67 53.34 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "GND"
-			(at 157.48 53.34 270)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-			)
-		)
-		(property "Footprint" ""
-			(at 153.67 53.34 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 153.67 53.34 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 153.67 53.34 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "4bb75e95-a24d-4667-9c90-8cd95da370a7")
-		)
-		(instances
-			(project "gb3"
-				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "#PWR0280")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 123.19 48.26 270)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "8e079713-cbee-53d0-a8c1-ce72f4cd2c5a")
-		(property "Reference" "#PWR0278"
-			(at 123.19 48.26 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "GND"
-			(at 119.38 48.26 90)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
-		(property "Footprint" ""
-			(at 123.19 48.26 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 123.19 48.26 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" ""
-			(at 123.19 48.26 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "87721fc9-d5a7-4ebf-a052-5ec7c427b0db")
-		)
-		(instances
-			(project "gb3"
-				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "#PWR0278")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "easyeda2kicad:0603WAF1803T5E")
-		(at 45.72 44.45 0)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "aaaef798-0112-5bc3-998b-ebc623f54f3b")
-		(property "Reference" "R24"
-			(at 45.72 40.89 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "180k"
-			(at 45.72 48.01 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "easyeda2kicad:R0603"
-			(at 45.72 44.45 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" "https://lcsc.com/product-detail/Chip-Resistor-Surface-Mount-UniOhm_180KR-1803-1_C22827.html"
-			(at 45.72 44.45 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "180KΩ 1% Resistor, 0603 (fuel-gauge divider R_top)"
-			(at 45.72 44.45 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "LCSC" "C22827"
-			(at 45.72 44.45 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "2"
-			(uuid "d21abb77-50cd-4f7e-b925-d67bfd107741")
-		)
-		(pin "1"
-			(uuid "f4074204-d8bd-4307-a329-3129c95d050c")
-		)
-		(instances
-			(project "gb3"
-				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
-					(reference "R24")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 153.67 45.72 90)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom no)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "e297af7e-1023-5e12-81b2-0c719797a71f")
 		(property "Reference" "#PWR0281"
-			(at 153.67 45.72 0)
+			(at 68.58 53.34 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2245,7 +1873,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 157.48 45.72 270)
+			(at 72.39 53.34 270)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2256,7 +1884,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 153.67 45.72 0)
+			(at 68.58 53.34 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2266,7 +1894,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 153.67 45.72 0)
+			(at 68.58 53.34 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2276,7 +1904,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 153.67 45.72 0)
+			(at 68.58 53.34 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2286,7 +1914,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "54f1ddeb-5e18-4ac3-9c3e-e2eb2432a091")
+			(uuid "1315fa9f-519f-4fe2-a8be-3118d22e5d39")
 		)
 		(instances
 			(project "gb3"
@@ -2299,7 +1927,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 123.19 55.88 270)
+		(at 38.1 48.26 270)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2307,9 +1935,9 @@
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "e98bc905-fa50-5a7c-bc9e-bde69a817e09")
+		(uuid "8e079713-cbee-53d0-a8c1-ce72f4cd2c5a")
 		(property "Reference" "#PWR0279"
-			(at 123.19 55.88 0)
+			(at 38.1 48.26 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2320,7 +1948,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 119.38 55.88 90)
+			(at 34.29 48.26 90)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2331,7 +1959,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 123.19 55.88 0)
+			(at 38.1 48.26 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2341,7 +1969,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 123.19 55.88 0)
+			(at 38.1 48.26 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2351,7 +1979,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 123.19 55.88 0)
+			(at 38.1 48.26 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2361,12 +1989,162 @@
 			)
 		)
 		(pin "1"
-			(uuid "8b1058bc-abe5-4dc3-a462-d2a9220ee2d4")
+			(uuid "e8deeb1e-0769-4d3e-a666-50dc024128d7")
 		)
 		(instances
 			(project "gb3"
 				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
 					(reference "#PWR0279")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 68.58 45.72 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "e297af7e-1023-5e12-81b2-0c719797a71f")
+		(property "Reference" "#PWR0282"
+			(at 68.58 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 72.39 45.72 270)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 68.58 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 68.58 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 68.58 45.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "cfa07c60-30a3-4a8e-83ea-3423c294e5d2")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
+					(reference "#PWR0282")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 38.1 55.88 270)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "e98bc905-fa50-5a7c-bc9e-bde69a817e09")
+		(property "Reference" "#PWR0280"
+			(at 38.1 55.88 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 34.29 55.88 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" ""
+			(at 38.1 55.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 38.1 55.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 38.1 55.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "64e32fd6-e0fe-4f77-ad09-08d89fe2b43d")
+		)
+		(instances
+			(project "gb3"
+				(path "/72246461-f65b-5f93-99ec-a631b3ad5e31/4e087194-59f3-5c52-a2da-5576b93f5e9d"
+					(reference "#PWR0280")
 					(unit 1)
 				)
 			)

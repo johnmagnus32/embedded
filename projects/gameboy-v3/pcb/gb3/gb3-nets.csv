@@ -29,11 +29,11 @@ U1,27,RESET,,RESET (low-active) → reset btn R22? + 100nF + 10K pull-up to VCC_
 U1,28,LDOA,pwr,LDOA-OUT internal 1.8V regulator output (1.764/1.8/1.836) + bypass cap→GND; source of the 1.8V rail feeding VCC-PLL/VCC-LVDS/VDD18-DRAM/VCC-TVIN. VERIFY vs t113-breakout
 U1,29,+3V3,pwr,"LDO-IN internal LDOA/B input, 2.4/3.3/3.6V → 3.3V rail"
 U1,30,LDOB,pwr,LDOB-OUT internal regulator output (default 1.35V; firmware sets 1.5V for DDR3) + bypass cap→GND; feeds VCC-DRAM0/1. VERIFY vs t113-breakout
-U1,31,SPK_SD,,PE13 → MAX98357A SD/MODE (shares mono-strap net)
+U1,31,SPK_EN,,PE13 → R14 680k → MAX98357A SD_MODE (DS Fig 5 push-pull): high = (L/2+R/2) mono; low or Z (reset) = shutdown via internal 100k RPD
 U1,32,JACK_DET,,PE12 → headphone jack detect switch
-U1,33,UART0_RX,,PE3 UART0-RX (console)
+U1,33,UART0_RX,,PE3 UART0-RX (console) ← R46 510R ← TP2
 U1,34,+3V3,pwr,"VCC-PE — PE-bank I/O supply, 3.3V"
-U1,35,UART0_TX,,PE2 UART0-TX (console)
+U1,35,UART0_TX,,PE2 UART0-TX (console) → R45 510R → TP1
 U1,36,PSHOLD,,PE11 → STM6601 PSHOLD (gpio-poweroff handshake)
 U1,37,PWR_BTN_3V3,,[AUDIT] PE10 <- STM6601 /PB_OUT via #117 pull-up (was raw PWR_BTN idling ~SYS on a 3.3V pin)
 U1,38,TOUCH_RST,,PE9 → touch FFC → FT7311 reset
@@ -80,10 +80,10 @@ U1,78,,,spare/NC — TVOUT0 CVBS output unused
 U1,79,,,spare/NC — PB7 free GPIO
 U1,80,BT_EN_RST,,PB6 → BT830 VREG_EN_RST# (boot low >5ms then high)
 U1,81,+0V9,pwr,VDD-SYS2 = 0.9V core/system rail (see pin 46). VERIFY vs t113-breakout
-U1,82,GAUGE_ALRT,,PB5 → MAX17048 ALRT (needs pull-up)
+U1,82,GAUGE_ALRT,,PB5 (PB-EINT5) → MAX17048 ALRT + R43 pull-up (open-drain in; DT IRQ_TYPE_LEVEL_LOW + wakeup-source)
 U1,83,+3V3,pwr,VCC-IO = 3.3V digital I/O supply
 U1,84,CHG_PGOOD,,PB4 → BQ24074 PGOOD + pull-up (open-drain in)
-U1,85,DAC_XSMT,,PB3 → PCM5102A XSMT (soft-mute)
+U1,85,DAC_XSMT,,PB3 → PCM5102A XSMT (soft-mute); drive push-pull; R44 10k pull-down = muted at reset
 U1,86,HP_EN,,PB2 → TPA6132A2 EN (+ pull-down)
 U1,87,,,spare/NC — MICIN3P (internal codec mic-in unused)
 U1,88,,,spare/NC — MICIN3N unused
@@ -99,7 +99,7 @@ U1,97,HPVCC,pwr,"HPVCC 1.8V (datasheet 1.764/1.8/1.836). Datasheet §2.8: 'inter
 U1,98,,,spare/NC — HPOUTR internal codec HP out unused
 U1,99,,,spare/NC — HPOUTL unused
 U1,100,,,spare/NC — HPOUTFB unused
-U1,101,BAT_SENSE,,GPADC0 → battery divider R75/R76 midpoint (reference = AVCC 1.8V)
+U1,101,,,spare/NC — GPADC0 unused: battery V + SOC% from U13 MAX17048 VCELL/SOC (i2c1 0x36); BAT_SENSE divider (was R24/R25 = BOM #75/#76) deleted
 U1,102,,,spare/NC — TP-X1 resistive-touch ADC unused
 U1,103,,,spare/NC — TP-X2 unused
 U1,104,,,spare/NC — TP-Y1 unused
@@ -112,8 +112,8 @@ U1,110,,,spare/NC — TVIN-VRP unused
 U1,111,,,spare/NC — TVIN-VRN unused
 U1,112,,,spare/NC — USB1-DP (USB host unused)
 U1,113,,,spare/NC — USB1-DM unused
-U1,114,USB_DM,,USB0-DM → USB-C D- via ESD D4 (90Ω diff)
-U1,115,USB_DP,,USB0-DP → USB-C D+ via ESD D4 (90Ω diff)
+U1,114,USB_D-,,USB0-DM → USB-C D- via ESD D4 (90Ω diff)
+U1,115,USB_D+,,USB0-DP → USB-C D+ via ESD D4 (90Ω diff)
 U1,116,+0V9,pwr,VDD-CORE0 core supply (datasheet 0.85/0.95/0.99; FP6161 core buck rail)
 U1,117,+0V9,pwr,VDD-CORE1 core supply (FP6161 core buck rail)
 U1,118,UART3_RX,,PG1 UART3-RX (HCI) → lands on BT830 UART_TX
@@ -128,6 +128,13 @@ U1,126,I2S1_DIN,,PG14 I2S1-DIN0; per task guidance kept as I2S1_DIN though nothi
 U1,127,I2S1_DOUT,,PG15 I2S1-DOUT0 → MAX98357A DIN + PCM5102A DIN (via series-R)
 U1,128,+3V3,pwr,"VCC-PG — PG-bank I/O supply, 3.3V"
 U1,129,GND,gnd,EPAD — ground family
+R45,1,UART0_TX,,510R series: back-power protection (t113-breakout REV-B Fix 2)
+R45,2,UART0_TX_PAD,,
+R46,1,UART0_RX,,510R series: protects the PE3 input (REV-B Fix 2: its ESD diode to VCC-PE back-powered a Rev-A board)
+R46,2,UART0_RX_PAD,,
+TP1,1,UART0_TX_PAD,,console TX out — bare probe pad on the back
+TP2,1,UART0_RX_PAD,,console RX in — bare probe pad on the back
+TP3,1,GND,gnd,console GND — bare probe pad on the back
 USBC1,1,GND,gnd,EH shield/retention post -> GND (BOM #2: shell+mid-plate+4 posts direct short to GND)
 USBC1,2,GND,gnd,EH shield/retention post -> GND
 USBC1,3,GND,gnd,EH shield/retention post -> GND
@@ -135,14 +142,14 @@ USBC1,4,GND,gnd,EH shield/retention post -> GND
 USBC1,A1B12,GND,gnd,GND — ground family
 USBC1,A4B9,+5V,pwr,VBUS — rail: USB-C 5V input
 USBC1,A5,USBC_CC1,,CC1 -> CH224K (U11) only; no external 5.1k pulldowns
-USBC1,A6,USB_DP,,DP1; USB2-only reversible -> DP1=DP2 board-shorted; path via ESD D4 to T113 USB0-DP
-USBC1,A7,USB_DM,,DN1; DN1=DN2 board-shorted; path via ESD D4 to T113 USB0-DM
+USBC1,A6,USB_D+,,DP1; USB2-only reversible -> DP1=DP2 board-shorted; path via ESD D4 to T113 USB0-DP
+USBC1,A7,USB_D-,,DN1; DN1=DN2 board-shorted; path via ESD D4 to T113 USB0-DM
 USBC1,A8,,,spare/NC — SBU1 unused (no alt-mode / analog-audio adapter)
 USBC1,B1A12,GND,gnd,GND — ground family
 USBC1,B4A9,+5V,pwr,VBUS — rail: USB-C 5V input
 USBC1,B5,USBC_CC2,,CC2 -> CH224K (U11)
-USBC1,B6,USB_DP,,DP2 shorted to DP1 (reversible USB2)
-USBC1,B7,USB_DM,,DN2 shorted to DN1
+USBC1,B6,USB_D+,,DP2 shorted to DP1 (reversible USB2)
+USBC1,B7,USB_D-,,DN2 shorted to DN1
 USBC1,B8,,,spare/NC — SBU2 unused
 U2,1,CORE_RUN,,FP6161 RUN; node = R4(from PWR_EN) + C2(->GND); ~10ms delay after VCC-IO
 U2,2,GND,gnd,GND — ground family
@@ -271,11 +278,11 @@ C31,1,RESET,,100nF RESET debounce cap -> GND (BOM #22 'RESET + 100nF')
 C31,2,GND,gnd,
 C32,1,+5V,pwr,10uF bulk on 5V VBUS (BOM #20 Rev-A brownout fix)
 C32,2,GND,gnd,
-C33,1,SYS,pwr,10uF bulk on SYS rail (BOM #20 Rev-A brownout fix)
+C33,1,SYS,pwr,10uF FP6161 CIN at U2.4 VIN (DS typ app; layout checklist #2)
 C33,2,GND,gnd,
 C34,1,+0V9,pwr,10uF FP6161 core-buck (#3) output bulk (BOM #20)
 C34,2,GND,gnd,
-C35,1,+3V3,pwr,10uF general bulk on +3V3
+C35,1,LDOB,pwr,10uF LDOB-OUT bulk at U1.30 (t113-breakout C29 10uF; MangoPi C50 2.2uF)
 C35,2,GND,gnd,
 C36,1,+3V3,pwr,10uF general bulk on +3V3
 C36,2,GND,gnd,
@@ -289,7 +296,7 @@ C40,1,+3V3,pwr,10uF general bulk on +3V3
 C40,2,GND,gnd,
 C41,1,+3V3,pwr,4.7uF general bulk on +3V3 (BOM #21)
 C41,2,GND,gnd,
-C42,1,+3V3,pwr,4.7uF general bulk on +3V3
+C42,1,LDOA,pwr,4.7uF LDOA-OUT bulk at U1.28 (t113-breakout C36 4.7uF + C41 10uF; MangoPi C44 2.2uF)
 C42,2,GND,gnd,
 C43,1,+3V3,pwr,4.7uF general bulk on +3V3
 C43,2,GND,gnd,
@@ -408,7 +415,7 @@ C52,2,GND,gnd,"10uF haptic VDD bulk, return to GND"
 U9,1,I2S1_DOUT,,DIN <- T113 I2S1 DOUT (PG15). Multi-drop with PCM5102A DAC per PINOUT.md.
 U9,2,SYS,pwr,"GAIN_SLOT tied directly to VDD(=SYS) => 6 dB gain (datasheet gain trip points are ratios of VDD, so must tie to amp VDD rail = SYS, not +3V3; BOM.md #49 confirms VDD tie = 6 dB)."
 U9,3,GND,gnd,GND — ground family
-U9,4,SPK_SD,,"~{SD_MODE} — ~SD_MODE shutdown/channel-select; joins T113 PE13 open-drain SPK_SD net and R14 strap. hi-Z=mono run, low=mute."
+U9,4,SPK_SD,,"~{SD_MODE} — fed from PE13 (SPK_EN) via R14 680k into the internal 100k RPD (DS Fig 5); PE13 high = mono run, low/Z = shutdown"
 U9,5,,,"spare/NC (datasheet N.C., no internal connection)"
 U9,6,,,"spare/NC (datasheet N.C., no internal connection)"
 U9,7,SYS,pwr,rail: #47 VDD on SYS
@@ -422,8 +429,8 @@ U9,14,I2S1_LRCK,,LRCLK <- T113 I2S1 LRCK (PG12).
 U9,15,GND,gnd,GND — ground family
 U9,16,I2S1_BCLK,,BCLK <- T113 I2S1 BCLK (PG13). No MCLK needed.
 U9,17,GND,gnd,EP — ground family
-R14,1,SPK_SD,,SD/MODE strap: shares SD_MODE node with U9.4 and T113 PE13 (SPK_SD).
-R14,2,+3V3,pwr,"680k pullup to +3V3 (VDDIO): datasheet Table 6 RLARGE=634k for VDDIO=3.3V selects (L/2+R/2) mono; 680k is nearest E-series. Pull rail keyed to +3V3 because RLARGE for SYS(4.2V) would be ~878k, not 680k. VERIFY rail vs schematic (both +3V3 and SYS electrically select mono, but 680k value points to +3V3)."
+R14,1,SPK_SD,,SD_MODE side of the PE13 series R (U9.4)
+R14,2,SPK_EN,,"680k series R from PE13 (VCC-IO 3.3 V), DS Fig 5: SD_MODE 0.38–0.47 V = mono; PE13 Z/low = shutdown (amp boots off); limits SD_MODE current when SYS < 3.0 V (DS p17)"
 C53,1,SYS,pwr,VDD bypass 100nF to amp VDD rail (=SYS).
 C53,2,GND,gnd,VDD bypass return.
 C54,1,SYS,pwr,VDD bulk 10uF to amp VDD rail (=SYS).
@@ -442,7 +449,7 @@ U10,11,SYS_SRC,pwr,"charger OUT (pins 10,11)"
 U10,12,CHG_ILIM,,ILIM -> R16 1.2k -> GND (input current limit ~1.34A)
 U10,13,+5V,pwr,charger IN from USB-C VBUS (+5V); C55 IN cap
 U10,14,,,spare/NC: TMR left unconnected = default safety timers per DS (no timer-set R allocated in BOM). VERIFY intent (or tie to VSS to disable timers)
-U10,15,,,spare/NC: ITERM left unconnected = default 10% termination per DS (no R allocated in BOM). VERIFY intent
+U10,15,GND,gnd,TD — tied low = termination enabled (BQ24073: TD must not float; DS p.9)
 U10,16,CHG_ISET,,ISET -> R15 2.0k -> GND (charge current ~445mA)
 U10,17,GND,gnd,EP — ground family
 C55,1,+5V,pwr,charger IN cap 4.7uF -> GND
@@ -491,7 +498,7 @@ U12,10,SYS,pwr,VIN — rail: #66 buck-boost in=SYS
 U12,11,SYS,pwr,VIN — rail: #66 buck-boost in=SYS
 U12,12,PWR_EN,,EN driven by STM6601 (U17) EN pin9; cross-subsystem net PWR_EN also feeds FP6161 (U2) RUN via RC R4/C2 — ensure U17/U2 owners use this exact name
 U12,13,BB_PSYNC,,PS/SYNC -> R23 0R -> GND = power-save mode on
-U12,14,,,spare/NC: PG power-good open-drain; BOM silent — leave NC or add pull-up to +3V3
+U12,14,,,"spare/NC: PG = open-drain current-limit flag, not a power-good monitor (no defined state with EN low or in soft-start); NC is allowed; not used for sequencing"
 U12,15,GND,gnd,PGND — ground family
 R22,1,BB_FB,,FB tie 0R
 R22,2,+3V3,pwr,
@@ -515,21 +522,19 @@ CN1,1,BAT,pwr,battery + (red). POLARITY is copper-committing: confirm pin1=+ aga
 CN1,2,GND,gnd,battery - (black)
 CN1,3,GND,gnd,"mechanical board-lock tab (footprint pad 3) -> GND for retention; isolated from contacts, NC also acceptable. VERIFY"
 CN1,4,GND,gnd,mechanical board-lock tab (footprint pad 4) -> GND for retention
-R24,1,BAT,pwr,fuel divider R_top 180k: BAT -> midpoint
-R24,2,BAT_SENSE,,
-R25,1,BAT_SENSE,,fuel divider R_bot 100k: midpoint -> GND; BAT_SENSE -> T113 GPADC0 (pin101)
-R25,2,GND,gnd,
 U13,1,GND,gnd,CTG -> GND per DS
 U13,2,,,spare/NC: CELL is NO-CONNECT per DS (single-cell; VDD does cell-sense)
 U13,3,BAT,pwr,rail: #77 VDD->battery+
 U13,4,GND,gnd,GND — ground family
-U13,5,GAUGE_ALRT,,~{ALRT} — ~ALRT open-drain -> T113 PB5; needs pull-up to +3V3 (NONE allocated in BOM — add one). VERIFY
+U13,5,GAUGE_ALRT,,"~{ALRT} — open-drain active-low alert, latched low until host clears CONFIG.ALRT -> T113 PB5 (PB-EINT5); R43 10k pull-up to +3V3 (DS p14)"
 U13,6,GND,gnd,QSTRT -> GND per DS
 U13,7,I2C1_SCL,,SCL — I2C1 bus
 U13,8,I2C1_SDA,,SDA — I2C1 bus
 U13,9,GND,gnd,EP — ground family
 C65,1,BAT,pwr,"MAX17048 VDD bypass 1uF (VDD=BAT), at pin3"
 C65,2,GND,gnd,
+R43,1,GAUGE_ALRT,,10k ALRT pull-up: to MAX17048 ~ALRT / GAUGE_ALRT node (T113 PB5)
+R43,2,+3V3,pwr,"10k ALRT pull-up to +3V3 = T113 VCC-IO (PB5 I/O rail). NOT BAT/SYS: ALRT is open-drain + 5.5V-tolerant, PB5 is a 3.3V VCC-IO pin"
 U14,1,CHG_LED_K,,charge-LED cathode(-) -> BQ24074 /CHG pin9 (open-drain sink)
 U14,2,CHG_LED_A,,charge-LED anode(+) -> R26 -> +3V3
 R26,1,+3V3,pwr,charge-LED limit R 510R
@@ -663,12 +668,12 @@ R30,1,I2C1_SCL,,I2C1 SCL pull-up (1.5k #97); joins bus SCL already assigned on p
 R30,2,+3V3,pwr,pull-up top to 3.3V
 R31,1,I2C1_SDA,,I2C1 SDA pull-up (1.5k #97); joins bus SDA
 R31,2,+3V3,pwr,pull-up top to 3.3V
-D4,1,USB_DP,,"USBLC6-2SC6 I/O1 (pins 1&6 = same internal node, pass-through); DP<->I/O1 channel choice is symmetric. VERIFY pin numbering vs ST datasheet (no DS in cad/docs)"
+D4,1,USB_D+,,"USBLC6-2SC6 I/O1 (pins 1&6 = same internal node, pass-through); DP<->I/O1 channel choice is symmetric. VERIFY pin numbering vs ST datasheet (no DS in cad/docs)"
 D4,2,GND,gnd,USBLC6 GND
-D4,3,USB_DM,,"USBLC6-2SC6 I/O2 (pins 3&4 = same internal node, pass-through)"
-D4,4,USB_DM,,USBLC6-2SC6 I/O2 (same net as pin3)
+D4,3,USB_D-,,"USBLC6-2SC6 I/O2 (pins 3&4 = same internal node, pass-through)"
+D4,4,USB_D-,,USBLC6-2SC6 I/O2 (same net as pin3)
 D4,5,+5V,pwr,USBLC6 VBUS rail-clamp = USB-C VBUS (+5V)
-D4,6,USB_DP,,USBLC6-2SC6 I/O1 (same net as pin1); ESD taps the DP line pass-through to T113
+D4,6,USB_D+,,USBLC6-2SC6 I/O1 (same net as pin1); ESD taps the DP line pass-through to T113
 U18,1,+3V3,pwr,rail: BT830 note: VDD_PADS=3.3V
 U18,2,GND,gnd,GND — ground family
 U18,3,,,PIO2 unused -> spare/NC (datasheet recommends NC)
@@ -723,7 +728,7 @@ U19,13,DAC_BCK,,I2S BCK via series R32 from I2S1_BCLK bus
 U19,14,DAC_DIN,,I2S DIN via series R34 from I2S1_DOUT bus
 U19,15,DAC_LRCK,,I2S LRCK via series R33 from I2S1_LRCK bus
 U19,16,GND,gnd,FMT strap -> GND (I2S format)
-U19,17,DAC_XSMT,,XSMT — soft-mute GPIO (PB3); not hard-high per datasheet
+U19,17,DAC_XSMT,,XSMT — soft-mute GPIO (PB3) + R44 10k pull-down (boots muted)
 U19,18,PCM_LDOO,,"LDOO — internal 1.8V logic-LDO decoupling node; C77 to GND (mandatory, do NOT drive)"
 U19,19,GND,gnd,DGND — ground family
 U19,20,+3V3,pwr,rail: #105 DVDD strapped 3.3V
@@ -759,6 +764,8 @@ C83,1,DAC_OUTL_F,,2.2nF C0G shunt to AGND after R35 (fc~154kHz)
 C83,2,GND,gnd,AGND
 C84,1,DAC_OUTR_F,,2.2nF C0G shunt to AGND after R36
 C84,2,GND,gnd,AGND
+R44,1,DAC_XSMT,,10k XSMT pull-down: DAC boots soft-muted (T113 PB3 is IO-disable/Z at reset); un-mutes only when PB3 drives high. Place at U19 pin 17; no cap on XSMT
+R44,2,GND,gnd,
 U20,1,AMP_INL,,INL- inverting left input <- coupling cap C85
 U20,2,GND,gnd,INL+ grounded (single-ended)
 U20,3,GND,gnd,INR+ grounded (single-ended)

@@ -444,11 +444,11 @@
       },
       {
         "netclass": "USB",
-        "pattern": "USB_DP"
+        "pattern": "USB_D+"
       },
       {
         "netclass": "USB",
-        "pattern": "USB_DM"
+        "pattern": "USB_D-"
       },
       {
         "netclass": "Power",

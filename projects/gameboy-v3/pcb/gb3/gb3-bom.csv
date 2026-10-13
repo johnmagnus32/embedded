@@ -51,16 +51,16 @@ C29,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,Decoupling · CC0603KRX7R9BB104 �
 C30,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,Decoupling · CC0603KRX7R9BB104 · #19
 C31,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,Decoupling · CC0603KRX7R9BB104 · #19
 C32,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
-C33,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
+C33,core-buck,C1713,easyeda2kicad:CL21A106KOQNNNE,FP6161 VIN input cap (CIN) · CL21A106KOQNNNE · #20
 C34,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
-C35,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
+C35,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,LDOB-OUT bulk 10uF · CL21A106KOQNNNE · #20
 C36,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
 C37,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
 C38,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
 C39,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
 C40,soc,C1713,easyeda2kicad:CL21A106KOQNNNE,Bulk · CL21A106KOQNNNE · #20
 C41,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,Bulk · CC0603KRX5R6BB475 · #21
-C42,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,Bulk · CC0603KRX5R6BB475 · #21
+C42,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,LDOA-OUT bulk 4.7uF · CC0603KRX5R6BB475 · #21
 C43,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,Bulk · CC0603KRX5R6BB475 · #21
 C44,soc,C109456,easyeda2kicad:CC0603KRX5R6BB475,Bulk · CC0603KRX5R6BB475 · #21
 SW1,soc,C318884,easyeda2kicad:TS-1187A-B-A-B,RESET button · TS-1187A-B-A-B · #22
@@ -84,10 +84,10 @@ C50,haptics,C15849,easyeda2kicad:CL10A105KB8NNNC,Haptic REG cap · CL10A105KB8NN
 C51,haptics,C14663,easyeda2kicad:CC0603KRX7R9BB104,Haptic VDD bypass · CC0603KRX7R9BB104 · #43
 C52,haptics,C1713,easyeda2kicad:CL21A106KOQNNNE,Haptic VDD bulk · CL21A106KOQNNNE · #45
 U9,amp,C910544,easyeda2kicad:MAX98357AETE+T,Class-D amp · MAX98357AETE+T · #47
-R14,amp,C140074,easyeda2kicad:RS-03K6803FT,Amp SD/MODE strap · RS-03K6803FT · #48
+R14,amp,C140074,easyeda2kicad:RS-03K6803FT,Amp SD/MODE series R (DS Fig 5) · RS-03K6803FT · #48
 C53,amp,C14663,easyeda2kicad:CC0603KRX7R9BB104,Amp VDD bypass · CC0603KRX7R9BB104 · #50
 C54,amp,C17024,easyeda2kicad:CL21A106KPFNNNE,Amp VDD bulk · CL21A106KPFNNNE · #51
-U10,charger,C54313,easyeda2kicad:BQ24074RGTR,Power-path charger · BQ24074RGTR · #53
+U10,charger,C15220,easyeda2kicad:BQ24073RGTR,Power-path charger · BQ24073RGTR · #53
 C55,charger,C19666,easyeda2kicad:CL10A475KO8NNNC,Charger IN cap · CL10A475KO8NNNC · #54
 C56,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger OUT cap · CL21A106KOQNNNE · #55
 C57,charger,C1713,easyeda2kicad:CL21A106KOQNNNE,Charger BAT cap · CL21A106KOQNNNE · #56
@@ -111,10 +111,9 @@ C63,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,Buck-boost output caps · CL
 C64,buck-boost,C45783,easyeda2kicad:CL21A226MAQNNNE,Buck-boost output caps · CL21A226MAQNNNE · #71
 L3,buck-boost,C408407,easyeda2kicad:MWSA0503S-1R5MT,Buck-boost inductor · MWSA0503S-1R5MT · #72
 CN1,charger,C295747,easyeda2kicad:S2B-PH-SM4-TB,Battery connector · S2B-PH-SM4-TB(LF)(SN) · #74
-R24,fuel-gauge,C22827,easyeda2kicad:0603WAF1803T5E,Fuel divider R_top · 0603WAF1803T5E · #75
-R25,fuel-gauge,C25803,easyeda2kicad:0603WAF1003T5E,Fuel divider R_bot · 0603WAF1003T5E · #76
 U13,fuel-gauge,C2682616,easyeda2kicad:MAX17048G+T10,Fuel gauge (SoC %) · MAX17048G+T10 · #77
 C65,fuel-gauge,C15849,easyeda2kicad:CL10A105KB8NNNC,MAX17048 VDD bypass · CL10A105KB8NNNC · #78
+R43,fuel-gauge,C99198,easyeda2kicad:RC0603JR-0710KL,MAX17048 ALRT pull-up 10k · RC0603JR-0710KL · #119
 U14,charger,C2986027,easyeda2kicad:19-213SYGC_S530-E2_5T,Charge-status LED · 19-213SYGC/S530-E2/5T · #79
 R26,charger,C23193,easyeda2kicad:0603WAF5100T5E,Charge-LED resistor · 0603WAF5100T5E · #80
 U15,power-monitor,C49851,easyeda2kicad:INA226AIDGSR,Power/current monitor · TI INA226AIDGSR · #81
@@ -167,6 +166,7 @@ R35,dac,C23179,easyeda2kicad:0603WAF4700T5E,PCM5102A anti-imaging R · UNI-ROYAL
 R36,dac,C23179,easyeda2kicad:0603WAF4700T5E,PCM5102A anti-imaging R · UNI-ROYAL 0603WAF4700T5E · #108
 C83,dac,C33353,easyeda2kicad:CL10C222JB8NNNC,PCM5102A anti-imaging C · Samsung CL10C222JB8NNNC · #109
 C84,dac,C33353,easyeda2kicad:CL10C222JB8NNNC,PCM5102A anti-imaging C · Samsung CL10C222JB8NNNC · #109
+R44,dac,C99198,easyeda2kicad:RC0603JR-0710KL,PCM5102A XSMT pull-down 10k · RC0603JR-0710KL · #120
 U20,headphone-amp,C69901,easyeda2kicad:TPA6132A2RTER,Stereo headphone amp · TI TPA6132A2RTER · #110
 C85,headphone-amp,C15849,easyeda2kicad:CL10A105KB8NNNC,TPA6132A2 1 µF caps · CL10A105KB8NNNC · #111
 C86,headphone-amp,C15849,easyeda2kicad:CL10A105KB8NNNC,TPA6132A2 1 µF caps · CL10A105KB8NNNC · #111
@@ -183,3 +183,8 @@ R41,imu,C22843,easyeda2kicad:0603WAF1501T5E,i2c2 pull-up (IMU bus) · 0603WAF150
 R42,imu,C22843,easyeda2kicad:0603WAF1501T5E,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
 J2,haptics,,manual:SolderPad_1x02_SMD,"LRA motor solder pads (Vybronics VG0832022D flying leads; direct-solder, no connector) · #46"
 J3,amp,,manual:SolderPad_1x02_SMD,"Speaker solder pads (flying leads; direct-solder, no connector) · #52"
+R45,soc,C23193,easyeda2kicad:0603WAF5100T5E,UART0 TX series R 510R · 0603WAF5100T5E · #121
+R46,soc,C23193,easyeda2kicad:0603WAF5100T5E,UART0 RX series R 510R · 0603WAF5100T5E · #121
+TP1,soc,,manual:TestPoint,Console TX · bare probe pad on the back (not assembled) · #122
+TP2,soc,,manual:TestPoint,Console RX · bare probe pad on the back (not assembled) · #122
+TP3,soc,,manual:TestPoint,Console GND · bare probe pad on the back (not assembled) · #122

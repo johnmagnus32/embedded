@@ -36,12 +36,15 @@
 
 # ---------------------------------------------------------------- USB 2.0 HS
 
-# KiCad pairs nets by a +/- or P/N suffix; USB_DP / USB_DM are not recognised as a pair, so the gap
-# and uncoupled-length checks can't be expressed until they are renamed (e.g. USB_D+ / USB_D-).
+# USB_D+ / USB_D- (renamed from USB_DP / USB_DM 2026-10-13: KiCad pairs nets only by a +/- or P/N
+# suffix). Uncoupled budget: the split around D4 (USBLC6-2SC6, D+ on pins 1/6, D- on 3/4) alone is
+# ~8.9 mm at the current placement; tighten this once the pair is routed.
 (rule "USB pair"
-	(condition "A.NetName == 'USB_DP' || A.NetName == 'USB_DM'")
+	(condition "A.inDiffPair('USB_D')")
 	(constraint track_width (min 0.2mm) (opt 0.275mm))
-	(constraint skew (max 0.5mm))
+	(constraint diff_pair_gap (min 0.18mm) (opt 0.2mm) (max 0.25mm))
+	(constraint diff_pair_uncoupled (max 12mm))
+	(constraint skew (max 0.5mm) (within_diff_pairs))
 	(constraint via_count (max 2)))
 
 # ---------------------------------------------------------------- clocks and buses
