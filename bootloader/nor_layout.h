@@ -15,8 +15,8 @@
 /* --- fixed NOR offsets (64 KB aligned) ------------------------------------ */
 #define NOR_TABLE_OFF     0x000000u   /* component table (in the 64KB guard)   */
 #define NOR_KERNEL_OFF    0x010000u   /* zImage / kernel image                 */
-#define NOR_DTB_OFF       0x840000u   /* device tree blob (kernel gets 8.2 MiB) */
-#define NOR_INITRD_OFF    0x850000u   /* initramfs.cpio.gz (to ~14.7 of 16 MiB)  */
+#define NOR_DTB_OFF       0x900000u   /* device tree blob (kernel gets 8.9 MiB) */
+#define NOR_INITRD_OFF    0x910000u   /* initramfs.cpio.gz (to ~15.5 of 16 MiB)  */
 
 /* --- DRAM load addresses (match main.c / boot.cmd) ------------------------ */
 /* Clear of the DECOMPRESSED kernel (~56 MiB when built by our cc, so it ends near 0x43820000), with
