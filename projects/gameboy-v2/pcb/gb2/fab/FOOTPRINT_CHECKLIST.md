@@ -25,9 +25,9 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there);
 | ☑ | D3 | SS34 (MDD, 3 A/40 V, SMA/DO-214AC) ([C8678](https://www.lcsc.com/product-detail/C8678.html)) | `SMA_L4.3-W2.6-LS5.2-RD` | top | JLC | SS34: pin 1 = K (to +5V_LCD) in the LCSC symbol and footprint; confirm the cathode band in JLC's 3D preview. |
 | ☑ | Q1 | AO3401A (AOS, SOT-23, P-ch 30 V / 4 A) ([C15127](https://www.lcsc.com/product-detail/C15127.html)) | `SOT-23_L2.9-W1.3-P1.90-LS2.4-BR` | top | JLC | Verified: AO3401A datasheet G/S/D = pins 1/2/3; S on SYS_SRC, D on SYS (body diode blocks SYS_SRC -> SYS when off); footprint not mirrored. |
 | ☑ | Y1 | KDS 1C208000BC0R (8 MHz, CL = 12 pF, ±20 ppm, SMD3225-4P) ([C57131](https://www.lcsc.com/product-detail/C57131.html)) | `CRYSTAL-SMD_4P-L3.2-W2.5-BL-1` | top | JLC | Verified: KDS datasheet #1/#3 = quartz (diagonal pads, our HSE_IN/HSE_OUT), #2/#4 unconnected inside (tied to GND here); footprint not mirrored. |
-| ☑ | J1 | Pin Header 1x5 2.54 mm ([C358687](https://www.lcsc.com/product-detail/C358687.html)) | `HDR-TH_5P-P2.54-V-M` | top | Hand | Verified: pin 1 (square pad, 3V3) at the west end, ST-Link V2 order, per-pin silk labels. |
-| ☑ | J3 | HX PM2.54-1x20P ZC (1x20 female, square-hole) ([C41417332](https://www.lcsc.com/product-detail/C41417332.html)) | `PinSocket_1x20_P2.54_D1.0` | top | Hand | Verified by fab/verify.py: all 20 pads on the 2090's JP1 pins (0.000 mm, from Adafruit's .brd), every net matches Adafruit's schematic (GND, +5V, CS, D/C, WR, RD high, RST, LITE, D0-D7; touch pins 9-11 open). Only left: the socket tails in the 1.0 mm drill (KiCad's PinSocket drill for 0.64 mm square tails). |
-| ☑ | J4 | HX PM2.54-1x20P ZC (1x20 female, square-hole) ([C41417332](https://www.lcsc.com/product-detail/C41417332.html)) | `PinSocket_1x20_P2.54_D1.0` | top | Hand | Verified by fab/verify.py: all 20 pads on JP2's pins; only pins 1 and 11 (GND) connected, IM0-3 / VCC / 3Vo open as required. |
+| ☑ | J1 | Pin Header 1x5 2.54 mm ([C358687](https://www.lcsc.com/product-detail/C358687.html)) | `HDR-TH_5P-P2.54-V-M` | top | JLC | Verified: pin 1 (square pad, 3V3) at the west end, ST-Link V2 order, per-pin silk labels. |
+| ☑ | J3 | HX PM2.54-1x20P ZC (1x20 female, square-hole) ([C41417332](https://www.lcsc.com/product-detail/C41417332.html)) | `PinSocket_1x20_P2.54_D1.0` | top | JLC | Verified by fab/verify.py: all 20 pads on the 2090's JP1 pins (0.000 mm, from Adafruit's .brd), every net matches Adafruit's schematic (GND, +5V, CS, D/C, WR, RD high, RST, LITE, D0-D7; touch pins 9-11 open). Only left: the socket tails in the 1.0 mm drill (KiCad's PinSocket drill for 0.64 mm square tails). |
+| ☑ | J4 | HX PM2.54-1x20P ZC (1x20 female, square-hole) ([C41417332](https://www.lcsc.com/product-detail/C41417332.html)) | `PinSocket_1x20_P2.54_D1.0` | top | JLC | Verified by fab/verify.py: all 20 pads on JP2's pins; only pins 1 and 11 (GND) connected, IM0-3 / VCC / 3Vo open as required. |
 | ☑ | J5 | Same Sky CES-2704-088L050 (—) | `SolderPad_1x02` | top | Hand | Wire pads for the speaker leads (polarity only affects phase); SPK_P on the square pad. |
 | ☑ | J6 | Vybronics VG0832022D — Ø8 mm coin LRA (—) | `SolderPad_1x02` | top | Hand | Wire pads for the LRA leads (an LRA has no polarity). |
 | ☑ | J7 | TYPE-C-31-M-12 ([C165948](https://www.lcsc.com/product-detail/C165948.html)) | `USB-C_SMD-TYPE-C-31-M-12_1` | top | JLC | Verified: pads carry the standard USB-C names (A1B12 / A4B9 / A5 CC1 / B5 CC2 ...), VBUS / GND / CC wired by name, D+/D-/SBU unrouted (power-only); shell posts bonded solid to GND. |
@@ -99,7 +99,7 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there);
   and especially the 35 **bottom-side** parts (rotation conventions differ most there).
 - **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the I2C / impedance estimates assume it); 1 oz outer;
   min track/space 0.15/0.15 mm; vias 0.45/0.25 mm tented; ENIG recommended (0.5 mm-pitch QFN/LQFP/TSSOP flatness).
-- **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts). Hand-fit after: J1, J3, J4 (sockets),
-  U12 (BT830, back), J5 speaker, J6 LRA wires.
+- **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts) **plus through-hole** (J1 SWD header,
+  J3 / J4 screen sockets - JLC Standard PCBA). Hand-fit after: U12 (BT830, back), J5 speaker and J6 LRA wires.
 - **SW1 (MSK12C02 slide switch):** its datasheet forbids cleaning it with solvents after soldering - tell JLC
   (no washing of that part), and don't flux-clean it by hand.

@@ -150,8 +150,8 @@ with open(os.path.join(HERE, "FOOTPRINT_CHECKLIST.md"), "w", encoding="utf-8") a
             "  and especially the 35 **bottom-side** parts (rotation conventions differ most there).\n"
             "- **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the I2C / impedance estimates assume it); 1 oz outer;\n"
             "  min track/space 0.15/0.15 mm; vias 0.45/0.25 mm tented; ENIG recommended (0.5 mm-pitch QFN/LQFP/TSSOP flatness).\n"
-            "- **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts). Hand-fit after: J1, J3, J4 (sockets),\n"
-            "  U12 (BT830, back), J5 speaker, J6 LRA wires.\n"
+            "- **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts) **plus through-hole** (J1 SWD header,\n"
+            "  J3 / J4 screen sockets - JLC Standard PCBA). Hand-fit after: U12 (BT830, back), J5 speaker and J6 LRA wires.\n"
             "- **SW1 (MSK12C02 slide switch):** its datasheet forbids cleaning it with solvents after soldering - tell JLC\n"
             "  (no washing of that part), and don't flux-clean it by hand.\n")
 print("checklist: fab/FOOTPRINT_CHECKLIST.md,", len(lines), "lines")
