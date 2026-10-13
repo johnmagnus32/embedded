@@ -94,12 +94,15 @@ T(sy, "F", 0.4, [(71.2, 39.3), (71.2, 40.25)])
 T("/buck-boost/BB_L1", "F", 0.8, [(83.45, 38.25), (83.45, 39.0), (84.05, 39.6), P("L2.1")])
 T("/buck-boost/BB_L2", "F", 0.8, [(80.55, 38.25), (80.55, 39.0), (79.95, 39.6), P("L2.2")])
 
-# ---- +3V3 out: U10.4/5 -> C42/C43/C44 bar -> two plane vias (one lands on TP5); FB 0R from the cap bar
+# ---- +3V3 out: U10.4/5 -> C42/C43/C44 bar -> four plane vias (the regulator feeds the whole In2 plane through
+# these; two inside TP5); FB 0R from the cap bar
 p3 = "+3V3"
 T(p3, "F", 0.6, [(80.55, 37.25), (78.25, 37.25)])
 T(p3, "F", 1.0, [P("C42.1"), P("C44.1")])
 for x in (75.78, 77.2):
     VIA(p3, x, 36.35); T(p3, "F", 0.6, [(x, 36.35), (x, 37.3)])
+for x, y in ((74.55, 36.05), (76.5, 35.55)):               # above C44 / C43 (the second in TP5's pad, like 75.78)
+    VIA(p3, x, y); T(p3, "F", 0.6, [(x, y), (x, 37.3)])
 T(p3, "F", 0.4, [P("R24.2"), (78.0, 37.3)])
 T("/buck-boost/BB_FB", "F", 0.25, [P("U10.3"), (79.9, 36.5), P("R24.1")])
 
