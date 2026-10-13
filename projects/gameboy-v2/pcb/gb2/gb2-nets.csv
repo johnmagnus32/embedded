@@ -363,9 +363,9 @@ U9,3,BAT,pwr,BAT
 U9,4,GND,gnd,~{CE} — charge enabled
 U9,5,CHG_EN2,,EN2 — 0 Ω to SYS_SRC
 U9,6,GND,gnd,EN1 — EN1=0/EN2=1 = ILIM-resistor mode
-U9,7,CHG_PGOOD,,~{PGOOD} — open-drain → PC1 + 10k pull-up
+U9,7,CHG_PGOOD,,~{PGOOD} — open-drain → PC2 + 10k pull-up
 U9,8,GND,gnd,VSS
-U9,9,CHG_STAT,,~{CHG} — open-drain → PC2 + 10k pull-up; 2 Hz blink = timer fault
+U9,9,CHG_STAT,,~{CHG} — open-drain → PC1 + 10k pull-up; 2 Hz blink = timer fault
 U9,10,SYS_SRC,pwr,OUT
 U9,11,SYS_SRC,pwr,OUT
 U9,12,CHG_ILIM,,ILIM
@@ -423,7 +423,7 @@ U10,9,BB_L1,,L1
 U10,10,SYS,pwr,VIN
 U10,11,SYS,pwr,VIN
 U10,12,SYS,pwr,EN — on whenever the switch is on
-U10,13,BB_PSYNC,,PS/SYNC — from STM32 PC7; 100k pull-down (low = power-save)
+U10,13,BB_PSYNC,,PS/SYNC — from STM32 PC3; 100k pull-down (low = power-save)
 U10,14,,,PG — power-good unused
 U10,15,GND,gnd,PGND — exposed pad → PGND + vias
 R24,1,BB_FB,,1

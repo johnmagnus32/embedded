@@ -87,6 +87,26 @@ SPECIAL = {
     "U2": "iCE40UP5K QFN-48 (SG48): EP = GND; pin 1 corner.",
     "D1": "LED: cathode (bar on silk) = pad 1 (power LED D1 -> GND; CDONE LED D2 likewise).",
 }
+VERIFIED = {   # checked 2026-10-12 without hardware (fab/verify.py reruns the automated parts)
+    "*IC": "Verified by fab/verify.py: pins number CCW from the top (not mirrored), pin 1 at the corner the footprint name declares. Land pattern is LCSC/EasyEDA's own, the library JLC places from.",
+    "Q1": "Verified: AO3401A datasheet G/S/D = pins 1/2/3; S on SYS_SRC, D on SYS (body diode blocks SYS_SRC -> SYS when off); footprint not mirrored.",
+    "Y1": "Verified: KDS datasheet #1/#3 = quartz (diagonal pads, our HSE_IN/HSE_OUT), #2/#4 unconnected inside (tied to GND here); footprint not mirrored.",
+    "U9": "Verified: pin functions vs TI's BQ24074 table; land pattern vs TI RGT0016C: pads 0.85 x 0.28 (TI 0.6 x 0.24 - longer toe, normal), pitch 0.5, EP 1.7 (TI 1.68).",
+    "U10": "Verified: pin functions vs TI's TPS63021 table; the comb-shaped thermal pad matches TI's DSJ pad (4 PGND fingers at each end); pads 0.25 x 0.7 at 0.5 pitch.",
+    "J3": "Verified by fab/verify.py: all 20 pads on the 2090's JP1 pins (0.000 mm, from Adafruit's .brd), every net matches Adafruit's schematic (GND, +5V, CS, D/C, WR, RD high, RST, LITE, D0-D7; touch pins 9-11 open). Only left: the socket tails in the 1.0 mm drill (KiCad's PinSocket drill for 0.64 mm square tails).",
+    "J4": "Verified by fab/verify.py: all 20 pads on JP2's pins; only pins 1 and 11 (GND) connected, IM0-3 / VCC / 3Vo open as required.",
+    "J8": "Board side verified: pad 1 = BAT with the printed '+' beside it, matching where Adafruit's own chargers put VBAT. Still to do (with the cell, before first plug-in, not before ordering): confirm the red lead meets '+'. If it's reversed, swap the two crimp contacts in the cell's plug - no board change.",
+    "SW2": "Verified against the XKB TS-1187A drawing: A-B and C-D are joined inside the switch, the switch is between the pairs; our pads 1-2 are the A/B pair (same row, 6.0 mm apart), so the copper tie between them is correct. Pad pitch 6.0 x 3.7 matches the datasheet layout.",
+    "SW10": "Verified against the ALPS SKRTLBE010 drawing: pins 1 and 3 joined (GND here), the switch to pin 2 (the button net). The datasheet's no-copper area between the mounting lugs is now a keep-out (route/footprint_keepouts.py). Actuator faces away from pins 1-3 - placed facing out of the board edge (place.py).",
+    "J1": "Verified: pin 1 (square pad, 3V3) at the west end, ST-Link V2 order, per-pin silk labels.",
+    "J7": "Verified: pads carry the standard USB-C names (A1B12 / A4B9 / A5 CC1 / B5 CC2 ...), VBUS / GND / CC wired by name, D+/D-/SBU unrouted (power-only); shell posts bonded solid to GND.",
+    "SW1": "Verified against the MSK12C02-HB drawing: pin 2 is the common (PWR_SW), 1 = the ON throw (GND), 3 open, 4 = shell (GND); terminals sit on the inboard side, so the lever points out of the bottom-left edge. Still to do mechanically: the lever against the shell slot.",
+    "J5": "Wire pads for the speaker leads (polarity only affects phase); SPK_P on the square pad.",
+    "J6": "Wire pads for the LRA leads (an LRA has no polarity).",
+    "TP1": "Bare copper pads, nothing assembled.",
+    "D1": "Pin 1 = cathode in both the LCSC symbol and its footprint (JLC places from the same library); confirm the cathode mark in JLC's 3D preview.",
+    "D3": "SS34: pin 1 = K (to +5V_LCD) in the LCSC symbol and footprint; confirm the cathode band in JLC's 3D preview.",
+}
 def kind(ref):
     p = re.sub(r"\d", "", ref)
     return {"U": 0, "Y": 1, "Q": 1, "D": 1, "J": 2, "SW": 3, "L": 4, "FB": 5, "R": 6, "C": 6, "TP": 7}.get(p, 4)
@@ -113,9 +133,17 @@ with open(os.path.join(HERE, "FOOTPRINT_CHECKLIST.md"), "w", encoding="utf-8") a
     for (sym, lc, i), e in sorted(lines.items(), key=lambda kv: (kv[1]["k"], kv[1]["refs"][0])):
         refs = ", ".join(sorted(e["refs"], key=lambda r: (re.sub(r"\d", "", r), int(re.sub(r"\D", "", r) or 0))))
         notes = [SPECIAL[r] for r in e["refs"] if r in SPECIAL] or [GENERIC[e["k"]]]
+        alias = {"SW3": "SW2", "SW4": "SW2", "SW5": "SW2", "SW6": "SW2", "SW7": "SW2", "SW8": "SW2", "SW9": "SW2",
+                 "SW11": "SW10", "SW12": "SW10", "SW13": "SW10",
+                 **{f"TP{k}": "TP1" for k in range(2, 13)}}
+        ver = list(dict.fromkeys(VERIFIED[alias.get(r, r)] for r in e["refs"] if alias.get(r, r) in VERIFIED)) or ([VERIFIED["*IC"]] if e["k"] == 0 else []) or \
+              (["Standard part: the footprint is LCSC's own for this exact part (easyeda2kicad import), the library JLC places from."]
+               if e["k"] in (4, 5, 6) and sym.startswith("easyeda2kicad") else [])
+        box = "☑" if ver and not any(r == "J8" for r in e["refs"]) else "☐"
+        if ver: notes = [f"**{v}**" if box == "☐" else v for v in ver] if ver else notes
         part = e["part"].replace("|", "/")
         link = f"[{lc}](https://www.lcsc.com/product-detail/{lc}.html)" if lc.startswith("C") else "—"
-        f.write(f"| ☐ | {refs} | {part} ({link}) | `{placed[e['refs'][0]]['Package']}` | {'/'.join(sorted(e['side']))} | {e['src']} | {' '.join(notes)} |\n")
+        f.write(f"| {box} | {refs} | {part} ({link}) | `{placed[e['refs'][0]]['Package']}` | {'/'.join(sorted(e['side']))} | {e['src']} | {' '.join(notes)} |\n")
     f.write("\n## Assembly files (fab/out/, check in JLC's online preview)\n\n"
             "- **Rotations:** easyeda2kicad footprints come from the same EasyEDA library JLC's placement uses, so most need no\n"
             "  offset - but check every polarized part (ICs, diodes, the LED, Q1, the crystal) in JLC's 3D/2D preview,\n"
@@ -123,5 +151,7 @@ with open(os.path.join(HERE, "FOOTPRINT_CHECKLIST.md"), "w", encoding="utf-8") a
             "- **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the I2C / impedance estimates assume it); 1 oz outer;\n"
             "  min track/space 0.15/0.15 mm; vias 0.45/0.25 mm tented; ENIG recommended (0.5 mm-pitch QFN/LQFP/TSSOP flatness).\n"
             "- **Double-sided assembly** (back: MCU / FPGA decap rings, charger parts). Hand-fit after: J1, J3, J4 (sockets),\n"
-            "  U12 (BT830, back), J5 speaker, J6 LRA wires.\n")
+            "  U12 (BT830, back), J5 speaker, J6 LRA wires.\n"
+            "- **SW1 (MSK12C02 slide switch):** its datasheet forbids cleaning it with solvents after soldering - tell JLC\n"
+            "  (no washing of that part), and don't flux-clean it by hand.\n")
 print("checklist: fab/FOOTPRINT_CHECKLIST.md,", len(lines), "lines")
