@@ -1043,6 +1043,13 @@ static void gen_expr1(Node *n) {
 	}
 	case ND_CALL: {
 		if (n->name[0] && !strncmp(n->name, "__builtin_", 10)) { gen_builtin(n); return; }   /* never a real call */
+		/* __attribute__((error/warning("msg"))) on the callee: GCC raises it only for a call that survives, so
+		 * here is the place — a call in a folded-away branch never reaches gen. This is what makes the kernel's
+		 * BUILD_BUG_ON (a guarded call to a function declared __error__) an actual compile-time assertion. */
+		if (n->diag_kind == 2) die("call to '%s' declared with attribute error: %s (line %d, in %s)",
+		                          n->name[0] ? n->name : "(indirect)", n->diag, n->line, cur_gen_func);
+		if (n->diag_kind == 1) warn("call to '%s' declared with attribute warning: %s (line %d, in %s)",
+		                           n->name[0] ? n->name : "(indirect)", n->diag, n->line, cur_gen_func);
 		int nargs = 0; for (Node *a = n->args; a; a = a->next) nargs++;
 		Node **av = malloc((nargs + 1) * sizeof *av); Type **at = malloc((nargs + 1) * sizeof *at);
 		int *pos = malloc((nargs + 1) * sizeof *pos), *vreg = malloc((nargs + 1) * sizeof *vreg);

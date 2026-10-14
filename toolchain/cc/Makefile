@@ -74,6 +74,12 @@ test: $(BUILD)/cc
 	   && [ "$$iq" = "rc=0" ]; then \
 	  echo "PASS implicit declaration: warns by default (as gcc 13), errors under -Werror=, silent under -Wno-"; pass=$$((pass+1)); \
 	else echo "FAIL implicit declaration modes: default[$$iw] werror[$$ie] wno[$$iq]"; fail=$$((fail+1)); fi; \
+	ad=$$($(BUILD)/cc -o $$t/ad.s tests/attr_diag.c 2>&1; echo "rc=$$?"); \
+	adw=$$(printf '%s' "$$ad" | grep -c "attribute warning: emitted on purpose"); \
+	ade=$$(printf '%s' "$$ad" | grep -c "attribute error"); \
+	if [ "$$adw" = 1 ] && [ "$$ade" = 0 ] && printf '%s' "$$ad" | grep -q 'rc=0'; then \
+	  echo "PASS attribute error/warning: raised where the call is EMITTED, so a folded-away call is silent (BUILD_BUG_ON)"; pass=$$((pass+1)); \
+	else echo "FAIL attribute error/warning: want 1 warning + 0 errors + rc=0, got [$$ad]"; fail=$$((fail+1)); fi; \
 	$(BUILD)/cc -mno-unaligned-access -o $$t/ua.s tests/unaligned_access.c; \
 	$(OURAS) -o $$t/ua.o $$t/ua.s && $(OURLD) -Ttext 0x40000000 -o $$t/ua.elf $$t/crt.o $$t/ua.o $(RTLIB) 2>/dev/null; \
 	timeout 10 $(QEMU) -M virt -cpu cortex-a7 -nographic -semihosting -net none -kernel $$t/ua.elf >/dev/null 2>&1; uag=$$?; \

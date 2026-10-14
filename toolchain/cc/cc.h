@@ -184,6 +184,10 @@ typedef struct Node {
 	int twice;                   /* gen: the subtree makes a returns-twice call (setjmp, vfork) */
 	int imm_bad;                 /* ND_ASM immediate operand that isn't a constant: an error if the asm is emitted (a
 	                              * dead `if (__builtin_constant_p(x)) asm(... "i"(x))` branch is dropped first) */
+	int line;                    /* the line this node was parsed on, for a diagnostic raised after parsing */
+	const char *diag; int diag_kind;   /* ND_CALL of a function declared __attribute__((error/warning("msg"))): the
+	                              * message, and 1 = warning / 2 = error, raised iff the call is still EMITTED —
+	                              * same deferral as imm_bad above, which is what makes BUILD_BUG_ON work */
 } Node;
 
 /* Declaration attributes we honor (GCC __attribute__((...))): weak -> .weak binding; used -> never dropped by
@@ -194,6 +198,9 @@ typedef struct Attr { int weak, used, align, pcs, vis, packed, always_inline, gn
 	                   * (SWI/UNDEF). Either way the handler must save every register it touches and return
 	                   * with `ldmfd sp!, {..., pc}^`, which restores CPSR from SPSR. */
 	int ctor, dtor;   /* constructor/destructor: 0 none, -1 no priority, else the priority (its .init_array.NNNNN) */
+	const char *diag; int diag_kind;   /* error("msg") / warning("msg"): calling this function is a diagnostic,
+	                   * 2 = error, 1 = warning. Raised where the call is EMITTED, so a call the dead-branch fold
+	                   * removes is silent — that is the whole mechanism behind the kernel's BUILD_BUG_ON. */
 	char section[IDMAX], alias[IDMAX], cleanup[IDMAX]; } Attr;   /* pcs: 1 = pcs("aapcs") (base PCS even under hard float), 2 = pcs("aapcs-vfp");
                                                                                          * packed: on a member (its alignment 1) or an enum (its smallest type);
                                                                                          * cleanup: a local's scope-exit function (cleanup(fn));

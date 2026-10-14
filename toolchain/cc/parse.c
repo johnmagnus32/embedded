@@ -246,6 +246,8 @@ static Node *nested_address(Ident *nf);
 static Type *fn_type_of(const char *name);
 static int func_unprototyped(const char *name);
 static void sig_attrs(const char *name, const Attr *a);
+static void sig_kr_def(const char *name);
+static int  sig_is_kr_def(const char *name);
 static const Attr *decl_attrs_of(const char *name);
 static int  sig_align(const char *name, int align);
 static int  decl_align(Node *e);
@@ -295,6 +297,7 @@ static void attr_merge(Attr *to, const Attr *a) {
 	if (a->dtor) to->dtor = a->dtor;
 	if (a->section[0]) strcpy(to->section, a->section);
 	if (a->alias[0]) strcpy(to->alias, a->alias);
+	if (a->diag_kind) { to->diag = a->diag; to->diag_kind = a->diag_kind; }
 }
 /* TYPE attributes, parsed by attribute() and applied by whoever parsed the type they follow (declspec, declarator):
  * vector_size(N) makes a GCC vector; mode(M) resizes an integer (or picks a floating type); transparent_union marks
@@ -313,7 +316,7 @@ static int mode_of(const char *m) {   /* an integer mode's byte size; a floating
 static int attr_ignorable(const char *nm) {
 	static const char *const ok[] = {
 		"noreturn", "unused", "maybe_unused", "deprecated", "unavailable", "warn_unused_result", "format", "format_arg",
-		"nonnull", "returns_nonnull", "sentinel", "nonstring", "access", "warning", "error", "designated_init", "fallthrough",
+		"nonnull", "returns_nonnull", "sentinel", "nonstring", "access", "designated_init", "fallthrough",
 		"may_alias", "warn_if_not_aligned", "const", "pure", "malloc", "alloc_size", "alloc_align", "assume_aligned", "leaf",
 		"nothrow", "noinline", "always_inline", "gnu_inline", "flatten", "noclone", "noipa", "hot", "cold",
 		"optimize", "artificial", "externally_visible", "no_reorder", "retain", "nocommon", "tls_model",
@@ -357,6 +360,24 @@ static void attribute(void) {
 			decl_attr.vis = !strcmp(v, "default") ? VIS_DEFAULT : !strcmp(v, "hidden") ? VIS_HIDDEN : !strcmp(v, "internal") ? VIS_INTERNAL
 			              : !strcmp(v, "protected") ? VIS_PROTECTED : (die("parse: unknown visibility \"%s\"", v), 0);
 			tk = tk->next; expect(")");
+		}
+		/* error("msg") / warning("msg"): calling this function is a diagnostic. GCC raises it only if the call
+		 * SURVIVES — which is how include/linux/compiler_types.h builds BUILD_BUG_ON out of a guarded call to a
+		 * function declared __attribute__((__error__(msg))). We have no optimizer, but late_fold_stmts drops the
+		 * untaken branch of a constant `if`, which is exactly the fold this needs, so the semantics come out the
+		 * same: mark the call here, raise it in gen where the call is actually emitted.
+		 * These two used to sit in attr_ignorable, under the claim that a diagnostic attribute cannot affect
+		 * generated code. For 4210 BUILD_BUG_ON sites in the kernel we compile, dropping it meant the assertion
+		 * checked nothing and a failure degraded to an undefined __compiletime_assert_NNN at the final link. */
+		else if ((!strcmp(nm, "error") || !strcmp(nm, "warning")) && consume("(")) {
+			if (tk->kind != TK_STR) die("parse: __attribute__((%s)) needs a string (line %d)", nm, tk->line);
+			size_t bl = 0; char *msg = calloc(1, 1);
+			while (tk->kind == TK_STR) {   /* adjacent string literals concatenate, as anywhere else */
+				size_t n = strlen(tk->sval); msg = realloc(msg, bl + n + 1);
+				memcpy(msg + bl, tk->sval, n); bl += n; msg[bl] = 0; tk = tk->next;
+			}
+			decl_attr.diag = msg; decl_attr.diag_kind = nm[0] == 'e' ? 2 : 1;
+			expect(")");
 		}
 		else if ((!strcmp(nm, "section") || !strcmp(nm, "alias")) && consume("(")) {
 			char buf[IDMAX] = ""; size_t bl = 0;
@@ -921,7 +942,9 @@ static int is_typename(void) {   /* does a declaration start at the cursor? */
 	    || is("__extension__") || is("__auto_type") || is("auto")
 	    || (tk->kind == TK_IDENT && typedef_find(tk->text));
 }
-static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; return n; }
+/* Every node remembers the line it was built on, so a pass that runs after parsing can still name a position.
+ * (The line is the PREPROCESSED file's: cpp emits no linemarkers yet, so there is nothing better to record.) */
+static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; n->line = tk ? tk->line : 0; return n; }
 static Node *binary(NodeKind k, Node *l, Node *r) { Node *n = node(k); n->lhs = l; n->rhs = r; return n; }
 static Node *unary(NodeKind k, Node *e) { Node *n = node(k); n->lhs = e; return n; }
 static Node *num(long v) { Node *n = node(ND_NUM); n->val = v; return n; }
@@ -1239,7 +1262,42 @@ static Node *cplx_cond(Node *n) {   /* c ? a : b with a complex arm: both arms i
 	n->then = cplx_convert(t, n->then); n->els = cplx_convert(t, n->els); n->type = t;
 	return n;
 }
+/* The callee must BE callable, and the argument count must match the prototype. Both used to go unchecked:
+ *
+ *  - `int x; x(1,2);` compiled to `movw r0,#:lower16:x / ldr r0,[r0] / blx r12` — it loaded the integer's VALUE
+ *    and branched to it. GCC: "called object 'x' is not a function or function pointer".
+ *  - `int a3(int,int,int); a3(1);` emitted `str r0,[sp,#0]` then `pop {r0,r1,r2,r3}` then `bl a3`, handing the
+ *    callee three uninitialised stack words as arguments. GCC: "too few arguments to function 'a3'".
+ *
+ * Called from conv_args rather than the postfix-call site, because a named call reaches ND_CALL through five
+ * different paths (nested function, inlined fn-ptr parameter bound to &f or to a constant, a local fn-ptr that
+ * shadows, a declared function) and conv_args is their funnel — plus once directly in the named-call path,
+ * ahead of the const_call/inline_expand folds, which return without ever reaching conv_args.
+ * variadic == 2 is an old-style `int f();` — the count is unknown BY DESIGN there, and runit and BusyBox still
+ * declare functions that way, so it must not be checked. */
+static void check_callable(Node *call) {
+	Type *ft;
+	if (call->lhs) {
+		ft = type_of(call->lhs);
+		/* fn_ret FIRST, then unwrap: `(*fp)(3)` derefs to the function type itself, and a function type is
+		 * pointer-shaped here, so unwrapping first would hand back its RETURN type and reject a valid call. */
+		if (ft && !ft->fn_ret && is_ptr_like(ft)) ft = ft->base;
+		if (!ft || !ft->fn_ret)
+			die("parse: called object is not a function or function pointer (line %d)", call->line);
+	} else ft = func_declared(call->name) ? fn_type_of(call->name) : NULL;   /* implicitly declared: no prototype */
+	if (!ft || !ft->fn_ret || ft->variadic == 2) return;        /* no prototype to check against */
+	if (!call->lhs && sig_is_kr_def(call->name)) return;        /* nor does an old-style definition give one */
+	int n = 0; for (Node *a = call->args; a; a = a->next) n++;
+	const char *who = call->name[0] ? call->name : "a function pointer";
+	if (n < ft->nparams)
+		die("parse: too few arguments to function '%s' (%d given, %s%d expected) (line %d)",
+		    who, n, ft->variadic ? "at least " : "", ft->nparams, call->line);
+	if (n > ft->nparams && !ft->variadic)
+		die("parse: too many arguments to function '%s' (%d given, %d expected) (line %d)",
+		    who, n, ft->nparams, call->line);
+}
 static Node *conv_args(Node *call) {   /* a prototyped call: complex arguments converted to their parameters' types */
+	check_callable(call);
 	Type *ft = call->lhs ? call->lhs->type : NULL; if (ft && is_ptr(ft)) ft = ft->base; if (ft && !ft->fn_ret) ft = NULL;
 	int i = 0;
 	for (Node **ap = &call->args; *ap; ap = &(*ap)->next, i++) {
@@ -1778,9 +1836,14 @@ static Node *builtin_lower(char *name) {
 			}
 			int pk = peak_begin(); n->args = call_args(); args_peak = peak_end(pk);   /* (the slots its arguments' code used) */
 			if (!n->lhs) n->unproto = func_unprototyped(n->name);
+			check_callable(n);   /* BEFORE the two folds below: a const_call/inline_expand return never reaches conv_args */
 			if (!n->lhs && !via_builtin) { ConstFn *cf = strmap_get(&const_fns, n->name); if (cf) return const_call(cf, n->args); }
 			if (!n->lhs && !via_builtin) { InlineDef *id = strmap_get(&inline_defs, n->name); if (id) return inline_expand(name, id, n->args);
 				InlineDef *cp = strmap_get(&cp_defs, n->name); if (cp && cp_worth(cp, n->args)) return inline_expand(name, cp, n->args); }
+			/* A direct call of a function declared error()/warning() carries its message to gen, which raises it
+			 * only if it emits the call — after late_fold_stmts has dropped any constant-false branch. */
+			if (n->name[0]) { const Attr *da = decl_attrs_of(n->name);
+				if (da && da->diag_kind) { n->diag = da->diag; n->diag_kind = da->diag_kind; } }
 			return conv_args(n);
 		}
 		{ Ident *nf = ident_find(name); if (nf && nf->kind == ID_NESTFN) return nested_address(nf);
@@ -1941,6 +2004,10 @@ static Node *unary_expr(void) {
 		kv_lvalue(); Node *e = unary_expr(); kv_poison(e);   /* (its value can change behind any store now) */
 		add_type(e);
 		if (e->sso && e->type->kind != TY_ARRAY) die("parse: address of a scalar with reverse storage order (line %d)", tk->line);   /* GCC: an error */
+		/* `&f` on a FUNCTION is the identity: naming a function already yields its address (6.3.2.1p4), and the
+		 * primary-expression path has done exactly that, so wrapping it again would build ND_ADDR(ND_ADDR(f)) —
+		 * a pointer to a pointer to the function. `(&f)()` then looked like a call through the wrong type. */
+		if (e->kind == ND_ADDR && e->lhs && e->lhs->kind == ND_GVAR && e->lhs->type && e->lhs->type->fn_ret) return e;
 		return unary(ND_ADDR, e);
 	}
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
@@ -2937,6 +3004,11 @@ static void resolve_goto_cleanups(int g0, int l0) {   /* this function's: gotos 
 	for (int i = g0; i < nfn_gotos; i++) {
 		Node *g = fn_gotos[i].n; Cleanup *from = fn_gotos[i].at, *to = NULL; int found = 0;
 		for (int k = l0; k < nfn_labels && !found; k++) if (!strcmp(fn_labels[k].n->name, g->name)) { to = fn_labels[k].at; found = 1; }
+		/* The whole body is parsed by now, so a label still missing is missing. We used to emit the branch
+		 * anyway: `goto nowhere` became `b .Ll_f.nowhere`, and as then PROMOTED that undefined .L local to an
+		 * undefined GLOBAL symbol, so the only complaint came from ld, naming a symbol the source never wrote.
+		 * (`goto *p` carries its target in lhs and has no name to resolve.) */
+		if (!found && !g->lhs) die("parse: label '%s' used but not defined (line %d)", g->name, g->line);
 		if (!found || from == to) continue;
 		Cleanup *e = from; while (e && e != to) e = e->up;
 		if (e != to) die("parse: goto %s jumps into the scope of a cleanup variable", g->name);
@@ -3430,6 +3502,13 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 	Aapcs early; int early_sv = 0;                           /* their provisional placement, one at a time */
 	Attr fattr = decl_attr;   /* parameter attributes are the params' own */
 	int unproto = is(")");   /* `f()`: parameters unknown to callers (default promotions) */
+	/* An IDENTIFIER LIST — `foo(a, b) { }`, with or without K&R declarations below — is an old-style definition
+	 * and provides no prototype either (C11 6.7.6.3p14, 6.9.1p7), so a caller's argument COUNT is unchecked:
+	 * gcc compiles `foo(a,b){...} main(){foo();}` without complaint. It is NOT folded into `unproto` because the
+	 * parameter TYPES are known here (int by default, or whatever the declarations below say) and argument
+	 * conversion should keep using them. In a valid prototype every parameter begins with declaration
+	 * specifiers, so an identifier that is not a typename can only be an identifier list. */
+	int kr_list = !unproto && tk->kind == TK_IDENT && !is_typename();
 	if (is("void") && !strcmp(tk->next->text, ")")) tk = tk->next;   /* (void) = no params */
 	else if (!is(")")) {
 		in_params++;
@@ -3474,6 +3553,7 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 	Node *vla_prologue = take_vla_pending();   /* VLA parameter bounds (`int a[n][m]`, `x[i++]`): evaluated at entry */
 	f->nparams = np;
 	{ Type **pts = malloc((np ? np : 1) * sizeof *pts); for (int i = 0; i < np; i++) pts[i] = prm[i].ty; record_func_sig(name, ret, pts, np, f->variadic ? 1 : unproto ? 2 : 0); free(pts); }   /* publish the signature for callers */
+	if (kr_list) sig_kr_def(name);   /* old-style definition: no prototype for callers (see kr_list above) */
 	sig_attrs(name, &decl_attr);
 	sig_align(name, decl_attr.align);                     /* aligned(N) on any declaration applies to the definition */
 	/* Bind params per AAPCS (aapcs_layout, the same placement callers use; an sret function's hidden buffer
@@ -4317,7 +4397,10 @@ static Init *global_init(Type *ty) {
  * nodes the right width; the parameter types let a caller place/widen each argument per AAPCS (a 64-bit
  * param needs its arg in an even register pair, and an int arg to a 64-bit param must be widened).
  * Populated for every prototype/definition. */
-typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs, align; Attr attr; int ext_decl; } FuncSig;   /* ext_decl: some
+typedef struct { Type *ret; Type **params; int nparams; int variadic, base_pcs, align; Attr attr; int ext_decl;
+	int kr_def; } FuncSig;   /* kr_def: defined with an IDENTIFIER LIST (old style). The parameter types are known, so
+                   * arguments still convert, but C gives such a definition no prototype — so the argument COUNT
+                   * is unchecked, as in GCC. */   /* ext_decl: some
                                      * file-scope declaration was not `inline` without extern (so this TU defines it externally) */   /* align: aligned(N) */   /* variadic: 0 = prototype, 1 = `...`, 2 = params unknown */
 static StrMap func_sigs;                                 /* name -> its FuncSig */
 static FuncSig *sig_of(const char *name) { return name && name[0] ? strmap_get(&func_sigs, name) : NULL; }
@@ -4374,6 +4457,8 @@ static void sig_note_decl(const char *name, int sc) {
 	if (!(sc & SC_INLINE) || (sc & (SC_EXTERN | SC_STATIC))) f->ext_decl = 1;
 }
 static int sig_inline_only(const char *name) { FuncSig *f = sig_of(name); return f && !f->ext_decl; }
+static void sig_kr_def(const char *name) { FuncSig *f = sig_of(name); if (f) f->kr_def = 1; }
+static int sig_is_kr_def(const char *name) { FuncSig *f = sig_of(name); return f && f->kr_def; }
 static void sig_attrs(const char *name, const Attr *a) {   /* a function declaration's attributes: pcs(...) -> its calls; all kept for copy() */
 	FuncSig *f = sig_of(name); if (!f) return;
 	if (a->pcs) f->base_pcs = a->pcs == 1;
@@ -4430,10 +4515,17 @@ Func *parse(Token *tok) {
 			{"__builtin_return_address",vp,ui}, {"__builtin_frame_address",vp,ui}, {"__builtin_extract_return_addr",vp,vp},
 			{"__builtin_thread_pointer",vp,NULL},
 			{"__builtin_fabs",ty_double,ty_double}, {"__builtin_fabsf",ty_float,ty_float}, {"__builtin_fabsl",ty_double,ty_double},
-			{"__builtin_copysign",ty_double,ty_double}, {"__builtin_copysignf",ty_float,ty_float}, {"__builtin_copysignl",ty_double,ty_double},
-			{"__builtin_signbit",ty_int,NULL}, {"__builtin_signbitf",ty_int,ty_float}, {"__builtin_signbitl",ty_int,ty_double},
+			{"__builtin_signbit",ty_int,ty_double}, {"__builtin_signbitf",ty_int,ty_float}, {"__builtin_signbitl",ty_int,ty_double},
 		};
 		for (unsigned i = 0; i < sizeof bt / sizeof *bt; i++) { Type *pt[1] = { bt[i].p }; record_func_sig(bt[i].n, bt[i].r, pt, bt[i].p ? 1 : 0, 0); }
+		/* copysign takes TWO arguments (magnitude, sign), so it cannot live in the one-parameter table above —
+		 * it was registered there with nparams = 1, which left its second argument with no declared type to
+		 * convert to. __builtin_signbit was likewise entered with no parameter at all. Both only surfaced once
+		 * calls started being checked against their prototype. */
+		Type *f2[2] = { ty_float, ty_float }, *d2[2] = { ty_double, ty_double };
+		record_func_sig("__builtin_copysign", ty_double, d2, 2, 0);
+		record_func_sig("__builtin_copysignf", ty_float, f2, 2, 0);
+		record_func_sig("__builtin_copysignl", ty_double, d2, 2, 0);
 		Type *f3[3] = { ty_float, ty_float, ty_float }, *d3[3] = { ty_double, ty_double, ty_double };   /* fused multiply-add */
 		record_func_sig("__builtin_fma", ty_double, d3, 3, 0); record_func_sig("__builtin_fmaf", ty_float, f3, 3, 0); record_func_sig("__builtin_fmal", ty_double, d3, 3, 0);
 		Type *cc2[2] = { vp, vp };   /* the instruction cache over [begin, end): the runtime's __clear_cache (GCC: a libgcc call) */
