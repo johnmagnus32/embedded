@@ -10,6 +10,10 @@
 #include <ctype.h>
 #include "cc.h"
 
+/* WHERE THE TEXT CAME FROM (see marker() below): the mapping cpp's line markers give us. */
+const char *src_file;                  /* the original file the current text came from (NULL: none seen) */
+static int src_bias;                   /* reported line = physical line + src_bias */
+
 /* One UTF-8 sequence at p -> *cp; returns its length (an invalid lead byte is taken as one raw byte). */
 static int utf8_decode(const char *p, unsigned *cp) {
 	const unsigned char *u = (const unsigned char *)p;
@@ -98,58 +102,94 @@ static void pragma(const char *p, const char *eol, int line) {
 		if (push || pop) { q = skip_blank(a + k); if (*q == ',') q = skip_blank(q + 1); }
 		int val = -1;
 		if (isdigit((unsigned char)*q)) { val = (int)strtol(q, (char **)&q, 0); q = skip_blank(q); }
-		else if (isalpha((unsigned char)*q) || *q == '_') die("lex: #pragma pack with an identifier is not supported (line %d)", line);
-		if (*q != ')') die("lex: #pragma pack: malformed (line %d)", line);
+		else if (isalpha((unsigned char)*q) || *q == '_') die_atl(src_file, line + src_bias, "lex: #pragma pack with an identifier is not supported");
+		if (*q != ')') die_atl(src_file, line + src_bias, "lex: #pragma pack: malformed");
 		if (val >= 0 && val != 0 && val != 1 && val != 2 && val != 4 && val != 8 && val != 16)
-			die("lex: #pragma pack: alignment must be a small power of two, not %d (line %d)", val, line);
+			die_atl(src_file, line + src_bias, "lex: #pragma pack: alignment must be a small power of two, not %d", val);
 		if (push) { if (npack == 64) die("lex: #pragma pack: push too deep"); pack_stack[npack++] = pack_cur; if (val >= 0) pack_cur = val; }
-		else if (pop) { if (val >= 0) die("lex: #pragma pack(pop, n) is not supported (line %d)", line); if (npack) pack_cur = pack_stack[--npack]; }
+		else if (pop) { if (val >= 0) die_atl(src_file, line + src_bias, "lex: #pragma pack(pop, n) is not supported"); if (npack) pack_cur = pack_stack[--npack]; }
 		else pack_cur = val < 0 ? 0 : val;                  /* pack() : the default */
 	} else if (IS("weak")) {   /* weak NAME [= TARGET] */
-		size_t k; const char *a = word(q, &k); if (!k) die("lex: #pragma weak: expected a name (line %d)", line);
+		size_t k; const char *a = word(q, &k); if (!k) die_atl(src_file, line + src_bias, "lex: #pragma weak: expected a name");
 		q = skip_blank(a + k);
-		if (*q == '=') { size_t tk2; const char *t = word(skip_blank(q + 1), &tk2); if (!tk2) die("lex: #pragma weak: expected a target (line %d)", line); pname_add(&pragma_weaks, a, k, t, tk2); }
+		if (*q == '=') { size_t tk2; const char *t = word(skip_blank(q + 1), &tk2); if (!tk2) die_atl(src_file, line + src_bias, "lex: #pragma weak: expected a target"); pname_add(&pragma_weaks, a, k, t, tk2); }
 		else pname_add(&pragma_weaks, a, k, NULL, 0);
 	} else if (IS("redefine_extname")) {
 		size_t k1, k2; const char *a = word(q, &k1), *b = word(skip_blank(a + k1), &k2);
-		if (!k1 || !k2) die("lex: #pragma redefine_extname: expected two names (line %d)", line);
+		if (!k1 || !k2) die_atl(src_file, line + src_bias, "lex: #pragma redefine_extname: expected two names");
 		pname_add(&pragma_redefines, a, k1, b, k2);
 	} else if (IS("GCC")) {
 		size_t k; const char *a = word(q, &k); q = skip_blank(a + k);
 		#define ISA(s) (k == strlen(s) && !strncmp(a, s, k))
 		if (ISA("visibility")) {
 			size_t k2; const char *op = word(q, &k2); q = skip_blank(op + k2);
-			if (k2 == 3 && !strncmp(op, "pop", 3)) { if (!nvis) die("lex: #pragma GCC visibility pop with no push (line %d)", line); nvis--; }
+			if (k2 == 3 && !strncmp(op, "pop", 3)) { if (!nvis) die_atl(src_file, line + src_bias, "lex: #pragma GCC visibility pop with no push"); nvis--; }
 			else if (k2 == 4 && !strncmp(op, "push", 4)) {
-				if (*q != '(') die("lex: #pragma GCC visibility push: expected '(' (line %d)", line);
+				if (*q != '(') die_atl(src_file, line + src_bias, "lex: #pragma GCC visibility push: expected '('");
 				size_t k3; const char *v = word(skip_blank(q + 1), &k3);
 				int vis = k3 == 7 && !strncmp(v, "default", 7) ? VIS_DEFAULT : k3 == 6 && !strncmp(v, "hidden", 6) ? VIS_HIDDEN
 				        : k3 == 8 && !strncmp(v, "internal", 8) ? VIS_INTERNAL : k3 == 9 && !strncmp(v, "protected", 9) ? VIS_PROTECTED : 0;
-				if (!vis) die("lex: #pragma GCC visibility push: unknown visibility (line %d)", line);
+				if (!vis) die_atl(src_file, line + src_bias, "lex: #pragma GCC visibility push: unknown visibility");
 				if (nvis == 64) die("lex: #pragma GCC visibility: push too deep");
 				vis_stack[nvis++] = vis;
-			} else die("lex: #pragma GCC visibility: expected push or pop (line %d)", line);
-		} else if (ISA("target") || ISA("pch_preprocess")) die("lex: #pragma GCC %.*s is not supported (line %d)", (int)k, a, line);
+			} else die_atl(src_file, line + src_bias, "lex: #pragma GCC visibility: expected push or pop");
+		} else if (ISA("target") || ISA("pch_preprocess")) die_atl(src_file, line + src_bias, "lex: #pragma GCC %.*s is not supported", (int)k, a);
 		/* diagnostic optimize push_options pop_options reset_options unroll ivdep novector system_header poison
 		 * dependency warning error, and GCC pragmas we don't know: nothing to do in the code */
 		#undef ISA
-	} else if (IS("scalar_storage_order")) die("lex: #pragma scalar_storage_order is not supported (line %d)", line);
+	} else if (IS("scalar_storage_order")) die_atl(src_file, line + src_bias, "lex: #pragma scalar_storage_order is not supported");
 	else if (IS("message")) fprintf(stderr, "cc: note: #pragma message: %s\n", q);
 	/* STDC ..., omp / acc (no -fopenmp), and unknown pragmas: ignored, as GCC does */
 	#undef IS
+}
+/* WHERE THE TEXT CAME FROM. cpp writes `# <line> "<file>" [flags]` at every point the original position stops
+ * following on from the last one; this is what turns "line 6" in a preprocessed temporary into widget.h:3.
+ * The markers used to be skipped, so every diagnostic named a line in a file the driver had already deleted,
+ * and no filename at all. src_file/src_bias are the current mapping: reported line = physical + src_bias.
+ * Flag 1 means "entering a file" and 2 "returning to one"; we keep the chain of files we are inside so a
+ * diagnostic can print GCC's `In file included from ...` trail. */
+#define INCDEPTH 64
+static struct { const char *file; int line; } inc_stack[INCDEPTH];
+static int inc_depth;
+const char *lex_file(void) { return src_file; }
+int lex_inc_depth(void) { return inc_depth; }
+const char *lex_inc_file(int i) { return i < inc_depth ? inc_stack[i].file : NULL; }
+int lex_inc_line(int i) { return i < inc_depth ? inc_stack[i].line : 0; }
+static const char *marker(const char *p, const char *eol, int phys_line) {
+	p = skip_blank(p);
+	long n = strtol(p, (char **)&p, 10);
+	p = skip_blank(p);
+	if (*p == '"') {                            /* `# N "file"` — a bare `# N` keeps the current file */
+		const char *b = ++p; while (*p && *p != '"' && p < eol) p++;
+		size_t len = (size_t)(p - b);
+		char *f = malloc(len + 1); memcpy(f, b, len); f[len] = 0;
+		int flag = 0;
+		if (*p == '"') { const char *q = skip_blank(p + 1); if (*q == '1') flag = 1; else if (*q == '2') flag = 2; }
+		if (flag == 1 && inc_depth < INCDEPTH) {   /* entering: remember where we came from */
+			inc_stack[inc_depth].file = src_file;
+			inc_stack[inc_depth].line = phys_line + src_bias;   /* the #include's own line */
+			inc_depth++;
+		} else if (flag == 2 && inc_depth > 0) inc_depth--;
+		src_file = f;
+	}
+	/* the line AFTER this marker is line n, and the marker itself sits on phys_line */
+	src_bias = (int)n - (phys_line + 1);
+	return eol;
 }
 static const char *directive(const char *p, int line) {   /* p just past the '#'; returns the end of its line */
 	const char *eol = p; while (*eol && *eol != '\n') eol++;
 	p = skip_blank(p);
 	size_t n; const char *w = word(p, &n);
-	if (isdigit((unsigned char)*p) || (n == 4 && !strncmp(w, "line", 4)) || p == eol) return eol;   /* a line marker; `#` alone */
+	if (isdigit((unsigned char)*p)) return marker(p, eol, line);                        /* `# N "file"` */
+	if ((n == 4 && !strncmp(w, "line", 4))) return marker(skip_blank(w + 4), eol, line); /* `#line N "file"` */
+	if (p == eol) return eol;                                                           /* `#` alone */
 	if (n == 6 && !strncmp(w, "pragma", 6)) { pragma(w + 6, eol, line); return eol; }
 	if (n == 5 && !strncmp(w, "ident", 5)) {                 /* #ident "string" -> .ident */
 		const char *s = skip_blank(w + 5), *e = eol; while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r')) e--;
 		if (*s != '"' || e - s < 2 || e[-1] != '"') die("lex: #ident: expected a string on line %d", line);
 		pname_add(&idents, s, e - s, NULL, 0); return eol;
 	}
-	die("lex: unexpected #%.*s directive in preprocessed input (line %d)", (int)(n ? n : 1), n ? w : p, line);
+	die_atl(src_file, line + src_bias, "lex: unexpected #%.*s directive in preprocessed input", (int)(n ? n : 1), n ? w : p);
 	return eol;
 }
 /* Token lexemes: copied whole into an append-only arena (tokens live as long as the compile) */
@@ -159,7 +199,7 @@ static const char *tok_text(const char *s, size_t n) {
 	char *d = tx_arena; memcpy(d, s, n); d[n] = 0; tx_arena += n + 1; tx_left -= n + 1; return d;
 }
 static Token *new_tok(TokKind kind, int line) {
-	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line; t->text = "";
+	Token *t = calloc(1, sizeof *t); t->kind = kind; t->line = line + src_bias; t->file = src_file; t->text = "";
 	t->pack = (unsigned char)pack_cur; t->vis = nvis ? (unsigned char)vis_stack[nvis - 1] : 0;
 	return t;
 }

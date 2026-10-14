@@ -14,7 +14,31 @@
 #include <pthread.h>
 #include "cc.h"
 
-void warn(const char *fmt, ...) {   /* a diagnostic that does NOT stop the compile (gcc's default for some) */
+/* DIAGNOSTICS WITH A PLACE. Without cpp's line markers every message named a line in the preprocessed
+ * temporary the driver then deleted, and no file: a missing semicolon in widget.h:3 came out as "(line 6)".
+ * These print GCC's shape — the include chain, then `file:line: error: ...` — from the position recorded on
+ * the token. Locations are file:line only: a column would need the original line's text, which we do not keep,
+ * and GCC's columns count tab stops rather than bytes, so a wrong column is worse than none. */
+static void chain(void) {   /* GCC's `In file included from a.c:3,\n                 from b.h:7:` */
+	for (int i = 0; i < lex_inc_depth(); i++) {
+		const char *f = lex_inc_file(i); if (!f) continue;
+		fprintf(stderr, "%s %s:%d%s\n", i ? "                 from" : "In file included from",
+		        f, lex_inc_line(i), i + 1 < lex_inc_depth() ? "," : ":");
+	}
+}
+static void where(const char *file, int line) {
+	if (file) { chain(); fprintf(stderr, "%s:%d: ", file, line); }
+	else fputs("cc: ", stderr);
+}
+void warn_atl(const char *file, int line, const char *fmt, ...) {
+	va_list ap; va_start(ap, fmt);
+	where(file, line); fputs("warning: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap);
+}
+void die_atl(const char *file, int line, const char *fmt, ...) {
+	va_list ap; va_start(ap, fmt);
+	where(file, line); fputs("error: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
+}
+void warn(const char *fmt, ...) {   /* no position available (driver-level, or input with no line markers) */
 	va_list ap; va_start(ap, fmt);
 	fputs("cc: warning: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap);
 }

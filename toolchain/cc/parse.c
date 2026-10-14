@@ -87,8 +87,8 @@ static int map_label(char *name) {
 /* ---- token helpers ------------------------------------------------------------------------------- */
 static int is(const char *s)     { return (tk->kind == TK_PUNCT || tk->kind == TK_KW) && !strcmp(tk->text, s); }
 static int consume(const char *s){ if (is(s)) { tk = tk->next; return 1; } return 0; }
-static void expect(const char *s){ if (!consume(s)) die("parse: expected '%s' but got '%s' (line %d)", s, tk->text, tk->line); }
-static void ident(char *out)     { if (tk->kind != TK_IDENT) die("parse: expected identifier, got '%s' (line %d)", tk->text, tk->line);
+static void expect(const char *s){ if (!consume(s)) die_at(tk, "parse: expected '%s' but got '%s'", s, tk->text); }
+static void ident(char *out)     { if (tk->kind != TK_IDENT) die_at(tk, "parse: expected identifier, got '%s'", tk->text);
                                    idcpy(out, tk->text); tk = tk->next; }
 
 /* ---- scopes (C11 6.2.1) ------------------------------------------------------------------------- */
@@ -174,7 +174,7 @@ static Node *local_ref(const char *name) {   /* the node for a block-scope name:
 	idcpy(n->name, name); n->offset = locals[i].offset; strncpy(n->reg, locals[i].reg, 7); n->vla_obj = locals[i].vla;
 	if (locals[i].pending) { if (npend_refs == pend_refs_cap) pend_refs = realloc(pend_refs, (pend_refs_cap = pend_refs_cap ? 2 * pend_refs_cap : 16) * sizeof *pend_refs); pend_refs[npend_refs++] = n; }
 	if (d->depth < fn_depth) {   /* an enclosing function's: in its frame, reached through the static chain */
-		if (n->reg[0]) die("parse: nested function uses '%s', a register variable of the enclosing function (line %d)", name, tk->line);
+		if (n->reg[0]) die_at(tk, "parse: nested function uses '%s', a register variable of the enclosing function", name);
 		n->chain = fn_depth - d->depth;
 	}
 	return n;
@@ -267,12 +267,12 @@ int is_alias_target(const char *name) { return strmap_get(&alias_targets, name) 
 const char *asm_name(const char *name) { const char *a = strmap_get(&asm_labels, name); return a ? a : name; }
 static void asm_label_for(const char *name) {   /* `asm ( "string"... )`, the `asm` consumed */
 	expect("("); char buf[128]; size_t bl = 0; buf[0] = 0;
-	if (tk->kind != TK_STR) die("parse: an asm label needs a string (line %d)", tk->line);
-	while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); if (bl + n >= sizeof buf) die("parse: asm label too long (line %d)", tk->line); memcpy(buf + bl, tk->sval, n); bl += n; buf[bl] = 0; tk = tk->next; }
+	if (tk->kind != TK_STR) die_at(tk, "parse: an asm label needs a string");
+	while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); if (bl + n >= sizeof buf) die_at(tk, "parse: asm label too long"); memcpy(buf + bl, tk->sval, n); bl += n; buf[bl] = 0; tk = tk->next; }
 	expect(")");
 	const char *old = strmap_get(&asm_labels, name);
-	if (old && strcmp(old, buf)) die("parse: '%s' relabeled: asm(\"%s\") after asm(\"%s\") (line %d)", name, buf, old, tk->line);
-	if (!buf[0]) die("parse: an empty asm label for '%s' (line %d)", name, tk->line);
+	if (old && strcmp(old, buf)) die_at(tk, "parse: '%s' relabeled: asm(\"%s\") after asm(\"%s\")", name, buf, old);
+	if (!buf[0]) die_at(tk, "parse: an empty asm label for '%s'", name);
 	if (!old) strmap_put(&asm_labels, strdup(name), strdup(buf));
 }
 static Gvar *add_global(void);
@@ -308,7 +308,7 @@ static int mode_of(const char *m) {   /* an integer mode's byte size; a floating
 	char b[IDMAX]; size_t L = strlen(m);
 	if (L > 4 && !strncmp(m, "__", 2) && !strcmp(m + L - 2, "__")) snprintf(b, sizeof b, "%.*s", (int)(L - 4), m + 2); else snprintf(b, sizeof b, "%s", m);
 	for (unsigned i = 0; i < sizeof md / sizeof *md; i++) if (!strcmp(b, md[i].n)) return md[i].v;
-	die("parse: unsupported mode(%s) (line %d)", m, tk->line); return 0;
+	die_at(tk, "parse: unsupported mode(%s)", m); return 0;
 }
 /* Attributes with no effect on the code this compiler generates — optimization hints, diagnostics, sanitizer and
  * instrumentation controls: accepted and dropped (with any payload). An attribute neither handled nor listed here
@@ -341,7 +341,7 @@ static void attribute(void) {
 		else if (!strcmp(nm, "always_inline")) decl_attr.always_inline = 1;
 		else if (!strcmp(nm, "gnu_inline")) decl_attr.gnu_inline = 1;
 		else if (!strcmp(nm, "pcs") && consume("(")) {   /* the RTABI helpers are pcs("aapcs"): core-register args/results under hard float */
-			if (tk->kind != TK_STR) die("parse: __attribute__((pcs)) needs a string (line %d)", tk->line);
+			if (tk->kind != TK_STR) die_at(tk, "parse: __attribute__((pcs)) needs a string");
 			if (!strcmp(tk->sval, "aapcs")) decl_attr.pcs = 1; else if (!strcmp(tk->sval, "aapcs-vfp")) decl_attr.pcs = 2;
 			else die("parse: unknown pcs \"%s\"", tk->sval);
 			tk = tk->next; expect(")");
@@ -350,12 +350,12 @@ static void attribute(void) {
 		else if (!strcmp(nm, "returns_twice")) decl_attr.returns_twice = 1;
 		else if (!strcmp(nm, "vector_size") && consume("(")) {
 			pend_vsize = eval_const(assign()); expect(")");
-			if (pend_vsize <= 0) die("parse: vector_size(%ld) (line %d)", pend_vsize, tk->line);
+			if (pend_vsize <= 0) die_at(tk, "parse: vector_size(%ld)", pend_vsize);
 		}
 		else if (!strcmp(nm, "mode") && consume("(")) { char m[IDMAX]; ident(m); expect(")"); pend_mode = mode_of(m); }
 		else if (!strcmp(nm, "transparent_union")) pend_tunion = 1;
 		else if (!strcmp(nm, "visibility") && consume("(")) {   /* the symbol's ELF visibility (st_other) */
-			if (tk->kind != TK_STR) die("parse: __attribute__((visibility)) needs a string (line %d)", tk->line);
+			if (tk->kind != TK_STR) die_at(tk, "parse: __attribute__((visibility)) needs a string");
 			const char *v = tk->sval;
 			decl_attr.vis = !strcmp(v, "default") ? VIS_DEFAULT : !strcmp(v, "hidden") ? VIS_HIDDEN : !strcmp(v, "internal") ? VIS_INTERNAL
 			              : !strcmp(v, "protected") ? VIS_PROTECTED : (die("parse: unknown visibility \"%s\"", v), 0);
@@ -370,7 +370,7 @@ static void attribute(void) {
 		 * generated code. For 4210 BUILD_BUG_ON sites in the kernel we compile, dropping it meant the assertion
 		 * checked nothing and a failure degraded to an undefined __compiletime_assert_NNN at the final link. */
 		else if ((!strcmp(nm, "error") || !strcmp(nm, "warning")) && consume("(")) {
-			if (tk->kind != TK_STR) die("parse: __attribute__((%s)) needs a string (line %d)", nm, tk->line);
+			if (tk->kind != TK_STR) die_at(tk, "parse: __attribute__((%s)) needs a string", nm);
 			size_t bl = 0; char *msg = calloc(1, 1);
 			while (tk->kind == TK_STR) {   /* adjacent string literals concatenate, as anywhere else */
 				size_t n = strlen(tk->sval); msg = realloc(msg, bl + n + 1);
@@ -381,7 +381,7 @@ static void attribute(void) {
 		}
 		else if ((!strcmp(nm, "section") || !strcmp(nm, "alias")) && consume("(")) {
 			char buf[IDMAX] = ""; size_t bl = 0;
-			if (tk->kind != TK_STR) die("parse: __attribute__((%s)) needs a string (line %d)", nm, tk->line);
+			if (tk->kind != TK_STR) die_at(tk, "parse: __attribute__((%s)) needs a string", nm);
 			while (tk->kind == TK_STR) { size_t n = strlen(tk->sval); if (bl + n >= sizeof buf) die("parse: %s name too long", nm); memcpy(buf + bl, tk->sval, n); bl += n; buf[bl] = 0; tk = tk->next; }
 			strcpy(nm[0] == 's' ? decl_attr.section : decl_attr.alias, buf);
 			expect(")");
@@ -398,7 +398,7 @@ static void attribute(void) {
 		                                                 * its own definition (alias, weak, visibility) nor inlining (GCC) */
 			char from[128]; ident(from); expect(")");
 			const Attr *a = decl_attrs_of(from);
-			if (!a) die("parse: copy(%s): not a declared function or file-scope object (line %d)", from, tk->line);
+			if (!a) die_at(tk, "parse: copy(%s): not a declared function or file-scope object", from);
 			Attr c = *a; c.alias[0] = 0; c.weak = c.vis = c.always_inline = c.gnu_inline = 0; attr_merge(&decl_attr, &c);
 			if (a->packed) decl_attr.packed = 1;
 			if (a->cleanup[0] && !decl_attr.cleanup[0]) strcpy(decl_attr.cleanup, a->cleanup);
@@ -407,7 +407,7 @@ static void attribute(void) {
 			int prio = -1;
 			if (consume("(")) {
 				prio = (int)eval_const(assign()); expect(")");
-				if (prio < 0 || prio > 65535) die("parse: %s priority %d is not in 0-65535 (line %d)", nm, prio, tk->line);
+				if (prio < 0 || prio > 65535) die_at(tk, "parse: %s priority %d is not in 0-65535", nm, prio);
 			}
 			if (nm[0] == 'c') decl_attr.ctor = prio; else decl_attr.dtor = prio;
 		}
@@ -417,15 +417,15 @@ static void attribute(void) {
 		                                        * address — IRQ/FIQ/ABORT leave lr one instruction too far. */
 			decl_attr.isr = 1;
 			if (consume("(")) {
-				if (tk->kind != TK_STR) die("parse: interrupt() takes a string (\"IRQ\"/\"FIQ\"/\"ABORT\"/\"SWI\"/\"UNDEF\") (line %d)", tk->line);
+				if (tk->kind != TK_STR) die_at(tk, "parse: interrupt() takes a string (\"IRQ\"/\"FIQ\"/\"ABORT\"/\"SWI\"/\"UNDEF\")");
 				const char *k = tk->sval;
 				if (!strcmp(k, "IRQ") || !strcmp(k, "FIQ") || !strcmp(k, "ABORT")) decl_attr.isr = 1;
 				else if (!strcmp(k, "SWI") || !strcmp(k, "UNDEF")) decl_attr.isr = 2;
-				else die("parse: interrupt(\"%s\"): not one of IRQ/FIQ/ABORT/SWI/UNDEF (line %d)", k, tk->line);
+				else die_at(tk, "parse: interrupt(\"%s\"): not one of IRQ/FIQ/ABORT/SWI/UNDEF", k);
 				tk = tk->next; expect(")");
 			}
 		}
-		else if (!attr_ignorable(nm)) die("parse: unsupported attribute '%s' (line %d)", nm, tk->line);
+		else if (!attr_ignorable(nm)) die_at(tk, "parse: unsupported attribute '%s'", nm);
 		else if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); }
 		if (!consume(",")) break;
 	}
@@ -441,7 +441,7 @@ static void static_assert_decl(void) {
 	long v = eval_const(assign());
 	const char *msg = NULL;
 	if (consume(",")) {
-		if (tk->kind != TK_STR) die("parse: _Static_assert's message must be a string literal (line %d)", tk->line);
+		if (tk->kind != TK_STR) die_at(tk, "parse: _Static_assert's message must be a string literal");
 		msg = tk->sval; tk = tk->next;
 	}
 	expect(")"); consume(";");
@@ -459,7 +459,7 @@ static void parse_attribute(int *packed, int *alignb, int *sso, int *tunion) {
 		else if (!strcmp(tk->text, "scalar_storage_order") || !strcmp(tk->text, "__scalar_storage_order__")) {   /* GCC: byte order of the scalars */
 			tk = tk->next; expect("(");
 			if (tk->kind != TK_STR || (strcmp(tk->sval, "big-endian") && strcmp(tk->sval, "little-endian")))
-				die("parse: scalar_storage_order needs \"big-endian\" or \"little-endian\" (line %d)", tk->line);
+				die_at(tk, "parse: scalar_storage_order needs \"big-endian\" or \"little-endian\"");
 			*sso = !strcmp(tk->sval, "big-endian");      /* little-endian is this target's own order */
 			tk = tk->next; expect(")");
 		}
@@ -470,7 +470,7 @@ static void parse_attribute(int *packed, int *alignb, int *sso, int *tunion) {
 		else {
 			char nm[IDMAX]; const char *t = tk->text; size_t L = strlen(t);
 			if (L > 4 && !strncmp(t, "__", 2) && !strcmp(t + L - 2, "__")) snprintf(nm, sizeof nm, "%.*s", (int)(L - 4), t + 2); else snprintf(nm, sizeof nm, "%s", t);
-			if (!attr_ignorable(nm)) die("parse: unsupported attribute '%s' on a struct/union (line %d)", nm, tk->line);
+			if (!attr_ignorable(nm)) die_at(tk, "parse: unsupported attribute '%s' on a struct/union", nm);
 			tk = tk->next; if (is("(")) { int d = 0; do { if (is("(")) d++; else if (is(")")) d--; tk = tk->next; } while (d && tk->kind != TK_EOF); }
 		}
 		if (!consume(",")) break;
@@ -486,9 +486,9 @@ static Type *qualify(Type *t, int q) {   /* a const/volatile-qualified copy (ide
 }
 /* A type in mode m: an integer keeps its signedness (and enum identity) at m's width; SF/DF name float/double. */
 static Type *mode_type(Type *t, int m) {
-	if (m < 0) { if (!is_fp(t)) die("parse: a floating mode on a non-floating type (line %d)", tk->line); return qualify(m == -4 ? ty_float : ty_double, t->quals); }
-	if (t->kind == TY_PTR) { if (m != 4) die("parse: a pointer in a %d-byte mode (line %d)", m, tk->line); return t; }   /* SI/pointer: itself */
-	if (t->kind >= TY_PTR || is_fp(t) || t->is_bool) die("parse: an integer mode on a type that is not an integer (line %d)", tk->line);
+	if (m < 0) { if (!is_fp(t)) die_at(tk, "parse: a floating mode on a non-floating type"); return qualify(m == -4 ? ty_float : ty_double, t->quals); }
+	if (t->kind == TY_PTR) { if (m != 4) die_at(tk, "parse: a pointer in a %d-byte mode", m); return t; }   /* SI/pointer: itself */
+	if (t->kind >= TY_PTR || is_fp(t) || t->is_bool) die_at(tk, "parse: an integer mode on a type that is not an integer");
 	int u = t->is_unsigned;
 	Type *r = m == 1 ? (u ? ty_char : ty_schar) : m == 2 ? (u ? ty_ushort : ty_short) : m == 4 ? (u ? ty_uint : ty_int) : (u ? ty_ullong : ty_llong);
 	if (t->tag) { Type *c = calloc(1, sizeof *c); *c = *r; c->tag = t->tag; r = c; }
@@ -498,12 +498,12 @@ static Type *mode_type(Type *t, int m) {
  * __attribute__((vector_size(16)))` is a pointer to a vector. */
 static Type *vector_innermost(Type *t, long vsize) {
 	if (t->kind == TY_PTR || t->kind == TY_ARRAY) {
-		if (t->vsize_off) die("parse: vector_size on a variable-length array (line %d)", tk->line);
+		if (t->vsize_off) die_at(tk, "parse: vector_size on a variable-length array");
 		Type *c = calloc(1, sizeof *c); *c = *t; c->base = vector_innermost(t->base, vsize);
 		if (t->kind == TY_ARRAY) c->size = c->base->size * c->len;
 		return c;
 	}
-	if (t->fn_ret) die("parse: vector_size on a function declarator is not supported (line %d)", tk->line);
+	if (t->fn_ret) die_at(tk, "parse: vector_size on a function declarator is not supported");
 	return qualify(vector_of(t, vsize), t->quals);
 }
 static Type *with_type_attrs(Type *t, long vsize, int mode) {
@@ -513,7 +513,7 @@ static Type *with_type_attrs(Type *t, long vsize, int mode) {
 /* GCC: a transparent union's members all have its size; a call passes it (any member's type) as its first member. */
 static void make_transparent(Type *t) {   /* GCC drops the attribute ("union cannot be made transparent") unless the first
                                          * member has the union's size and alignment (its machine mode) */
-	if (t->kind != TY_STRUCT) die("parse: transparent_union on a type that is not a union (line %d)", tk->line);
+	if (t->kind != TY_STRUCT) die_at(tk, "parse: transparent_union on a type that is not a union");
 	Member *f = t->members;
 	if (!f || f->is_bitfield || f->type->size != t->size || align_of(f->type) != align_of(t)) return;
 	t->transparent = 1;
@@ -523,7 +523,7 @@ static Type *take_type_attrs(Type *t) {
 	if (tu) make_transparent(t);
 	return with_type_attrs(t, v, m);
 }
-static void no_type_attrs(void) { if (pend_vsize || pend_mode || pend_tunion) die("parse: a vector_size/mode/transparent_union attribute in this position is not supported (line %d)", tk->line); }
+static void no_type_attrs(void) { if (pend_vsize || pend_mode || pend_tunion) die_at(tk, "parse: a vector_size/mode/transparent_union attribute in this position is not supported"); }
 /* declaration-specifiers: fold type keywords, qualifiers, and storage classes. Width comes from the
  * base keyword (char=1, short=2, int/long=4 — `long` is 32-bit on ARM32; `long long`/64-bit is TODO),
  * SIGN from signed/unsigned (plain char defaults to unsigned, ARM's default); void ~ unsigned char (so
@@ -542,7 +542,7 @@ static Type *declspec(int *td, int *sc) {
 		if (consume("static")) { if (sc) *sc |= SC_STATIC; continue; }   /* file-local symbol (no .global) */
 		if (consume("register")) { if (sc) *sc |= SC_REGISTER; continue; }
 		if (consume("auto")) { if (sc) *sc |= SC_AUTO; continue; }   /* (a block-scope function: a nested one's forward declaration) */
-		if (consume("_Thread_local")) { if (!sc) die("parse: _Thread_local here (line %d)", tk->line); *sc |= SC_TLS; continue; }   /* tracked: file-scope `register T x asm("rN")` */
+		if (consume("_Thread_local")) { if (!sc) die_at(tk, "parse: _Thread_local here"); *sc |= SC_TLS; continue; }   /* tracked: file-scope `register T x asm("rN")` */
 		if (consume("const")) { quals |= 1; continue; }
 		if (consume("volatile")) { quals |= 2; continue; }
 		if (consume("restrict")) continue;
@@ -554,7 +554,7 @@ static Type *declspec(int *td, int *sc) {
 			if (is_typename()) { char d[IDMAX]; Type *t = declarator(declspec(NULL, NULL), d); a = align_of(t); }
 			else a = (int)eval_const(assign());
 			expect(")");
-			if (a <= 0 || (a & (a - 1))) die("parse: _Alignas(%d) is not a positive power of two (line %d)", a, tk->line);
+			if (a <= 0 || (a & (a - 1))) die_at(tk, "parse: _Alignas(%d) is not a positive power of two", a);
 			if (a > decl_attr.align) decl_attr.align = a;
 			continue;
 		}
@@ -633,9 +633,9 @@ static Type *type_suffix(Type *base) {
 			         || consume("_Atomic")) quals = 1;
 			else break;
 		}
-		if (quals && !in_params) die("parse: an array qualifier or `static` outside a parameter (line %d)", tk->line);
+		if (quals && !in_params) die_at(tk, "parse: an array qualifier or `static` outside a parameter");
 		if (is("*") && tk->next && !strcmp(tk->next->text, "]")) {
-			if (!in_params) die("parse: `[*]` outside a prototype (line %d)", tk->line);
+			if (!in_params) die_at(tk, "parse: `[*]` outside a prototype");
 			tk = tk->next->next; return array_of(type_suffix(base), 0);
 		}
 		if (consume("]")) return array_of(type_suffix(base), 0);
@@ -644,7 +644,7 @@ static Type *type_suffix(Type *base) {
 		int ok = 1; ice_mode++; long n = eval_try(e, &ok); ice_mode--;   /* an integer CONSTANT EXPRESSION, or it's a VLA */
 		if (ok && !inner->vsize_off) return array_of(inner, (int)n);
 		if (!in_func && in_proto) return array_of(inner, 0);   /* a prototype's parameter: the bound is never evaluated ([*]) */
-		if (!in_func) die("parse: variable-length array outside a function (line %d)", tk->line);
+		if (!in_func) die_at(tk, "parse: variable-length array outside a function");
 		Type *t = array_of(inner, 0); t->size = 0;
 		t->vsize_off = add_local("", ty_uint); t->vsize_depth = fn_depth;
 		Node *cnt = node(ND_CAST); cnt->lhs = ok ? num(n) : e; cnt->type = ty_uint;
@@ -785,15 +785,15 @@ static void layout_struct(Type *ty, int packed, int alignb, int is_union, int ma
 static Node *slot_ref(int off, int depth) { Node *v = node(ND_VAR); strcpy(v->name, "__vla_layout"); v->offset = off; v->type = ty_uint; v->chain = fn_depth - depth; return v; }
 static Node *align_up_node(Node *x, int a) { return a <= 1 ? x : binary(ND_BITAND, binary(ND_ADD, x, tnum(a - 1, ty_uint)), tnum(-a, ty_uint)); }
 static void layout_vla_struct(Type *ty, Member *first, int is_union) {
-	if (is_union) die("parse: a union with a variable-length member is not supported (line %d)", tk->line);
-	if (!in_func) die("parse: a variable-length member outside a function (line %d)", tk->line);
+	if (is_union) die_at(tk, "parse: a union with a variable-length member is not supported");
+	if (!in_func) die_at(tk, "parse: a variable-length member outside a function");
 	int pos = add_local("", ty_uint), bits = 0;           /* the running position: [pos] bytes + `bits` */
 	#define QUEUE(lhs, rhs) (vla_pt = vla_pt->next = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lhs, rhs)))
 	QUEUE(slot_ref(pos, fn_depth), tnum(first->offset, ty_uint));
 	for (Member *m = first; m; m = m->next) {
-		if (m->promoted || m->is_anon) die("parse: an anonymous member after a variable-length one is not supported (line %d)", tk->line);
+		if (m->promoted || m->is_anon) die_at(tk, "parse: an anonymous member after a variable-length one is not supported");
 		if (m->is_bitfield) {
-			if (m->ealign != 1 || !m->bit_width) die("parse: a bit-field after a variable-length member must be packed and named (line %d)", tk->line);
+			if (m->ealign != 1 || !m->bit_width) die_at(tk, "parse: a bit-field after a variable-length member must be packed and named");
 			m->voff = add_local("", ty_uint); m->vdepth = fn_depth; m->offset = 0; m->bit_offset = bits % 8;
 			QUEUE(slot_ref(m->voff, fn_depth), binary(ND_ADD, slot_ref(pos, fn_depth), tnum(bits / 8, ty_uint)));
 			bits += m->bit_width;
@@ -827,7 +827,7 @@ static Type *struct_decl1(int is_union) {
 		return t;
 	}
 	Type *ty = tag[0] ? tag_here(tag) : NULL;                /* a definition completes this scope's forward decl in place, */
-	if (ty && ty->members) die("parse: redefinition of '%s %s' (line %d)", is_union ? "union" : "struct", tag, tk->line);
+	if (ty && ty->members) die_at(tk, "parse: redefinition of '%s %s'", is_union ? "union" : "struct", tag);
 	if (!ty) { ty = calloc(1, sizeof *ty); ty->kind = TY_STRUCT; tag_add(tag, ty); }   /* ... else declares a new type here */
 	expect("{");
 	/* Collect the members first (with any bitfield widths), THEN lay them out — because `packed` may be
@@ -852,7 +852,7 @@ static Type *struct_decl1(int is_union) {
 			while (consume("__attribute__")) attribute();
 			no_type_attrs();
 			m->align = decl_attr.align; m->packed = decl_attr.packed;
-			if (decl_attr.cleanup[0]) die("parse: cleanup on struct member '%s' (line %d)", mname, tk->line);
+			if (decl_attr.cleanup[0]) die_at(tk, "parse: cleanup on struct member '%s'", mname);
 			mc = mc->next = m;
 		} while (consume(","));
 		if (!is("}")) expect(";");   /* GCC accepts the last member without one */
@@ -862,7 +862,7 @@ static Type *struct_decl1(int is_union) {
 	ty->members = mh.next;
 	layout_struct(ty, packed, alignb, is_union, maxalign);
 	for (Member *m = ty->members; m; m = m->next) if (m->type->vsize_off) {
-		if (maxalign) die("parse: a variable-size struct member under #pragma pack (line %d)", tk->line);
+		if (maxalign) die_at(tk, "parse: a variable-size struct member under #pragma pack");
 		layout_vla_struct(ty, m, is_union); break;
 	}
 	if (tunion) make_transparent(ty);
@@ -892,7 +892,7 @@ static int enum_attrs(int *mode) {   /* attributes on the enum type itself (befo
 	while (consume("__attribute__")) attribute();
 	if (pend_mode) { *mode = pend_mode; pend_mode = 0; }
 	Attr a = decl_attr; decl_attr = outer; no_type_attrs();
-	if (a.weak || a.used || a.align || a.pcs || a.vis || a.section[0] || a.alias[0] || a.cleanup[0]) die("parse: an unsupported attribute on an enum type (line %d)", tk->line);
+	if (a.weak || a.used || a.align || a.pcs || a.vis || a.section[0] || a.alias[0] || a.cleanup[0]) die_at(tk, "parse: an unsupported attribute on an enum type");
 	return a.packed;
 }
 static Type *enum_decl(void) {
@@ -944,7 +944,7 @@ static int is_typename(void) {   /* does a declaration start at the cursor? */
 }
 /* Every node remembers the line it was built on, so a pass that runs after parsing can still name a position.
  * (The line is the PREPROCESSED file's: cpp emits no linemarkers yet, so there is nothing better to record.) */
-static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; n->line = tk ? tk->line : 0; return n; }
+static Node *node(NodeKind k) { Node *n = calloc(1, sizeof *n); n->kind = k; n->line = tk ? tk->line : 0; n->file = tk ? tk->file : NULL; return n; }
 static Node *binary(NodeKind k, Node *l, Node *r) { Node *n = node(k); n->lhs = l; n->rhs = r; return n; }
 static Node *unary(NodeKind k, Node *e) { Node *n = node(k); n->lhs = e; return n; }
 static Node *num(long v) { Node *n = node(ND_NUM); n->val = v; return n; }
@@ -991,7 +991,7 @@ static Node *is_zero_cmp(NodeKind k, Node *e) { return binary(k, e, tnum(0, ty_i
 /* A fresh temporary of type t (arrays decay) initialized with e: appends `tmp = e;` to the statement list at
  * *tail and returns the variable (read it again with ref()). */
 static Node *bind(Node ***tail, Type *t, Node *e) {
-	if (!in_func) die("parse: an expression that needs a temporary outside a function (line %d)", tk->line);
+	if (!in_func) die_at(tk, "parse: an expression that needs a temporary outside a function");
 	add_type(e);
 	if (!t) t = e->type->kind == TY_ARRAY ? pointer_to(e->type->base) : e->type;
 	Node *v = node(ND_VAR); strcpy(v->name, "__builtin_tmp"); v->offset = add_local("", t); v->type = t;
@@ -1019,7 +1019,7 @@ static Node *stmtexpr_of(Node *binds, Node *val) {   /* ({ binds...; val; }) */
 static Type *type_of(Node *n) { if (!n->type) add_type(n); return n->type; }
 static int is_lval(Node *n) { return n->kind == ND_VAR || n->kind == ND_GVAR || n->kind == ND_DEREF || n->kind == ND_MEMBER; }
 static Node *vec_temp(Type *t) {   /* a fresh uninitialized temporary */
-	if (!in_func) die("parse: a vector operation outside a function (line %d)", tk->line);
+	if (!in_func) die_at(tk, "parse: a vector operation outside a function");
 	Node *v = node(ND_VAR); strcpy(v->name, "__vec_tmp"); v->offset = add_local("", t); v->type = t; return v;
 }
 static Node *lane(Node *v, int i) {   /* lane i of vector variable v */
@@ -1029,10 +1029,10 @@ static Node *vec_var(Node ***tail, Node *e) {   /* e if a plain variable (its la
 	return (e->kind == ND_VAR && !e->vla_obj) || e->kind == ND_GVAR ? e : bind(tail, e->type, e);
 }
 static void vec_assign_ok(Type *to, Type *from, const char *what) {
-	if ((is_vec(to) || is_vec(from)) && !vec_convertible(to, from)) die("parse: incompatible vector types in %s (line %d)", what, tk->line);
+	if ((is_vec(to) || is_vec(from)) && !vec_convertible(to, from)) die_at(tk, "parse: incompatible vector types in %s", what);
 }
 static void vec_scalar_type(Type *st) {   /* an arithmetic scalar — not a pointer, _Bool or enum-typed value (GCC) */
-	if (st->kind >= TY_PTR || st->is_bool || st->tag > 0) die("parse: invalid scalar operand with a vector (line %d)", tk->line);
+	if (st->kind >= TY_PTR || st->is_bool || st->tag > 0) die_at(tk, "parse: invalid scalar operand with a vector");
 }
 /* GCC: the scalar s converts to vector vt's element type without truncation. An integer constant must fit (a sign
  * change alone is allowed); a floating one must be exact, and only into floating lanes; a variable's type must not
@@ -1043,7 +1043,7 @@ static void vec_scalar_ok(Type *vt, Node *s) {
 	if (is_fp(st)) {
 		double d = eval_fp(s, &ok);
 		if (is_fp(e) && (ok ? e->kind == TY_DOUBLE || d != d || (double)(float)d == d : st->size <= e->size)) return;
-		die("parse: converting the floating scalar to the vector's elements truncates it (line %d)", tk->line);
+		die_at(tk, "parse: converting the floating scalar to the vector's elements truncates it");
 	}
 	long v = eval_try(s, &ok); int fits;
 	if (!ok) fits = is_fp(e) ? 8 * st->size - !st->is_unsigned <= mant : st->size <= e->size;
@@ -1056,19 +1056,19 @@ static void vec_scalar_ok(Type *vt, Node *s) {
 		fits = st->is_unsigned ? !e->is_unsigned || (unsigned long long)v <= lim
 		     : v < 0 ? e->is_unsigned || bits == 64 || v >= -(long)(1ULL << (bits - 1)) : (unsigned long long)v <= lim;
 	}
-	if (!fits) die("parse: converting the scalar to the vector's elements truncates it (line %d)", tk->line);
+	if (!fits) die_at(tk, "parse: converting the scalar to the vector's elements truncates it");
 }
 static Node *vec_binary(NodeKind k, Node *a, Node *b) {
 	Type *ta = type_of(a), *tb = type_of(b), *vt = is_vec(ta) ? ta : tb;
 	int cmp = k == ND_EQ || k == ND_NE || k == ND_LT || k == ND_LE || k == ND_GT || k == ND_GE, shift = k == ND_SHL || k == ND_SHR;
 	if (is_vec(ta) && is_vec(tb) && (ta->len != tb->len || ta->size != tb->size || is_fp(ta->base) != is_fp(tb->base)))
-		die("parse: invalid vector operands: different lane counts or element types (line %d)", tk->line);
+		die_at(tk, "parse: invalid vector operands: different lane counts or element types");
 	if (is_fp(vt->base) && (shift || k == ND_MOD || k == ND_BITAND || k == ND_BITOR || k == ND_BITXOR))
-		die("parse: invalid operator on a floating vector (line %d)", tk->line);
+		die_at(tk, "parse: invalid operator on a floating vector");
 	Node *h = NULL, **t = &h, *x, *y;
 	if (is_vec(ta)) x = vec_var(&t, a); else { vec_scalar_ok(vt, a); x = bind(&t, vt->base, a); }
 	if (is_vec(tb)) y = vec_var(&t, b);
-	else if (shift && is_vec(ta)) { vec_scalar_type(tb); if (is_fp(tb)) die("parse: a floating shift count (line %d)", tk->line); y = bind(&t, NULL, b); }
+	else if (shift && is_vec(ta)) { vec_scalar_type(tb); if (is_fp(tb)) die_at(tk, "parse: a floating shift count"); y = bind(&t, NULL, b); }
 	else { vec_scalar_ok(vt, b); y = bind(&t, vt->base, b); }
 	Type *rt = vt;
 	if (cmp) {
@@ -1084,8 +1084,8 @@ static Node *vec_binary(NodeKind k, Node *a, Node *b) {
 }
 static Node *vec_unary(NodeKind k, Node *a) {
 	Type *vt = type_of(a);
-	if (k == ND_NOT) die("parse: '!' on a vector (line %d)", tk->line);
-	if (k == ND_BITNOT && is_fp(vt->base)) die("parse: '~' on a floating vector (line %d)", tk->line);
+	if (k == ND_NOT) die_at(tk, "parse: '!' on a vector");
+	if (k == ND_BITNOT && is_fp(vt->base)) die_at(tk, "parse: '~' on a floating vector");
 	Node *h = NULL, **t = &h, *x = vec_var(&t, a), *r = vec_temp(vt);
 	for (int i = 0; i < vt->len; i++) { *t = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lane(r, i), unary(k, lane(x, i)))); t = &(*t)->next; }
 	return stmtexpr_of(h, ref(r));
@@ -1109,17 +1109,17 @@ static Node *vec_index(Node *v, Node *idx) {
 static Node *vec_cast(Type *to, Node *e) {
 	Type *f = type_of(e);
 	if (!(is_vec(f) || (f->kind < TY_PTR && !is_fp(f))) || !(is_vec(to) || (to->kind < TY_PTR && !is_fp(to))))
-		die("parse: a vector converts only to/from a vector or an integer (line %d)", tk->line);
-	if (to->size != f->size) die("parse: cannot convert between a %d-byte and a %d-byte type involving a vector (line %d)", f->size, to->size, tk->line);
+		die_at(tk, "parse: a vector converts only to/from a vector or an integer");
+	if (to->size != f->size) die_at(tk, "parse: cannot convert between a %d-byte and a %d-byte type involving a vector", f->size, to->size);
 	Node *h = NULL, **t = &h, *v = bind(&t, f, e);
 	return stmtexpr_of(h, unary(ND_DEREF, cast_to(pointer_to(to), unary(ND_ADDR, v))));
 }
 static Node *vec_shuffle(Node *a, Node *b, Node *mask) {
 	Type *va = type_of(a), *vm = type_of(mask);
 	if (!is_vec(va) || (b && !(is_vec(type_of(b)) && types_match(b->type, va))))
-		die("parse: __builtin_shuffle: the operands must be vectors of one type (line %d)", tk->line);
+		die_at(tk, "parse: __builtin_shuffle: the operands must be vectors of one type");
 	if (!is_vec(vm) || is_fp(vm->base) || vm->len != va->len || vm->base->size != va->base->size)
-		die("parse: __builtin_shuffle: the mask must be an integer vector of the operands' lane count and width (line %d)", tk->line);
+		die_at(tk, "parse: __builtin_shuffle: the mask must be an integer vector of the operands' lane count and width");
 	int n = b ? 2 * va->len : va->len;
 	Node *h = NULL, **t = &h, *m = vec_var(&t, mask), *src = vec_temp(array_of(va->base, n)), *r = vec_temp(va);
 	for (int k = 0; k < (b ? 2 : 1); k++) {   /* the lanes to pick from, in one array: a then b */
@@ -1167,7 +1167,7 @@ static Type *cplx_elem(Type *a, Type *b) {   /* GCC's common element type: an eq
 	if (is_fp(a) || is_fp(b)) return usual_arith(a, b);
 	return a->size != b->size ? (a->size > b->size ? a : b) : a->is_unsigned ? a : b;
 }
-static void arith_operand(Type *t) { if (!is_cplx(t) && (t->kind >= TY_PTR || t->is_bool)) die("parse: invalid operand with a complex value (line %d)", tk->line); }
+static void arith_operand(Type *t) { if (!is_cplx(t) && (t->kind >= TY_PTR || t->is_bool)) die_at(tk, "parse: invalid operand with a complex value"); }
 /* e converted to type `to` (either may be complex): complex -> complex converts both parts; a real becomes the real
  * part (imaginary 0); complex -> real takes the real part, -> _Bool is true when either part is nonzero. */
 static Node *cplx_convert(Type *to, Node *e) {
@@ -1175,7 +1175,7 @@ static Node *cplx_convert(Type *to, Node *e) {
 	if (same_cplx(to, f)) return e;
 	if (!is_cplx(to) && !is_cplx(f)) return cast_to(to, e);
 	if (to->is_bool) return unary(ND_NOT, unary(ND_NOT, e));   /* codegen tests both parts */
-	if (to->kind >= TY_PTR && !is_cplx(to)) die("parse: a complex value converted to a non-arithmetic type (line %d)", tk->line);
+	if (to->kind >= TY_PTR && !is_cplx(to)) die_at(tk, "parse: a complex value converted to a non-arithmetic type");
 	arith_operand(f);
 	if (!is_cplx(to)) {   /* the real part; the imaginary one is still evaluated */
 		if (e->kind == ND_CPAIR) return cast_to(to, binary(ND_COMMA, e->rhs, e->lhs));
@@ -1197,7 +1197,7 @@ static Node *cplx_libcall(const char *fn, Type *rt, Node *a, Node *b, Node *c, N
 static Node *cplx_binary(NodeKind k, Node *a, Node *b) {
 	Type *ta = type_of(a), *tb = type_of(b); int ca = is_cplx(ta), cb = is_cplx(tb);
 	arith_operand(ta); arith_operand(tb);
-	if (k != ND_ADD && k != ND_SUB && k != ND_MUL && k != ND_DIV && k != ND_EQ && k != ND_NE) die("parse: invalid operator on a complex value (line %d)", tk->line);
+	if (k != ND_ADD && k != ND_SUB && k != ND_MUL && k != ND_DIV && k != ND_EQ && k != ND_NE) die_at(tk, "parse: invalid operator on a complex value");
 	Type *e = cplx_elem(ca ? ta->base : ta, cb ? tb->base : tb), *rt = complex_of(e);
 	Node *h = NULL, **t = &h, *x = hold(&t, a), *y = hold(&t, b), *re, *im;
 	#define P(v, i) cast_to(e, part(v, i))
@@ -1283,18 +1283,16 @@ static void check_callable(Node *call) {
 		 * pointer-shaped here, so unwrapping first would hand back its RETURN type and reject a valid call. */
 		if (ft && !ft->fn_ret && is_ptr_like(ft)) ft = ft->base;
 		if (!ft || !ft->fn_ret)
-			die("parse: called object is not a function or function pointer (line %d)", call->line);
+			die_at(call, "parse: called object is not a function or function pointer");
 	} else ft = func_declared(call->name) ? fn_type_of(call->name) : NULL;   /* implicitly declared: no prototype */
 	if (!ft || !ft->fn_ret || ft->variadic == 2) return;        /* no prototype to check against */
 	if (!call->lhs && sig_is_kr_def(call->name)) return;        /* nor does an old-style definition give one */
 	int n = 0; for (Node *a = call->args; a; a = a->next) n++;
 	const char *who = call->name[0] ? call->name : "a function pointer";
 	if (n < ft->nparams)
-		die("parse: too few arguments to function '%s' (%d given, %s%d expected) (line %d)",
-		    who, n, ft->variadic ? "at least " : "", ft->nparams, call->line);
+		die_at(call, "parse: too few arguments to function '%s' (%d given, %s%d expected)", who, n, ft->variadic ? "at least " : "", ft->nparams);
 	if (n > ft->nparams && !ft->variadic)
-		die("parse: too many arguments to function '%s' (%d given, %d expected) (line %d)",
-		    who, n, ft->nparams, call->line);
+		die_at(call, "parse: too many arguments to function '%s' (%d given, %d expected)", who, n, ft->nparams);
 }
 static Node *conv_args(Node *call) {   /* a prototyped call: complex arguments converted to their parameters' types */
 	check_callable(call);
@@ -1534,7 +1532,7 @@ static Node *builtin_lower(char *name) {
 	}
 	if (!strcmp(b, "complex")) {   /* __builtin_complex(re, im): both of one floating type */
 		expect("("); Node *re = assign(); expect(","); Node *im = assign(); expect(")");
-		Type *t = type_of(re); if (!is_fp(t) || type_of(im)->kind != t->kind) die("parse: __builtin_complex needs two operands of one floating type (line %d)", tk->line);
+		Type *t = type_of(re); if (!is_fp(t) || type_of(im)->kind != t->kind) die_at(tk, "parse: __builtin_complex needs two operands of one floating type");
 		return cpair(complex_of(t), re, im);
 	}
 	if (!strcmp(b, "va_arg_pack_len")) {   /* the expansion's pack size (only valid inside an always_inline expansion) */
@@ -1549,15 +1547,15 @@ static Node *builtin_lower(char *name) {
 	if (!strcmp(b, "shufflevector")) {   /* (a, b, i...): lane k = lane i_k of a then b (constants; -1: any, here 0) */
 		expect("("); Node *a = assign(); expect(","); Node *bv = assign(); Type *va = type_of(a);
 		if (!is_vec(va) || !is_vec(type_of(bv)) || va->base->size != bv->type->base->size || is_fp(va->base) != is_fp(bv->type->base))
-			die("parse: __builtin_shufflevector needs two vectors of one element type (line %d)", tk->line);
+			die_at(tk, "parse: __builtin_shufflevector needs two vectors of one element type");
 		long idx[64]; int n = 0, na = va->len;
-		while (consume(",")) { if (n == 64) die("parse: __builtin_shufflevector: too many lanes (line %d)", tk->line); idx[n++] = eval_const(assign()); }
+		while (consume(",")) { if (n == 64) die_at(tk, "parse: __builtin_shufflevector: too many lanes"); idx[n++] = eval_const(assign()); }
 		expect(")");
-		if (!n || (n & (n - 1))) die("parse: __builtin_shufflevector: the lane count must be a power of two (line %d)", tk->line);
+		if (!n || (n & (n - 1))) die_at(tk, "parse: __builtin_shufflevector: the lane count must be a power of two");
 		Type *rt = vector_of(va->base, (long)n * va->base->size);
 		Node *h = NULL, **tl = &h, *x = vec_var(&tl, a), *y = vec_var(&tl, bv), *r = vec_temp(rt);
 		for (int i = 0; i < n; i++) {
-			if (idx[i] < -1 || idx[i] >= na + bv->type->len) die("parse: __builtin_shufflevector: lane index %ld out of range (line %d)", idx[i], tk->line);
+			if (idx[i] < -1 || idx[i] >= na + bv->type->len) die_at(tk, "parse: __builtin_shufflevector: lane index %ld out of range", idx[i]);
 			Node *src = idx[i] < 0 ? zero_of(va->base) : idx[i] < na ? lane(x, (int)idx[i]) : cast_to(va->base, lane(y, (int)idx[i] - na));
 			*tl = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lane(r, i), src)); tl = &(*tl)->next;
 		}
@@ -1566,7 +1564,7 @@ static Node *builtin_lower(char *name) {
 	if (!strcmp(b, "convertvector")) {   /* (v, T): each lane converted to T's element type */
 		expect("("); Node *v = assign(); expect(","); char d[IDMAX]; Type *t = declarator(declspec(NULL, NULL), d); expect(")");
 		Type *vt = type_of(v);
-		if (!is_vec(vt) || !is_vec(t) || vt->len != t->len) die("parse: __builtin_convertvector needs vectors of one lane count (line %d)", tk->line);
+		if (!is_vec(vt) || !is_vec(t) || vt->len != t->len) die_at(tk, "parse: __builtin_convertvector needs vectors of one lane count");
 		Node *h = NULL, **tl = &h, *x = vec_var(&tl, v), *r = vec_temp(t);
 		for (int i = 0; i < t->len; i++) { *tl = unary(ND_EXPRSTMT, binary(ND_ASSIGN, lane(r, i), cast_to(t->base, lane(x, i)))); tl = &(*tl)->next; }
 		return stmtexpr_of(h, ref(r));
@@ -1575,12 +1573,12 @@ static Node *builtin_lower(char *name) {
 		expect("("); Node *p = assign(); expect(")");
 		Type *pt = type_of(p); Type *t = is_ptr_like(pt) ? pt->base : NULL;   /* (an array argument decays) */
 		while (t && t->vsize_off && t->kind == TY_ARRAY) t = t->base;   /* a VLA: its elements' padding, if they have any */
-		if (!t || t->vsize_off || t->size > 65536) die("parse: __builtin_clear_padding needs a pointer to a complete fixed-size object (line %d)", tk->line);
+		if (!t || t->vsize_off || t->size > 65536) die_at(tk, "parse: __builtin_clear_padding needs a pointer to a complete fixed-size object");
 		if (t != pt->base) {
 			unsigned char *m = calloc(t->size ? t->size : 1, 1); cover_bits(m, 0, t); int pad = 0;
 			for (int k = 0; k < t->size; k++) pad |= m[k] != 0xff;
 			free(m);
-			if (pad) die("parse: __builtin_clear_padding of a variable-length array of padded elements is not supported (line %d)", tk->line);
+			if (pad) die_at(tk, "parse: __builtin_clear_padding of a variable-length array of padded elements is not supported");
 			return binary(ND_COMMA, p, cast_to(ty_char, num(0)));   /* nothing to clear */
 		}
 		unsigned char *m = calloc(t->size ? t->size : 1, 1); cover_bits(m, 0, t);
@@ -1828,8 +1826,8 @@ static Node *builtin_lower(char *name) {
 					 * — the compiler predeclares its own builtins, as GCC does. A __builtin_ it does not
 					 * know still reaches the linker, exactly as before. */
 					if (warn_implicit_fn && !via_builtin && strncmp(name, "__builtin_", 10)) {
-						if (warn_implicit_fn == 2) die("parse: implicit declaration of function '%s' (line %d)", name, tk->line);
-						warn("implicit declaration of function '%s' (line %d)", name, tk->line);
+						if (warn_implicit_fn == 2) die_at(tk, "parse: implicit declaration of function '%s'", name);
+						warn_at(tk, "implicit declaration of function '%s'", name);
 					}
 					idcpy(n->name, name);             /* -Wno-implicit-function-declaration: the old direct call */
 				}
@@ -1858,9 +1856,9 @@ static Node *builtin_lower(char *name) {
 		                              * through it ((f)(x), _Generic(...)(x)) returns and converts as a direct one does */
 			Node *gv = node(ND_GVAR); idcpy(gv->name, name); gv->type = fn_type_of(name); return unary(ND_ADDR, gv); }
 		/* Not declared: GCC's error (was: silently an external symbol, found — if at all — only by the linker) */
-		die("parse: '%s' undeclared (line %d)", name, tk->line);
+		die_at(tk, "parse: '%s' undeclared", name);
 	}
-	die("parse: unexpected '%s' (line %d)", tk->text, tk->line); return NULL;
+	die_at(tk, "parse: unexpected '%s'", tk->text); return NULL;
 }
 
 /* Mark an ND_MEMBER as a bitfield of declared type `ty`. Like GCC, a field promotes by its WIDTH: to int when
@@ -1891,7 +1889,7 @@ static Node *struct_member(Node *base, const char *mname) {
 	if (in_func) { base = struct_place(base); add_type(base); }
 	for (Member *m = base->type->members; m; m = m->next) if (!strcmp(m->name, mname)) {
 		if (m->voff) {   /* after a variable-length member: at base + the runtime offset */
-			if (!is_lval(base)) die("parse: a member of a variable-size struct value (line %d)", tk->line);
+			if (!is_lval(base)) die_at(tk, "parse: a member of a variable-size struct value");
 			Node *at = unary(ND_DEREF, cast_to(pointer_to(m->type), new_add(cast_to(pointer_to(ty_char), unary(ND_ADDR, base)), slot_ref(m->voff, m->vdepth))));
 			if (!m->is_bitfield) return at;
 			Node *n = node(ND_MEMBER); n->lhs = at; n->offset = 0; bitfield_node(n, m->type, m->bit_width, m->bit_offset, m->bf_dense); return n;
@@ -1967,7 +1965,7 @@ static Node *unary_expr(void) {
 		Node *e = unary_expr(); add_type(e);
 		if (t->kind == TY_STRUCT && e->type && e->type->kind != TY_STRUCT) {   /* GNU cast to union: (U)x == a temp U with its x-typed member set */
 			Member *m = t->members; while (m && !(m->type->kind == e->type->kind && m->type->size == e->type->size)) m = m->next;
-			if (!m || m->offset) die("parse: cast to union: no member of the operand's type (line %d)", tk->line);
+			if (!m || m->offset) die_at(tk, "parse: cast to union: no member of the operand's type");
 			static int cu_seq; char nm[32]; snprintf(nm, sizeof nm, ".Lcu%d", cu_seq++);
 			int off = add_local(nm, t);
 			Node *v = node(ND_VAR); idcpy(v->name, nm); v->offset = off; v->type = t;
@@ -2003,7 +2001,7 @@ static Node *unary_expr(void) {
 	if (consume("&")) {                                      /* address-of */
 		kv_lvalue(); Node *e = unary_expr(); kv_poison(e);   /* (its value can change behind any store now) */
 		add_type(e);
-		if (e->sso && e->type->kind != TY_ARRAY) die("parse: address of a scalar with reverse storage order (line %d)", tk->line);   /* GCC: an error */
+		if (e->sso && e->type->kind != TY_ARRAY) die_at(tk, "parse: address of a scalar with reverse storage order");   /* GCC: an error */
 		/* `&f` on a FUNCTION is the identity: naming a function already yields its address (6.3.2.1p4), and the
 		 * primary-expression path has done exactly that, so wrapping it again would build ND_ADDR(ND_ADDR(f)) —
 		 * a pointer to a pointer to the function. `(&f)()` then looked like a call through the wrong type. */
@@ -2092,9 +2090,9 @@ static Node *conditional(void){ Node *c = logor(); if (!consume("?")) return c; 
  * scaling (new_add/new_sub) apply unchanged. */
 static Node *rmw(Node *lv, NodeKind op, Node *e, int post) {
 	add_type(lv); add_type(e);
-	if (!is_lval(lv)) die("parse: assignment to non-lvalue (line %d)", tk->line);
+	if (!is_lval(lv)) die_at(tk, "parse: assignment to non-lvalue");
 	if (is_vec(lv->type)) return vec_rmw(lv, op, e, post);
-	if (is_vec(e->type)) die("parse: a vector operand updating a scalar (line %d)", tk->line);
+	if (is_vec(e->type)) die_at(tk, "parse: a vector operand updating a scalar");
 	if (is_cplx(lv->type) || is_cplx(e->type)) return cplx_rmw(lv, op, e, post);
 	Node *r = node(ND_RMW), *cur = node(ND_CUR), *opd = node(ND_CUR);
 	cur->type = lv->type; cur->target = r; opd->type = e->type; opd->target = r; opd->val = 1;
@@ -2129,7 +2127,7 @@ static Node *assign(void) {
 		{"&=", ND_BITAND}, {"|=", ND_BITOR}, {"^=", ND_BITXOR}, {"<<=", ND_SHL}, {">>=", ND_SHR} };
 	for (unsigned i = 0; i < sizeof ops / sizeof *ops; i++) if (consume(ops[i].s)) return rmw(n, ops[i].k, assign(), 0);
 	if (!consume("=")) return n;
-	if (!is_lval(n)) die("parse: assignment to non-lvalue (line %d)", tk->line);
+	if (!is_lval(n)) die_at(tk, "parse: assignment to non-lvalue");
 	Node *r = assign();
 	if (type_of(n)->kind == TY_STRUCT && n->type->vsize_off) {   /* a variable-size struct: memcpy its run-time size */
 		Node *h = NULL, **t = &h, *p = bind(&t, pointer_to(n->type), unary(ND_ADDR, n));
@@ -2240,7 +2238,7 @@ static void push_cleanup(Node *var) {   /* a local just declared (and initialize
 	if (!decl_attr.cleanup[0]) return;
 	Cleanup *e = calloc(1, sizeof *e); e->var = var; strcpy(e->fn, decl_attr.cleanup); e->up = cleanups; cleanups = e;
 }
-static void no_cleanup(const char *what) { if (decl_attr.cleanup[0]) die("parse: cleanup on %s (line %d): only a local variable has a scope to leave", what, tk->line); }
+static void no_cleanup(const char *what) { if (decl_attr.cleanup[0]) die_at(tk, "parse: cleanup on %s: only a local variable has a scope to leave", what); }
 static Node *loop_body(void) {   /* break and continue in it leave the cleanup scopes begun inside it */
 	Cleanup *sb = brk_cleanups, *sc = cont_cleanups; brk_cleanups = cont_cleanups = cleanups;
 	Node *b = stmt(); brk_cleanups = sb; cont_cleanups = sc; return b;
@@ -2706,8 +2704,8 @@ static int cp_worth(InlineDef *d, Node *args) {   /* some constant argument for 
 }
 static Node *inline_expand(const char *name, InlineDef *def, Node *args) {
 	static int seq;
-	if (!in_func) die("parse: a call to always_inline '%s' outside a function (line %d)", name, tk->line);
-	for (InlineCtx *u = inline_ctx; u; u = u->up) if (!strcmp(u->name, name)) die("parse: recursive always_inline '%s' can't be inlined (line %d)", name, tk->line);
+	if (!in_func) die_at(tk, "parse: a call to always_inline '%s' outside a function", name);
+	for (InlineCtx *u = inline_ctx; u; u = u->up) if (!strcmp(u->name, name)) die_at(tk, "parse: recursive always_inline '%s' can't be inlined", name);
 	InlineCtx cx = { .name = name, .ret = def->ret, .id = seq++, .up = inline_ctx, .params_tk = def->params };
 	/* Its parameters go above every slot its arguments' code used: that code (an argument's own expansion, a ({...}))
 	 * runs WHILE the parameters are being stored — `cpumask_copy(dst, cpumask_of(cpu))` stores dstp, then runs
@@ -2734,7 +2732,7 @@ static Node *inline_expand(const char *name, InlineDef *def, Node *args) {
 		}
 		char p[IDMAX]; Type *ty = declarator(declspec(NULL, NULL), p);
 		if (ty->kind == TY_ARRAY) ty = pointer_to(ty->base);
-		if (!a) die("parse: too few arguments to always_inline '%s' (line %d)", name, resume->line);
+		if (!a) die_at(resume, "parse: too few arguments to always_inline '%s'", name);
 		Node *e = a; a = a->next; e->next = NULL;
 		int ok = 0, same = def->modified && pi < def->np && !def->modified[pi]; long cv = 0;
 		Node *sa = same && ty->kind == TY_PTR ? sym_address(e) : NULL;
@@ -2746,13 +2744,13 @@ static Node *inline_expand(const char *name, InlineDef *def, Node *args) {
 		pi++;
 	} while (consume(","));
 	expect(")");
-	if (a && !cx.pack) die("parse: too many arguments to always_inline '%s' (line %d)", name, resume->line);
+	if (a && !cx.pack) die_at(resume, "parse: too many arguments to always_inline '%s'", name);
 	cx.retvar = node(ND_VAR);   /* (void is char here: a void function's "result" is just unused) */ cx.retvar->offset = add_local("", def->ret); cx.retvar->type = def->ret;
 	snprintf(cx.end, sizeof cx.end, ".inl%d.end", cx.id);
 	int lid = inline_label_id; cur_fn_ret = def->ret; inline_ctx = &cx; inline_label_id = cx.id;
 	if (!is("{")) die("parse: always_inline '%s' with K&R parameter declarations is not supported", name);
 	if (!cp_body_ok(tk)) for (Token *t = tk, *e = cp_body_end(tk); t != e; t = t->next)   /* one that must be inlined, with cleanups */
-		if (!strcmp(t->text, "cleanup") || !strcmp(t->text, "__cleanup__")) die("parse: inlining '%s', which has cleanup variables, is not supported (line %d)", name, resume->line);
+		if (!strcmp(t->text, "cleanup") || !strcmp(t->text, "__cleanup__")) die_at(resume, "parse: inlining '%s', which has cleanup variables, is not supported", name);
 	Node *body = c = c->next = stmt();                  /* the body, `{...}` */
 	Node *end = node(ND_LABEL); strcpy(end->name, cx.end); jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, end); c = c->next = end;
 	inline_ctx = cx.up; cur_fn_ret = fret; inline_label_id = lid;
@@ -2911,7 +2909,7 @@ static int va_pack_ahead(void) { return tk->kind == TK_IDENT && !strcmp(tk->text
 static Node *call_args(void) {   /* `(args)` after a callee (the "(" consumed): assign()s; a pack splices in */
 	Node argh = {0}, *ac = &argh;
 	if (!is(")")) do {
-		if (va_pack_ahead()) { ac->next = va_pack_args(); while (ac->next) ac = ac->next; if (!is(")")) die("parse: __builtin_va_arg_pack () must be the last arguments (line %d)", tk->line); break; }
+		if (va_pack_ahead()) { ac->next = va_pack_args(); while (ac->next) ac = ac->next; if (!is(")")) die_at(tk, "parse: __builtin_va_arg_pack () must be the last arguments"); break; }
 		ac = ac->next = assign();
 	} while (consume(","));
 	expect(")");
@@ -3008,7 +3006,7 @@ static void resolve_goto_cleanups(int g0, int l0) {   /* this function's: gotos 
 		 * anyway: `goto nowhere` became `b .Ll_f.nowhere`, and as then PROMOTED that undefined .L local to an
 		 * undefined GLOBAL symbol, so the only complaint came from ld, naming a symbol the source never wrote.
 		 * (`goto *p` carries its target in lhs and has no name to resolve.) */
-		if (!found && !g->lhs) die("parse: label '%s' used but not defined (line %d)", g->name, g->line);
+		if (!found && !g->lhs) die_at(g, "parse: label '%s' used but not defined", g->name);
 		if (!found || from == to) continue;
 		Cleanup *e = from; while (e && e != to) e = e->up;
 		if (e != to) die("parse: goto %s jumps into the scope of a cleanup variable", g->name);
@@ -3072,7 +3070,7 @@ static void asm_pick_alternative(Node *n) {
 		}
 		return;
 	}
-	die("parse: no alternative of an asm's constraints fits its operands (line %d)", tk->line);
+	die_at(tk, "parse: no alternative of an asm's constraints fits its operands");
 }
 static int label_chain;   /* stmt() is reading the statement after a label: another label is returned bare (no recursion
                           * per label — `a: b: c: ...` chains can be 100000 long) */
@@ -3116,7 +3114,7 @@ static Node *stmt(void) {
 	}
 	if (consume("case")) {                                   /* case CONST: */
 		if (!cur_switch) die("parse: 'case' outside switch");
-		if (cleanups != case_cleanups) die("parse: a case label in the scope of a cleanup variable (line %d)", tk->line);
+		if (cleanups != case_cleanups) die_at(tk, "parse: a case label in the scope of a cleanup variable");
 		Node *n = node(ND_CASE); n->val = eval_const(conditional());   /* folds casts etc: `case (blk_status_t)1:` */
 		if (consume("...")) { n->val2 = eval_const(conditional()); n->is_range = 1; }   /* GCC `case lo ... hi:` */
 		expect(":");
@@ -3124,7 +3122,7 @@ static Node *stmt(void) {
 		return labeled(n);
 	}
 	if (consume("default")) { if (!cur_switch) die("parse: 'default' outside switch"); expect(":");
-		if (cleanups != case_cleanups) die("parse: a default label in the scope of a cleanup variable (line %d)", tk->line);
+		if (cleanups != case_cleanups) die_at(tk, "parse: a default label in the scope of a cleanup variable");
 		Node *n = node(ND_CASE); n->is_default = 1; n->case_next = cur_switch->case_list; cur_switch->case_list = n; return labeled(n); }
 	if (consume("break"))    { expect(";"); return then_stmt(cleanup_calls(cleanups, brk_cleanups), node(ND_BREAK)); }
 	if (consume("continue")) { expect(";"); return then_stmt(cleanup_calls(cleanups, cont_cleanups), node(ND_CONTINUE)); }
@@ -3141,14 +3139,14 @@ static Node *stmt(void) {
 		for (int i = 0; i < 16; i++) opn[i][0] = 0;
 		if (consume(":")) while (tk->kind == TK_STR || is("[")) {   /* outputs: [name] "constraint"(lvalue) */
 			if (consume("[")) { if (nn < 16) strncpy(opn[nn], tk->text, 31); tk = tk->next; expect("]"); }
-			char c[32]; if (tk->kind != TK_STR || strlen(tk->sval) >= sizeof c) die("parse: an asm constraint must be a string under %d chars (line %d)", (int)sizeof c, tk->line);
+			char c[32]; if (tk->kind != TK_STR || strlen(tk->sval) >= sizeof c) die_at(tk, "parse: an asm constraint must be a string under %d chars", (int)sizeof c);
 			strcpy(c, tk->sval); tk = tk->next;
 			expect("("); kv_lvalue(); Node *op = assign(); expect(")"); strcpy(op->cons, c); kv_poison(op);
 			oc = oc->next = op; nouts++; nn++; if (!consume(",")) break;
 		}
 		if (consume(":")) while (tk->kind == TK_STR || is("[")) {   /* inputs: [name] "constraint"(expr) */
 			if (consume("[")) { if (nn < 16) strncpy(opn[nn], tk->text, 31); tk = tk->next; expect("]"); }
-			char c[32]; if (tk->kind != TK_STR || strlen(tk->sval) >= sizeof c) die("parse: an asm constraint must be a string under %d chars (line %d)", (int)sizeof c, tk->line);
+			char c[32]; if (tk->kind != TK_STR || strlen(tk->sval) >= sizeof c) die_at(tk, "parse: an asm constraint must be a string under %d chars", (int)sizeof c);
 			strcpy(c, tk->sval); tk = tk->next;
 			expect("("); Node *op = assign(); expect(")"); strcpy(op->cons, c);
 			if (asm_imm_constraint(op->cons)) asm_immediate(op);   /* immediate: fold now, substitute the constant */
@@ -3159,20 +3157,20 @@ static Node *stmt(void) {
 			if ((c[0] == 'r' || c[0] == 'R') && isdigit((unsigned char)c[1])) { r = atoi(c + 1); if (r > 15) r = -1; }
 			else if (!strcmp(c, "ip")) r = 12; else if (!strcmp(c, "lr")) r = 14; else if (!strcmp(c, "fp")) r = 11;
 			else if (!strcmp(c, "sl")) r = 10; else if (!strcmp(c, "sb")) r = 9; else if (!strcmp(c, "sp")) r = 13; else if (!strcmp(c, "pc")) r = 15;
-			else if (strcmp(c, "cc") && strcmp(c, "memory")) die("parse: unknown asm clobber \"%s\" (line %d)", c, tk->line);
-			if (r == 11 || r == 13 || r == 15) die("parse: asm clobbers %s, which this compiler can't preserve (line %d)", c, tk->line);
+			else if (strcmp(c, "cc") && strcmp(c, "memory")) die_at(tk, "parse: unknown asm clobber \"%s\"", c);
+			if (r == 11 || r == 13 || r == 15) die_at(tk, "parse: asm clobbers %s, which this compiler can't preserve", c);
 			if (r >= 0) n->asm_clobber |= 1 << r;
 			tk = tk->next; if (!consume(",")) break;
 		}
 		/* asm goto: the labels it may jump to (numbered after the operands: %l<nn+k>, or %l[name]) — ND_LABELADDRs in body */
 		char lab[16][IDMAX]; int nlab = 0; Node lh = {0}, *lc = &lh;
 		if (is_goto && consume(":")) do {
-			if (nlab == 16) die("parse: too many asm goto labels (line %d)", tk->line);
+			if (nlab == 16) die_at(tk, "parse: too many asm goto labels");
 			Node *l = node(ND_LABELADDR); ident(l->name); strcpy(lab[nlab++], l->name); int li = map_label(l->name);
-			if (li >= 0 && lscope[li].depth < fn_depth) die("parse: asm goto to an enclosing function's label (line %d)", tk->line);
+			if (li >= 0 && lscope[li].depth < fn_depth) die_at(tk, "parse: asm goto to an enclosing function's label");
 			lc = lc->next = l;
 		} while (consume(","));
-		if (nlab && cleanups) die("parse: asm goto in the scope of a cleanup variable (line %d)", tk->line);
+		if (nlab && cleanups) die_at(tk, "parse: asm goto in the scope of a cleanup variable");
 		n->body = lh.next;
 		expect(")"); expect(";");
 		{   /* rewrite %[name] -> %N (operand position) and %l[label] -> %l<N> so gen's %N substitution handles names */
@@ -3185,7 +3183,7 @@ static Node *stmt(void) {
 						int idx = -1;
 						if (isl) { for (int i = 0; i < nlab; i++) if (!strcmp(lab[i], nm)) { idx = nn + i; break; } }
 						else for (int i = 0; i < nn; i++) if (opn[i][0] && !strcmp(opn[i], nm)) { idx = i; break; }
-						if (idx < 0) die("parse: asm operand %%%s[%s] names nothing (line %d)", isl ? "l" : "", nm, tk->line);
+						if (idx < 0) die_at(tk, "parse: asm operand %%%s[%s] names nothing", isl ? "l" : "", nm);
 						k += (size_t)snprintf(rw + k, cap - k, isl ? "%%l%d" : "%%%d", idx); s = e + 1; continue; }
 				}
 				rw[k++] = *s++;
@@ -3211,19 +3209,19 @@ static Node *stmt(void) {
 	if (consume("goto"))     { Node *n = node(ND_GOTO);
 		if (consume("*")) {                                 /* GNU computed goto: `goto *p;` (p from &&label) */
 			n->lhs = expr();
-			if (cleanups) die("parse: a computed goto in the scope of a cleanup variable (line %d)", tk->line);
+			if (cleanups) die_at(tk, "parse: a computed goto in the scope of a cleanup variable");
 		}
 		else {
 			ident(n->name); int li = map_label(n->name);
 			if (li >= 0 && lscope[li].depth < fn_depth) {   /* a non-local goto: out of this nested function into the one whose label it is */
-				if (cleanups) die("parse: a non-local goto out of the scope of a cleanup variable (line %d)", tk->line);
+				if (cleanups) die_at(tk, "parse: a non-local goto out of the scope of a cleanup variable");
 				n->owner = strdup(lscope[li].owner); n->chain = fn_depth - lscope[li].depth;
 			} else jump_note(&fn_gotos, &nfn_gotos, &fn_gotos_cap, n);
 		}
 		expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
 		Node *n = node(ND_LABEL); ident(n->name); int li = map_label(n->name); expect(":");
-		if (li >= 0 && lscope[li].depth < fn_depth) die("parse: label '%s' is an enclosing function's __label__ (line %d)", lscope[li].from, tk->line);
+		if (li >= 0 && lscope[li].depth < fn_depth) die_at(tk, "parse: label '%s' is an enclosing function's __label__", lscope[li].from);
 		jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, n); return labeled(n);
 	}
 	if (consume("return")) {   /* `return;` allowed */
@@ -3369,10 +3367,10 @@ static Node *stmt(void) {
 				sig_attrs(nm, &decl_attr);
 				continue;
 			}
-			if ((sc & SC_TLS) && !(sc & (SC_STATIC | SC_EXTERN))) die("parse: block-scope _Thread_local '%s' must be static or extern (line %d)", nm, tk->line);
+			if ((sc & SC_TLS) && !(sc & (SC_STATIC | SC_EXTERN))) die_at(tk, "parse: block-scope _Thread_local '%s' must be static or extern", nm);
 			if (sc & (SC_STATIC | SC_EXTERN)) {   /* block-scope static/extern: a GLOBAL object, only the NAME is block-scoped */
 				Gvar *g;
-				if ((sc & SC_STATIC) && inline_ctx) die("parse: a static local in always_inline '%s', expanded at each call, is not supported (line %d)", inline_ctx->name, tk->line);
+				if ((sc & SC_STATIC) && inline_ctx) die_at(tk, "parse: a static local in always_inline '%s', expanded at each call, is not supported", inline_ctx->name);
 				if (sc & SC_STATIC) {             /* own file-local object `nm.N` (GCC's naming); initialized once, statically */
 					static int sseq; char sn[IDMAX]; if (snprintf(sn, sizeof sn, "%s.%d", nm, sseq++) >= (int)sizeof sn) die("parse: static local name too long: %s", nm); g = new_global(sn); g->is_static = 1; g->type = ty;
 					Type *el = ty; while (el->kind == TY_ARRAY) el = el->base;
@@ -3389,7 +3387,7 @@ static Node *stmt(void) {
 			}
 			for (Node *v = take_vla_pending(); v; ) { Node *nx = v->next; v->next = NULL; bc = bc->next = v; v = nx; }   /* this declarator's VLA sizes */
 			if (ty->vsize_off) {   /* a VLA object: its slot holds an alloca'd block, behind a mark (re-running this frees the last one) */
-				if (is("=")) die("parse: a variable-length array cannot be initialized (line %d)", tk->line);
+				if (is("=")) die_at(tk, "parse: a variable-length array cannot be initialized");
 				no_cleanup("a variable-length array");
 				Type *pt = pointer_to(ty->kind == TY_ARRAY ? ty->base : ty);   /* an array's decays; a variable-size struct's address */
 				int off = add_local(nm, pt); locals[nlocals - 1].type = ty; locals[nlocals - 1].vla = 1;
@@ -3475,10 +3473,10 @@ static int proto_params(Type ***ptsp, int *np) {   /* *ptsp: a fresh array of th
 /* The name + return type have already been read; the cursor is at "(". Parse params + body. */
 /* `register T x asm("rN")` at file scope (the `asm` consumed): a global register variable. */
 static void global_register(const char *name, Type *ty) {
-	expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind != TK_STR) die("parse: a register variable needs a register name (line %d)", tk->line);
+	expect("("); char s[8]; strncpy(s, tk->text, 7); s[7] = 0; if (tk->kind != TK_STR) die_at(tk, "parse: a register variable needs a register name");
 	tk = tk->next; expect(")");
-	if (ngregs == 16) die("parse: too many global register variables (line %d)", tk->line);
-	if (ty->size != 4 || is_aggr(ty) || is_fp(ty)) die("parse: register variable %s: only a 32-bit integer or pointer fits a core register (line %d)", name, tk->line);
+	if (ngregs == 16) die_at(tk, "parse: too many global register variables");
+	if (ty->size != 4 || is_aggr(ty) || is_fp(ty)) die_at(tk, "parse: register variable %s: only a 32-bit integer or pointer fits a core register", name);
 	idcpy(gregs[ngregs].name, name); strncpy(gregs[ngregs].reg, s, 7); gregs[ngregs].type = ty; ngregs++;
 }
 /* The name + return type have been read; `params` is the parameter list — NULL: at the cursor; else one a grouped
@@ -3547,7 +3545,7 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 		expect(";");
 	}
 	decl_attr = fattr;
-	if (consume("asm")) { if (nested) die("parse: an asm label on a nested function (line %d)", tk->line); asm_label_for(name); }   /* `int f(void) __asm__("sym");` */
+	if (consume("asm")) { if (nested) die_at(tk, "parse: an asm label on a nested function"); asm_label_for(name); }   /* `int f(void) __asm__("sym");` */
 	while (consume("__attribute__")) attribute();       /* trailing: int f(void) __attribute__((noreturn)) { … } — before the binding (pcs) */
 	no_type_attrs(); no_cleanup("a function");
 	Node *vla_prologue = take_vla_pending();   /* VLA parameter bounds (`int a[n][m]`, `x[i++]`): evaluated at entry */
@@ -4010,7 +4008,7 @@ static int elide_more(void) {   /* consume the `,` before the next member's init
 }
 static void elide_init(Type *ty, int base, InitPlace **tail, Node **pending) {
 	if (ty->kind == TY_ARRAY || is_vec(ty)) {                /* a vector's lanes elide like an array's elements (GCC) */
-		if (ty->len == 0) die("parse: brace elision into an unsized array (line %d)", tk->line);
+		if (ty->len == 0) die_at(tk, "parse: brace elision into an unsized array");
 		for (int k = 0; k < ty->len; k++) {
 			if (!*pending && (k ? !elide_more() : 0)) return;
 			if (*pending) elide_init(ty->base, base + k * ty->base->size, tail, pending);
@@ -4092,8 +4090,8 @@ static int parse_init1(Type *ty, int base, InitPlace **tail) {
 			int esz = ty->base->size, idx = 0, maxidx = -1;
 			while (!is("}")) {
 				int lo = idx, hi = idx;
-				if (is_vec(ty) && is("[")) die("parse: a designator in a vector initializer (line %d)", tk->line);
-				if (is_vec(ty) && idx >= ty->len) die("parse: excess elements in a vector initializer (line %d)", tk->line);
+				if (is_vec(ty) && is("[")) die_at(tk, "parse: a designator in a vector initializer");
+				if (is_vec(ty) && idx >= ty->len) die_at(tk, "parse: excess elements in a vector initializer");
 				if (is("[")) { expect("["); lo = hi = (int)eval_const(assign()); if (consume("...")) hi = (int)eval_const(assign()); expect("]"); consume("="); }
 				InitPlace th = {0}, *tt = &th; parse_init(ty->base, 0, &tt);   /* parse element once, replicate across the range */
 				for (int k = lo; k <= hi; k++) {
@@ -4599,7 +4597,7 @@ Func *parse(Token *tok) {
 				{ Type *el = ty; while (el->kind == TY_ARRAY) el = el->base;   /* a const object: the qualifier on it (not on what it points to) */
 				  if ((el->quals & 1) || (el == base && (base_quals & 1))) g->const_obj = 1; }
 				if (sc & SC_TLS) g->is_tls = 1;
-				else if (g->is_tls && !(sc & SC_EXTERN)) die("parse: '%s' redeclared without _Thread_local (line %d)", name, tk->line);
+				else if (g->is_tls && !(sc & SC_EXTERN)) die_at(tk, "parse: '%s' redeclared without _Thread_local", name);
 				else {
 					if (!(sc & SC_EXTERN)) g->is_extern = 0;          /* any non-extern declaration makes it a definition */
 					if (sc & SC_STATIC) g->is_static = 1;
@@ -4612,11 +4610,11 @@ Func *parse(Token *tok) {
 				                                                              * undefined one resolves to 0 (musl's _DYNAMIC) */
 					decl_symbol_attrs(name, &decl_attr, g->is_static);
 				if (consume("=")) {
-					if (g->init) die("parse: redefinition of '%s' (line %d)", name, tk->line);
+					if (g->init) die_at(tk, "parse: redefinition of '%s'", name);
 					g->init = global_init(ty); g->type = ty;           /* the defining declaration's (possibly now-sized) type */
 				}
 				if (g->attr.common && !g->is_static && !g->is_extern && !g->init)   /* (GCC ignores it on a static) */
-					die("parse: '%s' __attribute__((common)): a COMMON symbol (this toolchain is -fno-common) (line %d)", name, tk->line);
+					die_at(tk, "parse: '%s' __attribute__((common)): a COMMON symbol (this toolchain is -fno-common)", name);
 			}
 			if (!consume(",")) break;
 			decl_attr = battr; ty = declarator(base, name);

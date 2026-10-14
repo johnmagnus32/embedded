@@ -26,7 +26,8 @@ typedef struct Token {
 	double fval; int fp;   /* TK_NUM floating literal: its value; fp = 1 float (f suffix), 2 double (incl. l = long double) */
 	const char *text;      /* the raw lexeme (ident/keyword name, punctuator, number, string), whole — never truncated */
 	char *sval;            /* TK_STR: the full (untruncated) raw string contents — asm templates/format strings exceed text[64] */
-	int line;              /* source line, for diagnostics                       */
+	int line;              /* line in the ORIGINAL source (cpp's line markers map it), for diagnostics */
+	const char *file;      /* the original file it came from (NULL: none, e.g. input with no markers) */
 	int wide;              /* TK_STR / char TK_NUM: element width of an L"" / U"" (4) or u"" (2) literal; 0 = plain */
 	int imag;              /* TK_NUM: an imaginary constant (GNU `2.0i`, `3if`, `1i`) */
 	unsigned char pack;    /* #pragma pack in force here: the maximum member alignment (0: none) */
@@ -185,6 +186,7 @@ typedef struct Node {
 	int imm_bad;                 /* ND_ASM immediate operand that isn't a constant: an error if the asm is emitted (a
 	                              * dead `if (__builtin_constant_p(x)) asm(... "i"(x))` branch is dropped first) */
 	int line;                    /* the line this node was parsed on, for a diagnostic raised after parsing */
+	const char *file;            /* and the file it came from (cpp's line markers), so that diagnostic has a place */
 	const char *diag; int diag_kind;   /* ND_CALL of a function declared __attribute__((error/warning("msg"))): the
 	                              * message, and 1 = warning / 2 = error, raised iff the call is still EMITTED —
 	                              * same deferral as imm_bad above, which is what makes BUILD_BUG_ON work */
@@ -275,7 +277,15 @@ typedef struct Gvar {
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
 extern int warn_implicit_fn;     /* an undeclared call: 0 silent, 1 warn (default, as gcc 13), 2 error (-Werror=) */
+const char *lex_file(void);          /* the original file the lexer is in (cpp's line markers) */
+int lex_inc_depth(void);             /* how many #includes deep, for `In file included from` */
+const char *lex_inc_file(int i);
+int lex_inc_line(int i);
 void warn(const char *fmt, ...);
+void die_atl(const char *file, int line, const char *fmt, ...);    /* `file:line: error: ...` + the include chain */
+void warn_atl(const char *file, int line, const char *fmt, ...);
+#define die_at(t, ...)  die_atl((t) ? (t)->file : NULL, (t) ? (t)->line : 0, __VA_ARGS__)
+#define warn_at(t, ...) warn_atl((t) ? (t)->file : NULL, (t) ? (t)->line : 0, __VA_ARGS__)
 extern int pic;                  /* -fPIC: global/string access goes through the GOT (position-independent) */
 extern int word_relocs;          /* -mword-relocations: addresses as literal words (U-Boot relocates only those) */
 

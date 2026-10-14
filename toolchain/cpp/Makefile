@@ -51,7 +51,7 @@ test: $(BUILD)/cpp
 	  then echo "PASS #pragma pack passed to the compiler (as GCC's -E); rejected: $$(cat $$t/e2)"; ok=$$((ok+1)); \
 	  else echo "FAIL #pragma pack not passed through / unknown directive not rejected"; fail=$$((fail+1)); fi; \
 	if [ -x "$(GNU)gcc" ]; then for m in tests/macro/*.c; do \
-	  $(BUILD)/cpp $$m > $$t/m.ours 2>$$t/me && $(GNU)gcc -E -P -undef $$m > $$t/m.gnu 2>/dev/null \
+	  $(BUILD)/cpp -P $$m > $$t/m.ours 2>$$t/me && $(GNU)gcc -E -P -undef $$m > $$t/m.gnu 2>/dev/null \
 	  && python3 tests/tokdiff.py $$t/m.ours $$t/m.gnu > $$t/md; \
 	  if [ $$? = 0 ]; then echo "PASS $$(basename $$m): token-identical to GNU cpp"; ok=$$((ok+1)); \
 	  else echo "FAIL $$(basename $$m): $$(cat $$t/me $$t/md)"; fail=$$((fail+1)); fi; done; \
@@ -64,6 +64,8 @@ test: $(BUILD)/cpp
 	if [ -x "$(GNU)gcc" ]; then \
 	  if GNU=$(GNU) CPP=$(BUILD)/cpp bash tests/predef-gate.sh > $$t/pg; then echo "PASS $$(tail -1 $$t/pg)"; ok=$$((ok+1)); \
 	  else echo "FAIL $$(cat $$t/pg)"; fail=$$((fail+1)); fi; \
+	  if GNU=$(GNU) CPP=$(BUILD)/cpp bash tests/markers.sh > $$t/lm 2>&1; then echo "PASS $$(tail -1 $$t/lm)"; ok=$$((ok+1)); \
+	  else echo "FAIL line markers:"; grep -E '^FAIL|^ ' $$t/lm | head -6 | sed 's/^/    /'; fail=$$((fail+1)); fi; \
 	else echo "SKIP predef-gate: no GNU gcc"; fi; \
 	rm -rf $$t; echo "----- $$ok passed, $$fail failed -----"; [ $$fail -eq 0 ]
 

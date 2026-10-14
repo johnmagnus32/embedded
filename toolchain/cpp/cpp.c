@@ -283,14 +283,43 @@ static int would_merge(const char *a, const char *b) {
 	if (buf != sb) free(buf);
 	return m;
 }
+static int line_delta;                 /* presumed line = physical + line_delta (this file; #line / markers move it) */
+static const char *presumed = "";      /* presumed file name (__FILE__) */
 static int dump_macros;
+static int no_markers;                 /* -P: no line markers at all (Kbuild preprocesses linker scripts with it) */
+/* LINE MARKERS — `# <line> "<file>"`, how the preprocessor tells the compiler where the text came from. Without
+ * them every diagnostic names a line in the PREPROCESSED file, which is a temporary the driver deletes, and no
+ * file at all: a missing semicolon in widget.h:3 was reported as "line 6" with no name. The state the markers
+ * need was already tracked here for __FILE__ and __LINE__ (`presumed`, `line_delta`); it was simply never
+ * written out.
+ *
+ * Following GCC (c-ppoutput.c maybe_print_line): a small forward gap in the same file is spent on newlines
+ * rather than a marker, which keeps the output readable and the line numbers right; anything else gets a
+ * marker. GCC's trailing flags are 1 "entering a file" and 2 "returning to one", which drive the compiler's
+ * `In file included from ...` chain. We do NOT emit GCC's `# 1 "<built-in>"` / `# 1 "<command-line>"`
+ * preamble: it names no real file and a compiler has nothing to do with it. */
+#define MARKER_GAP 8                   /* at most this many newlines instead of a marker (GCC's limit) */
+static const char *mk_file;            /* the file the last marker named (NULL: none written yet) */
+static int mk_line = 1;                /* the line the output cursor is on, in that file */
+static void sync_line(const char *file, int line, int flag) {
+	if (no_markers || dump_macros || !file || !*file) return;
+	if (mk_file && !strcmp(mk_file, file)) {
+		if (line == mk_line) return;
+		if (line > mk_line && line - mk_line < MARKER_GAP) { while (mk_line < line) { fputc('\n', out); mk_line++; } return; }
+	}
+	fprintf(out, "# %d \"%s\"%s\n", line, file, flag == 1 ? " 1" : flag == 2 ? " 2" : "");
+	mk_file = file; mk_line = line;
+}
 static void emit(Tok *tok) {
 	if (dump_macros) return;                                 /* -dM: only the macros, at the end */
 	int line_open = 0; const Tok *prev = NULL;
 	for (; tok && tok->kind != TEOF; tok = tok->next) {
-		if (tok->kind == TLINE) { if (line_open) fputc('\n', out); fprintf(out, "%s\n", tok->text); line_open = 0; prev = NULL; continue; }
+		if (tok->kind == TLINE) { if (line_open) { fputc('\n', out); mk_line++; } fprintf(out, "%s\n", tok->text); mk_line++; line_open = 0; prev = NULL; continue; }
 		if (tok->bol) {                                /* a source line's first token: in its column (GCC cb_line_change) */
-			if (line_open) fputc('\n', out);
+			if (line_open) { fputc('\n', out); mk_line++; }
+			/* the token's own position in the ORIGINAL file, which is what a marker records */
+			if (tok->line) sync_line(presumed, tok->line + line_delta, 0);
+			line_open = 0;
 			for (int c = 1; c < tok->col; c++) fputc(' ', out);
 			if (!tok->col && line_open) fputc(' ', out);
 		}
@@ -577,8 +606,7 @@ static Tok *expand(Tok *tok) {
 /* The macros whose value is the preprocessor's own state (GCC's builtins; not in -dM): where we are (__LINE__ in
  * the presumed numbering #line / line markers set, __FILE__, __FILE_NAME__, __BASE_FILE__, __INCLUDE_LEVEL__), a
  * counter, and when (__DATE__ / __TIME__ from SOURCE_DATE_EPOCH when set, as GCC; __TIMESTAMP__ = the file's mtime). */
-static int line_delta;                 /* presumed line = physical + line_delta (this file; #line / markers move it) */
-static const char *presumed = "";      /* presumed file name (__FILE__) */
+
 /* -fmacro-prefix-map=OLD=NEW (or -ffile-prefix-map): __FILE__ / __BASE_FILE__ with a leading OLD spelled NEW; the last
  * matching option wins (GCC remap_filename). The kernel passes -fmacro-prefix-map=./= for reproducible paths. */
 static struct PrefixMap { const char *old, *new_; struct PrefixMap *next; } *prefix_maps;
@@ -965,9 +993,11 @@ static Tok *directive(Tok *hash) {
 			const char *opres = presumed; int odelta = line_delta; time_t omt = file_mtime;
 			presumed = strdup(full); line_delta = 0; file_mtime = st.st_mtime; include_level++;
 			int oidx = cur_inc_idx; cur_inc_idx = idx;
+			sync_line(presumed, 1, 1);         /* flag 1: ENTERING a file — what builds the compiler's include chain */
 			drive(sub, ndir);
 			cur_inc_idx = oidx;
 			include_level--; presumed = opres; line_delta = odelta; file_mtime = omt;
+			sync_line(presumed, hash->line + 1 + line_delta, 2);   /* flag 2: RETURNING, at the line after the #include */
 			cur_file = outer;
 			strcpy(cur_dir, saved);
 		} else if (!strcmp(d, "error")) {
@@ -1155,7 +1185,8 @@ int main(int argc, char **argv) {
 		else if (IS("-M") || IS("-MM") || IS("-MG")) die("unsupported option '%s' (use -MD/-MMD with -MF)", a);
 		else if (PRE("-D") || PRE("-U")) { char k = a[1]; cmd[ncmd].kind = k; cmd[ncmd++].arg = ARG(); }
 		else if (IS("-o")) { if (i + 1 >= argc) die("-o needs a file"); outpath = argv[++i]; }
-		else if (IS("-E") || IS("-P") || IS("-nostdinc")) ;
+		else if (IS("-P")) no_markers = 1;   /* marker-free output: Kbuild preprocesses linker scripts this way */
+		else if (IS("-E") || IS("-nostdinc")) ;
 		else if (IS("-C")) ;   /* keep comments: ours are always dropped (the tokens — all a compiler or ld sees — are the same) */   /* preprocess only; we emit no line markers; no default dirs */
 		else if (IS("-undef")) po.undef = 1;
 		else if (IS("-trigraphs")) po.trigraphs = 1;
@@ -1238,6 +1269,10 @@ int main(int argc, char **argv) {
 	}
 	if (stat(in, &cur_file)) die("cannot stat %s", in);
 	presumed = base_file = in; file_mtime = cur_file.st_mtime;
+	/* GCC opens the output with a marker for the main file, before any token can trigger one -- and it has to
+	 * come from here, because a file whose first line is a #include emits no token of its own first, which
+	 * left the include's `entering` marker as the first thing in the output with no file to return to. */
+	sync_line(presumed, 1, 0);
 	drive(toks, dir);
 	if (dump_macros) dump_all();
 	write_deps(in, outpath);
