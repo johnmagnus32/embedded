@@ -281,7 +281,7 @@ void elf_write(const char *out, u32 entry) {
 	u8 *buf = calloc(1, total);
 	if (sizeof(Elf32_Ehdr) + (u32)nphdr * sizeof(Elf32_Phdr) != hdrsz) die("internal: program header table size changed after layout");
 	Elf32_Ehdr eh = { .e_type = (pie || shared) ? ET_DYN : ET_EXEC, .e_machine = md_e_machine, .e_version = 1, .e_entry = entry,
-	    .e_phoff = nphdr ? sizeof(Elf32_Ehdr) : 0, .e_shoff = shoff, .e_flags = 0x05000000 /* EABI5 */, .e_ehsize = sizeof(Elf32_Ehdr),
+	    .e_phoff = nphdr ? sizeof(Elf32_Ehdr) : 0, .e_shoff = shoff, .e_flags = 0x05000000 | arm_float_eflag() /* EABI5 + the link's float ABI */, .e_ehsize = sizeof(Elf32_Ehdr),
 	    .e_phentsize = sizeof(Elf32_Phdr), .e_phnum = (u16)nphdr, .e_shentsize = sizeof(Elf32_Shdr), .e_shnum = (u16)nsh, .e_shstrndx = (u16)ishstr };
 	memcpy(eh.e_ident, "\177ELF\1\1\1", 7);              /* MAG + ELFCLASS32 + ELFDATA2LSB + EV_CURRENT */
 	memcpy(buf, &eh, sizeof eh);

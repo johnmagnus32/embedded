@@ -29,8 +29,8 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "ld.h"
+#include "armattrs.h"
 
-#define SHT_ARM_ATTRIBUTES 0x70000003u
 #define SHF_INFO_LINK_ 0x40u
 #define SHF_LINK_ORDER_ 0x80u
 #define SHT_ARM_EXIDX 0x70000001u

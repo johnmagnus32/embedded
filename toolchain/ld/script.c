@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ld.h"
+#include "armattrs.h"
 
 OutSec os_discard;
 OutSec **outsecs; int noutsec; static int outcap;
@@ -621,7 +622,6 @@ void section_start(const char *name, u32 addr) {
  * the producer identity in .comment, the float-ABI attributes a consumer reads, and any possibility of debug
  * information surviving a link. They take file space but no memory, so they get no address and no PT_LOAD
  * (see sec_bflags: no O_ALLOC, hence no O_LOAD). */
-#define SHT_ARM_ATTRIBUTES 0x70000003u
 static int placeable(Obj *o, int j) {
 	static int attrs_seen;                              /* one link per process, so never reset */
 	Elf32_Shdr *s = &o->sh[j];

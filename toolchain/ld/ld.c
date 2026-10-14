@@ -21,6 +21,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "ld.h"
+#include "armattrs.h"
 
 Obj **objs; int nobj; static int objcap;
 Obj *obj_new(void) {
@@ -313,6 +314,37 @@ static void startstop_define(void) {
 }
 
 /* For each REL section, patch its target section's bytes now that addresses are known. */
+/* ---- build attributes: is this link's float ABI self-consistent? ----------------------------------------
+ * Two objects that disagree about how floating-point arguments are passed cannot call each other: one puts a
+ * double in a VFP register, the other in r0/r1. The result is wrong arithmetic, not a crash, so GNU ld refuses
+ * the link and so must we. Verified against GNU ld over a 5-kind x 10-pair matrix (no-FP / soft / softfp / hard
+ * compiled both ways), which this reproduces exactly, including the case that makes the rule non-obvious:
+ * participation is decided by Tag_ABI_FP_number_model, NOT by carrying Tag_ABI_VFP_args. A hand-written
+ * assembly object declares no FP model and so links into either kind of program; a C object built
+ * -mfloat-abi=soft declares one and will not link into a hard-float program, even though neither of them
+ * carries the VFP tag at all. */
+static u32 float_eflag = 0x200;   /* EF_ARM_ABI_FLOAT_SOFT. GNU marks even an attribute-free link soft-float. */
+u32 arm_float_eflag(void) { return float_eflag; }
+static void attrs_check(void) {
+	const char *first = NULL; int want = -1;
+	for (int i = 0; i < nobj; i++) {
+		Obj *o = objs[i];
+		if (!o->active || o == linker_obj) continue;
+		for (int j = 1; j < o->nsh; j++) {
+			if (o->sh[j].sh_type != SHT_ARM_ATTRIBUTES || !o->sh[j].sh_size) continue;
+			ArmAttrs a;
+			if (!armattrs_parse(o->data + o->sh[j].sh_offset, o->sh[j].sh_size, &a)) continue;
+			if (!armattrs_declares_fp_abi(&a)) continue;        /* declares no FP model: no opinion to clash */
+			int v = armattrs_vfp_args(&a);
+			if (want < 0) { want = v; first = o->path; continue; }
+			if (v != want)   /* GNU's sentence, but naming both INPUTS — GNU names its own output file first */
+				die("%s uses VFP register arguments, %s does not",
+				    v == 1 ? o->path : first, v == 1 ? first : o->path);
+		}
+	}
+	if (want == 1) float_eflag = 0x400;   /* EF_ARM_ABI_FLOAT_HARD */
+}
+
 static void relocate(void) {
 	for (int i = 0; i < nobj; i++) {
 		Obj *o = objs[i];
@@ -562,6 +594,7 @@ int main(int argc, char **argv) {
 	if (relocatable && map_path) die("-Map with -r: unsupported (a relocatable object has no addresses yet)");
 
 	resolve_symbols();
+	attrs_check();   /* before anything is written: an incompatible float ABI stops the link */
 	if (relocatable) { reloc_link(out); return 0; }
 	if (shared && !soname) { const char *b = strrchr(out, '/'); soname = b ? b + 1 : out; }
 

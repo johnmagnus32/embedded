@@ -14,7 +14,7 @@ QEMU ?= qemu-system-arm
 
 # Three layers, like the assembler: front-end (ld.c) + object-format backend (elf.c) + machine-dependent
 # backend (arm.c). A new arch swaps arm.c; a new object format swaps elf.c.
-OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/reloc.o $(BUILD)/buildid.o $(BUILD)/version.o $(BUILD)/gc.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/ld.o $(BUILD)/script.o $(BUILD)/dynamic.o $(BUILD)/reloc.o $(BUILD)/buildid.o $(BUILD)/version.o $(BUILD)/gc.o $(BUILD)/elf.o $(BUILD)/arm.o $(BUILD)/elfutil.o $(BUILD)/elfread.o $(BUILD)/strmap.o $(BUILD)/armattrs.o
 
 $(BUILD)/ld: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
@@ -30,6 +30,8 @@ $(BUILD)/elfread.o: $(COMMON)/elfread.c $(COMMON)/elfread.h $(COMMON)/elf.h | $(
 
 $(BUILD)/strmap.o: $(COMMON)/strmap.c $(COMMON)/strmap.h | $(BUILD)
 	$(CC) $(CFLAGS) -c -o $@ $<
+$(BUILD)/armattrs.o: $(COMMON)/armattrs.c $(COMMON)/armattrs.h | $(BUILD)
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -40,7 +42,7 @@ $(BUILD):
 # split W^X (seg0 R-X, seg1 R-W, never R-W-X), a .bss whose memsz exceeds its filesz, and the R_ARM_CALL
 # placeholder (0xebfffffe) relocated to a real branch. Entry = _start = the first byte after the headers
 # (LOAD_BASE + ehdr + phdrs: two PT_LOADs + PT_GNU_STACK, since both inputs carry .note.GNU-stack) = 0x10094.
-test: test-static test-pie test-script test-options test-veneer test-gc test-dynamic test-nonalloc
+test: test-static test-pie test-script test-options test-veneer test-gc test-dynamic test-nonalloc test-floatabi
 
 # Long-branch veneers, run on QEMU (tests/veneer.sh).
 test-veneer: $(BUILD)/ld
@@ -56,6 +58,11 @@ test-dynamic: $(BUILD)/ld
 test-gc: $(BUILD)/ld
 	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc'"; exit 0; fi
 	@GNU=$(abspath $(GNU)) LD=$(abspath $(BUILD)/ld) bash tests/gc.sh
+
+# The link's float ABI must be self-consistent, and recorded in e_flags (tests/floatabi.sh).
+test-floatabi: $(BUILD)/ld
+	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc'"; exit 0; fi
+	@GNU=$(abspath $(GNU)) LD=$(abspath $(BUILD)/ld) bash tests/floatabi.sh
 
 # Non-allocated output sections survive the link, as GNU's do (tests/nonalloc.sh).
 test-nonalloc: $(BUILD)/ld
@@ -181,4 +188,4 @@ test-script: $(BUILD)/ld
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: test-options test-veneer clean test test-static test-pie test-script test-nonalloc
+.PHONY: test-options test-veneer clean test test-static test-pie test-script test-nonalloc test-floatabi

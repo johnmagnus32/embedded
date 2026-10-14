@@ -44,6 +44,7 @@ char *script_find(const char *name);            /* script.c: a script's text —
 extern const char **defsyms; extern int ndefsym;   /* --defsym SYM=EXPR: script assignments ahead of the script */
 extern const char *build_id_style;                 /* --build-id[=STYLE] (buildid.c); NULL: none */
 u32  build_id_size(void);                          /* its descriptor's bytes (0: no note) */
+u32  arm_float_eflag(void);                        /* EF_ARM_ABI_FLOAT_HARD/SOFT for this link (ld.c: attrs_check) */
 void build_id_note(u8 *p, u32 descsz);             /* the note, descriptor zero */
 void build_id_write(const char *path, u32 note_off);   /* after the write: the descriptor, hashed over the output */
 void version_script(const char *text, const char *what);   /* version.c: VERSION { ... } / --version-script */
