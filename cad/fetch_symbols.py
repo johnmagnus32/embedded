@@ -24,6 +24,22 @@ OUTPUT = Path(__file__).resolve().parent / "symbols"
 SYM_FILE = OUTPUT / "easyeda2kicad.kicad_sym"
 
 
+# easyeda2kicad 1.0.1 bug: integrate_sub_units() looks each unit up by the RAW part name, but the
+# exporter already wrote the unit blocks under sanitize_fields(name) (spaces dropped, ':' and '/' -> '_').
+# Any multi-unit part whose name has those characters (e.g. "MT41K512M16VRP-107 IT:P TR") silently
+# loses every unit and lands as a pinless shell. Run the CLI with the lookup sanitized the same way.
+_EASYEDA2KICAD = """
+import sys
+from easyeda2kicad.kicad import export_kicad_symbol as eks
+from easyeda2kicad.kicad.parameters_kicad_symbol import sanitize_fields
+_integrate = eks.integrate_sub_units
+eks.integrate_sub_units = lambda main_symbol, sub_symbols, component_name: _integrate(
+    main_symbol, sub_symbols, sanitize_fields(component_name))
+from easyeda2kicad.__main__ import main
+sys.exit(main(sys.argv[1:]))
+"""
+
+
 def already_fetched(lcsc_id):
     """True if this LCSC id is already in the .kicad_sym library."""
     return SYM_FILE.exists() and lcsc_id in SYM_FILE.read_text(encoding="utf-8")
@@ -38,7 +54,7 @@ def fetch(lcsc_id):
         return True
     # invoke via the current interpreter so it works whether or not the venv is activated
     r = subprocess.run(
-        [sys.executable, "-m", "easyeda2kicad", f"--lcsc_id={lcsc_id}",
+        [sys.executable, "-c", _EASYEDA2KICAD, f"--lcsc_id={lcsc_id}",
          "--symbol", "--footprint", "--output", str(OUTPUT)],
         capture_output=True, text=True)
     if r.returncode != 0:
