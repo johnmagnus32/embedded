@@ -67,6 +67,8 @@ mech = {
                 "note": "Adafruit 2011 / PKCELL LP-803860, sits in the board cut-out under the 2090"},
     "speaker": {"x": pos["speaker"][0] + gx, "y": pos["speaker"][1] + gy, "d": M.SPEAKER[0], "t": 4.9},
     "lra": {"x": M.LRA_AT[0] + gx, "y": M.LRA_AT[1] + gy, "d": M.LRA[0], "t": 3.2},
+    # every shell screw draw_mech keeps, incl. the one off the board (bottom-right, in the battery notch)
+    "shell_screws": [{"name": n, "x": round(x, 3), "y": round(y, 3)} for n, x, y in M.screws(S)],
 }
 
 # ---- parts
