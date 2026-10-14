@@ -87,10 +87,12 @@ def module_2090():
         out.append(box((x0 + x1) / 2, -(y0 + y1) / 2, x1 - x0, y1 - y0, 12.6, 14.17))
     out.append(box(95.25 + 0.16, -71.0, 69.2, 50.0, 14.27, GLASS_TOP))     # panel 69.2 x 50 (centre +0.16 toward JP2)
     out.append(box(76.85, -78.75, 12.3, 27.9, 9.95, 12.6))                   # back parts over the cell (orig rev SOIC-20W)
-    for x in (57.15, 133.35):                                                # header pins + solder through the module PCB
-        out.append(box(x, -71.0, 2.54, 51.3, 14.17, 16.0))
-    for x, y in STANDOFFS:                                                   # M2.5 pan-head screws on top of the module
-        out.append(cyl(x, y, 5.0, 14.17, 16.4))
+    for x in (57.15, 133.35):
+        out.append(box(x, -71.0, 2.54, 51.3, 14.17, 16.0))                   # header pins + solder through the module PCB
+        out.append(box(x, -71.0, 2.54, 50.8, T + 8.5, 12.6))                 # 1x20 male header body (2.5) on the J3/J4 sockets
+    for x, y in STANDOFFS:
+        out.append(cyl(x, y, 5.0, 14.17, 16.4))                              # M2.5 pan-head screws on top of the module
+        out.append(cyl(x, y, 4.5, T, 12.6))                                  # M2.5 x 11 F-F standoffs (8.5 socket + 2.5 header)
     return Compound(out)
 
 def battery():
