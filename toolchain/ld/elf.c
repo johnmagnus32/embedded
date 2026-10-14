@@ -207,8 +207,12 @@ static int winner(const Obj *o, int k) {               /* this global is the def
 static u32 near_shndx(const GSym *g) {                 /* a script symbol: its section, else the nearest one below it */
 	if (g->abs) return SHN_ABS;
 	if (g->os && g->os->index) return (u32)g->os->index;
+	/* ALLOCATED sections only. A non-allocated one sits at vaddr 0, which is <= every symbol value, so the last
+	 * of them in section order would always win this search — which is how _end/__end__/_bss_end__ ended up
+	 * attributed to .ARM.attributes (nm 'N') instead of the last allocated section (GNU: 'D'). */
 	int best = noutsec ? 1 : SHN_ABS;
-	for (int i = 0; i < noutsec; i++) if (outsecs[i]->vaddr <= g->vaddr) best = outsecs[i]->index;
+	for (int i = 0; i < noutsec; i++)
+		if ((outsecs[i]->flags & SHF_ALLOC) && outsecs[i]->vaddr <= g->vaddr) best = outsecs[i]->index;
 	return (u32)best;
 }
 static int by_name(const void *a, const void *b) { return strcmp((*(GSym *const *)a)->name, (*(GSym *const *)b)->name); }

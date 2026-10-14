@@ -40,7 +40,7 @@ $(BUILD):
 # split W^X (seg0 R-X, seg1 R-W, never R-W-X), a .bss whose memsz exceeds its filesz, and the R_ARM_CALL
 # placeholder (0xebfffffe) relocated to a real branch. Entry = _start = the first byte after the headers
 # (LOAD_BASE + ehdr + phdrs: two PT_LOADs + PT_GNU_STACK, since both inputs carry .note.GNU-stack) = 0x10094.
-test: test-static test-pie test-script test-options test-veneer test-gc test-dynamic
+test: test-static test-pie test-script test-options test-veneer test-gc test-dynamic test-nonalloc
 
 # Long-branch veneers, run on QEMU (tests/veneer.sh).
 test-veneer: $(BUILD)/ld
@@ -56,6 +56,11 @@ test-dynamic: $(BUILD)/ld
 test-gc: $(BUILD)/ld
 	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc'"; exit 0; fi
 	@GNU=$(abspath $(GNU)) LD=$(abspath $(BUILD)/ld) bash tests/gc.sh
+
+# Non-allocated output sections survive the link, as GNU's do (tests/nonalloc.sh).
+test-nonalloc: $(BUILD)/ld
+	@if [ ! -x "$(GNU)gcc" ]; then echo "SKIP: GNU gcc not found at '$(GNU)gcc'"; exit 0; fi
+	@GNU=$(abspath $(GNU)) LD=$(abspath $(BUILD)/ld) bash tests/nonalloc.sh
 
 # GNU ld's command-line behaviors (tests/options.sh).
 test-options: $(BUILD)/ld
@@ -176,4 +181,4 @@ test-script: $(BUILD)/ld
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: test-options test-veneer clean test test-static test-pie test-script
+.PHONY: test-options test-veneer clean test test-static test-pie test-script test-nonalloc

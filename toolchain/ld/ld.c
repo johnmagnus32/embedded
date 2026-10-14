@@ -322,7 +322,11 @@ static void relocate(void) {
 			if (rs->sh_type != SHT_REL) continue;
 			int t = (int)rs->sh_info;
 			Elf32_Shdr *ts = &o->sh[t];                          /* the section being patched */
-			if (!(ts->sh_flags & SHF_ALLOC) || o->sec_out[t] == &os_discard) continue;
+			/* Any PLACED target, allocated or not. Requiring SHF_ALLOC left every relocation in a debug
+			 * section unapplied, so .debug_info/.debug_aranges/.debug_line/.debug_frame reached the output with
+			 * zeros where GNU has real addresses (measured: 0x00000000 vs GNU's 0x40000004 in .debug_aranges).
+			 * Debug sections full of zeros are worse than absent ones — a debugger believes them. */
+			if (!o->sec_out[t] || o->sec_out[t] == &os_discard) continue;
 			if (ts->sh_type == SHT_NOBITS) die("%s: relocations against NOBITS section %s", o->path, sec_name(o, t));
 			Elf32_Rel *rel = (Elf32_Rel *)(o->data + rs->sh_offset);
 			for (u32 r = 0; r < rs->sh_size / sizeof *rel; r++) {

@@ -493,6 +493,30 @@ static const char default_script[] =
 	"  _edata = .; PROVIDE(edata = .); __bss_start = .; __bss_start__ = .;\n"   /* (GNU armelf: unconditional) */
 	"  .bss      : { *(.dynbss) *(.bss .bss.*) *(COMMON) }\n"
 	"  _bss_end__ = .; __bss_end__ = .; __end__ = .; _end = .; PROVIDE(end = .);\n"
+	/* NON-ALLOCATED, after everything allocated, each at address 0 — the shape of GNU's own default script.
+	 * These take file space but no memory, and placing them explicitly (rather than leaving them orphans)
+	 * is what keeps them at the END: an orphan .debug_info anchors after .text, which puts debug data in the
+	 * middle of the section-header list where GNU has it last. Only the sections an ARM build actually emits
+	 * are listed; GNU's script also names the stabs and DWARF-1 families, which nothing here produces.
+	 * .ARM.attributes carries the EABI build attributes (float ABI, CPU arch) a consumer checks. */
+	"  .comment 0 : { *(.comment) }\n"
+	"  .ARM.attributes 0 : { *(.ARM.attributes) }\n"
+	"  .note.GNU-stack 0 : { *(.note.GNU-stack) }\n"
+	"  .debug_aranges 0 : { *(.debug_aranges) }\n"   /* GNU's order: aranges, then info, then abbrev */
+	"  .debug_info 0 : { *(.debug_info .gnu.linkonce.wi.*) }\n"
+	"  .debug_abbrev 0 : { *(.debug_abbrev) }\n"
+	"  .debug_line 0 : { *(.debug_line .debug_line.* .debug_line_end) }\n"
+	"  .debug_line_str 0 : { *(.debug_line_str) }\n"
+	"  .debug_frame 0 : { *(.debug_frame) }\n"
+	"  .debug_str 0 : { *(.debug_str) }\n"
+	"  .debug_loc 0 : { *(.debug_loc) }\n"
+	"  .debug_loclists 0 : { *(.debug_loclists) }\n"
+	"  .debug_ranges 0 : { *(.debug_ranges) }\n"
+	"  .debug_rnglists 0 : { *(.debug_rnglists) }\n"
+	"  .debug_macro 0 : { *(.debug_macro) }\n"
+	"  .debug_addr 0 : { *(.debug_addr) }\n"
+	"  .debug_names 0 : { *(.debug_names) }\n"
+	"  .debug_str_offsets 0 : { *(.debug_str_offsets) }\n"
 	"}\n";
 
 void script_read(const char *path) {
@@ -590,9 +614,32 @@ void section_start(const char *name, u32 addr) {
 		if (st[i].kind == S_OUTSEC && !st[i].discard && !strcmp(st[i].os->name, name)) { st[i].addr = synth("%#x", addr); return; }
 	die("--section-start %s: the script has no output section of that name (a new one: unsupported)", name);
 }
+/* NON-ALLOCATED sections are placeable too. Requiring SHF_ALLOC here meant they never reached match_one OR
+ * place_orphan, so every one of them was dropped from the output even when the script named it explicitly:
+ * a `gcc -c -g` object carrying .comment, .ARM.attributes and nine .debug_* sections linked to a file with
+ * .text and .data and nothing else, where GNU ld keeps all eleven. That silently cost three things at once —
+ * the producer identity in .comment, the float-ABI attributes a consumer reads, and any possibility of debug
+ * information surviving a link. They take file space but no memory, so they get no address and no PT_LOAD
+ * (see sec_bflags: no O_ALLOC, hence no O_LOAD). */
+#define SHT_ARM_ATTRIBUTES 0x70000003u
 static int placeable(Obj *o, int j) {
+	static int attrs_seen;                              /* one link per process, so never reset */
 	Elf32_Shdr *s = &o->sh[j];
-	if (!(s->sh_flags & SHF_ALLOC) || o->sec_out[j]) return 0;
+	if (o->sec_out[j]) return 0;
+	/* .ARM.attributes must be MERGED, tag by tag, not concatenated: two sections run together are not a valid
+	 * attribute section at all (GNU readelf: "Bad attribute length"). Until the merge exists, keep the FIRST
+	 * one and drop the rest, exactly as a relocatable link already does (reloc.c:73). The result is a valid
+	 * section describing the first input rather than the whole link — a declared divergence from GNU, which
+	 * merges, and the reason the float-ABI check cannot be built on this yet. */
+	if (s->sh_type == SHT_ARM_ATTRIBUTES) { if (attrs_seen) return 0; attrs_seen = 1; }
+	/* An INPUT's symbol/string/relocation tables are the linker's business, not output content — it builds its
+	 * own. The test is on the type AND on being non-allocated, because the sections the linker generates for a
+	 * dynamic image have these same types and DO get placed: .dynsym is SHT_SYMTAB-like, .dynstr is SHT_STRTAB,
+	 * .rel.dyn is SHT_REL, and all three are SHF_ALLOC. Excluding by type alone dropped .dynstr and .rel.dyn
+	 * from every PIE, which left .dynsym/.dynamic with sh_link = 0 and no dynamic relocations at all. */
+	if (!(s->sh_flags & SHF_ALLOC)
+	    && (s->sh_type == SHT_NULL || s->sh_type == SHT_SYMTAB || s->sh_type == SHT_STRTAB
+	        || s->sh_type == SHT_REL || s->sh_type == SHT_RELA)) return 0;
 	if (o == linker_obj && !s->sh_size) return 0;       /* a linker table this link doesn't need */
 	return 1;
 }
@@ -835,7 +882,13 @@ static void lay_out(Stmt *s, u32 *dot) {
 	}
 	u32 explicit_align = s->align.lo >= 0 ? eval(s->align, *dot) : 1;
 	if (explicit_align > align) align = explicit_align;
-	u32 *vc = s->vregion >= 0 ? &regions[s->vregion].cur : dot, before = *vc;
+	/* A NON-ALLOCATED output section (.comment, .ARM.attributes, every .debug_*) takes file space but no
+	 * memory: GNU gives it vma 0 and it must not disturb the allocated layout. So lay it out against a counter
+	 * of its own, starting at 0, and leave the location counter alone at the end. (GNU's default script writes
+	 * `.comment 0 :` to the same effect, but not depending on the script means an orphan lands correctly too.) */
+	u32 nalloc_dot = 0;
+	int nonalloc = !(os->flags & SHF_ALLOC);
+	u32 *vc = nonalloc ? &nalloc_dot : s->vregion >= 0 ? &regions[s->vregion].cur : dot, before = *vc;
 	if (s->addr.lo >= 0) *vc = align_to(eval(s->addr, *dot), explicit_align);   /* (GNU: an address given, only ALIGN() moves it —
 	                                                                          * the inputs align inside) */
 	else *vc = align_to(*vc, align);
@@ -877,8 +930,13 @@ static void lay_out(Stmt *s, u32 *dot) {
 			die("section %s overflows MEMORY region %s by %u bytes", os->name, regions[reg].name, end - regions[reg].origin - regions[reg].length);
 	}
 	if (tls_bss(os)) *vc = before;                      /* .tbss is a template's zero tail: the next section reuses its addresses */
-	*dot = *vc;
-	os->done = 1; last_os = os;
+	if (!nonalloc) *dot = *vc;                          /* a non-alloc section never moves the location counter */
+	os->done = 1;
+	/* Only an ALLOCATED section can be "the section a top-level symbol follows": a symbol's value is an address
+	 * in allocated space, so attributing it to .ARM.attributes or a .debug_* is meaningless. GNU puts `_end`
+	 * in the last allocated section; letting a non-alloc one become last_os moved _end/__end__/_bss_end__ there
+	 * and nm reported them as 'N' instead of 'D'. */
+	if (!nonalloc) last_os = os;
 }
 static void assign_addresses(void) {
 	u32 dot = 0;
