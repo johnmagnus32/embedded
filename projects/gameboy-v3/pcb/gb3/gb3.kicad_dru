@@ -52,7 +52,9 @@
 	(constraint diff_pair_gap (min 0.18mm) (opt 0.2mm) (max 0.25mm))
 	(constraint diff_pair_uncoupled (max 12mm))
 	(constraint skew (max 0.5mm) (within_diff_pairs))
-	(constraint via_count (max 2)))
+	# USBC1 interleaves D+/D- (B7 D-, A6 D+, A7 D-, B6 D+): tying each net's two pads takes one jumper via on
+	# top of the layer change, so 3 per net is the geometric minimum (step-2 review)
+	(constraint via_count (max 3)))
 
 # ---------------------------------------------------------------- clocks and buses
 
@@ -61,9 +63,11 @@
 	(constraint via_count (max 0))
 	(constraint length (max 12mm)))
 
+# X2 sits on F.Cu directly under U1.24/25 (step 2 placement), so each RTC net takes one via up to its ball.
+# The SC-20S datasheet asks for no pattern under the crystal: keep F.Cu under X2's body free (rule area at routing).
 (rule "32.768 kHz crystal"
 	(condition "A.NetName == 'RTC_IN' || A.NetName == 'RTC_OUT'")
-	(constraint via_count (max 0))
+	(constraint via_count (max 1))
 	(constraint length (max 15mm)))
 
 # parallel RGB, ~30 MHz pixel clock (33 ns period): 25 mm of skew is ~150 ps, still negligible. The rule

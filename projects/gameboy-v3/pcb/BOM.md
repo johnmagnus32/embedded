@@ -14,13 +14,13 @@ charge/power-path, onboard Bluetooth. **Stock checked 2026-10-13 (JLC + Digi-Key
 |---|-----|------|------|--------|-----------------|-----|-----|------|
 | 1 | 1 | SoC | T113-S3 | C5197687 | system | ✅ | JLC | Dual Cortex-A7, 128 MB in-package DDR3, eLQFP-128. |
 | 2 | 1 | USB-C | TYPE-C-31-M-12 | C165948 | 5 V in + USB2 | ✅ | JLC | Receptacle (charge + FEL/data). **Shell + stainless mid-plate + all 4 THT retention posts → GND** (ESD discharge path + mechanical retention; direct short — plastic-shelled handheld, no separate earthed chassis). Optional DNP hedge: 4.7 nF/2 kV ∥ 1 MΩ shell-to-GND (split off only if a first-article EMI/ground-loop issue appears; default = stuff the short). |
-| 3 | 1 | 0.9 V core buck | FP6161KR-LF-ADJ | C77234 | **input = SYS** | ✅ | JLC | Sync buck, SOT-23-5, 1 A, 0.6 V FB. **RUN driven from STM6601 EN via RC #9 (≥2 ms after VCC-IO)** — do NOT tie RUN→SYS (no true-off/drain) or →3.3 V (RUN abs-max = VIN). FB set by #6/#7; CIN = C33, COUT = C34 10 µF (#20) at L1; core bulk C39 10 µF (#20) at the SoC core balls 116/117. |
+| 3 | 1 | 0.9 V core buck | FP6161KR-LF-ADJ | C77234 | **input = +3V3** (step 2) | ✅ | JLC | Sync buck, SOT-23-5, 1 A, 0.6 V FB. **VIN and the RUN RC #9 are on +3V3** (step 2, was SYS + the STM6601 EN): RUN passes its 1.5 V threshold ~6 ms after +3V3 rises (≥2 ms after VCC-IO), RUN never exceeds VIN, and the buck is unpowered whenever +3V3 is off (true-off kept). +3V3 worst case ~1.4 A vs the TPS63021's 2 A (boost) / 4 A (buck). FB set by #6/#7; CIN = C33, COUT = C34 10 µF (#20) at L1; core bulk C39 10 µF (#20) on F under U1 at core ball 81; FB sensed locally at C34. |
 | 4 | 1 | Core-buck inductor | SMNR4020-2.2UH | C135262 | FP6161 (#3) | ✅ | JLC | 2.2 µH 3.4 A shielded. |
 | 5 | 1 | Amp mono strap R | RS-03K6803FT | C140074 | MAX98357A SD/MODE (#48) | ✅ | JLC | 680 K 1% 0603. **[AUDIT] DNP — duplicate of #48; populate only ONE (both = 340 k mis-selects SD_MODE).** |
 | 6 | 1 | Core FB R_bot | 0603WAF1503T5E | C22807 | FP6161 FB | ✅ | JLC | 150 K 1%. With #7 (75 K) → 0.6·(1+75/150) = 0.9 V. |
 | 7 | 1 | Core FB R_top | 0603WAF7502T5E | C23242 | FP6161 FB | ✅ | JLC | 75 K 1%. |
 | 8 | 1 | Core FB feed-forward | CL05C100JB5NNNC | C32949 | across #7 | ✅ | JLC | 10 pF C0G 0402 — REQUIRED for loop stability. |
-| 9 | 2 | Core-buck RUN RC | 100 kΩ 0603 (C14675) + 100 nF 0603 (C14663) | C14675 / C14663 | STM6601 EN → R → RUN(pin1); C: RUN→GND | ✅ | JLC | Delays VDD-CORE to ≥2 ms after VCC-IO. ~10 ms (drop C for faster, floor ~2 ms). |
+| 9 | 2 | Core-buck RUN RC | 100 kΩ 0603 (C14675) + 100 nF 0603 (C14663) | C14675 / C14663 | +3V3 → R → RUN(pin1); C: RUN→GND | ✅ | JLC | Delays VDD-CORE ~6 ms after +3V3 (τ 10 ms to the 1.5 V RUN threshold; ≥2 ms after VCC-IO). Step 2: fed from +3V3 instead of the STM6601 EN. |
 | 10 | 1 | DDR ZQ | 0603WAF2400T5E | C23350 | T113 pin 47 → GND | ✅ | JLC | 240 Ω 1% (JEDEC ZQ-cal nominal). |
 | 11 | 1 | SPI-NOR | W25Q128JVSIQ | C97521 | SPI0 boot | ✅ | JLC | 128 Mbit, SOIC-8, QE=1. |
 | 12 | 1 | microSD socket | A-MicroTF-1.85A | C22467599 | SDC0 | ✅ | JLC | Push-push. Card-detect (pin 9) is N.O. to the shell (GND) and closes on insert → PF6 + R48 10 kΩ pull-up (#124): active-low. |
@@ -201,7 +201,7 @@ Topology: battery ↔ **BQ24073 power-path → SYS (~3.0–4.4 V)** → **TPS630
 
 ## Schematic & routing notes
 
-**Power tree:** battery ↔ BQ24073 → **SYS (~3.0–4.4 V)** → TPS63021 buck-boost → **3.3 V** (sole source) + FP6161 → **0.9 V core**. Internal LDOs make 1.8 V + 1.5 V-DDR from 3.3 V. Rails to widen/thermal: 3.3 V (~1.1 A worst) + SYS. Exposed-pad thermal-via arrays on **FP6161 (#3), TPS63021 (#66), BQ24073 (#53), MAX98357A (#47)**. 4-layer minimum.
+**Power tree:** battery ↔ BQ24073 → **SYS (~3.0–4.4 V)** → TPS63021 buck-boost → **3.3 V** (sole source) → FP6161 → **0.9 V core** (the core buck runs from +3V3 since step 2). Internal LDOs make 1.8 V + 1.5 V-DDR from 3.3 V. Rails to widen/thermal: 3.3 V (~1.4 A worst incl. the core buck; TPS63021 2 A boost / 4 A buck) + SYS. Exposed-pad thermal-via arrays on **FP6161 (#3), TPS63021 (#66), BQ24073 (#53), MAX98357A (#47)**. 4-layer minimum.
 
 **Pinmux (mainline `pinctrl-sun20i-d1`; 72 bonded GPIO, PD bank full):**
 - RGB666 LCD = **PD0-21**, DISP = **PD22** · SPI0-NOR = **PC2-5** · microSD = **PF0-5** + card-detect **PF6** · UART0 console = **PE2/3**
@@ -376,3 +376,38 @@ The charger drew up to 1.34 A from any source while the handheld ran (no VIN-DPM
 - **Read GPADC0 with no source:** raw ≈ 25 means ~0.1 µA of leakage. Above ~150 nA, switch R56/R57 to 2× 100 kΩ.
 - **Compare against a DMM:** check the GPADC0 reading against a meter at the node with a 1.5 A and a 3 A source.
 - **Step PB7 under full load,** with and without a cell, and scope VBUS and OUT. TI documents no prohibition on switching RILIM while running, and both values are inside its validated 1.1–8 kΩ range.
+
+## Placement, step 2 (2026-10-14 — user-approved)
+
+Placement after the original `place.py` run is data now: `gb3/placement/step2.csv` (112 moves, each with its reason) applied by `gb3/place_moves.py`. That script refuses the parts the enclosure fixes: P1, FPC1, USBC1, Audio1, U4, CN1, U18, LRA1, SPK1 and SW2–SW16. The moves were surveyed per area (power, SoC, peripherals, board), merged and tested by a planner, checked by an EE-layout and a manufacturing skeptic, then finalised and re-checked.
+
+**What changed:**
+- **Core buck** (U2/L1/C33/C34 + FB/RUN parts) moved next to U1's core balls: C34 is 8.6 mm from U1.116 (was 65 mm), CIN 0.34 mm from VIN, and the CIN/COUT grounds are on one island (FP6161 p.10–11). It now runs from +3V3 (BOM #3/#9).
+- **U1 decoupling** is on F, directly under U1 (as the t113-breakout does), so the B-side ring stays clear for U1's ~72-signal fan-out. Every decap's rail pad is ≤ 2.2 mm from its ball (was up to 18 mm), and different rails on F are ≥ 0.45 mm apart. The 29-via plan routes; it is in `~/.cache/gb3-step2p/final/iter/final/viafit2*`.
+- **Crystals:** X1 is moved/rotated out of the SD fan-out; X2 is on F under U1.24/25, so the RTC nets may take 1 via (DRU).
+- **USB-C cluster:** D4 is at the connector with flow-through, C93 at D4.5, and the Rd/CC-sense resistors are out of the pair's path. The USB pair may use 3 vias (DRU).
+- **Other moves:**
+  - DCLK R50 is 0.5 mm from U1.75 (on F).
+  - The console R45/R46 + TP1–TP3 are at U1's north-east corner.
+  - Backlight boost: C45's return is now 3.2 mm to U6.4.
+  - The charger's ILIM node is 3.6 mm.
+  - The NTC R17 is at the cell's right wall.
+  - The test-pad strip reads 3V3 | GND | 5V | SYS | BAT, so a slipped probe can't push VBUS into the cell.
+- **Status LEDs:** both on F, in separate windows — U5 (power) at (125.4, 34.6), U14 (charge) at (160.5, 34.6).
+- **Checks:** DRC errors 5 → 5 (all pre-existing). 0 courtyard overlaps; pad-level spacing is clean (F ≥ 0.40 mm, B ≥ 0.30 mm between different nets). Board vs schematic 0 mismatches; all 26 reserved routing corridors are clear.
+
+**For the enclosure:**
+- **Panel film:** an insulating film on the panel back, and no foam over x 57.0–73.4, y 66.6–86.2 (the F decap island, ≤ 1.45 mm tall under a modelled 2.0 mm gap).
+- **D-pad rib:** the back-shell rib must go around the core buck behind SW3 (x 39.7–49.3, y 66.8–80.6; L1 is 2.0 mm tall).
+- **Windows and access:** two LED windows (above). A reset pinhole at SW1 (82.0, 35.7) on the back, if reset should be reachable.
+- **Optional:** a gap filler between the NTC and the cell.
+- **Mounting holes:** none placed yet. Free spots: (101.5, 36.0) and (180.5, 35.5).
+
+**Left for the routing plan (step 3):**
+- **Zones:** an F.Cu no-copper rule area under X2 (SC-20S); stitched In2 GND islands under the U2, U6 and U12 switch nodes (B.Cu's neighbour plane is +3V3).
+- **Crystal and island vias:** move the RESET via to about (69.4, 67.9), clear of X2; add GND vias for C9/C10/C17 inside U1's pin ring.
+- **GPIO / pin swaps, decided with a routing trial:** BL_CTRL↔PWR_BTN (PE13↔PE10, both PWM-capable) to keep the PWM lane off X1's load cap; SD_CD, JACK_DET, BT_EN_RST; the USBLC6, PCA9555 and TPA6132A2 channel orders.
+- **Antenna keep-out:** trim it to clear U18's own pad 14 (the remaining DRC error).
+- **Pours:** thermal reliefs on small SMD pads (0402 tombstoning).
+- **Silk pass:** 851 silk warnings vs 321 before. Move F-island refs to F.Fab; keep polarity marks printable; add CN1 '+'/'−', J2 '+' and test-pad labels.
+- **Bring-up check:** before the first power-up, meter +0V9, LDOA, LDOB and AVCC against +3V3 on the first boards.

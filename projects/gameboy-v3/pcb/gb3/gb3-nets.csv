@@ -162,10 +162,10 @@ USBC1,B5,USBC_CC2,,CC2 -> Rd 5.1k R53 to GND + R57 200k sense → GPADC0
 USBC1,B6,USB_D+,,DP2 shorted to DP1 (reversible USB2)
 USBC1,B7,USB_D-,,DN2 shorted to DN1
 USBC1,B8,,,spare/NC — SBU2 unused
-U2,1,CORE_RUN,,FP6161 RUN; node = R4(from PWR_EN) + C2(->GND); ~10ms delay after VCC-IO
+U2,1,CORE_RUN,,FP6161 RUN; node = R4 (from +3V3) + C2 (->GND); ~6 ms to the RUN threshold after +3V3
 U2,2,GND,gnd,GND — ground family
 U2,3,CORE_SW,,SW — switch node -> L1
-U2,4,SYS,pwr,VIN — rail: #3 input=SYS
+U2,4,+3V3,pwr,"VIN = +3V3 (step 2: the core buck follows the 3.3 V rail; FP6161 VIN 2.5-5.5 V; +3V3 worst ~1.4 A vs TPS63021 2 A boost / 4 A buck, DS §8.1)"
 U2,5,CORE_FB,,"FB/VOUT — FB sense (ADJ 0.6V); divider R3(top)/R2(bot), C1 feed-forward"
 L1,1,CORE_SW,,core-buck switch node (U2 pin3)
 L1,2,+0V9,pwr,core buck output rail
@@ -175,7 +175,7 @@ R3,1,+0V9,pwr,FB R_top 75k (VOUT/+0V9 -> FB)
 R3,2,CORE_FB,,
 C1,1,+0V9,pwr,"10pF feed-forward across R3 (+0V9 <-> FB), loop stability"
 C1,2,CORE_FB,,
-R4,1,PWR_EN,,"100k; from STM6601 EN net (cross-chip, not in dict — must match U17.9 EN / U12.12 EN)"
+R4,1,+3V3,pwr,100k RUN RC from +3V3: RUN passes its 1.5 V max threshold ~6 ms after +3V3 rises (tau 10 ms; BOM #3 wants >=2 ms after VCC-IO); RUN never exceeds VIN (both +3V3); off with +3V3 (true-off kept)
 R4,2,CORE_RUN,,RC to FP6161 RUN
 C2,1,CORE_RUN,,100nF RUN delay cap
 C2,2,GND,gnd,
@@ -291,7 +291,7 @@ C30,1,+3V3,pwr,100nF +3V3 ball decoupling (at U1.77)
 C30,2,GND,gnd,
 C31,1,RESET,,100nF RESET debounce cap -> GND (BOM #22 'RESET + 100nF')
 C31,2,GND,gnd,
-C33,1,SYS,pwr,10uF FP6161 CIN at U2.4 VIN (DS typ app; layout checklist #2)
+C33,1,+3V3,pwr,10uF FP6161 CIN at U2.4 VIN (+3V3; DS typ app; layout checklist #2)
 C33,2,GND,gnd,
 C34,1,+0V9,pwr,10uF FP6161 COUT at L1.2 with GND next to U2.2/C33 GND (DS typ app 10uF; layout checklist #5)
 C34,2,GND,gnd,
@@ -501,7 +501,7 @@ U12,8,BB_L1,,"L1 switch node (pins 8,9) -> inductor L3"
 U12,9,BB_L1,,L1
 U12,10,SYS,pwr,VIN — rail: #66 buck-boost in=SYS
 U12,11,SYS,pwr,VIN — rail: #66 buck-boost in=SYS
-U12,12,PWR_EN,,EN driven by STM6601 (U17) EN pin9; cross-subsystem net PWR_EN also feeds FP6161 (U2) RUN via RC R4/C2 — ensure U17/U2 owners use this exact name
+U12,12,PWR_EN,,"EN driven by STM6601 (U17) EN pin9 = PWR_EN (the core buck follows +3V3, so PWR_EN only enables the TPS63021)"
 U12,13,BB_PSYNC,,PS/SYNC -> R23 0R -> GND = power-save mode on
 U12,14,,,"spare/NC: PG = open-drain current-limit flag, not a power-good monitor (no defined state with EN low or in soft-start); NC is allowed; not used for sequencing"
 U12,15,GND,gnd,PGND — ground family
@@ -661,7 +661,7 @@ U17,5,,,C_SRD Smart-Reset delay cap input unused -> leave open per BOM #94
 U17,6,PWR_BTN,,#PB — /PB push-button input <- SW14 center + T113 PE10 (PWR_BTN). Has internal pull-up
 U17,7,,,"#VCC_LO — /VCC_LO comparator output unused -> leave open per BOM #94 (open-drain, no pull-up needed)"
 U17,8,PWR_BTN_3V3,,#PB_OUT — [AUDIT] /PB_OUT open-drain -> PWR_BTN_3V3 (+#117 pull-up) -> T113 PE10
-U17,9,PWR_EN,,EN(#EN) — EN (active-high) -> PWR_EN master enable: TPS63021 U12.12 EN + R4.1 (RC to FP6161 CORE_RUN). Fixed seam: was CORE_RUN
+U17,9,PWR_EN,,EN(#EN) — EN (active-high) -> PWR_EN master enable: TPS63021 U12.12 EN (the core buck runs from +3V3)
 U17,10,,,#RST — /RST reset output unused -> leave open per BOM #94 (open-drain)
 U17,11,,,#INT — /INT interrupt output unused -> leave open per BOM #94 (open-drain)
 U17,12,GND,gnd,GND — ground family

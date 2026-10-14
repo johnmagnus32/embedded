@@ -1,0 +1,113 @@
+ref,x,y,rot,side,why
+C1,40.70,76.10,0,B,[power] 10 pF feed-forward across R3 at U2.5 | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk)
+C2,40.70,74.75,180,B,[power] RUN cap 0.7 mm from U2.1 | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk)
+C3,71.050,66.100,90,B,[soc] HOSC_IN load at X1's SE (IN) pad
+C4,67.650,63.450,90,B,[soc] HOSC_OUT load at X1's NW (OUT) pad
+C5,69.550,69.100,0,F,[soc] RTC_IN load beside X2 (F.Cu)
+C6,65.550,69.100,180,F,[soc] RTC_OUT load beside X2 (F.Cu)
+C7,71.000,59.050,270,B,[soc] 100nF at U3.8 VCC (pad 1 0.24 mm from the pin) | merge D2 C7 at U3.8
+C8,60.600,72.200,0,F,"[soc] F.Cu under U1 at U1.128 VCC-PG (+3V3), NW corner"
+C9,70.90,72.85,270,F,"[final, mfg #5] U1.29 LDO-IN +3V3 100nF moved E of the LDOB lane into the +3V3 group (C10/C36): was 0.25 mm from both C42 (LDOA) and C28 (LDOB); now 0.65 mm from C28 across the lane, other neighbours +3V3/GND; rail pad 2.08 mm from U1.29; its via sits E of the lane (pin 29 reaches it on B under the body)"
+C10,72.15,71.20,90,F,"[final, mfg #5] flipped 180 (GND pad N): R11's LDOA pad now faces GND (was +3V3 at 0.347 mm); +3V3 pad S toward C9/C36 (same net); rail pad 0.45 mm from U1.34 VCC-PE"
+C12,63.35,80.65,90,F,"[final, mfg #5] S band 0.45 mm gaps: +3V3 pad 1.90 mm from U1.83"
+C13,60.600,78.700,0,F,[soc] F.Cu under U1 at U1.107 VCC-TVIN (LDOA)
+C14,60.600,74.750,0,F,[soc] F.Cu under U1 at U1.117 VDD-CORE1 (+0V9)
+C15,60.600,75.900,0,F,[soc] F.Cu under U1 at U1.116 VDD-CORE0 (+0V9)
+C16,68.400,74.700,180,F,[soc] F.Cu under U1 at U1.46 VDD-SYS0 (+0V9)
+C17,70.75,79.60,270,F,"[final, mfg #5] U1.51 VDD-SYS1 +0V9 100nF moved from the bottom of the E column into the free SE inner corner (+0V9 pad N): 0.68 mm from U1.51 (was 2.15); neighbours C24 LDOA 0.80 mm, C35 GND/LDOB 0.28/0.84 mm (was 0.25 to C24)"
+C18,64.70,80.65,90,F,"[final, mfg #5] S band 0.45 mm gaps: +0V9 pad 1.90 mm from U1.81"
+C19,62.00,80.65,90,F,"[final, mfg #5] S band 0.45 mm gaps: AVCC pad 1.93 mm from U1.89"
+C20,57.900,83.750,270,F,[soc] F.Cu under U1 W pad row: HPVCC at U1.97
+C21,59.30,80.65,90,F,"[final, mfg #5] S band re-spaced to 0.45 mm pad gaps (was 0.25 between VRA1|VRA2|AVCC|+3V3|+0V9): VRA1 pad 1.90 mm from U1.92, 0.50 mm from C94's CC_SENSE pad"
+C22,60.65,80.65,90,F,"[final, mfg #5] S band 0.45 mm gaps: VRA2 pad 1.90 mm from U1.90"
+C23,65.900,72.850,270,F,[soc] F.Cu under U1 at U1.20 VCC-PLL (LDOA): GND pad on the EP via field
+C24,68.40,79.00,180,F,"[final, mfg #5] LDOA 100nF at U1.50 VDD18-DRAM, 0.85 mm S: 0.45 mm from C27's LDOB pad (was 0.25); rail pad 2.20 mm from U1.50"
+C25,72.000,84.600,270,F,[soc] F.Cu SE corner at U1.65 VCC-LVDS (LDOA)
+C26,68.40,76.50,180,F,"[final, mfg #5] LDOB 100nF at U1.48 0.65 mm S: 0.90 mm from C16's +0V9 pad (was 0.25) and room W of the LDOB lane for the U1.46 via that feeds C16 (the plan's via E of the lane made C16's F stub cross the LDOB trace); rail pad 1.90 mm from U1.48"
+C27,68.40,77.65,180,F,"[final, mfg #5] LDOB 100nF at U1.49, 0.65 mm S with C26 (same net, 0.25 gap); 0.45 mm to C24's LDOA pad (was 0.25); rail pad 1.91 mm from U1.49"
+C28,69.350,72.850,270,F,[soc] F.Cu under U1 at U1.30 LDOB-OUT
+C29,69.600,84.400,180,F,[soc] F.Cu under U1 S pad row at U1.66 VCC-PD (+3V3)
+C30,66.05,80.65,90,F,"[final, mfg #5] S band 0.45 mm gaps: +3V3 pad 1.90 mm from U1.77"
+C31,72.500,68.150,270,F,"[soc] RESET 100nF at the SoC end (F.Cu NE corner, ~4 mm of trace from U1.27)"
+C33,45.85,78.90,0,B,"[power] CIN 0.34 mm from U2.4 VIN; GND on the shared island (FP6161 p.10 #2 #5) | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk) | [final] VIN = +3V3 (user decision; netlist change applied separately): 2 In2 vias at (44.85,80.15)/(45.60,80.15) just S of C33.1 (0.28 mm; 0.49 to C33.2 GND), no SYS feed; they stay outside an In2 GND island under U2/L1"
+C34,48.25,75.90,270,B,"[power] COUT: +0V9 pad level with U1.116/117; GND 0.62 mm from C33 GND (FP6161 p.10 #5) | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk) | [final] local FB sense tap at its W edge (via 47.15,74.90)"
+C35,72.150,78.000,270,F,[soc] F.Cu under U1 E pad row: LDOB 10uF bulk at U1.48/49 (VCC-DRAM load end)
+C36,72.30,74.30,270,F,"[final] +3V3 10uF bulk 0.15 mm E to clear C9 (0.275 mm, same net); still under the E pad row 1.55 mm from U1.34; 0.525 mm W of the RGB F bundle"
+C37,58.90,90.60,90,B,"[plan] +3V3 10uF general bulk S of U1's SW quadrant, below the 4 mm escape ring (pins 87-96 NC/decapped from F; XSMT/HP_EN/BT_EN_RST turn W above it): plane-fed, outside RGB/PB/I2S/audio corridors | merge D7 (plan/decisions.csv)"
+C38,60.90,90.60,90,B,[plan] +3V3 10uF general bulk beside C37 (0.2 mm W of the PB2-7 escape corridor) | merge D7 (plan/decisions.csv)
+C39,64.000,84.400,180,F,[soc] F.Cu under U1 S pad row: +0V9 10uF bulk at U1.81 (same +0V9 net as 116/117; inside the LCM outline)
+C42,68.00,72.85,270,F,"[final, mfg #5] F under U1, LDOA-OUT 4.7uF at U1.28 (+U1.26): 0.95 mm E so the N row reads LDOA|LDOA|LDOB|lane; rail pad 1.98 mm from U1.28 (was 2.42); 0.45 mm to C28's LDOB pad (was 0.25 to C9's +3V3)"
+C45,102.60,60.50,90,B,[power] boost COUT west of D3: GND returns straight to U6.4 (3.15 mm; was 5.5 mm behind D3)
+C51,121.50,61.80,180,B,"[mfg] 0.35 mm W of the plan spot: +3V3 pad 0.65 -> 1.0 mm from J2.2 (hand-soldered LRA flying lead), same as U8's own pins; still 1.0 mm under DRV2605L VDD pin 10"
+C65,185.60,38.50,90,B,[periph] VDD bypass 1uF between U13.3 and the CN1.1 sense via (1.4 mm)
+C74,41.90,96.33,-90,B,"[periph] moves with U19 (CPVDD 100nF 1.5 mm, PCM5102A p.34)"
+C75,39.00,89.33,180,B,"[periph] moves with U19, +0.5 mm off C82: 1.7 mm OUTL/OUTR escape between AVDD and VNEG caps (PCM5102A Fig43)"
+C76,50.50,94.83,0,B,[periph] moves with U19 (DVDD 100nF)
+C77,50.50,93.03,0,B,[periph] moves with U19 (LDOO 100nF)
+C78,43.90,96.83,-90,B,[periph] moves with U19 (CPVDD 10uF)
+C79,38.40,87.43,180,B,[periph] moves with U19 and C75 (AVDD 10uF)
+C80,47.70,97.03,-90,B,[periph] moves with U19 (DVDD 10uF)
+C81,39.50,94.93,90,B,[periph] moves with U19 (flying cap)
+C82,38.40,92.13,180,B,"[periph] moves with U19 (VNEG 2.2uF, 2.6 mm)"
+C83,39.40,104.20,270,B,"[periph] 2.2nF C0G shunt at the R35/C85 node, outside the jack outline (no MLCC behind the plug)"
+C84,39.40,98.90,90,B,[periph] 2.2nF C0G shunt at the R36/C86 node
+C85,40.60,102.35,0,B,"[periph] INL- coupling at pin1, 1.6 mm (high-Z node short)"
+C86,40.60,100.85,0,B,"[periph] INR- coupling at pin4, 1.6 mm"
+C87,47.60,101.35,90,B,[periph] moves with U20 (flying cap 1.7 mm)
+C88,45.60,98.20,90,B,[periph] moves with U20 (HPVSS 1.3 mm)
+C89,48.30,103.90,0,B,[periph] moves with U20 (HPVDD 2.1 mm)
+C90,47.90,106.60,270,B,[periph] moves with U20 (VDD 2.2uF)
+C91,44.65,104.90,270,B,"[periph] VDD 100nF under pin14, 1.1 mm (was 3.1)"
+C92,60.300,84.400,180,F,[soc] F.Cu under U1 S pad row: AVCC 2.2uF at U1.89
+C93,118.00,46.10,270,B,"[periph] CBUS 100nF under D4.5, 1.45 mm (was 2.05), between D+out/D-out as ST Fig18; GND via below"
+C94,57.900,81.100,90,F,[soc] F.Cu under U1 W pad row: GPADC0 filter at U1.101 (<=2 mm)
+D3,105.00,59.50,90,B,[power] 0.3 mm closer to U6.3: smaller BL_SW node
+D4,118.00,42.80,0,B,"[periph] USBLC6 directly under the D+/D- pads (was 4 mm east; pair doubled back past the CC Rs). Flow-through, pins 1-3 to the connector, VBUS pin 5 away: ST C7519 p.5 s2.3/Fig7, p.6, p.9 Fig18. 2.3 mm band left for jumper/VBUS/GND vias"
+L1,46.45,71.85,0,B,[power] SW pad 0.57 mm above U2.3; +0V9 pad faces U1 | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk)
+R2,42.75,79.40,270,B,[power] FB R_bot 0.36 mm from U2.5 | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk)
+R3,40.60,77.30,0,B,"[power] FB R_top at U2.5 | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk) | [final] FB sensed locally at C34 (user decision, no remote line): R3.1/C1.1 to C34.1 on F over In1 GND through vias (39.25,76.30)/(47.15,74.90) (FP6161 p.10 #4), or on B under U2 between pins 3/4"
+R4,40.70,73.40,0,B,"[power] RUN series R | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk) | [final] RUN RC source = +3V3 (user decision, was PWR_EN): In2 via at (38.95,73.40), 0.30 mm W of R4.1"
+R5,74.550,76.050,0,B,"[mfg] 0.3 mm E of the plan spot: pad 1 was 0.237 mm from U1.46/47/48 toes (+0V9/ZQ/LDOB, 0.4 mm pitch) -> 0.537 mm; keeps AOI/rework access to the LQFP E row; ZQ stub +0.3 mm"
+R11,71.350,68.600,270,F,"[soc] RESET 10k pull-up to LDOA, F.Cu NE corner: RESET pad N (from the RESET via), LDOA pad S (from U1.28 via)"
+R17,183.00,62.00,270,B,[power] TS NTC at the cell right wall: 3.3 mm from the cell and 35 mm from U10
+R32,50.58,88.12,180,B,"[periph] moves with U19 (I2S 0R, digital side faces U1)"
+R33,50.60,91.33,180,B,[periph] moves with U19 (I2S 0R)
+R34,50.60,89.73,180,B,[periph] moves with U19 (I2S 0R)
+R35,38.10,102.35,0,B,[periph] 470R moved from N of U19 (filtered lines ran 20 mm past the I2S Rs) to the amp input string R-C-Ccoupling (PCM5102A p.34 analog/digital partition)
+R36,38.10,100.85,0,B,"[periph] 470R OUTR, as R35"
+R37,46.00,106.80,270,B,[periph] moves with U20 (EN pull-down)
+R43,181.20,40.60,180,B,[periph] ALRT pull-up beside U13.5 (1.3 mm)
+R44,50.42,96.95,180,B,[periph] moves with U19 (XSMT pull-down)
+R45,74.850,69.350,90,B,[soc] UART0_TX 510R at U1.35 (pad 1 at the pin) | [final-check] +0.10 mm E: R45/R46 pad gap 0.236 -> 0.336 mm (B-side different-net rule >= 0.30; UART0_TX vs UART0_RX)
+R46,73.650,69.350,90,B,[soc] UART0_RX 510R at U1.33 (pad 1 at the pin)
+R47,156.75,45.60,270,B,[power] TMR 3.3 mm from U10.14 through the R15/C55 gap (was 4.3 mm)
+R50,66.700,84.600,270,F,"[soc] DCLK 33R on F.Cu under U1.75: <=3 mm from the pin, RGB_DCLK leaves on F.Cu toward P1"
+R51,100.00,52.30,180,B,[power] BL_CTRL pull-down moved out of the C45-U6.4 return path
+R52,115.40,42.60,270,B,"[periph] CC1 Rd west of D4, out of the D+/D- path (step-1c), pad1 up toward A5 (3.9 mm)"
+R53,120.60,42.60,270,B,"[periph] CC2 Rd east of D4, mirror of R52; VBUS-right trace passes above it toward the charger"
+R54,160.70,42.85,0,B,[power] ILIM node U10.12-R16.1-R54.1 3.6 mm (was ~8.7 mm routed; DRU max 8)
+R56,113.90,42.60,270,B,"[periph] CC1 200k sense 1.5 mm beside R52 (step-1c <=3 mm); pin2 via to F.Cu, joins R57.2 there"
+R57,122.10,42.60,270,B,[periph] CC2 200k sense 1.5 mm beside R53; pin2 via to F.Cu to join R56.2
+TP1,76.140,66.400,180,B,[soc] console TX pad | merge D4 console row at R45/R46
+TP2,73.600,66.400,180,B,"[soc] console RX pad, 2.54 mm row RX-TX-GND above R46/R45 | merge D4 console row at R45/R46"
+TP3,78.680,66.400,180,B,[soc] console GND pad | merge D4 console row at R45/R46
+TP4,147.00,47.20,0,B,[ee-skeptic] strip 5V moved from the E end to the middle so it no longer neighbours BAT (plan Q12); stub reaches the +5V trunk in the y48.8-51.8 band with one via under the SYS lane
+TP5,152.08,47.20,0,B,[periph]+[plan] merge D10: power strip BAT (shifted one pitch W); no GND neighbour (base TP5 was 0.93 mm from C57.2 GND)
+TP6,149.54,47.20,0,B,[periph]+[plan] merge D10: power strip SYS (shifted one pitch W); stub to the SYS trunk below
+TP7,141.92,47.20,0,B,[ee-skeptic] strip 3V3|GND|5V|SYS|BAT: 3V3 at the W end next to GND only (a 3V3-to-SYS/BAT/5V slip overvolts the 3.3 V rail); via to In2
+TP8,48.25,67.90,0,B,[power] +0V9 test pad 1 mm from L1.2 | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk)
+TP9,54.40,79.00,180,B,"[plan] LDOA probe at U1.107 (VCC-TVIN) on the W side: 1 mm stub, the W ring there carries no escapes (102-113 NC, 107 decap on F) | merge D6 (plan/decisions.csv)"
+TP10,78.30,76.60,180,B,[soc]+[plan] merge D5: nudged 0.2 mm N so the D2.0 courtyard fills the 2.0 mm power gap between the E-escape band (y<=75.6) and the RGB B zone (y>=77.6)
+TP11,95.00,62.50,0,B,[periph] BL_LED_P 19-39V isolated >5 mm from any exposed pad (was 1.2 mm from C45 GND) on the D3/C45->P1.2 run
+TP12,144.46,47.20,0,B,"[ee-skeptic] strip GND between 3V3 and 5V (a slip shorts VBUS to GND: source-limited, no cell involved)"
+U2,43.70,76.15,0,B,[power] core buck beside U1.116/117 (was 53-65 mm from the +0V9 balls) | merge D1 power spot over board Z5 (FP6161 p.10 loop; crossing-free +0V9 trunk)
+U3,67.500,55.500,90,B,"[soc] W25Q128 ~12 mm north of U1.14-19 (was 25-30 mm), east of the SD fan-out, north of X1 | merge D2 SoC U3 over board (C7 at U3.8)"
+U5,125.40,34.60,0,F,[user] power LED on the FRONT top bezel right of USB-C in its own window (the plan's U14 spot; U14 went to 160.5): outside the LCM (y<37); R12 stays on B.Cu behind it
+U13,183.30,38.60,-90,B,"[periph] gauge beside CN1: VDD(cell sense) 4.1 mm to CN1.1 (was 7.8) so a dedicated VDD trace taps the pad, not the BAT run (MAX17048 p.6, p.15 Fig14)"
+U14,160.50,34.60,0,F,"[mfg]+[user] charge LED on the FRONT top bezel directly above R26/U10 in its own window (user decision: separate front windows): CHG_LED_A 1.3 mm + 1 via to R26.2, CHG_LED_K ~4 mm to U10.9 (plan 34-36 mm each across the top strip); same green C2986057 as U5, so the windows must stay apart"
+U19,44.80,91.20,90,B,[periph] DAC block shifted 1.77 mm N as a rigid group (decaps keep their pin distances) to fit the HP amp N of the jack
+U20,44.40,101.60,0,B,"[periph] HP amp 9 mm toward the jack: HP_L 5.6 mm to tip (was 10); inputs W, charge pump E (TPA6132A2 p.18 Fig30); stays N of the jack outline"
+X1,68.750,65.725,180,B,"[soc] 24MHz B.Cu north of U1.22/23, out of the SD/NOR fan-out; IN pad near, OUT up its west side"
+X2,67.550,69.100,180,F,[soc] 32k768 on F.Cu under its pins (MangoPi MQ-R XT1 style): RTC via 1 each (DRU change)
+R30,52.48,64.75,90,B,[plan] merge D16: I2C1 SCL pull-up nudged 1.0 mm N (no survey moved it): clears the tops of the SoC UART3 corridor (y>=66) and power's W-side turn strip; UART3 rises at x 50.1-51.4 west of it
+R31,54.08,64.75,90,B,[plan] merge D16: I2C1 SDA pull-up nudged 1.0 mm N with R30
