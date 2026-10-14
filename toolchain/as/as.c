@@ -16,6 +16,7 @@
 #include <strings.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include "as.h"
 #include "strmap.h"
 
@@ -54,7 +55,15 @@ void die(const char *fmt, ...) {
 	fputs("as: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
-int sec_find(const char *name) { for (int i = 0; i < nsec; i++) if (!strcmp(secs[i].name, name)) return i; return -1; }
+/* name -> index, O(1). This was a linear scan over every section, run from sec_new/sec_get on every .section
+ * directive, so N sections cost O(N^2) strcmp calls — and the kernel really builds such objects:
+ * .vmlinux.export.o has 26,968 section headers. Measured on a synthetic input, ours vs GNU as:
+ * 1k 0.018s/0.009s, 4k 0.223s/0.034s, 13k 3.08s/0.114s, 27k 14.77s/0.277s — clean quadratic, 53x at the top.
+ * Safe as a map because sections are only ever appended (nsec never decreases) and secs[i].name is strdup'd,
+ * so the key strmap holds (it does not copy keys) outlives the table's reallocs. Values are index + 1, since
+ * strmap_get returns NULL for absent. */
+static StrMap sec_map;
+int sec_find(const char *name) { return (int)(intptr_t)strmap_get(&sec_map, name) - 1; }
 /* ARM mapping symbols ($a = ARM code starts here, $d = data), placed with GAS's rules (tc-arm.c mapping_state /
  * arm_init_frag / check_mapping_symbols): per-section state UNDEF/ARM/DATA. An instruction enters ARM (and if the
  * section was UNDEF with bytes already in it, a $d at 0 first). A data directive enters DATA, but from UNDEF
@@ -130,6 +139,7 @@ static int sec_new(const char *name, u32 type, u32 flags) {
 	int i = sec_find(name); if (i >= 0) { cursec = i; return i; }
 	secs = grow(secs, nsec, &seccap, sizeof *secs);
 	secs[nsec] = (Section){ .name = strdup(name), .type = type, .flags = flags, .align = 1, .mapstate = MAP_UNDEF, .lastmap = -1, .secsym = -1, .link = -1, .base = -1, .lead = -1, .fragmode = -1 };
+	strmap_put(&sec_map, secs[nsec].name, (void *)(intptr_t)(nsec + 1));   /* the strdup'd name is the key (see sec_find) */
 	return cursec = nsec++;
 }
 int sec_get(const char *name, u32 type, u32 flags) {
@@ -146,7 +156,7 @@ static int subsection_of(int b, long n) {
 	if (n < 0 || n > 8192) die(".subsection %ld: out of range", n);
 	char nm[300]; snprintf(nm, sizeof nm, "%s\001%ld", secs[b].name, n);
 	int i = sec_find(nm);
-	if (i < 0) { i = sec_new(nm, secs[b].type, secs[b].flags); secs[i].base = b; secs[i].subsec = (int)n; }
+	if (i < 0) { i = sec_new(nm, secs[b].type, secs[b].flags); secs[i].base = b; secs[i].subsec = (int)n; secs[b].nsub++; }
 	return i;
 }
 static int map_pending;   /* an instruction is being assembled: map ARM state at its first byte */
@@ -1440,6 +1450,12 @@ static void merge_subsections(void) {
 	int save = cursec;
 	for (int b = 0; b < nsec; b++) {
 		if (secs[b].base >= 0) continue;
+		/* Nothing to merge, and — the point of the counter — no reason to scan for it. This loop used to run
+		 * two full nsec scans for EVERY base section, including the ones with no subsections, which is all of
+		 * them in an ordinary object: 27,000 sections meant ~1.5 billion comparisons finding nothing.
+		 * Equivalent to the general path below when there are no subsections (salign stays secs[b].align and
+		 * the first `best` search returns -1). */
+		if (!secs[b].nsub) { sub_end(b, b, 1, secs[b].align); continue; }
 		u32 salign = secs[b].align;   /* the section's recorded alignment: every subsection's */
 		for (int k = 0; k < nsec; k++) if (secs[k].base == b && secs[k].align > salign) salign = secs[k].align;
 		for (int done = b;;) {   /* the next-numbered subsection of b */

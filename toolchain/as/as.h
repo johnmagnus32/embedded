@@ -20,7 +20,8 @@
  * section byte buffers, symbol records, relocations, and forward-local-branch fixups the front-end owns. */
 typedef struct { char *name; u32 type, flags; u8 *data; size_t len, cap; int shndx; u32 align, entsize;
                  int mapstate, lastmap, secsym, link;
-                 int base, subsec, merged, lead, fragmode, first_align_mode; u32 first_align, pad_align; } Section;   /* base >= 0: an internal SUBSECTION of secs[base] (merged
+                 int base, subsec, merged, lead, fragmode, first_align_mode; u32 first_align, pad_align;
+                 int nsub; } Section;   /* nsub: how many SUBSECTIONS name this section as their base (see merge_subsections) */   /* base >= 0: an internal SUBSECTION of secs[base] (merged
                                                                           * into it at the end, then skipped); first_align: an
                                                                           * .align before its first byte; lead: that .align's
                                                                           * own mapping symbol (-1 none); fragmode: the ARM(0)/
