@@ -1,0 +1,1359 @@
+diff --git a/projects/gameboy-v2/enclosure/DESIGN.md b/projects/gameboy-v2/enclosure/DESIGN.md
+index 722639d..16185a0 100644
+--- a/projects/gameboy-v2/enclosure/DESIGN.md
++++ b/projects/gameboy-v2/enclosure/DESIGN.md
+@@ -1,8 +1,15 @@
+ # gb2 enclosure — design spec
+ 
+-Decided 2026-10-13: **GBA-flat** — one flat front face with the screen lens flush, the GBA silhouette, the GBA's
+-24.5 mm thickness, rounded back edges. Printed FDM (PLA/PETG, 0.4 mm nozzle). Every number below comes from the
+-2026-10-13 research pass (datasheets, mech_ref.json, the board) unless marked *choice*.
++Decided 2026-10-13: **GBA-flat** — one flat front face with the screen lens flush, the GBA silhouette, rounded back
++edges. Printed FDM (PLA/PETG, 0.4 mm nozzle). Every number below comes from the 2026-10-13 research pass (datasheets,
++mech_ref.json, the board) unless marked *choice*.
++
++**Rev 3 (2026-10-14): the thin stack.** J3/J4 become low-profile sockets (`SOCKET_H` 6.0, was 8.5) and the 2090's male
++header is re-soldered with its 2.5 mm plastic strip **on top** of the module's edge strips (beside the panel, under the
++lens's black border; the pins still point down into the sockets). Its 40 solder joints are then on the module's back,
++so the module PCB rides on them, `HEADER_JOINT` 0.5 over the socket tops. The face drops 4.5 mm: **20.0 mm** thick
++(GBA 24.5), **22.2 mm** at the battery door, whose bump carries the cell that now hangs through the back floor.
++Everything above the board is derived from the stack in `params.py`.
+ 
+ Why not a GBA-shaped back taper: our board sits at the back, full width, so a tapered back would cut through the board
+ in the outer ~25 mm of each grip (`build/diagrams/flat_front_gba_back.png`). Grips stay full thickness.
+@@ -13,28 +20,57 @@ Board mm, +X right, **+Y up** (KiCad's Y flipped), Z up; board bottom z = 0, boa
+ 
+ | Name | Value | Note |
+ |---|---|---|
+-| `Z_FRONT` | 20.9 | front outer face; total 24.5 = the GBA |
++| `SOCKET_H` | 6.0 | J3/J4 socket insulator: a *design value* until the part is picked (rev 2's HX PM2.54-1x20P ZC was 8.5) |
++| `HEADER_FLIPPED`, `HEADER_BODY` | True, 2.5 | the 2090's header strip on top of the module (False: under it, rev 2) |
++| `HEADER_JOINT` | 0.5 | flipped: the header's solder joints on the module's back, between it and the socket tops |
++| `MODULE_Z0`, `MODULE_Z1` | 8.1, 9.67 | module PCB back (= `T + SOCKET_H + HEADER_JOINT`; not flipped `+ HEADER_BODY`) and front (+ 1.57) |
++| `SOCKET_PIN_DEPTH` | 3.93 | how far the header's 6.0 pins reach into the sockets (6.0 − 1.57 PCB − 0.5 joint) |
++| `GLASS_TOP` | 13.77 nominal / 14.4 worst | `MODULE_Z1` + panel 4.1; worst + 0.63 (`GLASS_TOL`); re-measure the real module |
++| `Z_FRONT` | 16.4 | front outer face = `GLASS_WORST` + 0.5 + lens 1.5; total 20.0 |
+ | `Z_BACK` | -3.6 | back outer face = BT830 (1.7) + 0.3 + 1.6 floor |
+-| `SPLIT` | 1.6 | parting plane = board top: front shell z 1.6..20.9 (prints face-down), back shell z -3.6..1.6 (prints back-down) |
++| `DOOR_Z0` | -5.8 | battery door's outer face: the bump, 2.2 past the back face (a whole number of `PRINT_LAYER`s) |
++| `SPLIT` | 1.6 | parting plane = board top: front shell z 1.6..16.4 (prints face-down), back shell z -3.6..1.6 (prints back-down) |
+ | `WALL` | 2.0 | side wall; the board edge is 2.5 inside the outer surface (0.5 clearance) |
+ | `FLOOR` | 1.6 | back floor (inner face z -2.0) |
+-| `PLATE` | 1.6 | front face plate (inner face z 19.3) |
++| `PLATE` | 1.6 | front face plate (inner face z 14.8) |
++| `LAND_Z0` | 12.92 | lens land frame's bottom: `LAND_CLR` 0.5 over the strips' trimmed pin tips (12.42) and the screw heads (11.9); it absorbs the socket (±0.2), strip (±0.1) and pin trim (±0.2) tolerances |
++| `BATTERY_Z0`, `BATTERY_Z1` | -4.2, 4.3 | the cell: top 0.85 swell + 0.3 under the lowest module back part over it |
+ | `R_OUT_FRONT`, `R_OUT_BACK` | 2.0, 3.0 | outer perimeter fillets (R3 tested OK; R4 fails on this outline) |
+ | `CLR` | 0.3 | general print clearance; 0.2 sliding fits, 0.15 press fits |
+-| `GLASS_TOP` | 18.27 nominal / 18.9 worst | 2090 cover glass; re-measure the real module |
++| `PRINT_LAYER` | 0.2 | slicer layer (first layer too): the battery door's top face and hook faces sit on layer lines |
++
++**The stack** (z, mm; `params.py` derives every line from the one above it):
++
++| z | what |
++|---|---|
++| 16.4 | face = lens top (`Z_FRONT`) |
++| 14.9 / 14.77 | lens bottom (`GLASS_WORST` + 0.5) / pocket floor (− 0.13 tape); plate inner face 14.8 |
++| 14.4 / 13.77 | cover glass worst / nominal |
++| 12.92 | lens land frame's bottom (`LAND_Z0`) |
++| 12.42 / 12.17 | header pins trimmed 0.25 over the strip / strip top (2.5 on the module) |
++| 11.9 | M2.5 pan heads on the module |
++| 9.67 / 8.1 | module PCB front / back, riding on the header's joints (M2.5 × 6 F-F standoffs + a 0.5 shim from the board) |
++| 7.6 | the J3/J4 socket tops (`T + SOCKET_H`); the joints fill 7.6–8.1 |
++| 5.45 | lowest module back part (the orig rev's SOIC-20W 74LVC245s, 2.65; LDO 1.45, microSD 2.0, rev D's EYESPI 2.0, FPC + pads 0.4) |
++| 4.3 / -4.2 | cell top (5.45 − 0.85 swell − 0.3) / bottom (8.5 cell) |
++| 1.6 / 0 | board top (`SPLIT`) / bottom |
++| -2.0 / -3.6 | back floor inner face / back face |
++| -4.5 / -5.8 | battery door floor (0.3 PET-faced pad under the cell) / outer face |
+ 
+ Outline: `board.json mech.silhouette` exactly (the shell's OUTER surface). After the Y flip the loop is clockwise:
+ always `extrude(..., dir=(0, 0, 1))`.
+ 
+ ## 2. Architecture and assembly
+ 
+-Front shell (face plate, side walls, all control guides, bosses with M2 heat-set inserts) + back shell (floor, side
+-walls up to the split, battery bay, speaker cradle, screw counterbores) + printed parts (D-pad + its pivot washer, A,
+-B, Start, Select, Vol±, L, R caps, power slider, J1 hatch cover) + bought parts (77.5 × 56 × 1.5 cast acrylic lens,
+-Ø2.5 × 17.7 clear acrylic rod, 4× M2×6 screws, 4× M2×3 heat-set inserts, 4× M2.5×11 F-F standoffs ≤ 5 mm across + M2.5
+-screws, 0.13 acrylic transfer tape, 0.3 foam tape).
++Front shell (face plate, side walls, all control guides, bosses with M2 heat-set inserts) + back shell (floor with the
++battery opening, side walls up to the split, battery fence, speaker cradle, screw counterbores) + printed parts (D-pad
+++ its pivot washer, A, B, Start, Select, Vol±, L, R caps, power slider, J1 hatch cover, battery door) + bought parts
++(77.5 × 56 × 1.5 cast acrylic lens, Ø2.5 × 13.2 clear acrylic rod, 4× M2×6 screws + 2× M2×5 countersunk (ISO 10642),
++6× M2×3 heat-set inserts, 4× M2.5×6 F-F standoffs ≤ 5 mm across + 4× 0.5 mm M2.5 shim washers + M2.5 screws, 2×
++low-profile 1×20 2.54 mm sockets (insulator `SOCKET_H`), 0.13 acrylic transfer tape, 0.3 foam tape (speaker rim), two
++strips of ~0.5 PE-foam double-sided tape (the cell), one 0.3 foam pad with a PET face, adhesive one side (the door)).
+ 
+-Assembly (rev 2.1 — `checks.py` (h) sweeps every step along its insertion path):
++Assembly (rev 3 — `checks.py` (h) sweeps every step along its insertion path):
+ 1. Lens taped into its pocket. Front shell face-down on a spacer frame ≥ 2.5 tall round the keys (or foam with
+    reliefs): the key heads stand 1.8 proud, and a flat bench would push their tips below the board top.
+ 2. D-pad, A, B, Start, Select in head-first from inside; edge caps and the power slider into their rim notches — hold
+@@ -42,10 +78,24 @@ Assembly (rev 2.1 — `checks.py` (h) sweeps every step along its insertion path
+    SW1's lever (both east = OFF). Speaker into its ring, lead exit north (into the back cradle's gap at 90°).
+    Light-pipe rod in from the face.
+ 3. Board: pivot washer taped onto the GND pour round the D-pad centre (its rim drops between SW2–5); cell plugged into
+-   J8 **before** the 2090 goes on (J8 ends up under the 2090 PCB); 2090 on its standoffs; cell taped into the back
+-   shell's fence. Board component-side down onto the boss tips, between the six fingers; cell leads from the fence's
+-   lead gap over the board edge along the free J4 strip (x 128.25–132.1); speaker leads dressed south, under B's tube.
+-4. Back shell folded over on the 100 mm cell leads (about 65 mm slack); 4 screws from the back.
++   J8 **before** the 2090 goes on (J8 ends up under the 2090 PCB, 1.0 below it); 2090 on its standoffs (6 mm + a 0.5
++   shim each, so the standoffs carry the module at the height its header joints hold it and the screws don't bend
++   its ends), its joints on the socket tops (header strips on top). Board component-side down onto the boss tips,
++   between the six fingers; speaker leads dressed south, under B's tube. The cell stays outside, on its leads.
++   **Cell leads:** they leave the cell's east end at its mid-plane (z 0.05), 1.55 below the board top and 2.0 from the
++   board's cut-out edge (x 128.25), so they S-bend up over that bare edge inside the 2.0 slot, then run along the free
++   J4 strip (x 128.25–132.1) to J8: sleeve them (heat-shrink) where they cross the edge, or round / chamfer the
++   cut-out edge there (board side).
++4. Back shell over the board with the cell hanging outside it, the leads up through the floor opening (100 mm, about
++   65 mm slack); 4 screws from the back.
++4b. Cell in through the floor opening: a strip of ~0.5 PE-foam double-sided tape along the middle of each long side
++   (it bridges the fence's 0.4 gap; nothing on the bottom 0.6 that stays in the door), liners off, the cell pushed
++   straight up into its fence (lead end east, leads folded through the fence's lead gap) until its bottom stands about
++   1 proud of the back face, no further (home is 0.6 proud): the door pushes it the rest of the way.
++5. Battery door: the 0.3 pad on its floor, adhesive to the door, **PET face up** (dry: the door slides under the cell
++   last); offered up 1.25 east of home so its two hooks rise through their floor slots and the pad pushes the cell
++   home (top 1.15 under the 2090's SOIC-20Ws), slid west onto the hooks, then the two M2×5 countersunk screws into the
++   inserts at its east end.
+ 
+ **Board location (rev 2).** Every switch is on the board and every cap is in the front shell, so the board is located to
+ the *front* shell: six fingers (`BOARD_LOCATORS`, `FINGER`) hang from the front wall below the split into the 0.5 mm
+@@ -57,32 +107,38 @@ holes alone would let the board shift ±0.25, enough to leave a side key dead or
+ - **Screen (rev 2: the research's option C').** No printed plastic over the glass: the plate is cut through over the
+   panel + FPC fold + clearance (`OPENING`, x 60.41..131.51, y -96.4..-45.6). A 77.5 × 56.0 × 1.5 clear cast acrylic
+   lens (`LENS`, centred on the device) sits flush in a pocket (lens + 0.2 per side, depth 1.5 + 0.13 tape → floor
+-  z 19.27, lens bottom z 19.4 = glass worst 18.9 + 0.5) on a land 2.5–3.9 mm wide outside the opening. The land is the
+-  top of a frame hanging from the plate down to z 17.0 (`LAND_Z0`; the module's header pins reach 16.0, its standoff
+-  screw heads 16.4). A black mask on the lens back leaves the 60.6 × 46.2 R1.5 window over the **active area**
+-  (92.61, -71.0) — 2.64 mm left of the device centre (board-side choice, see README). The lens + mask outline is
+-  exported as DXF/SVG for laser cutting.
++  z 14.77, lens bottom z 14.9 = glass worst 14.4 + 0.5) on a land 2.5–3.9 mm wide outside the opening. The land is the
++  top of a frame hanging from the plate down to z 12.92 (`LAND_Z0`; the flipped header strips' trimmed pins reach
++  12.42, the standoff screw heads 11.9: 0.5 under it). The strips (x 57.15 / 133.35) sit under the frame and the
++  lens's black border, 4 / 9 mm outside the mask window. A black mask on the lens back leaves the 60.6 × 46.2 R1.5 window over the
++  **active area** (92.61, -71.0) — 2.64 mm left of the device centre (board-side choice, see README). The lens + mask
++  outline is exported as DXF/SVG for laser cutting.
+ - **Keycaps:** holes at the switch centres (D-pad (39.95,-64.09) cross; A (156.88,-61.92); B (143.94,-66.25); Start
+   (49.49,-83.82); Select (49.44,-91.82)): TS-1187A keystake top z 3.10, travel 0.2 ±0.1, hard stop at 0.3. Each cap
+   is one piece (head 1.8 proud, flange under the plate, stem with a flat Ø2.4 tip 0.20 above the keystake), so it goes
+-  in head-first from inside: its guide tube (plate → z 7.0) has a bore that passes the flange (`guide_id` 12.2 A/B,
+-  6.8 Start/Select), and a guide ring on the stem (z 8–11, OD = the flange's, 45° top taper) rides that bore so the
+-  stem stays straight. B's tube has a 38.9° sector of its wall removed over its full height, toward the speaker (the
++  in head-first from inside: its guide tube (plate → z 5.5, 0.55 over the tallest part under one) has a bore that
++  passes the flange (`guide_id` 12.2 A/B, 6.8 Start/Select), and a guide ring on the stem (z 6.5–9.5, OD = the
++  flange's, 45° top taper ending 0.6 under the flange) rides that bore so the stem stays straight: 9.9 guided to the
++  face hole, so a key pressed at its edge tilts at most ~2.3° (rev 3 first had the tube to 7.0: 8.4, ~2.7°). B's tube has a 38.9° sector of its wall removed over its full height, toward the speaker (the
+   speaker drops into its ring past it); a full ring rather than fins, so nothing can drop into that gap.
+-- **D-pad (rev 2.1):** one cross (arms 9.4 mm from centre, 6.6 wide), four Ø2.6 legs with R2.5 domed tips 0.10 above
++- **D-pad (rev 2.1; hole rev 3):** one cross (arms 9.4 mm from centre, 6.6 wide), four Ø2.6 legs with R2.5 domed tips 0.10 above
+   the four switches (8.000 mm from centre) + a centre pivot leg onto the board's top soldermask at z 1.6 (plain GND
+   pour there: no pads within 5.3 mm). A printed washer (Ø10.7 × 0.8, Ø2.9 hole) taped round the pivot point is
+   centred by the four switch bodies and holds the pivot within 0.085, so the cross sits at most 0.285 off centre.
+-  Hole: the sharp-jointed cross offset 1.3 (R0.3 corners): the cross sways 0.97 axial / 1.36 diagonal at the face
+-  when a leg takes its switch to the 0.3 stop; `checks.py` (j) rocks it at ±0.285 off centre with no binding.
+-  Nothing under the flange (it sweeps z 16.5–19.3), so the D-pad drops in.
++  Hole: the sharp-jointed cross offset 1.05 (R0.3 corners; 1.3 in rev 2.1): with the face 14.8 over the pivot the
++  cross sways 0.73 axial / 1.02 diagonal at the face when a leg takes its switch to the 0.3 stop; `checks.py` (j)
++  rocks it at ±0.285 off centre with no binding, the worst margin 0.022 (axial at +0.285; 1.05 was found as the
++  smallest 0.05 step that passes on the 14.3 stack). There is no allowance for FDM holes printing 0.1–0.2 small:
++  judge it on the test print and go to 1.15 if it rubs. Nothing under the flange (it sweeps z 12.0–14.8), so the
++  D-pad drops in.
+ - **LED:** Ø2.6 hole at D1 (144.14, -44.70) + a tube (ID 2.7) down to z 2.4 with a Ø2.0 stop at z 2.4–3.2; a Ø2.5 clear
+-  acrylic rod (17.7 long) goes in from the face, rests on the stop, glued flush.
++  acrylic rod (`LED_ROD_L` 13.2 long) goes in from the face, rests on the stop, glued flush.
+ - **Speaker grille:** slots inside Ø22 centred on the speaker (151.45, -85.10); a locating ring under the plate (ID 27.4,
+   wall 1.0, 2.0 deep), notched (34°) where B's guide tube passes; 0.3 foam on the speaker rim seals against the plate.
+   7 GBA-tilted slots, 1.2 wide.
+ - **J1 hatch:** 13.4 × 3.4 opening over the SWD header (x 116.9–130.3, y -37.0), a 0.8 ledge, and a 0.8-thick snap-in
+-  printed cover with a fingernail notch (backed by a 0.8 pad under the plate).
++  printed cover with a fingernail notch (backed by a 0.8 pad under the plate); its tabs catch under two chimneys 3.0
++  under the plate (z 11.8, 1.7 over J1's pins; the cover's tabs touch J1 at `SOCKET_H` 5.05 and (a) fails below that).
+ - **Screw bosses:** 4 (board holes (57.39,-35.47), (133.19,-35.45), (29.24,-91.91), off-board (140.5,-100.5)): Ø6
+   from the plate down to z 1.6, insert hole Ø3.2 × 4.0 at the tip, gussets to the wall; top two merged into the top
+   wall (with a skirt down to the split outside the board edge); top-right D-cut toward J1 (3.3 mm away).
+@@ -97,12 +153,31 @@ holes alone would let the board shift ±0.25, enough to leave a side key dead or
+ - **Board posts:** Ø4 posts from the floor to 0.05 under the board beneath A (SW6) and B (SW7), which are 26–31 mm
+   from the nearest screw: a hard press would otherwise bend the board ~0.2 into the J4 header and switch joints.
+ - Floor inner z -2.0. Reliefs 0.5 mm under the four 2090 standoff screw heads (z -1.4…-1.75).
+-- **Battery:** rests on the floor, z -2.0…6.5 (cell 62 × 38.5 × 8.5 at (95.25, -86.5)); one 1.2 mm fence ring 0.4 off
+-  the cell, up to z 4.0, standing in the 2.0 mm cut-out gap (its bottom side is the stop); foam tape; a 10 mm gap in
+-  the right side for the PCM leads (toward J8).
++- **Battery (rev 3):** the cell (62 × 38.5 × 8.5 at (95.25, -86.5)) sits z -4.2…4.3: its top 0.85 (swell) + 0.3 under
++  the 2090's SOIC-20Ws (z 5.45), so it hangs 2.2 through the floor and 0.6 past the back face. The floor is open over
++  it (the fence's inner outline, cell + 0.4); one 1.2 mm fence ring 0.4 off the cell stands on the opening's rim, up
++  to z 4.0 (0.3 under the cell top), in the 2.0 mm cut-out gap (its bottom side is the stop); a 10 mm gap in the
++  right side for the PCM leads (toward J8). It goes in last, up through the opening (section 2, step 4b): what holds
++  it is a strip of ~0.5 PE-foam double-sided tape on each long side, squeezed into the fence's 0.4 gap (the inner
++  face runs from the back face up to z 4.0), and the door's pad under it; nothing above it (1.15 of swell room).
++- **Battery door (rev 3, `BATTERY_DOOR`, `battery_door.py`):** a separate printed shallow tub, the GBA-style bump:
++  68.65 × 41.7 (x 59.20–127.85, y -107.35…-65.65) + a screw ear along its east end to x 133.45 (y -98.7…-74.3, round
++  ends concentric with the screws), z -5.8…-3.6 (2.2 proud: a whole number of 0.2 layers), floor 1.3 (≥ 1.2, topped
++  up to that), walls 1.2 N/S/E (plan corners R1.6 there, R4 west), outer edges R1.5. Its top face sits on the back
++  face round the opening; the cell rests on its floor through a 0.3 pad (foam, adhesive on the door side only, a PET
++  face toward the cell, so the door's last slide doesn't drag the cell). West: two hooks (5 wide at y -79 / -94, stems
++  1.2, tongues 1.0 thick reaching 1.0 over the floor's inner face with 0.2 play = one layer, their lower west edge
++  chamfered 0.3 × 45°, 0.8 under the board) through two 5.5 × 2.95 slots in the floor just outside the fence (x
++  59.7–62.65); the door's west edge laps 0.5 past the slots (x 59.2), so no slit shows beside the stems. East: two ISO
++  10642 M2×5 countersunk screws at (129.45, -94.7) and (129.45, -78.3), flush in the bump, into M2×3 heat-set inserts in
++  Ø5.6 bosses under the board (floor → z -0.3, Ø3.2 hole through; 1.2 to the floor opening, 0.4 south / north of the
++  lead gap; 0.32 / 0.41 from J4's through-hole tails and joints (Ø1.6 pads × 1.6, `THT_TAIL`), the south one 0.94 from
++  the 2090's standoff screw head). The hooks are 0.75 from J3's tails. Fitting: up into place 1.25 east of home (the
++  hooks pass up their slots, the tub's west wall 0.2 off the cell, the pad pushes the cell home), slide west, screws.
++  The door's SW corner reaches 0.33 over the start of the back's R3 edge round (a 0.02 gap under it).
+ - **Speaker cradle:** three 40° arc fingers (at 30/150/270°, r 13.7–14.7, up through the board's speaker cut-out with
+-  0.3 to its edge, to z 15.6) with seat lips at the speaker's bottom (z 14.1) and a 0.5 × 45° lead-in; the gap at 90°
+-  faces J5 for the leads. Holds the speaker (Ø27 × 4.9, z 14.1–19.0) against the front seal (inner face 19.3 − 0.3).
++  0.3 to its edge, to z 11.1) with seat lips at the speaker's bottom (z 9.6) and a 0.5 × 45° lead-in; the gap at 90°
++  faces J5 for the leads. Holds the speaker (Ø27 × 4.9, z 9.6–14.5) against the front seal (inner face 14.8 − 0.3).
+ - **Screw bosses:** Ø6 × 2.0 (z -2.0…0), Ø2.5 clearance hole, counterbore Ø4.2 × 2.0 from the back face; the
+   off-board boss rises to z 1.6.
+ 
+@@ -125,26 +200,55 @@ inside the board-edge line, so the shell that carries them must come from the bo
+ 
+ ## 6. Checks (`checks.py`, run on every build; exit 1 on any FAIL)
+ 
+-(a) interference: every printed part vs every other, the board, every part envelope (real J7 / SW1 shapes), the
+-2090, battery, speaker, LRA; (b) every module's keep-outs vs every other module's material; (c) rest gaps (keys,
+-D-pad legs + pivot + washer, edge caps, slider fork); (d) one valid solid per part + print poses; (e) lens to glass
+-≥ 0.5, nothing over the panel or FPC fold; (f) wall to board ≥ 0.45, fingers to the board edge and the back shell;
+-(h) the section 2 assembly order swept step by step; (i) min wall ≥ 0.8 (ray scan); (j) D-pad rocking, off centre.
+-`--fast` skips (h).
++(a) interference: every printed part vs every other, the board, every part envelope (real J7 / SW1 shapes; through-hole
++parts also get their lead tails + joints under the board, Ø pad × `THT_TAIL` 1.6), the 2090 (with its back parts,
++strips, header joints, standoffs and screw heads), battery, speaker, LRA, the door screws; then the bought bodies (the
++2090, cell, speaker, LRA, door screws) vs every other context body, the 2090 ≥ 0.3 off the board's parts except its
++J3/J4 seat (in (h) the 2090 moves with the board, so only this sees J8 under it), and the parts whose height is a
++guess listed; (b) every module's keep-outs vs every other module's material; (c) rest gaps (keys, D-pad legs + pivot +
++washer, edge caps, slider fork, battery door hooks / top face / cell pad); (d) one valid solid per part + print poses;
++(e) lens to glass ≥ 0.5, nothing over the panel or FPC fold; (f) wall to board ≥ 0.45, fingers to the board edge and
++the back shell; (h) the section 2 assembly order swept step by step (approach distances from the stack: controls,
++speaker, board pack, back shell, the cell up through the floor opening), then the battery door up and west along its
++fitting path; (i) min wall ≥ 0.8 (ray scan); (j) D-pad rocking, off centre. `--fast` skips (h).
+ 
+ ## 6a. Printing
+ 
+ - Front shell face-down; support only inside the lens pocket (the land is a 2.5–3.9 cantilever 1.63 above the bed —
+-  sand it flat, the pocket depth is exactly lens + tape). Back shell back-down.
++  sand it flat, the pocket depth is exactly lens + tape). Back shell back-down, no supports (the battery opening, hook
++  slots and insert holes go straight through the floor).
++- Battery door outer-face-down, as built (its R1.5 edges on the bed like the back's R3), 0.2 layers incl. the first:
++  its top face (z_print 2.2) and the tongues' underside (4.0) sit on layer lines, so the 0.2 play prints as one layer.
++  Each hook tongue overhangs 1.25 past its stem with nothing under it: paint a **support enforcer** under each tongue
++  (top z gap 0.2, i.e. one layer; break it out and check the slide on the back shell before fitting).
+ - Keys and D-pad head-down: support under the flange seat (0.2 interface gap). Edge caps, slider, washer, cover flat.
+ - Test-print the board fit first: FDM XY shrink of 0.2–0.5 % is 0.3–0.7 mm over the fingers' 140 mm span, and they
+   leave 0.1 — set the slicer's XY compensation from the test.
+ 
+ ## 7. Open questions (settle with a test print / the real parts)
+ 
+-- The 2090's real stack height (glass top, module back) — re-measure, then set `GLASS_TOP`.
+-- Keycap feel with 0.2 mm travel and ~17 mm plungers — print a test coupon of one guide + plunger + switch.
+-- The 2090 revision (original's 2.65 mm parts over the cell vs rev D's 2.0).
+-- The D-pad's 1.3 visible gap at the face (the GBA's is about 0.5) — judge it on the test print.
++- **`SOCKET_H` is a design value** until the low-profile J3/J4 socket is picked (the schematic / BOM side): set it
++  (and `export_board.py`'s HEIGHT, which `params.py` asserts) to the real insulator height and everything above the
++  board follows. The socket must take `SOCKET_PIN_DEPTH` 3.93 of pin (its cavity deeper, its contacts within it).
++  The common 5.0 mm "short female headers" do **not** fit the board as it is: with the 0.5 joints the module's back
++  would sit at 7.1 = J8's top (S2B-PH-SM4-TB, 5.5), and the J1 hatch tabs reach J1 (8.5 header); (a) fails on both.
++  5.0 sockets need J8 lower or out from under the module and a shorter J1 (or the hatch's catch moved up); J8 needs
++  `SOCKET_H + HEADER_JOINT` ≥ 5.8 where it is. Everything else follows: body 19.0, the bump 3.2 (the door's total,
++  22.2, doesn't depend on `SOCKET_H`: the cell hangs from the module).
++- The header's joints (`HEADER_JOINT` 0.5, on the module's back, flipped): solder them low and even, and set the shim
++  under each standoff to the measured joint height so the M2.5 screws don't bend the module's ends; trim the pins to
++  0.25 over the strip (`PIN_TIP`), or flush (`PIN_TIP` 0).
++- The 2090's real stack height (glass top, module back) — re-measure, then set `PANEL_T` / `GLASS_TOL`.
++- J8 (5.5 tall) is now 1.0 under the module PCB: check the mated cell plug's height.
++- The battery door's hooks (0.2 play, support enforcer) and the two insert bosses (0.32 / 0.41 from J4's tails, 0.3
++  under the board) — test-print; the cell's tape strips (does the cell stay put face-down, and come out for service).
++- Parts with guessed heights (no 3D model: U1, U2, Y1, Q1, L1, FB1/2, J5/J6, SW1; checks (a) lists them with their gap
++  to the 2090, ≥ 3.5) — the real U1 (LQFP-64) is 1.6, not 1.0; none is near anything.
++- Keycap feel with 0.2 mm travel and ~12 mm plungers — print a test coupon of one guide + plunger + switch.
++- The 2090 revision: `module_2090()` carries the original's parts (SOIC-20W 2.65 over the cell) plus rev D's EYESPI
++  connector (2.0), so either fits; on a rev D module (TSSOPs 1.2, lowest over the cell the 2.0 EYESPI) the cell and
++  the door's bump could rise 0.65.
++- The D-pad's 1.05 visible gap at the face (the GBA's is about 0.5) and its 0.022 rocking margin — judge it on the
++  test print (1.15 if it rubs).
+ - The MSK12C02 slider detent (the fork moves the lever 1.35 of its 1.6 throw) and the SKRT's overload strength (no
+   over-travel stop on the edge caps) — check on real parts.
+diff --git a/projects/gameboy-v2/enclosure/README.md b/projects/gameboy-v2/enclosure/README.md
+index 88d4bea..f6fc7d4 100644
+--- a/projects/gameboy-v2/enclosure/README.md
++++ b/projects/gameboy-v2/enclosure/README.md
+@@ -4,13 +4,14 @@ The shell is generated by Python from the KiCad board, so it follows the board w
+ 
+ | File | What it does |
+ |---|---|
+-| `export_board.py` | KiCad → `build/board.json`: board outline + holes, every part's courtyard and body height (from its 3D model), the GBA silhouette, 2090 module / battery / speaker / LRA envelopes (from `pcb/gb2/draw_mech.py`). Run with **KiCad's python**. |
+-| `params.py` | Frame, constants, context geometry (board, parts, 2090, battery, speaker, LRA) and the shared contracts every module builds against. |
++| `export_board.py` | KiCad → `build/board.json`: board outline + holes, every part's courtyard, body height (from its 3D model; `height_src` says where it came from) and plated through-hole pads, the GBA silhouette, 2090 module / battery / speaker / LRA envelopes (from `pcb/gb2/draw_mech.py`). Run with **KiCad's python**. |
++| `params.py` | Frame, the parametric stack (`SOCKET_H`, `HEADER_FLIPPED` → module, glass, face, land, cell), context geometry (board, parts, 2090 with its back parts from `pcb/gb2/mech_ref.json`, battery, speaker, LRA) and the shared contracts every module builds against. |
+ | `shell.py` | The two bare shells (GBA silhouette slab, hollowed, split at the board top). |
+ | `front_features.py` | The front shell's features from `front_screen.py` (screen opening, lens pocket, LED, grille), `front_keys.py` (face holes, guide tubes) and `front_struct.py` (bosses, J1 hatch, board locators). |
+-| `back_openings.py` | The back shell's features (bosses, battery fence, speaker cradle, posts, locator pockets) and the wall openings (edge keys, power slot, USB-C). |
++| `back_openings.py` | The back shell's features (bosses, battery fence + floor opening, battery-door hook slots + insert boss, speaker cradle, posts, locator pockets) and the wall openings (edge keys, power slot, USB-C). |
++| `battery_door.py` | The printed battery door (the bump under the cell): tub, two hooks, countersunk screw; its fitting path. |
+ | `controls.py` | The printed controls: D-pad + washer, A, B, Start, Select, Vol±, L, R, power slider. |
+-| `enclosure.py` | Assembles everything. Writes `out/<part>.stl` / `.3mf` (print poses), `out/assembly.step`, `out/lens.dxf` / `.svg`, and pushes to the live viewer. Run with **`.venv/bin/python`**. |
++| `enclosure.py` | Assembles everything. Writes `out/<part>.stl` / `.3mf` (print poses), `out/assembly.step`, `out/lens.dxf` / `.svg`, and pushes to the live viewer (not with `NO_VIEWER=1` set). Run with **`.venv/bin/python`**. |
+ | `checks.py` | The fit checks (`DESIGN.md` section 6). |
+ 
+ ## Setup (once)
+@@ -31,7 +32,7 @@ mirror) is untouched. VS Code extension: **OCP CAD Viewer** (`bernhard-42.ocp-ca
+ /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 export_board.py
+ # build / export / view, then check
+ .venv/bin/python enclosure.py
+-.venv/bin/python checks.py          # --fast skips the 2-minute assembly sweep
++.venv/bin/python checks.py          # --fast skips the 2-minute assembly sweep (the full run is ~3 min)
+ ```
+ 
+ To see it live, open this folder as its own VS Code window - `code projects/gameboy-v2/enclosure` - and open
+@@ -45,6 +46,18 @@ Every shared number is a named constant in `params.py`; `DESIGN.md` explains eac
+ 
+ ## Status
+ 
+-Rev 2.1 (2026-10-14): the full GBA-flat enclosure — front and back shells, lens pocket + laser-cut lens, all keycaps,
+-edge caps, power slider, SWD hatch cover — passes every check in `checks.py`. Next: test prints (board fit, one key
+-coupon), then measure the real 2090 stack and set `GLASS_TOP`. Design and open questions: `DESIGN.md`.
++Rev 3 (2026-10-14): **the thin stack** — low-profile J3/J4 sockets (`SOCKET_H` 6.0, a design value until the part is
++picked) and the 2090's header strip flipped on top of the module, its solder joints (0.5) on the socket tops: 20.0 mm
++thick (was 24.5), 22.2 mm at the new battery door (the cell goes in last, up through the back floor into the door's
++bump; two hooks + two M2 countersunk screws). Front and back shells, lens pocket + laser-cut lens, all keycaps (D-pad
++hole clearance 1.05), edge caps, power slider, SWD hatch cover and battery door pass every check in `checks.py`. Next:
++pick the sockets and set `SOCKET_H` (5.0 mm ones also need J8 / J1 changes on the board, see `DESIGN.md` 7), test
++prints (board fit, one key coupon, the door), then measure the real 2090 stack. Design and open questions: `DESIGN.md`.
++
++## After a board or stack change
++
++`build/` is not in git, so `build/board.json` is whatever `export_board.py` last wrote on this machine. After pulling a
++change to the board, the stack (`SOCKET_H`, `HEADER_*`) or `export_board.py`, rerun `export_board.py` with KiCad's
++python **before** `enclosure.py`, `checks.py` or the viewer (`params.py` refuses to load a stale one: J3/J4 heights,
++missing `height_src` / `pth`). Run it with `cad/symbols/easyeda2kicad.3dshapes/` present: a part without its 3D model
++gets a guessed height (J8 would fall back to 3.0 and hide that it sits 1.0 under the 2090; `params.py` asserts J8's).
+diff --git a/projects/gameboy-v2/enclosure/back_openings.py b/projects/gameboy-v2/enclosure/back_openings.py
+index 6db9f29..10a89aa 100644
+--- a/projects/gameboy-v2/enclosure/back_openings.py
++++ b/projects/gameboy-v2/enclosure/back_openings.py
+@@ -6,7 +6,9 @@ apply_back(back)            -> back:  4 screw bosses (+ webs into the wall where
+                                        screw heads, the battery fence ring (lead gap toward J8, bottom stop), the
+                                        speaker cradle (3 arc fingers with a seat lip and a lead-in), the six
+                                        board-locator pockets in the wall's inner face (rev 2), two board-support
+-                                       posts under A / B (rev 2.1).
++                                       posts under A / B (rev 2.1); rev 3: the battery-door opening in the floor
++                                       (the fence's inner outline), the door's two hook slots and its two screw
++                                       bosses + insert holes (the door itself: battery_door.py).
+ apply_front_openings(front) -> front: rim notches for Vol+ / Vol- / L / R + the cap-lip recess round each (rev 2),
+                                        the power-slider slot, the USB-C stadium (rim-open below its centre line so
+                                        J7 can come in along +Z, rev 2.1) + its outer overmold relief.
+@@ -19,7 +21,8 @@ import math
+ from build123d import Axis, Box, Cone, Cylinder, Face, Pos, Rot, Vector, Wire, offset, revolve
+ from params import (D, MECH, P, T, SPLIT, WALL, Z_BACK, Z_FLOOR_IN, SILHOUETTE, BOSS_D, SCREW_CLEAR_D, CBORE_D,
+                     CBORE_DEPTH, SHELL_SCREWS, STANDOFFS, EDGE_KEYS, EDGE_NOTCH, EDGE_LIP_RECESS, POWER_SLOT, USBC,
+-                    BOARD_LOCATORS, FINGER, face, prism, cyl, speaker, part_xy)
++                    BOARD_LOCATORS, FINGER, BATTERY_Z1, BATTERY_DOOR, INSERT_HOLE_D, face, prism, cyl, box, speaker,
++                    part_xy)
+ 
+ # ---------------------------------------------------------------- conventions
+ CUT = 0.2            # every cutter overshoots the face it opens by this much (no coplanar faces)
+@@ -116,7 +119,8 @@ def standoff_reliefs():
+         out = r if out is None else out + r
+     return out
+ 
+-# Battery: the cell (params.battery(), on the floor) sits in the board's cut-out with a 2.0 gap left / top / right.
++# Battery: the cell (params.battery(); rev 3: hanging through the floor) sits in the board's cut-out with a 2.0 gap
++# left / top / right.
+ # One fence ring FENCE_T thick at FENCE_CLR from the cell: its left, top and right sides stand in that gap (0.4 to the
+ # board edge too, so they also locate the board), its bottom side is the bottom stop (0.8-2.6 short of the inner
+ # wall). The right side has a LEAD_GAP opening where the PCM leads leave the cell's east end (centre) for J8.
+@@ -131,7 +135,8 @@ def _cell_gap():
+ BATT_GAP = _cell_gap()                       # 2.0 (cut-out x 62.25..128.25, top y -65.25)
+ FENCE_T = 1.2
+ FENCE_CLR = (BATT_GAP - FENCE_T) / 2         # 0.4 each side
+-FENCE_TOP = 4.0      # choice: 6.0 of the 8.5 cell; 6 mm under the 2090's lowest back parts (z 9.95)
++FENCE_BELOW_TOP = 0.3                        # choice: the fence stops this far under the cell's top (out of the swell
++FENCE_TOP = round(BATTERY_Z1 - FENCE_BELOW_TOP, 3)   # zone, 1.45 under the 2090's SOIC-20Ws): 4.0
+ LEAD_GAP = 10.0      # choice: two 24 AWG leads leave the PCM "near the middle" of the 38.5 short end
+ 
+ def _cell_rect():
+@@ -167,7 +172,7 @@ SPK_LEAD_IN = 0.5                            # 45-deg chamfer on the fingers' to
+                                              # speaker rim ~1.5 before the finger / pocket locators engage (1.3)
+ 
+ def _speaker_bottom():
+-    return speaker().bounding_box().min.Z     # 14.1: sealed to the plate through 0.3 foam (params.speaker)
++    return speaker().bounding_box().min.Z     # 9.6: sealed to the plate through 0.3 foam (params.speaker)
+ 
+ def _seat_lip(z_top):
+     """seat ring revolved about Z through the origin (place it with Pos): flat top at z_top, 45-degree chamfer
+@@ -236,10 +241,66 @@ def board_posts():
+         out = p if out is None else out + p
+     return out
+ 
++# Battery door (rev 3, params.BATTERY_DOOR): the cell hangs through the floor, so the floor is open over the fence's
++# inner outline (the fence's inner face runs on down through the floor); a printed door (battery_door.py) closes it
++# from outside. West: two slots through the floor just outside the fence, which the door's hooks rise through; their
++# east wall is the fence's outer face (it stands on the floor beside them), their length the hook + the fitting slide
++# + slot_clr each side. East: two insert bosses under the board, beside the floor opening, boss_gap either side of the
++# lead gap (mirrored about the cell's centre line), top board_clr under the board's bottom face, the insert hole through
++# each boss and the floor (the door's screws come up into them).
++BD = BATTERY_DOOR
++
++def door_opening_face():
++    """the floor opening (= the fence's inner outline), at z 0."""
++    return offset(_cell_rect(), amount=FENCE_CLR).faces()[0]
++
++def door_opening():
++    return prism(door_opening_face(), Z_BACK - CUT, Z_FLOOR_IN + CUT)
++
++def hook_slot_x():
++    """(west wall, east wall) x of the hook slots: the east wall on the fence's outer face."""
++    x1 = CELL_AT[0] - CELL["w"] / 2 - FENCE_CLR - FENCE_T
++    return x1 - (3 * BD["slot_clr"] + BD["stem_t"] + BD["reach"]), x1
++
++def hook_ys():
++    return [CELL_AT[1] - BD["hook_dy"], CELL_AT[1] + BD["hook_dy"]]
++
++def hook_slots():
++    x0, x1 = hook_slot_x()
++    w = BD["hook_w"] + 2 * BD["slot_clr"]
++    out = None
++    for y in hook_ys():
++        s = box((x0 + x1) / 2, y, x1 - x0, w, Z_BACK - CUT, Z_FLOOR_IN + CUT)
++        out = s if out is None else out + s
++    return out
++
++def door_screw_ats():
++    """the door screws' axes [(x, y) south, north]: screw_wall + the insert hole radius east of the floor opening, each
++    boss boss_gap off the lead gap (the cell's centre line +- LEAD_GAP / 2)."""
++    x = CELL_AT[0] + CELL["w"] / 2 + FENCE_CLR + BD["screw_wall"] + INSERT_HOLE_D / 2
++    dy = LEAD_GAP / 2 + BD["boss_d"] / 2 + BD["boss_gap"]
++    return [(x, CELL_AT[1] - dy), (x, CELL_AT[1] + dy)]
++
++def door_boss():
++    """the insert bosses: Ø boss_d from the floor to board_clr under the board, clipped by the floor opening."""
++    out = None
++    for x, y in door_screw_ats():
++        b = cyl(x, y, BD["boss_d"], Z_FLOOR_IN - FUSE, -BD["board_clr"])
++        out = b if out is None else out + b
++    return out - prism(door_opening_face(), Z_FLOOR_IN - 1, 1)
++
++def door_insert_hole():
++    out = None
++    for x, y in door_screw_ats():
++        h = cyl(x, y, INSERT_HOLE_D, Z_BACK - CUT, -BD["board_clr"] + CUT)
++        out = h if out is None else out + h
++    return out
++
+ def apply_back(back):
+     """DESIGN.md section 4 on the bare back shell (add the rim notch with apply_back_openings)."""
+-    back = back + screw_bosses() + battery_fence() + speaker_cradle() + board_posts()
+-    return back - screw_cuts() - standoff_reliefs() - locator_pockets()
++    back = back + screw_bosses() + battery_fence() + speaker_cradle() + board_posts() + door_boss()
++    return back - screw_cuts() - standoff_reliefs() - locator_pockets() - door_opening() - hook_slots() - \
++        door_insert_hole()
+ 
+ # ================================================================ section 5: openings in the rims
+ # Edge keys (SKRT side-push, axis z 3.3): an EDGE_NOTCH notch per key, centred on its axis, open at the rim (z SPLIT),
+@@ -333,14 +394,9 @@ def _sw1_real():
+            _rbox(*at(2.675), SW1_ROT, 2.9, 1.45, SPLIT + 0.2, SPLIT + 1.2)
+ 
+ def _envelopes_by_ref():
+-    """params.part_envelopes(), keyed by reference (same rules)."""
+-    out = {}
+-    for p in D["parts"]:
+-        if p["height"] < 0.1: continue
+-        try: f = face(p["courtyard"])
+-        except Exception: continue
+-        out[p["ref"]] = prism(f, T, T + p["height"]) if p["side"] == "top" else prism(f, -p["height"], 0)
+-    return out
++    """params.envelopes_by_ref(): every part body by ref + '<ref> tails' (its through-hole leads under the board)."""
++    from params import envelopes_by_ref
++    return envelopes_by_ref()
+ 
+ def _iv(a, b):
+     r = a & b
+diff --git a/projects/gameboy-v2/enclosure/checks.py b/projects/gameboy-v2/enclosure/checks.py
+index 2bdbc4e..27faeea 100644
+--- a/projects/gameboy-v2/enclosure/checks.py
++++ b/projects/gameboy-v2/enclosure/checks.py
+@@ -2,15 +2,19 @@
+ """checks.py — the gb2 enclosure's fit checks (DESIGN.md section 6), on the assembled parts from enclosure.build().
+ 
+   (a) interference matrix: every printed part vs every other, the board, every part envelope by ref (J7 / SW1 as
+-      back_openings' real-shape models, not their board.json boxes), module_2090, battery, speaker, LRA
++      back_openings' real-shape models, not their board.json boxes; through-hole tails under the board), module_2090,
++      battery, speaker, LRA, the door screws; then the bought bodies (module_2090, battery, speaker, LRA, door screws)
++      vs every other context body, the 2090's back at least CTX_GAP_MIN over the board's parts (its J3 / J4 seat is
++      contact)
+   (b) every module's keepouts() vs every OTHER module's added material (+ the finished front shell)
+   (c) rest gaps: face-key / D-pad leg tips to the keystake, edge-cap contact faces to the plunger tips, the slider
+-      fork round the SW1 lever
++      fork round the SW1 lever, the battery door (hook play, top face on the back face, the cell on its pad)
+   (d) solid count + validity per printed part (+ its print pose on the bed)
+   (e) lens pocket floor vs GLASS_WORST, nothing of the front shell over the panel / FPC fold
+   (f) wall-to-board minimum, each locator finger's gap to the board edge (+ to its back-shell pocket)
+-  (h) assembly path (DESIGN.md 2, rev 2.1 order): every part / body swept along +Z into its rest pose past what is
+-      already in place (controls into the face-down front shell, the speaker, the board pack, the back shell + cell)
++  (h) assembly path (DESIGN.md 2, rev 3 order): every part / body swept along +Z into its rest pose past what is
++      already in place (controls into the face-down front shell, the speaker, the board pack, the back shell, the
++      cell up through the floor opening), then the battery door along its fitting path (up, then west onto its hooks)
+   (i) min wall: a ray from every surface triangle inward along its normal; a slab (exit face within SLAB_DEG of
+       antiparallel) under MIN_WALL fails (tapers and chamfers end in wedges, which this ignores)
+   (j) D-pad rocking: axial / 22.5 deg / diagonal presses with the cross off centre by +-controls.dpad_shift_max(), each
+@@ -21,11 +25,12 @@ Run (from this folder): .venv/bin/python checks.py [--fast]   (--fast skips (h);
+ """
+ import math, sys, time
+ import numpy as np
+-from build123d import Pos, Vector, extrude, offset
+-import params, enclosure, front_screen, front_keys, front_struct, back_openings, controls
++from build123d import Compound, Pos, Vector, extrude, offset
++import params, enclosure, front_screen, front_keys, front_struct, back_openings, controls, battery_door
+ from params import (KEYS, EDGE_KEYS, KEYSTAKE_Z, KEY_REST_GAP, DPAD_REST_GAP, EDGE_AXIS_Z, EDGE_REST_GAP, POWER_SLOT,
+                     BOARD_LOCATORS, FINGER, PANEL, FPC_BULGE, LENS, TAPE_T, GLASS_WORST, SILHOUETTE, WALL, SPLIT, T,
+-                    Z_BACK, Z_FRONT, Z_PLATE_IN, PLATE, box, cyl, prism)
++                    Z_BACK, Z_FRONT, Z_PLATE_IN, Z_FLOOR_IN, PLATE, GUIDE_BOTTOM_Z, BATTERY_DOOR, DOOR_Z0, box, cyl,
++                    prism)
+ 
+ # ---------------------------------------------------------------- thresholds
+ EPS_V = 0.001            # mm3: overlaps above this are reported
+@@ -34,14 +39,23 @@ LENS_GLASS_MIN = 0.5     # lens bottom over the worst-case glass (DESIGN.md 3)
+ WALL_BOARD_MIN = 0.45    # side wall to the board edge (DESIGN.md 6)
+ FINGER_POCKET_MIN = 0.1  # choice: finger's outer face to its back-shell pocket (FDM: a 0 fit may not close)
+ FORK_PLAY_MAX = 0.5      # choice: slider fork play round the lever per side (lost motion of the 1.6 travel)
+-PANEL_Z0 = 14.17         # the 2090 panel's bottom (module_2090: PCB top)
++PANEL_Z0 = params.MODULE_Z1   # the 2090 panel's bottom (module_2090: the module PCB's front)
+ SWEEP_STEP = 0.25        # (h): mm per step for the bodies swept stepwise (the thinnest moving / fixed feature is >= 0.5)
++SLIDE_STEP = 0.125       # (h): mm per step along the battery door's westward slide onto its hooks
++EDGE_APPROACH = 6.0      # (h): edge caps / slider come up this far into their rim notches (board-referenced z)
+ MIN_WALL = 0.79          # (i): DESIGN.md 6 asks 0.8 (0.01 for the tessellation)
+ SLAB_DEG = 40.0          # (i): the exit face within this of antiparallel to the ray counts as a slab
+ DPAD_INFO_SHIFT = 0.5    # (j): also shown (not judged): the cross this far off centre, as without the pivot washer
++CTX_GAP_MIN = 0.3        # (a): the 2090's back (PCB, parts, joints, standoffs) over / beside the board's parts (CLR)
++CTX_MOVERS = ("module_2090", "battery", "speaker", "lra", "door_screw")   # (a): bought bodies paired with the context
+ 
+ # (a) overlaps that are intended, with the reason; (pair key = sorted names)
+ ALLOWED = {}
++# (a) context pairs in intended contact (no CTX_GAP_MIN): the 2090's header joints sit on the socket tops, its standoffs
++# + screw heads on the board's faces
++CTX_SEATS = {("env J3", "module_2090"): "the header's joints sit on the J3 socket top",
++             ("env J4", "module_2090"): "the header's joints sit on the J4 socket top",
++             ("board", "module_2090"): "the standoffs stand on the board, their screw heads under it"}
+ 
+ def _sw1_lever_sweep():
+     """the lever part of back_openings._sw1_real(): its swept envelope over both slider ends (2.9 x 1.45, z 1.8..2.8,
+@@ -97,7 +111,7 @@ def context_by_ref():
+         else:
+             out[f"env {ref}"] = e
+     out.update({"module_2090": params.module_2090(), "battery": params.battery(), "speaker": params.speaker(),
+-                "lra": params.lra()})
++                "lra": params.lra(), "door_screw": battery_door.screw()})
+     return out
+ 
+ def check_a(parts, ctx):
+@@ -117,6 +131,38 @@ def check_a(parts, ctx):
+         print(f"  {a} x {b}: {v:.4f}{'  (intended: ' + why + ')' if why else '  <-- INTERFERENCE'}")
+     print(f"  {n} pairs ({len(names)} parts x {len(names) - 1} others / 2 + {len(ctx)} context bodies), "
+           f"{len(hits)} over {EPS_V}")
++    # the bought bodies vs the board side (and each other): (h) moves the 2090 with the board, so only this sees them
++    print(f"  context: {', '.join(CTX_MOVERS)} vs every other context body (overlap; the 2090 >= {CTX_GAP_MIN} off the "
++          f"board's parts except its seats)")
++    seen, m, tight = set(), 0, []
++    for a in CTX_MOVERS:
++        for b in ctx:
++            key = tuple(sorted((a, b)))
++            if b == a or key in seen:
++                continue
++            seen.add(key)
++            m += 1
++            v = vol(ctx[a], ctx[b])
++            seat = CTX_SEATS.get(key)
++            if v > EPS_V:
++                bad += 1
++                print(f"  {a} x {b}: {v:.4f}  <-- INTERFERENCE")
++            if a == "module_2090" and b != "board" and _bb_hit(ctx[a], ctx[b], CTX_GAP_MIN):
++                g = ctx[a].distance_to(ctx[b])
++                tight.append((g, b, seat))
++                if seat is None and g < CTX_GAP_MIN - 1e-6:
++                    bad += 1
++                    print(f"  module_2090 to {b}: {g:.3f} (< {CTX_GAP_MIN})  <-- TOO CLOSE")
++    for g, b, seat in sorted(tight, key=lambda r: r[0])[:6]:
++        print(f"  module_2090 to {b}: {g:.3f}{'  (seat: ' + seat + ')' if seat else ''}")
++    cell = ctx["battery"]
++    print(f"  battery to the board {cell.distance_to(ctx['board']):.3f}, to module_2090 {cell.distance_to(ctx['module_2090']):.3f}"
++          f" (swell {params.CELL_SWELL} + {params.CELL_CLR}); {m} context pairs")
++    guess = [r for r in params.GUESSED_HEIGHT if f"env {r}" in ctx]
++    if guess:
++        print("  guessed heights (no 3D model / datasheet; info): " + ", ".join(
++            f"{r} {params.PARTS[r]['height']} ({ctx['module_2090'].distance_to(ctx[f'env {r}']):.1f} to the 2090)"
++            for r in guess))
+     verdict("(a) interference", bad == 0, f"{bad} unexpected overlap(s)" if bad else "")
+ 
+ 
+@@ -143,6 +189,7 @@ def _materials(parts):
+             out.append((m.__name__, None, f"add {i}", s))
+     out.append(("front_struct", None, "j1_cover", parts["j1_cover"]))
+     out.append(("back_openings", None, "back shell", parts["back"]))
++    out.append(("battery_door", None, "battery_door", parts["battery_door"]))
+     for n in controls.all_controls():
+         out.append(("controls", "DPAD" if n == "DPAD_WASHER" else n, n, parts[n]))     # the washer is the D-pad's
+     return out
+@@ -195,7 +242,7 @@ def _tip_z(part, x, y, d):
+     sl = (part & cyl(x, y, d, z - 0.01, z + 0.02)).bounding_box()
+     return z, ((sl.min.X + sl.max.X) / 2 - x, (sl.min.Y + sl.max.Y) / 2 - y)
+ 
+-def check_c(parts, board):
++def check_c(parts, board, cell):
+     print("\n(c) rest gaps")
+     ok = True
+     for n in ("A", "B", "START", "SELECT", "DPAD"):
+@@ -247,6 +294,13 @@ def check_c(parts, board):
+         print(f"  POWER at {sh:+.1f}: fork to lever {dl:.3f} (overlap {vl:.4f}), lever play +{play[0]:.3f} / "
+               f"-{play[1]:.3f} along the slot (<= {FORK_PLAY_MAX}), to the SW1 body {db:.3f} (overlap {vb:.4f})  "
+               f"{'ok' if good else '<-- OFF'}")
++    # battery door (rev 3): hook tongues play over the floor, top face on the back face, the cell on its foam pad
++    door, back, bd = parts["battery_door"], parts["back"], BATTERY_DOOR
++    gh, gd, vd, gc = battery_door.hooks().distance_to(back), door.distance_to(back), vol(door, back), door.distance_to(cell)
++    good = abs(gh - bd["play"]) <= TOL and gd < 1e-3 and vd <= EPS_V and abs(gc - bd["cell_gap"]) <= TOL
++    ok &= good
++    print(f"  DOOR   hooks over the floor {gh:.3f} (want {bd['play']}), top face on the back face {gd:.4f} (overlap "
++          f"{vd:.4f}), cell over its floor {gc:.3f} (want {bd['cell_gap']})  {'ok' if good else '<-- OFF'}")
+     verdict("(c) rest gaps", ok)
+ 
+ 
+@@ -262,7 +316,7 @@ def check_d(parts):
+         print(f"  {n:9s} {len(p.solids())} solid, valid {p.is_valid}, {p.volume:8.1f} mm3; print pose z 0..{bb.max.Z:.2f}"
+               f"  {'ok' if good else '<-- BAD'}")
+     # the shells' print faces: the front face / back face are the bed
+-    for n, z_bed in (("front", Z_FRONT), ("back", Z_BACK)):
++    for n, z_bed in (("front", Z_FRONT), ("back", Z_BACK), ("battery_door", DOOR_Z0)):
+         pp = enclosure.print_pose(n, parts[n])
+         bed = max((f for f in pp.faces() if abs(f.center().Z) < 1e-4 and abs(abs(f.normal_at().Z) - 1) < 1e-6),
+                   key=lambda f: f.area, default=None)
+@@ -271,7 +325,7 @@ def check_d(parts):
+                   default=None)
+         good = bed is not None and top is not None and abs(a - top.area) < 0.01
+         ok &= good
+-        print(f"  {n} print pose: largest bed face {a:.1f} mm2 = its {'front' if n == 'front' else 'back'} face "
++        print(f"  {n} print pose: largest bed face {a:.1f} mm2 = its {'front' if n == 'front' else 'outer'} face "
+               f"{top.area if top else 0:.1f}  {'ok' if good else '<-- BAD'}")
+     verdict("(d) solids", ok)
+ 
+@@ -389,28 +443,46 @@ def _sweep(name, mov, obstacles, d, step=SWEEP_STEP):
+     return hits
+ 
+ def check_h(parts, ctx):
+-    print("\n(h) assembly path (DESIGN.md 2, rev 2.1 order; each step along +Z into the rest pose)")
++    print("\n(h) assembly path (DESIGN.md 2, rev 3 order; each step along +Z into the rest pose)")
+     t0, bad = time.time(), 0
+     front = parts["front"]
+     keys = ("A", "B", "START", "SELECT", "DPAD")
+     edges = tuple(EDGE_KEYS) + ("POWER",)
+     board_pack = {"board": ctx["board"], "2090": ctx["module_2090"], "J7 (real)": ctx["J7 (real)"],
+                   "SW1 (real)": ctx["SW1 (real)"], "DPAD_WASHER (taped on)": parts["DPAD_WASHER"]}
++    under = []                                       # bottom-side parts + through-hole tails: one obstacle (speed)
+     for n, e in back_openings._envelopes_by_ref().items():
+-        if n not in ("J7", "SW1") and e.bounding_box().min.Z >= T - 1e-6:
++        if n in ("J7", "SW1"):
++            continue
++        if e.bounding_box().min.Z >= T - 1e-6:
+             board_pack[f"env {n}"] = e
++        else:
++            under.append(e)
++    board_pack["parts under the board (+ THT tails)"] = Compound(under)
+     for n in EDGE_KEYS:
+         pl, bd = controls._t_skrt(n)
+         board_pack[f"SKRT {n}"] = pl + bd
+-    steps = [("1. controls into the face-down front shell", [(n, parts[n], 19.0) for n in keys] +
+-              [(n, parts[n], 6.0) for n in edges], [("front", front)]),
+-             ("2. speaker into its ring", [("speaker", ctx["speaker"], 14.0)],
++    # approach distances (from the stack): keys come up from their own height below (tops start at their tips' rest z,
++    # under every guide tube); the speaker's top starts 2 under the tubes; the board pack starts wholly under the back
++    # face; the back shell with its top 0.4 under the floor's inner face; the cell (rev 3: after the back shell, up
++    # through the floor opening) with its top 0.5 under the back face
++    top = lambda m: m.bounding_box().max.Z
++    d_spk = top(ctx["speaker"]) - (GUIDE_BOTTOM_Z - 2.0)
++    d_pack = max(top(b) for b in board_pack.values()) - Z_BACK
++    d_back = top(parts["back"]) - (Z_FLOOR_IN - 0.4)
++    d_cell = top(ctx["battery"]) - (Z_BACK - 0.5)
++    steps = [("1. controls into the face-down front shell", [(n, parts[n], parts[n].bounding_box().size.Z) for n in keys]
++              + [(n, parts[n], EDGE_APPROACH) for n in edges], [("front", front)]),
++             ("2. speaker into its ring", [("speaker", ctx["speaker"], d_spk)],
+               [("front", front)] + [(n, parts[n]) for n in keys]),
+-             ("3. board (2090 on, washer taped on) onto the boss tips", [(n, b, 22.0) for n, b in board_pack.items()],
++             ("3. board (2090 on, washer taped on) onto the boss tips", [(n, b, d_pack) for n, b in board_pack.items()],
+               [("front", front)] + [(n, parts[n]) for n in keys + edges] + [("speaker", ctx["speaker"])]),
+-             ("4. back shell + the cell (plugged into J8, taped in its fence) on", [("back", parts["back"], 18.0),
+-                                                                                     ("battery", ctx["battery"], 10.0)],
++             ("4. back shell on (the cell, plugged into J8, hangs outside the floor opening)",
++              [("back", parts["back"], d_back)],
+               [("front", front)] + [(n, parts[n]) for n in keys + edges + ("DPAD_WASHER",)] +
++              [("speaker", ctx["speaker"])] + list(board_pack.items())),
++             ("4b. cell up through the floor opening into its fence", [("battery", ctx["battery"], d_cell)],
++              [("back", parts["back"]), ("front", front)] + [(n, parts[n]) for n in keys + edges + ("DPAD_WASHER",)] +
+               [("speaker", ctx["speaker"])] + list(board_pack.items()))]
+     for title, movers, obstacles in steps:
+         print(f"  {title}")
+@@ -422,6 +494,24 @@ def check_h(parts, ctx):
+                 print(f"    {n} x {on}: {v:.4f} mm3, {where}  <-- BLOCKED")
+         print(f"    {len(movers)} bodies swept past {len(obstacles)} in place: "
+               f"{'clear' if not bad else 'see above'}")
++    # 5. the battery door: up into place `slide` east of home (fit_drop), then slid west onto its hooks
++    print("  5. battery door: up into place 1.25 east of home, then west onto its hooks")
++    door, s = parts["battery_door"], BATTERY_DOOR["slide"]
++    obst = [("back", parts["back"]), ("battery", ctx["battery"])] + list(board_pack.items())
++    hits = _sweep("battery_door", Pos(s, 0, 0) * door, obst, battery_door.fit_drop())
++    n = max(1, math.ceil(s / SLIDE_STEP))
++    for on, o in obst:
++        c = _crop(o, Pos(s / 2, 0, 0) * door, 0.0, pad=s)
++        if c is None:
++            continue
++        worst = max(vol(Pos(s - s * j / n, 0, 0) * door, c) for j in range(n + 1))
++        if worst > EPS_V:
++            hits.append((on, worst, None))
++    bad += len(hits)
++    for on, v, at in hits:
++        print(f"    battery_door x {on}: {v:.4f} mm3  <-- BLOCKED")
++    print(f"    up {battery_door.fit_drop():.2f} past {len(obst)} in place, then west {s} in {n} steps: "
++          f"{'clear' if not hits else 'see above'}")
+     print(f"  ({time.time() - t0:.0f} s)")
+     verdict("(h) assembly path", bad == 0, f"{bad} blocked sweep(s)" if bad else "")
+ 
+@@ -522,7 +612,7 @@ if __name__ == "__main__":
+     print(f"built {len(parts)} parts + {len(ctx)} context bodies in {time.time() - t0:.1f} s")
+     check_a(parts, ctx)
+     check_b(parts)
+-    check_c(parts, ctx["board"])
++    check_c(parts, ctx["board"], ctx["battery"])
+     check_d(parts)
+     check_e(parts)
+     check_f(parts, ctx["board"])
+diff --git a/projects/gameboy-v2/enclosure/controls.py b/projects/gameboy-v2/enclosure/controls.py
+index 2410404..4bb91da 100644
+--- a/projects/gameboy-v2/enclosure/controls.py
++++ b/projects/gameboy-v2/enclosure/controls.py
+@@ -11,8 +11,8 @@ from params import (KEYS, EDGE_KEYS, POWER_SLOT, KEYSTAKE_Z, KEY_REST_GAP, DPAD_
+                     FLANGE_T, FLANGE_LIP, FIN_Z, EDGE_TIP_INSET, EDGE_REST_GAP, EDGE_PROUD, EDGE_NOTCH,
+                     EDGE_LIP_RECESS, FINGER, PARTS, SILHOUETTE, SPLIT, T, WALL, Z_FRONT, Z_PLATE_IN, CLR_SLIDE, box, cyl,
+                     face, prism)
+-from front_keys import DPAD_HOLE_CLR, DPAD_CORNER_R, dpad_hole_face   # the D-pad's face hole (rev 2.1: 1.3; params
+-                                                                       # says 1.0) + the cross's corners
++from front_keys import DPAD_HOLE_CLR, DPAD_CORNER_R, dpad_hole_face   # the D-pad's face hole (params KEYS DPAD
++                                                                       # hole_clr, rev 3: 1.05) + the cross's corners
+ 
+ # ---------------------------------------------------------------- choices (this module only)
+ FDM_MIN = 0.8                    # thinnest section anywhere (task rule, 0.4 nozzle)
+diff --git a/projects/gameboy-v2/enclosure/enclosure.py b/projects/gameboy-v2/enclosure/enclosure.py
+index a83ae2b..7171081 100644
+--- a/projects/gameboy-v2/enclosure/enclosure.py
++++ b/projects/gameboy-v2/enclosure/enclosure.py
+@@ -6,35 +6,44 @@ writes it from the KiCad board) through params.py, so the enclosure follows the
+   back shell  = back_openings.apply_back_openings(back_openings.apply_back(bare back))
+   controls    = controls.all_controls()  (A, B, START, SELECT, DPAD, DPAD_WASHER, VOL_UP, VOL_DOWN, L, R, POWER)
+   J1 cover    = front_features.j1_cover()
++  battery door = battery_door.door()   (rev 3: the cell hangs through the back floor; the door is the bump)
+ 
+ Run (from this folder):  .venv/bin/python enclosure.py  ->  out/<part>.stl + .3mf (each printable part in its print
+-pose), out/assembly.step (every part at rest + board + module + battery + speaker + LRA), out/lens.dxf / .svg (the
+-laser-cut lens + mask), and the live OCP CAD Viewer if it is listening on 3939. checks.py runs the fit checks.
++pose), out/assembly.step (every part at rest + board + module + battery + speaker + LRA + the door screw),
++out/lens.dxf / .svg (the laser-cut lens + mask), and the live OCP CAD Viewer if it is listening on 3939 (skipped when
++the NO_VIEWER environment variable is set). checks.py runs the fit checks.
+ 
+ Frame: board mm, +X right, +Y up (KiCad's Y flipped), Z up; the board's bottom face is z = 0, its top z = 1.6.
+ 
+-Assembly (rev 2.1; checks.py (h) sweeps this order. DESIGN.md 2 still has the old one):
++Assembly (rev 3; checks.py (h) sweeps this order, DESIGN.md 2):
+   1. Lens taped into its pocket. Front shell face-down on a spacer frame >= 2.5 tall round the keys (or foam with
+      reliefs): the D-pad / A / B / Start / Select heads stand 1.8 proud and a flat bench would push their tips below
+      the board top.
+   2. D-pad, A, B, Start, Select in head-first from inside; edge caps and the power slider into their rim notches -
+      hold the caps outward until the board is in (their plunger tips arrive 0.15 off), and set the slider to the same
+      end as SW1's lever (both east = OFF): the fork has 0.25 play and no lead-in. Speaker into its ring, lead exit
+-     north (into the back cradle's gap at 90 deg); light-pipe rod (17.7 long) in from the face.
++     north (into the back cradle's gap at 90 deg); light-pipe rod (params.LED_ROD_L, 13.2 long) in from the face.
+   3. Board: pivot washer taped on the GND pour round the D-pad centre (its rim drops between SW2-5); cell plugged
+-     into J8 BEFORE the 2090 goes on (J8 ends up under the 2090 PCB); 2090 on its standoffs. Cell taped into the back
+-     shell's fence. Board component-side down onto the boss tips between the six fingers; the leads run from the
+-     fence's lead gap over the board edge along the free J4 strip (x 128.25..132.1); speaker leads dressed south,
+-     under B's tube.
+-  4. Back shell folded over on the 100 mm cell leads (about 65 mm slack), 4 screws from the back.
++     into J8 BEFORE the 2090 goes on (J8 ends up under the 2090 PCB); 2090 on its 6 mm standoffs + 0.5 shims, its
++     header joints on the J3/J4 socket tops (header strips on top). Board component-side down onto the boss tips
++     between the six fingers; speaker leads dressed south, under B's tube. The cell stays outside on its leads, which
++     S-bend up over the bare cut-out edge (sleeve them there) and run along the free J4 strip (x 128.25..132.1).
++  4. Back shell on (the cell hanging outside, its leads up through the floor opening), 4 screws from the back.
++  4b. Cell up through the floor opening into its fence: a ~0.5 PE-foam double-sided tape strip on each long side,
++     pushed in until its bottom stands about 1 proud of the back face (the door pushes it home).
++  5. Battery door: 0.3 pad on its floor (adhesive to the door, PET face up); up into place 1.25 east of home (its two
++     hooks rise through the floor slots west of the cell, the pad pushes the cell home), slid west onto the hooks, two
++     M2 x 5 countersunk screws into the inserts at its east end.
+ Print notes: the front shell's lens land (z_print 1.63, a 2.5-3.9 cantilever over the pocket) needs support - sand
+ it flat, the pocket depth is exactly lens + tape. The keys' and D-pad's flanges overhang their heads by 1.2 / 2.3 in
+-the head-down pose: support under the flange seat (0.2 interface gap). Test-print the board fit first (FDM XY shrink
+-0.2-0.5 % is 0.3-0.7 over the 140 mm finger span; the fingers leave 0.1).
++the head-down pose: support under the flange seat (0.2 interface gap). The battery door prints outer-face-down (as
++built) with 0.2 layers, a support enforcer under each of its two hook tongues (1.25 overhang, 0.2 top z gap). Test-print
++the board fit first (FDM XY
++shrink 0.2-0.5 % is 0.3-0.7 over the 140 mm finger span; the fingers leave 0.1).
+ """
+ import functools, os, socket, time
+ from build123d import Axis, Color, Compound, Mesher, Pos, Rot, export_step, export_stl
+-import params, shell, front_features, front_screen, back_openings, controls
++import params, shell, front_features, front_screen, back_openings, controls, battery_door
+ 
+ HERE = os.path.dirname(os.path.abspath(__file__))
+ OUT = os.path.join(HERE, "out")
+@@ -47,12 +56,13 @@ SHELL_ALPHA = 0.35               # viewer: shells semi-transparent
+ @functools.lru_cache(maxsize=None)
+ def build():
+     """{name: solid} of every printed part at rest in the assembly frame: 'front', 'back', the eleven controls (incl.
+-    the D-pad's pivot washer), 'j1_cover'."""
++    the D-pad's pivot washer), 'j1_cover', 'battery_door'."""
+     f0, b0 = shell.shells()
+     parts = {"front": back_openings.apply_front_openings(front_features.apply(f0)),
+              "back": back_openings.apply_back_openings(back_openings.apply_back(b0))}
+     parts.update(controls.all_controls())
+     parts["j1_cover"] = front_features.j1_cover()
++    parts["battery_door"] = battery_door.door()
+     for n, p in parts.items():
+         p.label = n
+     return parts
+@@ -63,7 +73,8 @@ def context():
+     """{name: shape} of the bought / board-side bodies the enclosure fits round."""
+     top, bot = params.part_envelopes()
+     return {"board": params.board_solid(), "parts_top": top, "parts_bottom": bot, "module_2090": params.module_2090(),
+-            "battery": params.battery(), "speaker": params.speaker(), "lra": params.lra()}
++            "battery": params.battery(), "speaker": params.speaker(), "lra": params.lra(),
++            "door_screw": battery_door.screw()}
+ 
+ 
+ # ---------------------------------------------------------------- print poses
+@@ -74,11 +85,11 @@ def _on_bed(p):
+ 
+ 
+ def print_pose(name, part):
+-    """front shell + J1 cover face-down (flipped about X), back shell back-down (as built), controls per
+-    controls.print_pose."""
++    """front shell + J1 cover face-down (flipped about X), back shell back-down and the battery door outer-face-down
++    (both as built), controls per controls.print_pose."""
+     if name in ("front", "j1_cover"):
+         p = _on_bed(Rot(180, 0, 0) * part)
+-    elif name == "back":
++    elif name in ("back", "battery_door"):
+         p = _on_bed(part)
+     else:
+         p = controls.print_pose(part)
+@@ -110,7 +121,7 @@ def export_all(parts, ctx):
+ COLOURS = {"front": "ivory", "back": "lightgray", "j1_cover": "dimgray", "board": "darkgreen", "parts_top": "gray",
+            "parts_bottom": "gray", "module_2090": "royalblue", "battery": "orange", "speaker": "gold", "lra": "purple",
+            "DPAD": "black", "DPAD_WASHER": "white", "A": "firebrick", "B": "firebrick", "START": "slategray", "SELECT": "slategray",
+-           "POWER": "steelblue"}
++           "POWER": "steelblue", "battery_door": "silver", "door_screw": "dimgray"}
+ 
+ 
+ def _colour(n):
+@@ -118,6 +129,9 @@ def _colour(n):
+ 
+ 
+ def push_viewer(parts, ctx):
++    if os.environ.get("NO_VIEWER"):
++        print("NO_VIEWER set: not sent to the viewer")
++        return
+     with socket.socket() as sk:
+         sk.settimeout(0.3)
+         if sk.connect_ex(("127.0.0.1", VIEWER_PORT)) != 0:
+diff --git a/projects/gameboy-v2/enclosure/export_board.py b/projects/gameboy-v2/enclosure/export_board.py
+index 5b83081..33e37b2 100644
+--- a/projects/gameboy-v2/enclosure/export_board.py
++++ b/projects/gameboy-v2/enclosure/export_board.py
+@@ -9,7 +9,9 @@ board.json (board mm: +X right, +Y DOWN as in KiCad; the enclosure script flips
+   mech      GBA silhouette (the shell's OUTER surface), shell wall, board inset, 2090 module rects + heights,
+             battery / speaker / LRA envelopes (from draw_mech.py)
+   parts     every footprint: ref, value, side, position, rotation, courtyard polygon and body height (height read
+-            from its VRML 3D model, 0.1 inch units; a few through-hole parts from their datasheets)
++            from its VRML 3D model, 0.1 inch units; a few through-hole parts from their datasheets), where the height
++            came from (height_src: datasheet / model / default - a default is a guess, e.g. a missing 3D model), and
++            its plated through-hole pads (pth: [x, y, pad size], their lead tails + solder under the far side)
+ """
+ import os, sys, json, re, math
+ HERE = os.path.dirname(os.path.abspath(__file__))
+@@ -23,7 +25,13 @@ B = pcbnew.LoadBoard(os.path.join(BRD, "gb2.kicad_pcb"))
+ CAD = os.path.join(HERE, "..", "..", "..", "cad")
+ 
+ # ---- heights that don't come from a VRML model (datasheets)
+-HEIGHT = {"J3": 8.5, "J4": 8.5,                 # HX PM2.54-1x20P ZC insulator (mech_ref.json, LCSC C41417332)
++SOCKET_H = 6.0                                  # = params.SOCKET_H (rev 3 thin stack: low-profile 1x20 sockets, the
++                                                # 2090's header strip on top of the module; rev 2's HX PM2.54-1x20P ZC
++                                                # was 8.5). params.py asserts board.json matches.
++HEADER_BODY, HEADER_FLIPPED = 2.5, True         # = params.HEADER_BODY / HEADER_FLIPPED
++HEADER_JOINT = 0.5                              # = params.HEADER_JOINT: flipped, the header's joints on the module's
++                                                # back sit on the socket tops (only info here: mech.module)
++HEIGHT = {"J3": SOCKET_H, "J4": SOCKET_H,       # socket insulators
+           "J1": 8.5}                            # 1x5 2.54 mm male header: 2.5 body + ~6 pin above the board
+ DEFAULT_H = {"C": 0.9, "R": 0.5, "FB": 0.9, "L": 2.0, "D": 1.0, "Q": 1.1, "U": 1.0, "TP": 0.05, "SW": 1.5, "J": 3.0, "Y": 0.8}
+ 
+@@ -61,8 +69,11 @@ mech = {
+     "silhouette": [(round(x + gx, 4), round(y + gy, 4)) for x, y in M.silhouette(S)],
+     "shell_wall": M.SHELL_WALL, "board_inset": M.BOARD_INSET, "gba_depth": 24.5,
+     "module": {"rects": [(a + gx, b + gy, c + gx, d + gy) for a, b, c, d in M.module_rects(S)],
+-               "pcb_bottom_above_board": 11.0, "glass_top_above_board": 16.7,
+-               "note": "2090 on 8.5 mm sockets; module PCB 1.57; panel + glass 4.1 (mech_ref.json / draw_mech depth note)"},
++               "pcb_bottom_above_board": SOCKET_H + (HEADER_JOINT if HEADER_FLIPPED else HEADER_BODY),
++               "glass_top_above_board": SOCKET_H + (HEADER_JOINT if HEADER_FLIPPED else HEADER_BODY) + 1.57 + 4.1,
++               "note": f"2090 on {SOCKET_H} mm sockets, header strip {'on top of' if HEADER_FLIPPED else 'under'} the "
++                       f"module{f' (its {HEADER_JOINT} solder joints on the socket tops)' if HEADER_FLIPPED else ''}; "
++                       "module PCB 1.57; panel + glass 4.1 (mech_ref.json)"},
+     "battery": {"x": pos["battery"][0] + gx, "y": pos["battery"][1] + gy, "w": M.BATTERY[0], "h": M.BATTERY[1], "t": 8.5,
+                 "note": "Adafruit 2011 / PKCELL LP-803860, sits in the board cut-out under the 2090"},
+     "speaker": {"x": pos["speaker"][0] + gx, "y": pos["speaker"][1] + gy, "d": M.SPEAKER[0], "t": 4.9},
+@@ -80,11 +91,16 @@ for fp in sorted(B.GetFootprints(), key=lambda f: f.GetReference()):
+     else:
+         bb = fp.GetBoundingBox(False); crt = [(TO(bb.GetLeft()), TO(bb.GetTop())), (TO(bb.GetRight()), TO(bb.GetTop())),
+                                               (TO(bb.GetRight()), TO(bb.GetBottom())), (TO(bb.GetLeft()), TO(bb.GetBottom()))]
+-    h = HEIGHT.get(ref) or wrl_height(fp) or DEFAULT_H.get(re.sub(r"\d", "", ref), 1.0)
++    h, src = HEIGHT.get(ref), "datasheet"
++    if h is None: h, src = wrl_height(fp), "model"
++    if h is None: h, src = DEFAULT_H.get(re.sub(r"\d", "", ref), 1.0), "default"
++    pth = [[round(TO(p.GetPosition().x), 4), round(TO(p.GetPosition().y), 4),
++            round(TO(max(p.GetSize().x, p.GetSize().y)), 3)] for p in fp.Pads() if p.GetAttribute() == pcbnew.PAD_ATTRIB_PTH]
+     q = fp.GetPosition()
+     parts.append({"ref": ref, "value": fp.GetValue(), "side": "bottom" if back else "top",
+                   "x": round(TO(q.x), 4), "y": round(TO(q.y), 4), "rot": fp.GetOrientationDegrees(),
+-                  "courtyard": crt, "height": round(h, 3), "tht": bool(fp.GetAttributes() & pcbnew.FP_THROUGH_HOLE)})
++                  "courtyard": crt, "height": round(h, 3), "height_src": src, "pth": pth,
++                  "tht": bool(fp.GetAttributes() & pcbnew.FP_THROUGH_HOLE)})
+ 
+ os.makedirs(os.path.join(HERE, "build"), exist_ok=True)
+ out = os.path.join(HERE, "build", "board.json")
+@@ -92,3 +108,5 @@ json.dump({"source": "projects/gameboy-v2/pcb/gb2/gb2.kicad_pcb", "board": board
+           open(out, "w"), indent=1)
+ tall = sorted(parts, key=lambda p: -p["height"])[:6]
+ print(f"board.json: {len(parts)} parts, {len(holes)} holes; tallest: " + ", ".join(f"{p['ref']} {p['height']:.1f}" for p in tall))
++guess = [p["ref"] for p in parts if p["height_src"] == "default" and not re.match(r"(C|R|FB|TP)\d", p["ref"])]
++print(f"default (guessed) heights, check their 3D models: {', '.join(guess) or 'none'}")
+diff --git a/projects/gameboy-v2/enclosure/front_keys.py b/projects/gameboy-v2/enclosure/front_keys.py
+index 79671eb..d22bf0a 100644
+--- a/projects/gameboy-v2/enclosure/front_keys.py
++++ b/projects/gameboy-v2/enclosure/front_keys.py
+@@ -18,23 +18,24 @@ ROUND = ("A", "B", "START", "SELECT")
+ FUSE = 0.2                        # tubes run this far up into the plate so the union fuses solidly
+ CUT = 0.5                         # cut tools overshoot faces by this much
+ ENTRY_CHAMFER = 0.4               # 45-degree lead-in at each bore mouth (z GUIDE_BOTTOM_Z), the head goes in there
+-SPK_R = MECH["speaker"]["d"] / 2  # 13.5: the speaker can (params.speaker, z 14.1..19.0)
++SPK_R = MECH["speaker"]["d"] / 2  # 13.5: the speaker can (params.speaker, z 9.6..14.5)
+ SPK_CLR = 0.3                     # B's wall stays this far off the speaker cylinder ...
+-SPK_CUT_Z = GUIDE_BOTTOM_Z        # ... for z >= this. The brief said 13.6 (speaker bottom 14.1 - 0.5), but the speaker
++SPK_CUT_Z = GUIDE_BOTTOM_Z        # ... for z >= this. The brief said speaker bottom - 0.5, but the speaker
+                                   # drops into its ring from inside (DESIGN.md 2) through the column r 13.5 below it, and
+                                   # B's wall reaches r 13.19 of the speaker axis: so the cut runs the tube's full height
+                                   # (also no bridge over the gap when the front shell prints face-down)
+-DPAD_HOLE_CLR = KEYS["DPAD"]["hole_clr"]   # 1.3 (rev 2.1): the cross sways 0.97 axial / 1.36
+-                                  # diagonal at the face (z 20.9) when its domed legs take the switches to the 0.3 stop,
++DPAD_HOLE_CLR = KEYS["DPAD"]["hole_clr"]   # 1.05 (rev 3): the cross sways 0.71 axial / 0.99
++                                  # diagonal at the face (Z_FRONT) when its domed legs take the switches to the 0.3 stop,
+                                   # and sits up to 0.285 off centre (controls.dpad_shift_max: pivot in its washer 0.085,
+-                                  # washer between the switches 0.1, board on the fingers 0.1) -> axial 1.25 needed
+-DPAD_HOLE_R = 0.3                 # the hole's outer corners: near-sharp (an R2.3 arc offset gives only 1.3 on the
+-                                  # diagonal, sharp gives 1.3 x 1.41 = 1.84 at the faces; 1.76 at the inner corners)
++                                  # washer between the switches 0.1, board on the fingers 0.1) -> axial ~1.0 needed
++DPAD_HOLE_R = 0.3                 # the hole's outer corners: near-sharp (an arc offset gives only hole_clr on the
++                                  # diagonal, sharp gives hole_clr x 1.41 at the faces)
+ DPAD_CORNER_R = (1.0, 0.2)        # cross corners, convex / concave (controls imports these for the cap; rev 2.1: concave
+                                   # 0.5 -> 0.2, its bulge into the hole's sharp inner corner set the diagonal limit)
+ DPAD_SWEEP_MARGIN = 0.9           # flange sweep: cross + hole clr + FLANGE_LIP + this (DESIGN.md 3) ...
+-DPAD_SWEEP_Z = (16.5, Z_PLATE_IN)  # ... over this z range (rev 2.1: the domed legs tilt 4.1 deg on the diagonal, so the
+-                                   # flange's near side dips to ~16.9)
++DPAD_SWEEP_DEPTH = 2.8            # ... from this far under the plate up to it (rev 2.1: the domed legs tilt 4.1 deg on the
++                                  # diagonal, so the flange's near side dips to ~2.4 under the plate)
++DPAD_SWEEP_Z = (round(Z_PLATE_IN - DPAD_SWEEP_DEPTH, 3), Z_PLATE_IN)
+ DPAD_DROP_MARGIN = 0.5            # legs / pivot drop-in column: cross + this, z SPLIT..Z_PLATE_IN
+ 
+ 
+diff --git a/projects/gameboy-v2/enclosure/front_screen.py b/projects/gameboy-v2/enclosure/front_screen.py
+index bd1cc0a..6b06098 100644
+--- a/projects/gameboy-v2/enclosure/front_screen.py
++++ b/projects/gameboy-v2/enclosure/front_screen.py
+@@ -6,11 +6,12 @@ Run it for the self-test: .venv/bin/python front_screen.py"""
+ import math
+ from build123d import (Pos, Rot, RectangleRounded, SlotCenterToCenter, Compound, ExportDXF, ExportSVG, Unit)
+ from params import (Z_FRONT, Z_PLATE_IN, OPENING, PANEL, FPC_BULGE, LENS, LENS_POCKET, LAND_Z0, FRAME_W, MASK_WINDOW,
+-                    LED, SPEAKER_AT, GRILLE_D, SPK_RING, KEYS, MECH, CLR, prism, cyl, face)
++                    MODULE_Z1, LED, LED_ROD_L, SPEAKER_AT, GRILLE_D, SPK_RING, KEYS, MECH, CLR, prism, cyl, face)
+ 
+ EPS = 0.5                    # cutters overshoot the faces they go through
+ FUSE = 0.2                   # adds reach this far into the plate so they fuse with it
+-OPENING_Z0 = 14.0            # the opening column (keepout) starts here: the module's front face (14.17) and up
++OPENING_BELOW = 0.17         # the opening column (keepout) starts this far under the module's front face (MODULE_Z1)
++OPENING_Z0 = round(MODULE_Z1 - OPENING_BELOW, 3)                 # 9.5
+ 
+ # ---------------------------------------------------------------- helpers
+ def rrect(cx, cy, w, h, r):
+@@ -27,7 +28,7 @@ def pocket_face(grow=0.0):
+     return rrect(LENS["cx"], LENS["cy"], LENS["w"] + 2 * c, LENS["h"] + 2 * c, LENS["r"] + c)
+ 
+ # ---------------------------------------------------------------- 1. screen
+-POCKET_FLOOR = Z_FRONT - LENS_POCKET["depth"]                     # 19.27
++POCKET_FLOOR = Z_FRONT - LENS_POCKET["depth"]                     # 14.77
+ 
+ # OPENING's R1.0 corners pass the panel's sharp corners at only 0.15, so the cut also takes the panel + FPC fold
+ # + CLR (corner r CLR): that only adds four small corner reliefs, everywhere else OPENING is the larger.
+@@ -69,7 +70,7 @@ def export_lens(path_prefix):
+ LED_WALL = 1.0
+ LED_ROD_D = LED["d"]                                              # Ø2.5 acrylic rod
+ LED_STOP_Z = LED["stop_z"]   # (2.4, 3.2): the stop ring 0.8 tall (DESIGN.md 6 min wall), 0.24 over D1 (top 2.16);
+-                             # the rod is 20.9 - 3.2 = 17.7 long
++                             # the rod is Z_FRONT - 3.2 = LED_ROD_L (13.2) long
+ LX, LY = LED["at"]
+ LED_OD = LED["tube_id"] + 2 * LED_WALL                            # 4.7
+ 
+@@ -108,7 +109,7 @@ def grille_cut():
+ SPK_R = MECH["speaker"]["d"] / 2
+ RING_IR = SPK_RING["id"] / 2
+ RING_OR = RING_IR + SPK_RING["wall"]
+-RING_Z0 = Z_PLATE_IN - SPK_RING["depth"]                          # 17.3
++RING_Z0 = Z_PLATE_IN - SPK_RING["depth"]                          # 12.8
+ B = KEYS["B"]
+ B_NOTCH_D = B["guide_id"] + 2 * CLR                               # B's bore + 0.3 per side
+ B_TUBE_CLR = 0.5             # rev 2.1: the ring notch clears B's whole guide tube (bore + GUIDE_WALL) by this. Notched
+diff --git a/projects/gameboy-v2/enclosure/front_struct.py b/projects/gameboy-v2/enclosure/front_struct.py
+index c8c72df..4710100 100644
+--- a/projects/gameboy-v2/enclosure/front_struct.py
++++ b/projects/gameboy-v2/enclosure/front_struct.py
+@@ -21,12 +21,13 @@ from params import (SHELL_SCREWS, BOSS_D, INSERT_HOLE_D, INSERT_DEPTH, SILHOUETT
+ # ---------------------------------------------------------------- choices (this module only)
+ FUSE = 0.2                  # adds reach this far into the plate / wall so the union fuses solidly
+ CUT = 0.5                   # cut tools overshoot the faces they go through
+-WALL_INTO = 1.0             # merges / webs run this far into the 2.0 wall (outer fillet R2 is <= 0.1 deep at z 19.5)
++WALL_INTO = 1.0             # merges / webs run this far into the 2.0 wall (outer fillet R2 is <= 0.1 deep 0.2 over
++                            # the plate's inner face)
+ MERGE_Z0 = SPLIT + 0.3      # merge blocks / webs stop 0.3 above the board: only the boss ring clamps it ...
+ SKIRT_CLR = 0.2             # ... except beyond the board edge + this, where they run down to SPLIT (rev 2.1: the gap
+                             # under them met the sloped corner walls nearly tangent at TL / TR, 0.02 slivers)
+ WEB_T = 1.2                 # bottom-left boss webs: 3 FDM lines
+-WEB_Z0 = 7.0                # webs over the board start here (grip parts <= 4.95, = GUIDE_BOTTOM_Z)
++WEB_Z0 = 7.0                # webs over the board start here (grip parts <= 5.0; rev 2's GUIDE_BOTTOM_Z)
+ J1_TOP = SPLIT + PARTS["J1"]["height"]          # 10.1: J1 pin tips (8.5 header, board.json estimate)
+ D_CUT_X = J1_HATCH["cx"] + J1_HATCH["w"] / 2 + 0.2   # 130.5: top-right boss flat; J1 courtyard ends 129.925 (0.575
+                                                      # off), the hatch column 130.3 (0.2), insert-hole wall 1.09
+@@ -37,11 +38,12 @@ COVER_T = 0.8               # cover thickness (>= 0.8): pocket depth, so the led
+                             # 1.0 left a 0.6 x 0.6 ledge, backed by the chimneys along only 6.0 of each 13.4 side)
+ COVER_CLR = 0.1             # cover in its pocket, per side
+ POCKET_R = 0.5              # pocket corner radius (cover: POCKET_R - COVER_CLR)
+-LEDGE_Z = Z_FRONT - COVER_T                     # 19.9: the cover sits here
++LEDGE_Z = Z_FRONT - COVER_T                     # 15.6: the cover sits here
+ TAB_W, TAB_T = 4.0, 0.8     # snap tabs (one per long side, centred): width along x, thickness
+ TAB_CLR = 0.1               # tab's outer face inside the opening's edge
+ CHIMNEY_W, CHIMNEY_T = 6.0, 1.2                 # short walls under the plate outside each long edge, x-length, y-thickness
+-CATCH_Z = 16.3              # chimney bottom = the tabs' catch line (tab flex length 20.1 - 16.3 = 3.8)
++CHIMNEY_H = 3.0             # chimneys hang this far under the plate; their bottom is the tabs' catch line ...
++CATCH_Z = round(Z_PLATE_IN - CHIMNEY_H, 3)      # ... 11.8 (tab flex length LEDGE_Z - CATCH_Z = 3.8; J1 top 10.1)
+ BARB = 0.3                  # barb out of the tab face: 0.2 past the opening edge; strain 1.5*0.8*0.2/3.8^2 = 1.7 %
+ BARB_PLAY = 0.05            # barb's upper 45-deg ramp meets the chimney corner this far below seated (light preload)
+ NOTCH = {"w": 4.0, "out": 1.0, "z0": Z_PLATE_IN + 0.2}  # fingernail notch at the pocket's west end: across y, into the
+diff --git a/projects/gameboy-v2/enclosure/params.py b/projects/gameboy-v2/enclosure/params.py
+index c64aeb1..841799e 100644
+--- a/projects/gameboy-v2/enclosure/params.py
++++ b/projects/gameboy-v2/enclosure/params.py
+@@ -10,28 +10,59 @@ HERE = os.path.dirname(os.path.abspath(__file__))
+ D = json.load(open(os.path.join(HERE, "build", "board.json")))
+ MECH = D["mech"]
+ 
+-# ---------------------------------------------------------------- global parameters
++# ---------------------------------------------------------------- the stack (rev 3, 2026-10-14: the thin stack)
++# J3/J4 are low-profile 1x20 sockets and the 2090's male header is re-soldered with its plastic strip ON TOP of the
++# module's edge strips (beside the panel; the pins still point down through the module PCB into the sockets). Its 40
++# solder joints are then on the module's back, so the module PCB rides HEADER_JOINT over the socket tops (on the joints)
++# and the standoffs are SOCKET_H + HEADER_JOINT tall. Everything above the board follows from these numbers.
+ T = D["board"]["thickness"]          # 1.6
+-Z_FRONT = 20.9                       # front outer face: total 24.5 = the GBA
+-Z_BACK = -3.6                        # back outer face
++SOCKET_H = 6.0                       # J3/J4 insulator (design value until the part is picked; rev 2's HX PM2.54 was 8.5)
++HEADER_FLIPPED = True                # the header's strip on top of the module (False: under it, on the sockets - rev 2)
++HEADER_BODY = 2.5                    # the male header's plastic strip
++HEADER_JOINT = 0.5                   # flipped: the joints on the module's back (a THT fillet stands 0.3-0.5 proud)
++HEADER_PIN_L = 6.0                   # the header's long pins, under the strip (2.54 header: 3.0 + 2.5 body + 6.0)
++MODULE_PCB_T = 1.57                  # 2090 PCB (mech_ref.json)
++PANEL_T = 4.1                        # panel + tape + cover glass over the module PCB's front (4.0 + 0.1, mech_ref.json)
++GLASS_TOL = 0.63                     # worst-case glass over nominal (+0.2 panel, the 0.3 FPC under the JP2 end; rev 2's)
++PIN_TIP = 0.25                       # flipped: header pins trimmed to this above the strip
++PIN_TAIL = 1.83                      # not flipped: pin tails + solder above the module's front (rev 2 model)
++SCREW_HEAD_H, SCREW_HEAD_D = 2.23, 5.0   # M2.5 pan heads on the module's front + under the board (rev 2 model)
++SCREW_HEAD_BELOW = 1.75              # the standoffs' bottom screw heads, under the board (back floor reliefs)
++STANDOFF_D = 4.5                     # M2.5 F-F standoffs, MODULE_Z0 - T long (flipped: a 6.0 standoff + a 0.5 shim)
++LAND_CLR = 0.5                       # land frame over the pin tips and the screw heads: the socket's height (+-0.2), the
++                                     # strip (+-0.1) and the hand-trimmed pins (+-0.2) all stack under it
++LENS_GAP = 0.5                       # lens bottom over GLASS_WORST
++LENS_T = 1.5                         # cast acrylic lens
++MODULE_Z0 = round(T + SOCKET_H + (HEADER_JOINT if HEADER_FLIPPED else HEADER_BODY), 3)   # 8.1: module PCB back
++MODULE_Z1 = round(MODULE_Z0 + MODULE_PCB_T, 3)                                    # 9.67: its front
++STRIP_Z = (MODULE_Z1, round(MODULE_Z1 + HEADER_BODY, 3)) if HEADER_FLIPPED else (MODULE_Z0 - HEADER_BODY, MODULE_Z0)
++PIN_TOP = round(STRIP_Z[1] + PIN_TIP if HEADER_FLIPPED else MODULE_Z1 + PIN_TAIL, 3)   # 12.42: the trimmed tips
++# how far the pins reach down into the sockets from their tops (3.93): the socket must take that much pin (its cavity
++# deeper than this) and grip it (its contacts within it)
++SOCKET_PIN_DEPTH = round(HEADER_PIN_L - (MODULE_PCB_T + HEADER_JOINT if HEADER_FLIPPED else 0.0), 3)
++GLASS_TOP = round(MODULE_Z1 + PANEL_T, 3)            # 13.77 nominal - re-measure the real module
++GLASS_WORST = round(GLASS_TOP + GLASS_TOL, 3)        # 14.4
++LAND_Z0 = round(max(PIN_TOP, MODULE_Z1 + SCREW_HEAD_H) + LAND_CLR, 3)   # 12.92: the lens land frame's bottom
++
++# ---------------------------------------------------------------- global parameters
++Z_FRONT = round(GLASS_WORST + LENS_GAP + LENS_T, 3)  # 16.4: front outer face (the lens flush in it); total 20.0
++Z_BACK = -3.6                        # back outer face (the battery door bulges BATTERY_DOOR below it)
+ SPLIT = T                            # parting plane = board top
+ WALL = MECH["shell_wall"]            # 2.0
+ FLOOR = 1.6                          # back floor; inner face z = Z_BACK + FLOOR = -2.0
+-PLATE = 1.6                          # front face plate; inner face z = Z_FRONT - PLATE = 19.3
++PLATE = 1.6                          # front face plate; inner face z = Z_FRONT - PLATE = 14.8
+ Z_FLOOR_IN = Z_BACK + FLOOR
+-Z_PLATE_IN = Z_FRONT - PLATE
++Z_PLATE_IN = round(Z_FRONT - PLATE, 3)
+ R_OUT_FRONT, R_OUT_BACK = 2.0, 3.0   # outer perimeter fillets
+ CLR = 0.3                            # general print clearance
+ CLR_SLIDE = 0.2                      # sliding fits (plungers in guides, caps in notches)
+-GLASS_TOP = 18.27                    # 2090 cover glass (nominal; worst ~18.9) - re-measure the real module
+-GLASS_WORST = 18.9
++PRINT_LAYER = 0.2                    # FDM layer (first layer too): the battery door's hook faces sit on layer lines
+ 
+ # hardware
+ INSERT_HOLE_D, INSERT_DEPTH = 3.2, 4.0          # M2 x 3 brass heat-set insert
+ BOSS_D = 6.0
+ SCREW_CLEAR_D = 2.5                              # M2 clearance (FDM)
+ CBORE_D, CBORE_DEPTH = 4.2, 2.0                  # DIN 912 M2 head 3.8 x 2.0
+-LENS_T = 1.5                                     # cast acrylic
+ 
+ # ---------------------------------------------------------------- frame helpers
+ flip = lambda pts: [(x, -y) for x, y in pts]
+@@ -69,35 +100,112 @@ def board_solid():
+         b -= cyl(h["x"], -h["y"], h["d"], -0.1, T + 0.1)
+     return b
+ 
++THT_TAIL = 1.6                       # plated through-hole leads clipped to this past the board's far face (IPC-A-610
++                                     # allows up to 2.5: clip them), with their solder fillet: Ø = the pad, the whole length
++
++def envelopes_by_ref():
++    """{name: solid}: every part body (courtyard x height, up from the top face / down from the bottom face) by ref, and
++    '<ref> tails' for its plated through-hole leads + joints on the far face (board.json pth; Ø pad, THT_TAIL long)."""
++    out = {}
++    for p in D["parts"]:
++        top = p["side"] == "top"
++        if p["height"] >= 0.1:
++            try: out[p["ref"]] = prism(face(p["courtyard"]), T, T + p["height"]) if top else prism(face(p["courtyard"]),
++                                                                                                  -p["height"], 0)
++            except Exception: pass
++        pads = p.get("pth", [])
++        if pads:
++            z0, z1 = (-THT_TAIL, 0.0) if top else (T, T + THT_TAIL)
++            out[f"{p['ref']} tails"] = Compound([cyl(x, -y, d, z0, z1) for x, y, d in pads])
++    return out
++
+ def part_envelopes():
+-    """component bodies: courtyard x height, up from the top face / down from the bottom face."""
++    """(top, bottom) compounds of envelopes_by_ref(): what stands on the board's top / hangs under its bottom face."""
+     top, bot = [], []
+-    for p in D["parts"]:
+-        if p["height"] < 0.1: continue
+-        try: f = face(p["courtyard"])
+-        except Exception: continue
+-        (top if p["side"] == "top" else bot).append(prism(f, T, T + p["height"]) if p["side"] == "top"
+-                                                   else prism(f, -p["height"], 0))
++    for e in envelopes_by_ref().values():
++        (top if e.bounding_box().min.Z >= T - 1e-6 else bot).append(e)
+     return Compound(top), Compound(bot)
++GUESSED_HEIGHT = sorted(p["ref"] for p in D["parts"] if p.get("height_src") == "default")   # no model / datasheet
++
++# ---------------------------------------------------------------- the 2090 module (mech_ref.json, its own frame)
++# Module frame: origin = its PCB centre = board (95.25, 71.0) (KiCad), +X toward JP2 = board +X, +Y down = KiCad +Y,
++# so enclosure (x, y) = (95.25 + X, -(71.0 + Y)). Heights: down from the module PCB's back (MODULE_Z0).
++MODULE_AT = (95.25, 71.0)
++MREF = json.load(open(os.path.join(HERE, "..", "pcb", "gb2", "mech_ref.json")))["tft"]["items"]
++def _mref(prefix):
++    return next(it for it in MREF if it["name"].startswith(prefix))
++FPC_T = 0.4                          # FPC tail + solder over its pads on the module's back (mech_ref: 0.3-0.5)
++MODULE_BACK = [                      # (mech_ref.json item, height, mirror in Y): the orig rev's parts (the taller rev)
++    ("orig rev: IC2 74LVC245", 2.65, False), ("orig rev: IC3 74LVC245", 2.65, False),   # + rev D's one part outside
++    ("3.3 V LDO", 1.45, False), ("microSD socket body", 2.0, False),                   # their footprints, so both fit
++    ("rev D only: EYESPI", 2.0, False),
++    ("FPC solder pad row", FPC_T, False), ("FPC anchor pads (back side), orig rev", FPC_T, True),
++    ("FPC anchor pads (back side), rev D", FPC_T, True)]
++FPC_TAIL = {"x0": 7.25, "x1": 15.748, "h": 25.0}   # the FPC from the pad row (x 7.85 - 0.6) to the PCB slot (15.748),
++                                                   # 25.0 wide (its finger zone, mech_ref 'FPC folded'), FPC_T tall
++HEADER_X = [MODULE_AT[0] + _mref("JP1 header")["x"], MODULE_AT[0] + _mref("JP2 header")["x"]]   # 57.15, 133.35
++
++def module_back_rects():
++    """[(name, x0, y0, x1, y1, height)] of the module's back-side parts, enclosure frame."""
++    out = []
++    for name, h, mir in MODULE_BACK:
++        it = _mref(name)
++        for sy in ((1, -1) if mir else (1,)):
++            X, Y = MODULE_AT[0] + it["x"], -(MODULE_AT[1] + sy * it["y"])
++            out.append((name, X - it["w"] / 2, Y - it["h"] / 2, X + it["w"] / 2, Y + it["h"] / 2, h))
++    f = FPC_TAIL
++    out.append(("FPC tail", MODULE_AT[0] + f["x0"], -MODULE_AT[1] - f["h"] / 2, MODULE_AT[0] + f["x1"],
++                -MODULE_AT[1] + f["h"] / 2, FPC_T))
++    return out
+ 
+ def module_2090():
+-    """the 2090 module: PCB at z 12.6-14.17 over its rects, panel + glass up to GLASS_TOP over the panel outline."""
++    """the 2090 module on its sockets: PCB MODULE_Z0..Z1 over its rects, panel + glass to GLASS_TOP, the header strips
++    (on top if HEADER_FLIPPED, else under the PCB) + their pin tips (flipped: + the joints under the PCB, on the socket
++    tops), the M2.5 standoffs (board top to the module) with pan heads on the module and under the board, and every
++    back-side part (module_back_rects)."""
+     m = MECH["module"]; out = []
+     for x0, y0, x1, y1 in m["rects"]:
+-        out.append(box((x0 + x1) / 2, -(y0 + y1) / 2, x1 - x0, y1 - y0, 12.6, 14.17))
+-    out.append(box(95.25 + 0.16, -71.0, 69.2, 50.0, 14.27, GLASS_TOP))     # panel 69.2 x 50 (centre +0.16 toward JP2)
+-    out.append(box(76.85, -78.75, 12.3, 27.9, 9.95, 12.6))                   # back parts over the cell (orig rev SOIC-20W)
+-    for x in (57.15, 133.35):
+-        out.append(box(x, -71.0, 2.54, 51.3, 14.17, 16.0))                   # header pins + solder through the module PCB
+-        out.append(box(x, -71.0, 2.54, 50.8, T + 8.5, 12.6))                 # 1x20 male header body (2.5) on the J3/J4 sockets
++        out.append(box((x0 + x1) / 2, -(y0 + y1) / 2, x1 - x0, y1 - y0, MODULE_Z0, MODULE_Z1))
++    pnl = _mref("TFT panel outline")
++    out.append(box(MODULE_AT[0] + pnl["x"], -MODULE_AT[1], pnl["w"], pnl["h"], MODULE_Z1 + 0.1, GLASS_TOP))   # panel + glass
++    for _, x0, y0, x1, y1, h in module_back_rects():
++        out.append(box((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0, MODULE_Z0 - h, MODULE_Z0))
++    for x in HEADER_X:
++        out.append(box(x, -MODULE_AT[1], 2.54, 50.8, *STRIP_Z))                             # 1x20 male header strip
++        z_pin = STRIP_Z[1] if HEADER_FLIPPED else MODULE_Z1
++        out.append(box(x, -MODULE_AT[1], 2.54, 51.3, z_pin - 0.01, PIN_TOP))                 # pin tips (+ solder)
++        if HEADER_FLIPPED:
++            out.append(box(x, -MODULE_AT[1], 2.54, 50.8, MODULE_Z0 - HEADER_JOINT, MODULE_Z0 + 0.01))   # the joints
+     for x, y in STANDOFFS:
+-        out.append(cyl(x, y, 5.0, 14.17, 16.4))                              # M2.5 pan-head screws on top of the module
+-        out.append(cyl(x, y, 4.5, T, 12.6))                                  # M2.5 x 11 F-F standoffs (8.5 socket + 2.5 header)
++        out.append(cyl(x, y, SCREW_HEAD_D, MODULE_Z1, MODULE_Z1 + SCREW_HEAD_H))           # pan heads on the module
++        out.append(cyl(x, y, STANDOFF_D, T, MODULE_Z0))                                     # F-F standoffs
++        out.append(cyl(x, y, SCREW_HEAD_D, -SCREW_HEAD_BELOW, 0))                          # pan heads under the board
+     return Compound(out)
+ 
++# ---------------------------------------------------------------- the cell (rev 3: hangs through the floor)
++# The cell's top sits CELL_SWELL + CELL_CLR under the lowest module back part over it (the SOIC-20W 74LVC245s, z 5.45),
++# so the 8.5 cell reaches below the back floor; the battery door (BATTERY_DOOR) closes it. It goes in last, up through
++# the floor opening (DESIGN.md 2, step 4b), held by a tape strip on each long side in the fence's 0.4 gap; the door's
++# pad pushes it home.
++CELL = MECH["battery"]
++CELL_SWELL = 0.85                    # LiPo pouch swell allowance (10 % of 8.5)
++CELL_CLR = 0.3                       # + this over the swell
++def _cell_xy():
++    return CELL["x"] - CELL["w"] / 2, -CELL["y"] - CELL["h"] / 2, CELL["x"] + CELL["w"] / 2, -CELL["y"] + CELL["h"] / 2
++def _over_cell():
++    """lowest bottom z of the module (its PCB + back parts) over the cell's footprint, and what it is."""
++    cx0, cy0, cx1, cy1 = _cell_xy()
++    best = (MODULE_Z0, "module PCB")
++    for name, x0, y0, x1, y1, h in module_back_rects():
++        if x0 < cx1 and x1 > cx0 and y0 < cy1 and y1 > cy0 and MODULE_Z0 - h < best[0]:
++            best = (round(MODULE_Z0 - h, 3), name)
++    return best
++BATTERY_Z1 = round(_over_cell()[0] - CELL_SWELL - CELL_CLR, 3)     # 4.3: cell top
++BATTERY_Z0 = round(BATTERY_Z1 - CELL["t"], 3)                      # -4.2: cell bottom, 0.6 out past the back face
++
+ def battery():
+-    b = MECH["battery"]
+-    return box(b["x"], -b["y"], b["w"], b["h"], Z_FLOOR_IN, Z_FLOOR_IN + b["t"])       # rests on the floor
++    cx0, cy0, cx1, cy1 = _cell_xy()
++    return box((cx0 + cx1) / 2, (cy0 + cy1) / 2, cx1 - cx0, cy1 - cy0, BATTERY_Z0, BATTERY_Z1)
+ 
+ def speaker():
+     s = MECH["speaker"]
+@@ -125,9 +233,10 @@ KEY_TIP_D = 2.4              # flat stem tip (A/B), wider than the Ø2.0 keystak
+ KEY_PROUD = 1.8              # cap top above the face (GBA 1.9-2.1)
+ KEY_HOLE_CLR = 0.2           # radial, head in its face hole
+ FLANGE_T, FLANGE_LIP = 0.8, 1.0     # retention flange under the plate: thickness, overhang past the face hole
+-GUIDE_BOTTOM_Z = 7.0         # guide tubes hang from the plate inner face down to here (parts below are <= 4.95 tall)
++GUIDE_BOTTOM_Z = 5.5         # guide tubes hang from the plate inner face down to here (parts below are <= 5.0 tall;
++                             # rev 3: 7.0 -> 5.5, so the guided length grows back with the plate 6.0 lower)
+ GUIDE_WALL = 1.0
+-FIN_Z = (8.0, 11.0)          # stem guide ring: z range at rest (still inside the tube at full press)
++FIN_Z = (GUIDE_BOTTOM_Z + 1.0, GUIDE_BOTTOM_Z + 4.0)   # 6.5-9.5: stem guide ring at rest (inside the tube at full press)
+ def _sw(ref): return part_xy(ref)
+ KEYS = {
+     "A":      {"shape": "round", "d": 9.4, "stem_d": 4.0, "tip_d": KEY_TIP_D, "at": _sw("SW6"), "contacts": [_sw("SW6")]},
+@@ -137,10 +246,12 @@ KEYS = {
+     # one cross: arms reach 9.4 from the centre, 6.6 wide; four legs (leg_d, R2.5 domed tips) onto SW2-5 (8.000 from
+     # the centre) and a centre pivot leg on the board's top soldermask (z T; plain GND pour, no pads within 5.3 mm),
+     # centred by a printed washer (controls.dpad_washer) that the four switch bodies locate.
+-    # hole_clr 1.3 (rev 2.1): the cross sways 0.97 axial / 1.36 diagonal at the face when a leg takes its switch to the
+-    # 0.3 stop, and sits up to 0.285 off centre (washer play 0.085 + washer to switches 0.1 + board 0.1). The hole is
+-    # the sharp-jointed cross offset (front_keys.dpad_hole_face); the flange follows (hole + FLANGE_LIP).
+-    "DPAD":   {"shape": "cross", "arm": 9.4, "w": 6.6, "leg_d": 2.6, "pivot_d": 3.0, "hole_clr": 1.3,
++    # hole_clr 1.05 (rev 3; 1.3 in rev 2.1): with the face 14.8 over the pivot the cross sways 0.73 axial / 1.02
++    # diagonal at the face when a leg takes its switch to the 0.3 stop, and sits up to 0.285 off centre (washer play
++    # 0.085 + washer to switches 0.1 + board 0.1); checks (j) passes with 0.022 to spare (axial, +0.285; 1.0 binds).
++    # No FDM allowance (holes print 0.1-0.2 small): judge it on the test print, 1.15 if it rubs. The hole is the
++    # sharp-jointed cross offset (front_keys.dpad_hole_face); the flange follows (+ FLANGE_LIP).
++    "DPAD":   {"shape": "cross", "arm": 9.4, "w": 6.6, "leg_d": 2.6, "pivot_d": 3.0, "hole_clr": 1.05,
+                "at": P(39.95, 64.09), "contacts": [_sw("SW2"), _sw("SW3"), _sw("SW4"), _sw("SW5")]},
+ }
+ for _k in KEYS.values():
+@@ -207,18 +318,72 @@ OPENING = {"x0": PANEL["x0"] - 0.4, "x1": PANEL["x1"] + FPC_BULGE + 0.5, "y0": P
+            "y1": PANEL["y1"] + 0.4, "r": 1.0}                     # x 60.41..131.51, y -96.4..-45.6
+ TAPE_T = 0.13                                                     # acrylic transfer tape (3M 468MP class)
+ LENS = {"cx": 95.25, "cy": -71.0, "w": 77.5, "h": 56.0, "r": 2.0, "t": LENS_T}   # x 56.5..134.0, y -99.0..-43.0
+-LENS_POCKET = {"clr": 0.2, "depth": LENS_T + TAPE_T}              # lens + 0.2 per side; floor z 19.27, lens bottom 19.4
+-LAND_Z0 = 17.0                                                    # frame bottom (module screw heads <= 16.4, pins 16.0)
++LENS_POCKET = {"clr": 0.2, "depth": LENS_T + TAPE_T}              # lens + 0.2 per side; floor z 14.77, lens bottom 14.9
++# LAND_Z0 (the stack, above): the frame's bottom, LAND_CLR over the header strips' pin tips and the screw heads
+ FRAME_W = 1.5                                                     # frame beyond the pocket outline
+ MASK_WINDOW = {"cx": 92.61, "cy": -71.0, "w": 60.6, "h": 46.2, "r": 1.5}         # over the active area (on the lens)
+ SCREEN_WINDOW = MASK_WINDOW                                       # (rev 1 name)
+ 
+ # ---------------------------------------------------------------- other face features
+ LED = {"at": part_xy("D1"), "d": 2.5, "hole_d": 2.6, "tube_id": 2.7, "stop_id": 2.0, "stop_z": (2.4, 3.2)}
+-# Ø2.5 x 17.7 clear acrylic rod light pipe: in from the face, rests on the tube's bottom stop (z 3.2; 0.8 tall for the
++LED_ROD_L = round(Z_FRONT - LED["stop_z"][1], 3)                 # 13.2: the rod, stop to face
++# Ø2.5 x LED_ROD_L clear acrylic rod light pipe: in from the face, rests on the tube's bottom stop (z 3.2; 0.8 tall for the
+ # min wall, 0.24 over D1's top 2.16), glued flush
+ SPEAKER_AT = P(MECH["speaker"]["x"], MECH["speaker"]["y"])
+ GRILLE_D = 22.0                                                   # slots inside this circle
+ SPK_RING = {"id": MECH["speaker"]["d"] + 0.4, "wall": 1.0, "depth": 2.0}   # locates the speaker under the plate; notched
+                                                                   # where it would come within 0.3 of B's guide bore
+ J1_HATCH = {"cx": 123.6, "cy": -37.0, "w": 13.4, "h": 3.4}
++
++# ---------------------------------------------------------------- battery door (rev 3)
++# The cell hangs BATTERY_Z0 below the back face, so the back floor is open over it (the battery fence's inner outline,
++# the fence standing on the opening's rim) and a separate printed door closes it: a shallow tub (the bump) whose top
++# face sits on the back face, the cell on its floor through a pad (adhesive on the door side only, a PET face toward
++# the cell: the door's last move slides under it). Two hooks at its west end rise through slots in the floor and lay
++# their tongues over the floor's inner face; two M2 countersunk screws at its east end (either side of the cell's lead
++# gap) go into heat-set inserts in bosses under the board. Fitting it: the door up into place 'slide' east of home (the
++# hooks pass up through their slots, the pad pushes the cell home), then slid west onto the hooks, then the screws.
++# back_openings cuts / adds the back shell's side, battery_door.py builds the door.
++BATTERY_DOOR = {
++    "floor_min": 1.2,        # door floor (the bump's skin), at least; "floor" (below) tops it up to a whole layer bump
++    "wall": 1.2,             # tub walls N / S (outside the floor opening)
++    "cell_gap": 0.3,         # cell bottom over the door floor: a 0.3 PET-faced foam pad
++    "r_plan": 4.0,           # plan corner radius, west (the east two: FENCE_CLR + wall, round the interior's)
++    "r_edge": 1.5,           # rounded outer edges (GBA battery cover)
++    "cell_margin": 0.2,      # door to the cell anywhere on its fitting path
++    "hook_dy": 7.5,          # two hooks at the cell's centre y +- this ...
++    "hook_w": 5.0,           # ... this wide (y)
++    "stem_t": 1.2,           # hook stem (x), from the door's top face up through its slot
++    "tongue_t": 1.0,         # hook tongue (z), over the floor's inner face ...
++    "reach": 1.0,            # ... this far past the slot's west wall
++    "play": 0.2,             # tongue over the floor (z) when home: one PRINT_LAYER (0.1 would print as 0 or 0.2)
++    "lead_in": 0.3,          # 45 deg chamfer on the tongue's lower west edge (it rides onto the floor if it droops)
++    "west_lap": 0.5,         # the door's west edge this far past the slots' west wall (covers the slot beside the stem)
++    "slot_clr": 0.25,        # hook to its slot, per side (x on the fitting path, y)
++    "screw_wall": 1.2,       # insert hole to the floor opening (x)
++    "boss_d": 5.6,           # insert boss (insert hole + 2 x 1.2)
++    "boss_gap": 0.4,         # boss to the fence's lead gap (y), both sides
++    "board_clr": 0.3,        # boss top / tongues under the board's bottom face
++    "insert_l": 3.0,         # M2 x 3 heat-set insert, pressed in flush with the boss top (hole INSERT_HOLE_D through)
++    "csk_d": 4.4, "screw_d": 2.0, "screw_l": 5.0,   # ISO 10642 M2 x 5 countersunk screw (90 deg head, flush)
++    "hole_d": 2.4,           # screw clearance through the door
++    "edge_margin": 0.3,      # countersink rim to the start of the door's edge rounding
++}
++BATTERY_DOOR["slide"] = BATTERY_DOOR["reach"] + BATTERY_DOOR["slot_clr"]      # 1.25: the fitting slide
++# the bump (back face -> the door's outer face) is a whole number of PRINT_LAYERs, so the door's top face and its hook
++# tongues' underside (FLOOR + play over it) both land on layer lines in the outer-face-down print
++_BUMP = math.ceil(round((Z_BACK - (BATTERY_Z0 - BATTERY_DOOR["cell_gap"] - BATTERY_DOOR["floor_min"])) / PRINT_LAYER, 6)) \
++    * PRINT_LAYER
++DOOR_Z0 = round(Z_BACK - _BUMP, 3)                                                  # -5.8: the bump's outer face,
++                                                                                    # 2.2 out past the back face
++BATTERY_DOOR["floor"] = round(BATTERY_Z0 - BATTERY_DOOR["cell_gap"] - DOOR_Z0, 3)    # 1.3
++
++# board.json must match the stack: export_board.py's J3 / J4 HEIGHT is SOCKET_H
++# (build/ is not in git: after pulling a stack change, rerun export_board.py with KiCad's python BEFORE enclosure.py,
++# checks.py or the viewer - see README "After a board or stack change")
++for _r in ("J3", "J4"):
++    assert abs(PARTS[_r]["height"] - SOCKET_H) < 1e-6, f"board.json {_r} height {PARTS[_r]['height']} != SOCKET_H " \
++        f"{SOCKET_H}: set export_board.py HEIGHT and rerun it with KiCad's python (README)"
++assert "height_src" in PARTS["J8"], "board.json predates the rev 3 export (no height_src / pth): rerun export_board.py"
++assert PARTS["J8"]["height_src"] == "model", "board.json: J8 (under the 2090) has a guessed height - its 3D model " \
++    "(cad/symbols/easyeda2kicad.3dshapes) was missing when export_board.py ran"

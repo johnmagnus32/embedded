@@ -2,7 +2,8 @@
 
 Decided 2026-10-13: **GBA-flat** — one flat front face with the screen lens flush, the GBA silhouette, the GBA's
 24.5 mm thickness, rounded back edges. Printed FDM (PLA/PETG, 0.4 mm nozzle). Every number below comes from the
-2026-10-13 research pass (datasheets, mech_ref.json, the board) unless marked *choice*.
+2026-10-13 research pass (datasheets, mech_ref.json, the board; notes in `research/`) unless marked *choice*.
+Structural review and its tested fixes: `STRUCTURAL_REVIEW.md`.
 
 Why not a GBA-shaped back taper: our board sits at the back, full width, so a tapered back would cut through the board
 in the outer ~25 mm of each grip (`build/diagrams/flat_front_gba_back.png`). Grips stay full thickness.
