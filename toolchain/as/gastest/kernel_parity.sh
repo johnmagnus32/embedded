@@ -36,7 +36,7 @@ for d in $dirs; do
 		#    LAST one set the status, so a failed gcc -E reports success (kernel_parity_S.sh:22 already does this).
 		#  - --param=allow-store-data-races=0 is in every recorded line because os-cc accepts ANY --param=;
 		#    gcc 13.3 rejects it outright, so it has to come back out before the reference sees the line.
-		pp=$(sed 's/^savedcmd_[^:]*:= //' "$o" | head -1 \
+		pp=$(sed 's/^\(saved\)\?cmd_[^:]*:= //' "$o" | head -1 \
 		     | sed -e "s#^[^ ]*gcc#${GNU}gcc#" -e 's# -c # -E #' -e "s# -o [^ ]*\.o # -o $f.i #" \
 		           -e 's/--param=allow-store-data-races=[01]//')
 		# The reference must actually have produced a non-empty .i: a silent skip here is what made this

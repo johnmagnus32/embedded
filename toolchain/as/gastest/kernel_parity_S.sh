@@ -19,7 +19,7 @@ one() {
 	d=$(dirname "$o"); b=$(basename "$o" .o.cmd); b=${b#.}
 	[ -f "$d/$b.S" ] || return 0
 	f=$W/$(echo "$d/$b" | tr / _)
-	pp=$(sed 's/^savedcmd_[^:]*:= //' "$o" | head -1)
+	pp=$(sed 's/^\(saved\)\?cmd_[^:]*:= //' "$o" | head -1)
 	case "$pp" in *gcc*) ;; *) return 0 ;; esac
 	asflags=$(echo "$pp" | tr ' ' '\n' | sed -n 's/^-Wa,//p' | tr ',' ' ')
 	incs=$(echo "$pp" | tr ' ' '\n' | grep '^-I' | tr '\n' ' ')
@@ -36,4 +36,11 @@ find . -name '.*.o.cmd' | sort | xargs -P "$(nproc)" -I{} bash -c 'one "$@"' _ {
 grep -v '^PASS' "$W/results" | sort
 p=$(grep -c '^PASS' "$W/results"); t=$(grep -c '^\(PASS\|FAIL\)' "$W/results")
 echo "kernel .S parity: $p/$t assembly objects identical to GNU as (bytes + relocs + symtab + headers, .ARM.exidx/extab included)"
+# A floor, for the same reason kernel_parity.sh has one: the verdict below is `p == t`, and 0 == 0 passes.
+# Every object SKIPs when the recorded command line will not replay, which is how this read 0/0 and green.
+MIN=${MIN:-20}
+if [ "$t" -lt "$MIN" ]; then
+	echo "kernel .S parity: only $t objects were testable (floor: $MIN) — this gate asserts nothing at that count" >&2
+	exit 1
+fi
 [ "$p" = "$t" ]
