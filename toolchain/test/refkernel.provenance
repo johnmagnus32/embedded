@@ -1,0 +1,4 @@
+# The reference kernel the toolchain gate is entitled to use. Refresh DELIBERATELY:
+#   toolchain/test/refkernel-check.sh --record <zImage>
+sha256 378fd170e1af0bc7fe21f0527ec5526a0da6be8a8b24ecbf4b8863e901ce1204
+producer Linux version 6.12.95 (johmagnu@dev-dsk-johmagnu-kuiper-2a-053bba8c.us-west-2.amazon.com) (arm-forge-linux-gnueabihf-gcc (GCC) 13.3.0, GNU ld (GNU Binutils) 2.42) # SMP 

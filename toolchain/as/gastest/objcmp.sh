@@ -20,7 +20,13 @@ links() {
 }
 bad=""; t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 for sec in $("${GNU}readelf" -SW "$B" | sed -n 's/^ *\[ *[0-9]*\] //p' | awk '$1!~/^\.(rel|symtab|strtab|shstrtab)/ && $1!="NULL"{print $1}' | sort -u); do
-	"${GNU}objcopy" -O binary -j "$sec" "$A" "$t/a" 2>/dev/null; "${GNU}objcopy" -O binary -j "$sec" "$B" "$t/b" 2>/dev/null
+	# --dump-section, NOT -O binary -j: -j writes only ALLOCATED content, so it yields zero bytes for
+	# .ARM.attributes (which this loop does select), .comment and every .debug_* — a vacuous comparison.
+	# Remove first, since --dump-section leaves the file alone when the section is absent.
+	rm -f "$t/a" "$t/b"
+	"${GNU}objcopy" --dump-section "$sec=$t/a" "$A" /dev/null 2>/dev/null
+	"${GNU}objcopy" --dump-section "$sec=$t/b" "$B" /dev/null 2>/dev/null
+	[ -e "$t/a" ] || : > "$t/a"; [ -e "$t/b" ] || : > "$t/b"
 	cmp -s "$t/a" "$t/b" || bad="$bad $sec(bytes)"
 	[ "$(relocs "$A" "$sec")" = "$(relocs "$B" "$sec")" ] || bad="$bad $sec(relocs)"
 done

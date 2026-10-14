@@ -23,10 +23,23 @@ for t in cpp cc as ar ld rt; do
   make -s -C "${TC}/${t}" >/dev/null 2>&1 && echo "  built ${t}" || { no "build ${t}"; exit 1; }
 done
 
+echo "==== 1b. reference kernel provenance ===="
+# ${KERNEL} is the ENGINE'S DEPLOY SLOT, written by whichever kernel provider last built — so the thing the
+# boot steps below boot is not necessarily the thing anyone intended. State it, or refuse.
+if [ -f "${KERNEL}" ]; then
+  if prod="$(bash "${HERE}/refkernel-check.sh" "${KERNEL}")"; then
+    ok "reference kernel: ${prod#Linux version }"
+  else no "reference kernel provenance"; printf 'TOOLCHAIN REGRESSION: aborted (unidentified reference kernel)\n'; exit 1; fi
+else sk "reference kernel provenance (no kernel at ${KERNEL})"; fi
+
 echo "==== 2. cc execution suite ===="
+# A failure is a failure. There used to be a clause here that passed the suite when the log mentioned
+# 'libc-string' and the FAIL count was 1 — but all three libc-string branches in cc/Makefile print that
+# literal string, so the first half was always true and the clause reduced to "exactly one FAIL ⇒ PASS".
+# Any single cc regression reported green. If libc-string needs an input this host lacks, the suite itself
+# must say SKIP rather than FAIL.
 if make -s -C "${TC}/cc" test >/tmp/cc-test.$$.log 2>&1; then ok "cc suite"; else
-  if grep -q 'libc-string' /tmp/cc-test.$$.log && [ "$(grep -c 'FAIL' /tmp/cc-test.$$.log)" = 1 ]; then
-    ok "cc suite (libc-string skipped: needs GNU gcc)"; else no "cc suite"; sed 's/^/    /' /tmp/cc-test.$$.log | tail -8; fi
+  no "cc suite"; sed 's/^/    /' /tmp/cc-test.$$.log | grep -E 'FAIL|passed' | tail -8
 fi
 rm -f /tmp/cc-test.$$.log
 
