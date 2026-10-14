@@ -22,8 +22,12 @@ P
 case_() {   # case_ <name> <setup: shell run in each dir before> <ar args...>   (archive: x.a; outputs compared)
   local name="$1" setup="$2"; shift 2
   for side in g o; do
-    rm -rf $t/$side; cp -a $t/w $t/$side; ( cd $t/$side && eval "$setup" )
     local tool; [ $side = g ] && tool="${GNU}ar" || tool="$AR"
+    # AR_SETUP is the ar the SETUP uses, and it is this side's own: `r` into an existing archive has to be
+    # testing our ar operating on an archive our ar built. Ten cases below reference it; it was never set, so
+    # under `set -u` their setups aborted, x.a was never created, and they were scored as failures -- seven
+    # phantom FAILs against an ar that is otherwise byte-identical to GNU's on every case.
+    rm -rf $t/$side; cp -a $t/w $t/$side; ( cd $t/$side && AR_SETUP="$tool" && eval "$setup" )
     ( cd $t/$side && "$tool" "$@" >$t/$side.out 2>$t/$side.err; echo $? > $t/$side.rc )
     [ -f $t/$side/x.a ] && mask $t/$side/x.a
   done

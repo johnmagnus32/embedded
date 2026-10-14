@@ -14,12 +14,15 @@ IMG="${REPO}/projects/gameboy-v3/image/build/qemu"
 BIN="${IMG}/toolchain-custom/bin"; DYN="${IMG}/libc/stage-libc-custom-dynamic"
 KERNEL="${IMG}/output/zImage"; GIC="${IMG}/hosttools/bin/gen_init_cpio"
 UAPI="$(find "${IMG}" -type d -name include -path '*linux-libc-headers*' 2>/dev/null | head -1)"
-pass=0; fail=0; skip=0
+pass=0; fail=0; skip=0; known=0
 red(){ printf '\033[31m%s\033[0m\n' "$*"; }; grn(){ printf '\033[32m%s\033[0m\n' "$*"; }; yel(){ printf '\033[33m%s\033[0m\n' "$*"; }
 ok(){ grn "PASS  $*"; pass=$((pass+1)); }; no(){ red "FAIL  $*"; fail=$((fail+1)); }; sk(){ yel "SKIP  $*"; skip=$((skip+1)); }
+# A DECLARED, pinned difference from GNU: not a pass, and it must show in the summary rather than vanish.
+kn(){ yel "KNOWN $*"; known=$((known+1)); }
 
-echo "==== 1. build the five tools + the compiler runtime ===="
-for t in cpp cc as ar ld rt; do
+echo "==== 1. build every tool ===="
+TOOLS="cpp cc as ar ld rt nm objcopy objdump readelf size"
+for t in ${TOOLS}; do
   make -s -C "${TC}/${t}" >/dev/null 2>&1 && echo "  built ${t}" || { no "build ${t}"; exit 1; }
 done
 
@@ -32,16 +35,32 @@ if [ -f "${KERNEL}" ]; then
   else no "reference kernel provenance"; printf 'TOOLCHAIN REGRESSION: aborted (unidentified reference kernel)\n'; exit 1; fi
 else sk "reference kernel provenance (no kernel at ${KERNEL})"; fi
 
-echo "==== 2. cc execution suite ===="
-# A failure is a failure. There used to be a clause here that passed the suite when the log mentioned
+echo "==== 2. every tool's own suite ===="
+# EVERY tool, not just cc. Eleven of them have a `make test` and this gate used to run exactly one, so a
+# regression in as, ld, ar, objcopy, nm, objdump, readelf, size, rt or cpp passed unnoticed — including the
+# suites that cover the float-ABI check, non-allocated section placement, and 36 cases of assembler parity.
+#
+# A failure is a failure. There used to be a clause here that passed the cc suite when the log mentioned
 # 'libc-string' and the FAIL count was 1 — but all three libc-string branches in cc/Makefile print that
 # literal string, so the first half was always true and the clause reduced to "exactly one FAIL ⇒ PASS".
-# Any single cc regression reported green. If libc-string needs an input this host lacks, the suite itself
-# must say SKIP rather than FAIL.
-if make -s -C "${TC}/cc" test >/tmp/cc-test.$$.log 2>&1; then ok "cc suite"; else
-  no "cc suite"; sed 's/^/    /' /tmp/cc-test.$$.log | grep -E 'FAIL|passed' | tail -8
-fi
-rm -f /tmp/cc-test.$$.log
+#
+# objcopy is the one declared exception, and it is held to an exact count rather than waved through: all 14 of
+# its differences are .bss's sh_offset on the single 121 MiB vmlinux input. GNU's rule for a NOBITS section's
+# nominal offset depends on the file kind — aligned in a relocatable object (main.o: input 21700, GNU 21704,
+# addralign 8), the running offset in an executable (vmlinux: input 113816448, GNU 113816432, addralign 64).
+# Applying either rule uniformly makes things worse, measured: 14 -> 24 differences one way, 14 -> 124 the
+# other. Until that is done properly the count is pinned here, so a 15th difference still fails the gate.
+OBJCOPY_KNOWN_DIFF=14
+for t in ${TOOLS}; do
+  log=/tmp/suite-${t}.$$.log
+  if make -s -C "${TC}/${t}" test >"${log}" 2>&1; then ok "${t} suite"
+  elif [ "${t}" = objcopy ] && [ "$(sed -n 's/.*objcopy-diff: [0-9]* identical, \([0-9]*\) different.*/\1/p' "${log}" | tail -1)" = "${OBJCOPY_KNOWN_DIFF}" ]; then
+    kn "${t} suite: ${OBJCOPY_KNOWN_DIFF} declared differences (.bss sh_offset on vmlinux; see the comment above)"
+  else
+    no "${t} suite"; grep -E '^FAIL|passed|identical' "${log}" | tail -6 | sed 's/^/    /'
+  fi
+  rm -f "${log}"
+done
 
 echo "==== 3. dynamic boot (integration) ===="
 if [ -d "${BIN}" ] && [ -d "${DYN}" ] && [ -f "${KERNEL}" ] && [ -x "${GIC}" ] && [ -n "${UAPI}" ]; then
@@ -124,6 +143,35 @@ if [ -x "${BIN}/arm-os-custom-gcc" ]; then
   rm -f /tmp/dopt.$$.log
 else sk "driver options (no installed os-cc)"; fi
 
+# ---- FULL=1: the slow, broad suites. Minutes rather than seconds, so not on the default path, but these are
+# the widest coverage the project has and nothing ran them automatically either.
+#   kernel-parity    324 real kernel objects, our cc's output through our as vs GNU as, byte for byte
+#   kernel-parity-S  106 real kernel .S files, including the EHABI unwind tables
+#   torture          1548 gcc.c-torture/execute programs, compiled+linked+run
+#   torture-compile  1927 gcc.c-torture/compile programs
+#   gnu-diff         results compared against GCC's rather than predicted
+#   builtin-diff     14887 builtin cases against exact arithmetic
+#   abi-interop      AAPCS/AAPCS-VFP calls both directions against GCC
+#   headers-diff     our compiler headers' constants against GCC's
+if [ "${FULL:-0}" = 1 ]; then
+  echo "==== 9. broad suites (FULL=1) ===="
+  run_full() {   # run_full <label> <make-target> <dir>
+    local label=$1 tgt=$2 dir=$3
+    local log=/tmp/full-${tgt}.$$.log     # (separate statement: ${tgt} is not set yet within the one above)
+    if make -s -C "${dir}" "${tgt}" >"${log}" 2>&1; then ok "${label}: $(grep -E 'identical|pass|PASS' "${log}" | tail -1 | sed 's/^ *//')"
+    else no "${label}"; grep -E 'FAIL|differ|identical|pass' "${log}" | tail -5 | sed 's/^/    /'; fi
+    rm -f "${log}"
+  }
+  run_full "kernel parity (C)"   kernel-parity    "${TC}/as"
+  run_full "kernel parity (.S)"  kernel-parity-S  "${TC}/as"
+  run_full "torture (execute)"   torture          "${TC}/cc"
+  run_full "torture (compile)"   torture-compile  "${TC}/cc"
+  run_full "gnu-diff"            gnu-diff         "${TC}/cc"
+  run_full "builtin-diff"        builtin-diff     "${TC}/cc"
+  run_full "abi-interop"         abi-interop      "${TC}/cc"
+  run_full "headers-diff"        headers-diff     "${TC}/cc"
+fi
+
 echo "======================================="
-printf 'TOOLCHAIN REGRESSION: %d passed, %d failed, %d skipped\n' "${pass}" "${fail}" "${skip}"
+printf 'TOOLCHAIN REGRESSION: %d passed, %d failed, %d skipped, %d known-different\n' "${pass}" "${fail}" "${skip}" "${known}"
 [ "${fail}" -eq 0 ] && grn "ALL GREEN" || { red "REGRESSIONS PRESENT"; exit 1; }
