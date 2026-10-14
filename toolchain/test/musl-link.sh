@@ -7,7 +7,23 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(cd "$HERE/.." && pwd)
 : "${MUSL:?MUSL=<musl static stage (usr/lib/libc.a + crt*.o)>}" "${GNU:?GNU=<cross-gcc prefix>}"
 : "${REFKERNEL:?}" "${GEN_INIT_CPIO:?}"; RT=${RT:-ours}
-W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+W=$(mktemp -d)
+# KEEP THE EVIDENCE ON FAILURE. This step has been seen to fail about one run in four inside the full gate --
+# the guest panicking in make_task_dead -- while being perfectly reproducible-free in isolation (0 failures in
+# 8 runs, and the toolchain is deterministic: 10 rebuilds of this program give one object hash and one binary
+# hash). It could not be diagnosed because the work directory was deleted on exit either way. Now a failing
+# run leaves the linked init, the initramfs and the full console log behind, so the next occurrence is a
+# post-mortem rather than a hunt. Override the location with KEEP_FAILED=.
+KEEP_FAILED=${KEEP_FAILED:-/tmp/os-gate-failures}
+keep_on_fail() {
+  local rc=$? d="${KEEP_FAILED}/musl-link-$$"
+  if [ "${rc}" -ne 0 ]; then
+    mkdir -p "${d}" && cp -a "${W}"/. "${d}/" 2>/dev/null \
+      && echo "musl-link: FAILED — artifacts kept in ${d} (init, initrd, log, list)" >&2
+  fi
+  rm -rf "${W}"
+}
+trap keep_on_fail EXIT
 case "$RT" in ours) RTLIB="$T/rt/build/libosrt.a" ;; gcc) RTLIB=$("${GNU}gcc" -print-libgcc-file-name) ;; *) echo "RT=ours|gcc"; exit 2 ;; esac
 L="$MUSL/usr/lib"
 # boot $W/init as PID 1; it must print its line AND exit with status 0 (the kernel reports init's exit code)
