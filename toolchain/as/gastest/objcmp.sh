@@ -6,6 +6,9 @@
 #   GNU=<cross prefix> objcmp.sh ours.o gnu.o
 set -u
 : "${GNU:?}"; A=$1; B=$2
+# A missing input must not read as agreement: with both absent every readelf below fails, every comparison
+# compares empty with empty, and this script exits 0 having checked nothing.
+for f in "$A" "$B"; do [ -s "$f" ] || { echo "objcmp: no such object (or empty): $f" >&2; exit 2; }; done
 shdrs() { "${GNU}readelf" -SW "$1" | sed -n 's/^ *\[ *[0-9]*\] //p' | awk '$1!="NULL"{fl=(NF==10)?$7:"-"; print $1,$2,fl,$NF}' | sort; }
 relocs() { "${GNU}readelf" -rW "$1" | awk -v s=".rel$2" 'index($0,"\x27" s "\x27"){p=1;next} /^Relocation section/{p=0} p&&/R_ARM/{print $1,$3,$5}'; }
 symtab() {

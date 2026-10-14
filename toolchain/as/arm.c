@@ -589,14 +589,50 @@ static void enc_barrier(u32 base) {   /* dmb/dsb/isb {option} — memory/instruc
 	}
 	emit32(base | opt);
 }
-static void enc_mrs(u32 cond) {   /* mrs Rd, (c|s)psr */
+/* The ARMv7 BANKED registers: another mode's copy of a register, readable from a privileged mode without
+ * switching into it. MRS/MSR (banked) address them by a 5-bit SYSm plus R, which the encodings split in two:
+ *
+ *   MRS (banked), A1:  cond 00010 R 00 m1 Rd   001 m0 00000000     base 0x01000200, Rd at 12
+ *   MSR (banked), A1:  cond 00010 R 10 m1 1111 001 m0 0000 Rn      base 0x0120f200, Rn at 0
+ *   SYSm = m1:m0, so m1 = SYSm >> 1 (bits 19..16) and m0 = SYSm & 1 (bit 8).
+ *
+ * Every row below was read back out of GNU as rather than off the page (tests/obj/o7_banked.s re-checks all
+ * 33, both directions, against it). U-Boot needs four of them — nonsec_virt.S:83-84 `mrseq r3, sp_svc` /
+ * `msreq sp_hyp, r3`, and sp_irq both ways — which is why this exists.
+ *
+ * NOT gated on .arch_extension sec/virt, which GNU does require for the _mon and _hyp rows: as records the
+ * extension but has no feature model to gate any instruction on yet, so gating these alone would be a lie
+ * about the rest. */
+static const struct { const char *n; u32 R, sysm; } banked[] = {
+	{ "r8_usr", 0, 0x00 }, { "r9_usr", 0, 0x02 }, { "r10_usr", 0, 0x04 }, { "r11_usr", 0, 0x06 },
+	{ "r12_usr", 0, 0x08 }, { "sp_usr", 0, 0x0a }, { "lr_usr", 0, 0x0c },
+	{ "r8_fiq", 0, 0x10 }, { "r9_fiq", 0, 0x12 }, { "r10_fiq", 0, 0x14 }, { "r11_fiq", 0, 0x16 },
+	{ "r12_fiq", 0, 0x18 }, { "sp_fiq", 0, 0x1a }, { "lr_fiq", 0, 0x1c },
+	{ "lr_irq", 0, 0x01 }, { "sp_irq", 0, 0x03 }, { "lr_svc", 0, 0x05 }, { "sp_svc", 0, 0x07 },
+	{ "lr_abt", 0, 0x09 }, { "sp_abt", 0, 0x0b }, { "lr_und", 0, 0x0d }, { "sp_und", 0, 0x0f },
+	{ "lr_mon", 0, 0x19 }, { "sp_mon", 0, 0x1b }, { "elr_hyp", 0, 0x1d }, { "sp_hyp", 0, 0x1f },
+	{ "spsr_fiq", 1, 0x1c }, { "spsr_irq", 1, 0x01 }, { "spsr_svc", 1, 0x05 }, { "spsr_abt", 1, 0x09 },
+	{ "spsr_und", 1, 0x0d }, { "spsr_mon", 1, 0x19 }, { "spsr_hyp", 1, 0x1d },
+};
+/* The banked fields for `nm`, or -1. spsr_<mode> only reaches here through this table — plain spsr and the
+ * spsr_<fields> forms are handled by the callers, and those names do not appear above. */
+static int banked_fields(const char *nm, u32 *R, u32 *m1, u32 *m0) {
+	for (unsigned i = 0; i < sizeof banked / sizeof *banked; i++)
+		if (!strcasecmp(nm, banked[i].n)) {
+			*R = banked[i].R << 22; *m1 = (banked[i].sysm >> 1) << 16; *m0 = (banked[i].sysm & 1) << 8;
+			return 1;
+		}
+	return 0;
+}
+static void enc_mrs(u32 cond) {   /* mrs Rd, (c|s)psr | <banked> */
 	u32 rd = need_reg(1);
 	/* source must be exactly cpsr/apsr/spsr (was: only the first letter checked -> `mrs r0, iapsr` accepted) */
-	if (ntok != 3) die("mrs: expected Rd, cpsr|apsr|spsr");
-	u32 R;
+	if (ntok != 3) die("mrs: expected Rd, cpsr|apsr|spsr|<banked>");
+	u32 R, m1, m0;
 	if (!strcasecmp(toks[2], "cpsr") || !strcasecmp(toks[2], "apsr")) R = 0;
 	else if (!strcasecmp(toks[2], "spsr")) R = 1u << 22;
-	else die("mrs: unsupported source '%s' (banked registers not implemented)", toks[2]);
+	else if (banked_fields(toks[2], &R, &m1, &m0)) { emit32((cond << 28) | 0x01000200u | R | m1 | m0 | (rd << 12)); return; }
+	else die("mrs: unsupported source '%s'", toks[2]);
 	emit32((cond << 28) | 0x010f0000u | R | (rd << 12));
 }
 static void enc_msr(u32 cond) {   /* msr (c|s)psr_<fields>, Rm | #imm  (fields: c=1 x=2 s=4 f=8) */
@@ -604,10 +640,18 @@ static void enc_msr(u32 cond) {   /* msr (c|s)psr_<fields>, Rm | #imm  (fields: 
 	 * _nzcvqg=fs; field letters c/x/s/f in any order/case. Anything else is an error (was silently ignored). */
 	char nm[32]; size_t L = strlen(toks[1]); if (L >= sizeof nm) die("msr: bad operand '%s'", toks[1]);
 	for (size_t k = 0; k <= L; k++) nm[k] = (char)tolower((unsigned char)toks[1][k]);
+	/* A banked destination before the field split, since every banked name contains the '_' that split uses
+	 * (and sp_svc's "svc" is not a field list). A banked MSR takes a register source only — no immediate. */
+	{	u32 bR, bm1, bm0;
+		if (banked_fields(nm, &bR, &bm1, &bm0)) {
+			if (toks[2][0] == '#') die("msr: %s takes a register, not an immediate", toks[1]);
+			emit32((cond << 28) | 0x0120f200u | bR | bm1 | bm0 | need_reg(2)); return;
+		}
+	}
 	char *u = strchr(nm, '_'); if (u) *u++ = 0;
 	u32 R, mask = 0;
 	if (!strcmp(nm, "cpsr") || !strcmp(nm, "apsr")) R = 0; else if (!strcmp(nm, "spsr")) R = 1u << 22;
-	else die("msr: unsupported register '%s' (banked registers not implemented)", toks[1]);
+	else die("msr: unsupported register '%s'", toks[1]);
 	if (!u) mask = 9;
 	else if (!strcmp(u, "all")) mask = 9;
 	else if (!strcmp(u, "flg")) mask = 8;
