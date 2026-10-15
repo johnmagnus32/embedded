@@ -516,4 +516,9 @@ All twelve route groups are built in the repo (`route/route.py`, groups 05–85)
 - **Checks:** no fast signal crosses an In2 island edge. The power copper is within IPC-2221 at a 10 °C rise. I2C1 rises in 100 ns (Fast mode, 3× margin). The route audit found three faults, all fixed: UART3's TX loop under U1, and two short overshoots.
 - **DRC:** 4 errors, all from the USBC1 footprint (pre-existing). Fix them before fab.
 
-**Next:** silk, the USBC1 DRC items, then the fab outputs.
+**Silk and DRC closure (step 5):**
+- **Silk:** every reference sits beside its part, clear of pads and other silk. 166 are printed (162 at 1.0 mm, 4 at 0.8 mm) and 45 dense-area ones are on the Fab layer (the assembly drawing). Outline pieces over pads or the edge also moved to Fab.
+- **USBC1:** its land pattern is kept as drawn (GND pads 0.235 mm from the pegs, shell tabs 0.35 mm from the edge). gb3.kicad_dru allows exactly those values for USBC1.
+- **DRC:** 0 errors, 0 unconnected. The 30 warnings left are silk on the 20 library-linked 0603 parts; their library footprint's pin-1 circle sits on pad 1, so the fix belongs in the shared library.
+
+**Next:** the fab outputs (Gerbers, drill, BOM, CPL).

@@ -152,3 +152,15 @@
 (rule "Pour: one spoke where two do not fit"
 	(condition "A.Type == 'Pad' && A.NetName == 'GND' && (A.memberOfFootprint('C3') || A.memberOfFootprint('C5') || A.memberOfFootprint('C28') || A.memberOfFootprint('C69'))")
 	(constraint min_resolved_spokes 1))
+
+# ---------------------------------------------------------------- USB-C receptacle land pattern [step 5]
+
+# USBC1 (TYPE-C-31-M-12, C165948) as its land pattern draws it: A1B12 / B1A12 sit 0.235 mm from the NPTH locating
+# pegs (board rule 0.25) and the front shell tabs (PTH 2 / 3) 0.35 mm from the board edge (board rule 0.5; the
+# receptacle mounts at the edge by design). The minimums below are the measured values, so any drift still fails.
+(rule "USBC1 land pattern: GND pads beside the pegs"
+	(condition "A.memberOfFootprint('USBC1') && B.memberOfFootprint('USBC1')")
+	(constraint hole_clearance (min 0.23mm)))
+(rule "USBC1 land pattern: shell tabs at the edge"
+	(condition "A.memberOfFootprint('USBC1')")
+	(constraint edge_clearance (min 0.35mm)))

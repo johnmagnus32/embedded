@@ -458,8 +458,20 @@ pour.py owns the outer pours, so fanout judges every plane pad against its inner
   one 0.42 mm-spaced NW fan, TX's F hop at U18), NOR_IO3's and JACK_DET's short overshoots.
 - DRC: errors 4 (USBC1's, pre-existing), unconnected 0; KiCad parity 387 cosmetic (as before); sync all zeros.
 
-Open: silk; the USBC1 footprint's 4 DRC errors (shell pads at the edge, A1B12 / B1A12 next to the pegs) need a DRU
-exception or a footprint fix before fab; then fab.
+Then silk and the last DRC items (DRC errors 4 -> 0):
+- **silk.py:** footprint silk pieces over exposed copper, over another part's silk (the smaller part's piece) or within
+  0.2 mm of the edge (the jack / USB-C outlines overhang) go to Fab: 604 pieces, mostly the 0402 / 0603 outlines in the
+  U1 decap island and the charger field. Then every reference to the nearest clear spot beside its part (no pad, no
+  other reference or silk, no other part's courtyard, >= 0.3 mm inside the edge; vias are tented): 162 at 1.0 mm, 4 at
+  0.8 mm, 45 on Fab (no room), H1-H5 on Fab. Idempotent. Footprints linked to a library (the 20 step 1-3 R / C 0603)
+  keep their graphics: their library pin-1 circle on pad 1 leaves the board's only 30 DRC warnings (a library fix,
+  shared with other boards).
+- **USBC1:** its land pattern puts A1B12 / B1A12 0.235 mm from the NPTH pegs and the shell tabs 0.35 mm from the edge;
+  gb3.kicad_dru now holds those two as footprint-scoped minimums at the measured values.
+- DRC: 0 errors, 0 unconnected, 30 warnings (silk, above); parity 387 cosmetic; sync all zeros.
+
+Open: fab (port gb2's fab/fab.py: Gerbers, drill, CPL with the bottom rotation 180 - theta, BOM with LCSC numbers from
+gb3-bom.csv; never the Fabrication Toolkit button).
 
 ## Second review (2026-10-14): items for step 4
 
