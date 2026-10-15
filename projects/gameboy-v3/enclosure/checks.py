@@ -89,12 +89,12 @@ BUDGET_JSON = os.environ.get("GB3_BUDGET_JSON",
 
 # ================================================================ allow-lists (each with its reason)
 # (a) overlaps that are intended or known (sorted name pair -> reason)
-ALLOWED = {
-    ("B:R29", "FPC1 corrected"): "the pending pre-fab board fix (move R29, shift U16 1.4 in -x; CONTRACT.md)",
+ALLOWED = {} if P.FPC1_FIXED else {
+    ("B:R29", "FPC1 corrected"): "the pending pre-fab board fix (move R29; CONTRACT.md)",
 }
 # (a) bodies that never coexist: FPC1 as placed is the board as drawn; the corrected FPC1 and the touch tail that
 # reaches it are the fixed board
-ALTERNATIVES = {"FPC1 as placed": {"FPC1 corrected", "touch flex"}}
+ALTERNATIVES = {} if P.FPC1_FIXED else {"FPC1 as placed": {"FPC1 corrected", "touch flex"}}
 # (b) keep-out x material overlaps that are intended: (keep-out key, material label) -> reason
 KEEPOUT_ALLOWED = {}
 # (h) assembly-sweep contacts that are intended: (mover, obstacle) -> reason
@@ -673,7 +673,7 @@ def clearances(parts, ctx, cb):
             short.append(f"LED {ref} window blocked {v:.3f}")
     short += board_clearances(parts, ctx, cb, need)
     short += vertical_clearances(parts, ctx, cb)
-    fc = cb.get("FPC1 corrected")
+    fc = cb.get(P.FPC1_KEY)
     if fc is not None:
         near = []
         for n, s in cb.items():
@@ -681,8 +681,8 @@ def clearances(parts, ctx, cb):
                 g, _ = gap(s, fc, 0.5)
                 if g < 0.5:
                     near.append((g, n))
-        say("    FPC1 corrected, B parts within 0.5 (info): " +
-            (", ".join(f"{n} {g:.3f}" + (" (allowed overlap)" if _pair(n, "FPC1 corrected") in ALLOWED else "")
+        say(f"    {P.FPC1_KEY}, B parts within 0.5 (info): " +
+            (", ".join(f"{n} {g:.3f}" + (" (allowed overlap)" if _pair(n, P.FPC1_KEY) in ALLOWED else "")
                        for g, n in sorted(near)) or "none"))
     return short
 
@@ -755,7 +755,7 @@ def vertical_clearances(parts, ctx, cb):
     bms = [mesh(s) for s in back_side_parts(parts, ctx).values()]
     for n, s in cb.items():
         side = "F" if n.startswith("F:") or n == "jack" else "B" if (n.startswith("B:") or n in (
-            "usb_c", "microsd", "FPC1 as placed", "FPC1 corrected")) else None
+            "usb_c", "microsd", "FPC1 as placed", "FPC1 corrected", "FPC1")) else None
         if side is None:
             continue
         lo, hi = bb(s)
@@ -1675,7 +1675,7 @@ def check_h(parts, ctx, out, fast=False):
     other = {n: p for n, p in parts.items() if owner[n] not in ("shell", "front", "back", "controls")}
     panel = {n: cb[n] for n in ("panel LCM", "panel touch", "panel glass", "panel active area") if n in cb}
     board = {n: s for n, s in cb.items() if n == "board" or n.startswith(("F:", "B:")) or n in (
-        "usb_c", "jack", "microsd", "FPC1 corrected")}
+        "usb_c", "jack", "microsd", P.FPC1_KEY)}
     board.update({n: parts[n] for n in on_board})
     backp = {"back": parts["back"]}
     backp.update({n: p for n, p in parts.items() if owner[n] == "back"})

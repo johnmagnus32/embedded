@@ -441,21 +441,26 @@ CN1["plug"] = Rect(CN1["rect"].cx - PLUG_W / 2, CN1["mouth_y"] - PLUG_OUT, CN1["
                    CN1["mouth_y"])
 CN1["plug_z"] = (PLUG_Z - PLUG_T / 2, PLUG_Z + PLUG_T / 2)
 P1 = {"rect": part_rect("P1"), "top_z": PARTS["P1"]["z_design"][1]}
-# FPC1 (touch FFC, B side): as placed its slot faces -y KiCad and the tail cannot reach it; the pre-fab fix rotates it
-# 180 deg about a new origin so the lid edge sits at KiCad y ~77.0 (panel report, fold_model.py, synth fpc1_new.py)
-FPC1_OLD_ORIGIN_K = (PARTS["FPC1"]["x"], PARTS["FPC1"]["y"])     # (118.5, 68.6)
-FPC1_NEW_ORIGIN_K = (118.4, 73.6)
+# FPC1 (touch FFC, B side): the board's step 7 (dd7c895) rotated it 180 deg to (118.5, 72.8) so its slot faces +y KiCad and
+# the touch tail, which wraps the notch edge, reaches it (lid edge y 76.28: the furthest south its west tab clears U16.1).
+# A board without the fix (rot 0, slot facing -y) still gets the corrected body for comparison.
+FPC1_FIXED = abs(PARTS["FPC1"]["rot"] % 360 - 180) < 1
+FPC1_KEY = "FPC1" if FPC1_FIXED else "FPC1 corrected"           # the context body the tail plugs into
+FPC1_OLD_ORIGIN_K = (PARTS["FPC1"]["x"], PARTS["FPC1"]["y"])
+FPC1_NEW_ORIGIN_K = (118.5, 72.8)                                # step 7
 
 
 def fpc1_corrected_k(pts):
-    """KiCad points of FPC1 as placed -> the corrected placement (rot 180 about the new origin)."""
+    """KiCad points of FPC1 as placed -> the corrected placement (rot 180 about the new origin; as placed once fixed)."""
+    if FPC1_FIXED:
+        return [tuple(p) for p in pts]
     (ox, oy), (nx, ny) = FPC1_OLD_ORIGIN_K, FPC1_NEW_ORIGIN_K
     return [(nx - (x - ox), ny - (y - oy)) for x, y in pts]
 
 
 FPC1 = {"placed": part_outline("FPC1"), "corrected": flip(fpc1_corrected_k(PARTS["FPC1"]["hull"])),
         "z": tuple(PARTS["FPC1"]["z_design"])}
-FPC1["lid_y_k"] = max(y for _, y in fpc1_corrected_k(PARTS["FPC1"]["hull"]))     # 77.08: slot faces +y KiCad
+FPC1["lid_y_k"] = max(y for _, y in fpc1_corrected_k(PARTS["FPC1"]["hull"]))     # 76.28 (step 7): slot faces +y KiCad
 
 # edge features (re-registered models + datasheets; NOT the KiCad 3D view, which has USBC1 / Audio1 1.5-2.2 off)
 _u, _j, _m = EDGE_JSON["usb_c"], EDGE_JSON["jack"], EDGE_JSON["microsd"]

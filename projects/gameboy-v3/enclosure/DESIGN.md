@@ -8,7 +8,8 @@ The style follows the gb2 enclosure (frame helpers, shell split, bosses, keys he
 parametric z of its thin-stack variant: every z is derived from the 67 stack inputs (each with its source in
 `params.INPUTS`) and the `GB3_*` flags. No z is typed twice.
 
-**Before the JLC order: the FPC1 fix (section 8).** As placed, the touch tail cannot reach FPC1.
+**Before the JLC order:** the FPC1 fix is in the board (step 7, dd7c895); wrap-test the real touch tail (section 8), and
+see REVIEW.md for the board decisions the enclosure review raised (hole scheme, LCM ground pads).
 
 ## 1. Frame
 
@@ -126,8 +127,8 @@ Per region (baseline; "needs" is what that region alone would need, all are 15.3
 **Context bodies** (`context.py`, never printed): the board with H1-H5; 193 part hull prisms over z_design (F blue,
 B tan); USB-C, jack and microSD (+ the latched card) from board.json edge_features, not their KiCad 3D models (1.5-2.2
 off); the panel as LCM + touch + glass with the active area tinted; the display loop and the touch U-turn as 0.3 strips
-along the panel report's fold model; the cell (and its swell as a keep-out); LRA; speaker + foam; FPC1 as placed (red)
-and corrected (green).
+along the panel report's fold model; the cell (and its swell as a keep-out); LRA; speaker + foam; FPC1 as built (green; a board
+without the step-7 fix shows it as placed, red, and corrected, green).
 
 Printed mass, baseline: about 45 cm3 (front 16.7, back 25.2, controls 3.0), about 45 g in PA12.
 
@@ -191,7 +192,7 @@ gasket and the 0.8 lip), so the LCM back sits at 4.15 nominal (3.90..4.50 over t
 
 `checks.py` on the finished parts (`python checks.py`, about 22 s; `--fast` 13 s):
 (a) interference of every part with every part and context body (the cell and its swell included), context vs
-context (one allowed overlap: B:R29 x FPC1 corrected, 0.004 mm3, the pending board fix), and the stack clearances;
+context (no allowed overlaps since the board's step 7), and the stack clearances;
 (b) keep-outs, core and per module; (c) rest gaps (keys 0.150, D-pad legs 0.100, edge caps and shoulders 0.150) and
 the board datum at all 7 bosses, the screw paths; (d) one valid solid per part, print poses, bought parts;
 (e) thickness ray scans (plate, CN1, skin, ledge, walls, floor, FR4 plate, fences) and a slab scan of every printed
@@ -268,10 +269,13 @@ solid's volume and on the bed, and the STEP reads back with every part and conte
 
 ## 8. Before the board order: FPC1 and the other board items
 
-**FPC1 (the touch FFC connector, B side) is a functional blocker.** As placed, its slot faces the board's top edge
-(away from the incoming tail), and the 53.4 mm touch tail cannot reach it after wrapping round the notch edge outside
-the display loop. The model shows FPC1 twice: as placed (red) and corrected (green). The fix, from the research
-(panel report, fold model, synth/scripts/fpc1_new.py):
+**FPC1 (the touch FFC connector, B side) was a functional blocker; the board's step 7 (dd7c895) fixed it.** As first
+placed, its slot faced the board's top edge (away from the incoming tail), and the 53.4 mm touch tail could not reach it
+after wrapping round the notch edge outside the display loop. As built now: rotated 180 deg at (118.5, 72.8), lid edge
+y 76.28 (the furthest south its west tab clears U16.1 by 0.18; U16 did not move), pads remapped, R29 moved west of the
+tab. The fold model puts the tail end at y 72.18 and the touch U-turn 0.163 outside the display loop at the nominal
+tail: wrap-test the real tail before ordering. The model shows the as-built "FPC1" (green); a board without the fix
+still shows both placements. The research's fix, for the record (panel report, fold model, synth/scripts/fpc1_new.py):
 - rotate FPC1 180 deg so the slot faces +y (the bottom edge) and move it about 5 mm toward the bottom edge: origin
   about (118.4, 73.6), outer lid edge at y about 77.0 (feasible 75.6-77.5; the model's corrected lid edge is 77.08);
 - mirror the pad nets: 6 +3V3, 5 GND, 4 I2C1_SCL, 3 I2C1_SDA, 2 TOUCH_INT, 1 TOUCH_RST;

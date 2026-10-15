@@ -174,13 +174,13 @@ How enclosure.build() uses the result:
 | `board` | the board, with H1-H5 drilled |
 | `F:<ref>`, `B:<ref>` | 193 part envelopes: hull prisms over z_design |
 | `usb_c`, `jack`, `microsd`, `microsd card (latched)` | from the edge features, not the 3D models |
-| `FPC1 as placed`, `FPC1 corrected` | the corrected one is rotated 180° about KiCad (118.4, 73.6), lid edge at y 77.08 |
+| `FPC1` (as built since board step 7) | rot 180 at KiCad (118.5, 72.8), lid edge y 76.28; a board without the fix gives `FPC1 as placed` + `FPC1 corrected` (`params.FPC1_KEY` names the one the tail plugs into) |
 | `panel LCM`, `panel touch`, `panel glass`, `panel active area` | the panel layers |
 | `display flex`, `touch flex` | 0.3 strips; the touch flex includes its ≤ 1.45 IC area under the board and ends at the FPC1 lid |
 | `cell`, `lcd plate` | `lcd plate` only with `GB3_LCD_PLATE=1` |
 | `lra`, `speaker`, `speaker foam` | |
 
-Contacts between context bodies are all intended: parts on the board faces, the flex ends at P1 / FPC1, the panel layers, the speaker foam, and the microSD card. There is one real overlap: **B:R29 x FPC1 corrected, 0.004 mm³**. It is the pending pre-fab fix (move R29 and shift U16 1.4 mm in -x). Pad-level conflicts with U16 do not show at envelope level.
+Contacts between context bodies are all intended: parts on the board faces, the flex ends at P1 / FPC1, the panel layers, the speaker foam, and the microSD card. With the board's step 7 there is no real overlap (before it, B:R29 x FPC1 corrected, 0.004 mm³, was allowed). Pad-level clearances (FPC1's tab to U16.1: 0.18) do not show at envelope level.
 
 ## Core keep-outs (`ctx.keepouts["core:<name>"]`)
 

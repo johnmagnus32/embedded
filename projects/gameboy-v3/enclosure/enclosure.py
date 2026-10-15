@@ -271,7 +271,8 @@ def _legend(ctx):
             ("F parts", C.COLOURS["F"]), ("B parts", C.COLOURS["B"]), ("LCM", C.COLOURS["panel LCM"]),
             ("cover glass / active area", C.COLOURS["panel active area"]), ("flexes", C.COLOURS["display flex"]),
             ("cell", C.COLOURS["cell"]), ("LRA", C.COLOURS["lra"]), ("speaker", C.COLOURS["speaker"]),
-            ("FPC1 as placed", C.COLOURS["FPC1 as placed"]), ("FPC1 corrected", C.COLOURS["FPC1 corrected"])]
+            *([("FPC1", C.COLOURS["FPC1"])] if P.FPC1_FIXED else
+              [("FPC1 as placed", C.COLOURS["FPC1 as placed"]), ("FPC1 corrected", C.COLOURS["FPC1 corrected"])])]
 
 
 def _zlines():

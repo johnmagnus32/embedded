@@ -9,7 +9,7 @@ questions are in `DESIGN.md`. The module contract is in `CONTRACT.md`.
 |---|---|
 | `export_board.py` | KiCad -> `build/board.json`: the board outline and holes, every part's hull and z, the switches, the edge features, the panel / cell / speaker / LRA envelopes. Run it with **KiCad's python** (see "After a board change"). |
 | `params.py` | The single source of numbers: every stack input with its source, the `GB3_*` flags, every derived z, the outline, frame helpers, named positions and the shared contracts. Importing it prints the per-region thickness table and asserts the board data against the stack. |
-| `context.py` | The bodies the enclosure fits round (board, 193 part envelopes, panel layers, flexes, cell, USB-C / jack / microSD, both FPC1 placements, LRA, speaker) and the core keep-outs. |
+| `context.py` | The bodies the enclosure fits round (board, 193 part envelopes, panel layers, flexes, cell, USB-C / jack / microSD, FPC1 as built, LRA, speaker) and the core keep-outs. |
 | `shell.py` | The two bare shells: the outline slab, hollowed, R2 front / R3 back fillets, split at z 1.6. |
 | `front.py` | Front-shell features: module pocket, ledge, fold-bay skin, key holes, LED light pipes, CN1 thinning, bosses with insert holes, posts, jack and SKRT notches. |
 | `back.py` | Back-shell features: cell bay + FR4 plate, fences, LRA ring, speaker cup + grille, USB-C / microSD / reset openings, screw bosses and counterbores, posts, the snap. |

@@ -13,8 +13,8 @@ Bodies (names are the dict keys):
                               parts drawn below from better data (USBC1, Audio1, U4, FPC1, LRA1, SPK1)
   usb_c, jack, microsd        from board.json edge_features + the datasheets (NOT the KiCad 3D models: USBC1 and
                               Audio1 sit 1.5-2.2 off there); microsd card (latched) = the card's 1.30 past the socket
-  FPC1 as placed              red: its slot faces the board's top edge, the touch tail cannot reach it
-  FPC1 corrected              green: rotated 180 deg about (118.4, 73.6) KiCad, lid edge y ~77.08 (pre-fab fix)
+  FPC1                        green: as built since the board's step 7 (rot 180 at (118.5, 72.8), lid edge y 76.28);
+                              a board without the fix shows "FPC1 as placed" (red) and "FPC1 corrected" (green)
   panel LCM / panel touch / panel glass / panel active area     ATM0500D27-CT: LCM 3.0, DST + ITO sensor 0.6, cover
                               glass 0.7 (the black-print border), the 108 x 64.8 active area tinted
   display flex, touch flex    0.3 strips swept along params.FLEX (the panel report's fold model), widths by s; the
@@ -31,7 +31,7 @@ import params as P
 COLOURS = {
     "board": "#1f6f3f", "F": "#8fa8c8", "B": "#c8a07a",
     "usb_c": "#c0c0c0", "jack": "#3a3a3a", "microsd": "#a8a8a8", "microsd card (latched)": "#2b4d8f",
-    "FPC1 as placed": "#d62728", "FPC1 corrected": "#2ca02c",
+    "FPC1 as placed": "#d62728", "FPC1 corrected": "#2ca02c", "FPC1": "#2ca02c",
     "panel LCM": "#4a4a4a", "panel touch": "#9cc3e6", "panel glass": "#151515", "panel active area": "#2f5fa8",
     "display flex": "#d39a2c", "touch flex": "#e0b84a",
     "cell": "#f08a24", "lcd plate": "#b0b4b8", "lra": "#7b3fa0", "speaker": "#d4af37", "speaker foam": "#555555",
@@ -173,7 +173,8 @@ def _bodies():
     out = {"board": board_solid()}
     out.update(part_envelopes())
     out.update({"usb_c": usb_c(), "jack": jack(), "microsd": microsd(), "microsd card (latched)": microsd_card(),
-                "FPC1 as placed": fpc1("placed"), "FPC1 corrected": fpc1("corrected")})
+                **({"FPC1": fpc1("corrected")} if P.FPC1_FIXED else
+                   {"FPC1 as placed": fpc1("placed"), "FPC1 corrected": fpc1("corrected")})})
     out.update(panel_bodies())
     out.update(flexes())
     out["cell"] = cell()
@@ -272,5 +273,5 @@ if __name__ == "__main__":
         bb = s.bounding_box()
         print(f"  keepout {n:14s} z {bb.min.Z:+6.2f}..{bb.max.Z:+6.2f}")
     print(f"touch U-turn at KiCad y {P.FLEX['touch']['uturn_y']:.2f}, display loop out to {P.FLEX['display']['loop_out_y']:.2f}"
-          f", touch tail end y {P.FLEX['touch']['end_y']:.2f} (FPC1 corrected lid {P.FPC1['lid_y_k']:.2f})")
+          f", touch tail end y {P.FLEX['touch']['end_y']:.2f} ({P.FPC1_KEY} lid {P.FPC1['lid_y_k']:.2f})")
     print(f"{time.time() - t0:.1f} s")
