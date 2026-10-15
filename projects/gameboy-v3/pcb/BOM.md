@@ -521,4 +521,10 @@ All twelve route groups are built in the repo (`route/route.py`, groups 05–85)
 - **USBC1:** its land pattern is kept as drawn (GND pads 0.235 mm from the pegs, shell tabs 0.35 mm from the edge). gb3.kicad_dru allows exactly those values for USBC1.
 - **DRC:** 0 errors, 0 unconnected. The 30 warnings left are silk on the 20 library-linked 0603 parts; their library footprint's pin-1 circle sits on pad 1, so the fix belongs in the shared library.
 
-**Next:** the fab outputs (Gerbers, drill, BOM, CPL).
+## Fab outputs, step 6 (2026-10-15)
+
+`fab/fab.py` writes the JLC order files into fab/out/ (not committed): the Gerbers and drill files (zipped), the assembly BOM and CPL, and the hand-fit list.
+- **JLC assembly:** 194 parts on 67 LCSC lines (54 top, 140 bottom). Bottom-side rotations are written as 180 − θ, the convention JLC reads.
+- **Hand-fit:** U18 (BT830), and the LRA and speaker leads on J2 / J3.
+- **Before ordering:** go through `fab/FOOTPRINT_CHECKLIST.md`, one line per part, highest risk first; none is verified yet. Then check every polarized part in JLC's preview.
+- **Order:** JLC04161H-7628, 1.6 mm, 1 oz outer, ENIG, tented vias, U1's exposed-pad vias plugged and capped.

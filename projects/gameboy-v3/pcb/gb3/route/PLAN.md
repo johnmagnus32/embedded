@@ -470,8 +470,17 @@ Then silk and the last DRC items (DRC errors 4 -> 0):
   gb3.kicad_dru now holds those two as footprint-scoped minimums at the measured values.
 - DRC: 0 errors, 0 unconnected, 30 warnings (silk, above); parity 387 cosmetic; sync all zeros.
 
-Open: fab (port gb2's fab/fab.py: Gerbers, drill, CPL with the bottom rotation 180 - theta, BOM with LCSC numbers from
-gb3-bom.csv; never the Fabrication Toolkit button).
+## Step 6 (2026-10-15): fab outputs
+
+`fab/fab.py` (ported from gb2's) writes fab/out/ (not committed): the Gerbers (4 copper, mask, paste, silk, Edge.Cuts;
+silk minus mask) + Excellon PTH / NPTH + drill maps, zipped; the JLC BOM (LCSC numbers from gb3-bom.csv, BOM.md
+"Fit" = JLC) and CPL (bottom-side rotation 180 - theta, all angles 0-360); the hand-fit list. 194 JLC parts on 67 LCSC
+lines (54 top, 140 bottom), hand-fit U18 (BT830), J2 / J3 (the LRA and speaker leads). The drill file matches the
+board: 1030 x 0.3 + 7 x 0.4 vias, USBC1's 4 slotted shell holes, 11 NPTH. fab/FOOTPRINT_CHECKLIST.md (committed) lists
+every part line, highest risk first, with what to check against the datasheet; none is verified yet.
+
+Order spec: JLC04161H-7628, 1.6 mm, 1 oz outer, ENIG, vias tented, U1's EP vias plugged + capped; never the
+Fabrication Toolkit button (its bottom rotations are wrong for JLC).
 
 ## Second review (2026-10-14): items for step 4
 
