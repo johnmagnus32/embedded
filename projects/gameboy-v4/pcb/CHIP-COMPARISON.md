@@ -63,4 +63,4 @@ easy-DDR/no-HDI** — are at-most-two-of-three. RK3588 (T5) = Unreal but module+
 self-route no-HDI but Unity-tier; T507/A523 (T2/T3) = reuse-panel + real GPU but display not mainline;
 STM32MP157 (T1) = cleanest board but GPU below Unity. **A523/T527 next step:** revisit for a mainline
 build only if/when the sun55i/H616 display engine lands upstream. See
-[RK3568-DDR3-ROUTING-STUDY.md](RK3568-DDR3-ROUTING-STUDY.md) for the self-route numbers.*
+`cad/docs/RK3568-hardware-design-guide-EN-V1.2.pdf` §2.1.7 (topology, VREF/ZQ, stackup §3.1) + `RK3568-high-speed-pcb-design-guide-V1.0.pdf` (impedance, length/skew tables) for the self-route numbers.*

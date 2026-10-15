@@ -12,16 +12,15 @@ yet BOM rows** — all four are now rows; see the resolved section below.
 ```
 USB-C VBUS 5 V   ← the ONLY input, single cable  (≈12.3 W / ~2.5 A peak)
  │   ⚠️ peak needs a 3 A USB-C source (C-to-C charger, or a powered USB-C hub that passes data to the NUC).
- │      If a port folds back, that is a host-side fix — no DC jack, the connector already carries 3 A.
+ │      If a port folds back, that is a host-side fix, not a board change — the connector carries 5 A.
  │   ├─ 100 µF electrolytic ‖ [2.2 Ω + 2.2 µF series-RC to GND] ‖ 100 nF     [bulk + spike absorb]
  │   │
- │   └──► AO4407A P-FET high-side switch  ──► SYS_5V  (everything below)
- │          gate: 100 kΩ to source (default OFF) · 10 kΩ series · 100 nF G-S  [~1 ms soft-start ⇒ inrush ≈1 A]
- │          2N7002 NMOS inverts the control line: PWR_EN HIGH ⇒ board ON
- │          jumper G→GND = permanently ON (standalone bench use; remove for rig operation)
- │          ✅ soft-start is what makes USB-C power practical: USB 2.0 caps port bypass at 10 µF and we
- │             have ~200 µF — hard-switching that is exactly what trips a protected hub port
- │          ⚠️ no reverse-polarity protection (load-switch orientation can't also block reverse)
+ │   └──► SYS_5V directly — NO on-board load switch, deliberately.
+ │          Power-cycle = `uhubctl` cutting VBUS: deeper than any on-board switch (nothing stays
+ │          energised around a dead board) and ~7 parts cheaper. Board is ON whenever VBUS is.
+ │          ⚠️ Requires a PPPS-capable powered hub, not a dumb charger.
+ │          ⚠️ Inrush accepted: ~200 µF hard-switched vs USB's nominal 10 µF cap. Both bulk minima
+ │             are Mandatory (R11/R12) so it can't be reduced — mitigate host-side.
  │
  │  USB-C also carries data + VBUS sense:
  │   ├─ USB3_OTG0_DP/DM (maskrom, HS) · 2× 2.2 Ω · USBLC6-2SC6 · 2× ESD5451N (CC1/CC2)
@@ -148,10 +147,10 @@ becomes a global label, a net inside one stays local — so **block boundaries a
 | `pmic` | RK809-5, VCC1–9 input caps, all buck/LDO output caps + 5× 0.47 µH, VDC divider, PWRON/RESETB caps, I²C0 22 Ω + 2.2 kΩ pull-ups, BUCK3 divider, **32 kHz crystal + its 2× 22 pF and a grounded pad/clip under the metal can** (*Mandatory*, PMIC R57), VCC_SPK_HP bead + 10 µF | ~58 | |
 | `cpu-buck` | RK860-0, 0.47 µH, **2× 10 µF + 2× 22 µF in, 4× 22 µF out**, EN 51 kΩ + 100 nF (DNP), 100 Ω remote FB + its own 100 nF | ~14 | Separate page: it's the one rail whose feedback error destroys the SoC. |
 | `sys-buck` | SY8205FCC, 2.2 µH, FB divider, COUT incl. 100 µF, C_BS 100 nF, C_VCC 1 µF, **C_SS 10 nF** (`CC0402KRX7R9BB103`, C60133), **EN 100 kΩ pull-up to its own 5 V PVIN** (shares the backlight 100 kΩ reel) | ~11 | ✅ both now BOM rows. ⚠️ No SY8205 datasheet in `cad/docs` — re-derive t_SS and confirm EN abs-max ≥ 5 V when it lands. |
-| `power-in` | USB-C (**sole power + data**), **AO4407A P-FET + 2N7002 + gate network (100 kΩ / 10 kΩ / 10 kΩ / 100 nF) + always-ON jumper**, CC pulldowns, USBLC6, CC TVS, 100 µF input bulk, RC snubber, VBUSDET divider + 100 nF, DP/DM 2.2 Ω | ~21 | The P-FET **is** the remote power-cycle; its soft-start is what lets a USB port swallow ~200 µF of bulk. |
+| `power-in` | USB-C (**sole power + data**), CC pulldowns, USBLC6, CC TVS, 100 µF input bulk, RC snubber, VBUSDET divider + 100 nF, DP/DM 2.2 Ω | ~14 | ✅ Simplified: no load switch. VBUS feeds `SYS_5V` directly and uhubctl does the power-cycling. |
 | `boot-flash` | W25Q128JVSIQ, CS 4.7 kΩ, D2/D3 10 kΩ **to the gated rail**, FSPI_CLK 22 Ω, 100 nF, maskrom test pad | ~10 | |
 | `microsd` | socket, 5× 22 Ω at the card, CLK 22 Ω, DET 100 Ω, 2× SP3004 ESD, pull-ups, VDD caps | ~18 | |
-| `rescue` | 3× SY6280 + 3× ISET 6.8 kΩ, **EN: 4.7 kΩ pull-ups to `vcc3v3_pmu` (omit on #3) + 1 kΩ series from each SoC GPIO**, panel-switch downstream bulk, **6-pin JST-XH boot-mode connector (keyed) — `PWR_EN`, `NOR_EN`, `SD_EN`, `RESETn`, `RECOVERY`(=`SARADC_VIN0`, pull-to-GND only), GND** + their 100 Ω/TVS + the `SARADC_VIN0` 1 nF | ~26 | All three switches on one page, and now all host control too. ⛔ `PWRON`/`RESETn`/`SARADC_VIN0` moved here from `headers` — one tap, one driver. |
+| `rescue` | 3× SY6280 + 3× ISET 6.8 kΩ, **EN: 4.7 kΩ pull-ups to `vcc3v3_pmu` (omit on #3) + 1 kΩ series from each SoC GPIO**, panel-switch downstream bulk, **3-pin JST-XH boot-mode connector (keyed) — `NOR_EN`, `SD_EN`, `GND`** + their 100 Ω/TVS + the `SARADC_VIN0` 1 nF | ~26 | All three switches on one page, and now all host control too. ⛔ `PWRON`/`RESETn`/`SARADC_VIN0` moved here from `headers` — one tap, one driver. |
 | `display` | 40-pin + 6-pin FPC connectors, **touch 2.0 kΩ pull-ups to the touch 3.3 V node** (not `vcc3v3_pmu`), 6× 22 Ω + 6× TVS, panel rail caps, 🔲 DSI common-mode-choke footprints bridged by 0 Ω (5 pairs — footprint-only per LCM&TP R13) | ~25 | |
 | `backlight` | TPS61165, 10 µH, SS16, Cout/Cin, Rset, COMP, **CTRL 100 kΩ pull-down** | ~8 | |
 | `console` | 1×3 header, UART2 2× 100 Ω, 2× TVS, power LED + 510 Ω | ~8 | |
