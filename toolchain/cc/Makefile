@@ -74,6 +74,22 @@ test: $(BUILD)/cc
 	   && [ "$$iq" = "rc=0" ]; then \
 	  echo "PASS implicit declaration: warns by default (as gcc 13), errors under -Werror=, silent under -Wno-"; pass=$$((pass+1)); \
 	else echo "FAIL implicit declaration modes: default[$$iw] werror[$$ie] wno[$$iq]"; fail=$$((fail+1)); fi; \
+	for spec in "implicit-int|static x;|type defaults" "strict-prototypes|int f();|a prototype"; do \
+	  nm=$${spec%%|*}; rest=$${spec#*|}; src=$${rest%%|*}; want=$${rest#*|}; \
+	  printf '%s\n' "$$src" > $$t/dg.c; \
+	  d=$$($(BUILD)/cc -W$$nm -o $$t/dg.s $$t/dg.c 2>&1; echo rc=$$?); \
+	  e=$$($(BUILD)/cc -Werror=$$nm -o $$t/dg.s $$t/dg.c 2>&1; echo rc=$$?); \
+	  q=$$($(BUILD)/cc -Wno-$$nm -o $$t/dg.s $$t/dg.c 2>&1; echo rc=$$?); \
+	  w=$$($(BUILD)/cc -w -W$$nm -o $$t/dg.s $$t/dg.c 2>&1; echo rc=$$?); \
+	  if printf '%s' "$$d" | grep -qF "$$want" && printf '%s' "$$d" | grep -q 'rc=0' \
+	     && printf '%s' "$$e" | grep -qF "$$want" && ! printf '%s' "$$e" | grep -q 'rc=0' \
+	     && [ "$$q" = "rc=0" ] && [ "$$w" = "rc=0" ]; then \
+	    echo "PASS -W$$nm: warns, errors under -Werror=, silent under -Wno- and -w"; pass=$$((pass+1)); \
+	  else echo "FAIL -W$$nm modes: W[$$d] Werror[$$e] Wno[$$q] w[$$w]"; fail=$$((fail+1)); fi; done; \
+	printf 'struct s { int a; ; int b; } v;\nunsigned u;\nstruct t { int c; } w;\n' > $$t/ii.c; \
+	if [ -z "$$($(BUILD)/cc -Werror=implicit-int -o $$t/ii.s $$t/ii.c 2>&1)" ]; then \
+	  echo "PASS -Wimplicit-int: an empty declaration is not an implicit int -- the kernel generates bare semicolon members"; pass=$$((pass+1)); \
+	else echo "FAIL -Wimplicit-int fired on an empty declaration: $$($(BUILD)/cc -Werror=implicit-int -o $$t/ii.s $$t/ii.c 2>&1)"; fail=$$((fail+1)); fi; \
 	ad=$$($(BUILD)/cc -o $$t/ad.s tests/attr_diag.c 2>&1; echo "rc=$$?"); \
 	adw=$$(printf '%s' "$$ad" | grep -c "attribute warning: emitted on purpose"); \
 	ade=$$(printf '%s' "$$ad" | grep -c "attribute error"); \

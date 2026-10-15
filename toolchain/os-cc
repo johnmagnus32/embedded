@@ -169,8 +169,13 @@ while [ $# -gt 0 ]; do
     # options that turn those on are already satisfied and only the ones that turn them OFF need to reach
     # cc1. Everything else is accepted and dropped: a build that asks for a warning we never emit should
     # compile, which is also how gcc treats a -Wno- it does not know.
-    -Wno-implicit-function-declaration|-Wno-implicit|-w) cc1args+=("$a") ;;
-    -Werror|-Werror=implicit-function-declaration|-Werror=implicit) cc1args+=("$a") ;;   # promotes the ones we DO emit
+    # date-time belongs to the PREPROCESSOR (the macros never reach cc1), so it goes to cpp; the rest to cc1.
+    -Wdate-time|-Wno-date-time|-Werror=date-time) cppargs+=("$a") ;;
+    # -w and -Werror apply to BOTH: each tool decides what it has to say.
+    -w|-Werror) cppargs+=("$a"); cc1args+=("$a") ;;
+    -Wimplicit-function-declaration|-Wimplicit-int|-Wimplicit|-Wstrict-prototypes) cc1args+=("$a") ;;
+    -Wno-implicit-function-declaration|-Wno-implicit-int|-Wno-implicit|-Wno-strict-prototypes) cc1args+=("$a") ;;
+    -Werror=implicit-function-declaration|-Werror=implicit-int|-Werror=implicit|-Werror=strict-prototypes) cc1args+=("$a") ;;
     -W|-W[a-z]*|-Werror=*|-pedantic|-pedantic-errors) ;;
     # -g: as gcc's driver classifies it. A level or DWARF version we understand is accepted and warned about once
     # (debug_asked); a malformed or out-of-range one is an error, in gcc's words. Retired formats (-gstabs, -gcoff,

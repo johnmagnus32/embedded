@@ -287,6 +287,12 @@ static int line_delta;                 /* presumed line = physical + line_delta 
 static const char *presumed = "";      /* presumed file name (__FILE__) */
 static int dump_macros;
 static int no_markers;                 /* -P: no line markers at all (Kbuild preprocesses linker scripts with it) */
+/* -Wdate-time / -Werror=date-time: __DATE__, __TIME__ and __TIMESTAMP__ bake the build time into the output,
+ * so the same sources stop producing the same binary. The kernel compiles with -Werror=date-time; this is the
+ * one of its seven checks that belongs to the PREPROCESSOR, since the macros never reach the compiler.
+ * 0 = off (gcc's default), 1 = warn, 2 = error. */
+static int diag_date_time;
+static int diag_inhibit;               /* -w: suppress regardless of where it appears */
 /* LINE MARKERS — `# <line> "<file>"`, how the preprocessor tells the compiler where the text came from. Without
  * them every diagnostic names a line in the PREPROCESSED file, which is a temporary the driver deletes, and no
  * file at all: a missing semicolon in widget.h:3 was reported as "line 6" with no name. The state the markers
@@ -639,6 +645,24 @@ static Tok *builtin_tok(const Tok *t) {
 	const char *n = t->text; char b[64]; Tok *r;
 	static const char *const mon[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 	static const char *const day[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+	/* -Wdate-time, before the chain below rather than inside it: these three are handled by different
+	 * branches of it, and splicing a case in broke the chain so that __LINE__ fell through to __TIME__'s. */
+	if (diag_date_time && !diag_inhibit && (!strcmp(n, "__DATE__") || !strcmp(n, "__TIME__") || !strcmp(n, "__TIMESTAMP__"))) {
+		/* Once per USE, as gcc reports it. expand() re-scans a token list, so this handler sees the same
+		 * occurrence several times (measured: 8 calls for 3 uses); a use is identified by its position. */
+		static struct { const char *file; int line; const char *name; } said[256]; static int nsaid;
+		int line = t->line + line_delta; const char *file = presumed && *presumed ? presumed : "<input>";
+		int dup = 0;
+		for (int i = 0; i < nsaid && !dup; i++)
+			dup = said[i].line == line && !strcmp(said[i].name, n)
+			      && ((!said[i].file && !file) || (said[i].file && file && !strcmp(said[i].file, file)));
+		if (!dup) {
+			if (nsaid < (int)(sizeof said / sizeof *said)) { said[nsaid].file = file; said[nsaid].line = line; said[nsaid].name = n; nsaid++; }
+			fprintf(stderr, "cpp: %s:%d: %s: macro \"%s\" might prevent reproducible builds\n",
+			        file, line, diag_date_time == 2 ? "error" : "warning", n);
+			if (diag_date_time == 2) exit(1);
+		}
+	}
 	if (!strcmp(n, "__LINE__")) { snprintf(b, sizeof b, "%d", t->line + line_delta); r = newtok(TNUM, b, strlen(b)); }
 	else if (!strcmp(n, "__FILE__")) r = str_tok(prefix_mapped(presumed));
 	else if (!strcmp(n, "__FILE_NAME__")) { const char *s = strrchr(presumed, '/'); r = str_tok(s ? s + 1 : presumed); }
@@ -1185,6 +1209,14 @@ int main(int argc, char **argv) {
 		else if (IS("-M") || IS("-MM") || IS("-MG")) die("unsupported option '%s' (use -MD/-MMD with -MF)", a);
 		else if (PRE("-D") || PRE("-U")) { char k = a[1]; cmd[ncmd].kind = k; cmd[ncmd++].arg = ARG(); }
 		else if (IS("-o")) { if (i + 1 >= argc) die("-o needs a file"); outpath = argv[++i]; }
+		/* -w and -Werror apply to what THIS tool can say. -w is a LATCH, not an ordered change: measured
+		 * against gcc, `-w -Wdate-time` and `-Wdate-time -w` are both silent. Without the -Werror case here
+		 * it fell through to the unknown-option error below and killed any build that passed it. */
+		else if (IS("-w")) diag_inhibit = 1;
+		else if (IS("-Werror")) { if (diag_date_time) diag_date_time = 2; }
+		else if (IS("-Wdate-time")) diag_date_time = 1;
+		else if (IS("-Werror=date-time")) diag_date_time = 2;
+		else if (IS("-Wno-date-time")) diag_date_time = 0;
 		else if (IS("-P")) no_markers = 1;   /* marker-free output: Kbuild preprocesses linker scripts this way */
 		else if (IS("-E") || IS("-nostdinc")) ;
 		else if (IS("-C")) ;   /* keep comments: ours are always dropped (the tokens — all a compiler or ld sees — are the same) */   /* preprocess only; we emit no line markers; no default dirs */

@@ -47,10 +47,37 @@ void die(const char *fmt, ...) {
 	fputs("cc: ", stderr); vfprintf(stderr, fmt, ap); fputc('\n', stderr); va_end(ap); exit(1);
 }
 
-/* Calling an undeclared function: 0 = silent (-Wno-implicit-function-declaration / -Wno-implicit / -w),
- * 1 = WARN (the default, as gcc 13 does — old DJB-style C like runit's still relies on it), 2 = ERROR
- * (-Werror=implicit-function-declaration, which the kernel passes, or a blanket -Werror). */
-int warn_implicit_fn = 1;
+/* The diagnostics, and their defaults. gcc 13 WARNS on an implicit declaration rather than erroring — old
+ * DJB-style C like runit's still relies on that — and the rest here are on by default in gcc too (they are
+ * -Wall-level or unconditional), so "on, not fatal" is the honest default for each. The kernel passes
+ * -Werror= for all seven and gets exactly what it asks for. */
+unsigned char diag_sev[D_COUNT] = {
+	[D_IMPLICIT_FN] = SEV_WARN, [D_IMPLICIT_INT] = SEV_WARN, [D_STRICT_PROTOTYPES] = SEV_OFF,
+	[D_INCOMPATIBLE_PTR] = SEV_WARN, [D_RETURN_TYPE] = SEV_WARN, [D_DESIGNATED_INIT] = SEV_WARN,
+	[D_DATE_TIME] = SEV_OFF,
+};
+/* -Wstrict-prototypes and -Wdate-time are OFF by default, as in gcc: K&R declarations and __DATE__ are legal
+ * C that only a project with a policy about them wants to hear about. */
+static const char *const diag_names[D_COUNT] = {
+	[D_IMPLICIT_FN] = "implicit-function-declaration", [D_IMPLICIT_INT] = "implicit-int",
+	[D_STRICT_PROTOTYPES] = "strict-prototypes", [D_INCOMPATIBLE_PTR] = "incompatible-pointer-types",
+	[D_RETURN_TYPE] = "return-type", [D_DESIGNATED_INIT] = "designated-init", [D_DATE_TIME] = "date-time",
+};
+/* -w. A LATCH, not an ordered change: measured against gcc, `-w -Wimplicit-int` and `-Wimplicit-int -w` are
+ * both silent, so it cannot be implemented by clearing severities as the flags are read. */
+int diag_inhibit;
+const char *diag_name(int d) { return d >= 0 && d < D_COUNT ? diag_names[d] : "?"; }
+int diag_set(const char *name, int sev) {
+	for (int d = 0; d < D_COUNT; d++)
+		if (!strcmp(name, diag_names[d])) { diag_sev[d] = (unsigned char)sev; return 1; }
+	if (!strcmp(name, "implicit")) {   /* gcc's umbrella for the two implicit-* ones */
+		diag_sev[D_IMPLICIT_FN] = diag_sev[D_IMPLICIT_INT] = (unsigned char)sev; return 1;
+	}
+	return 0;
+}
+void diag_all(int sev) {                /* -Werror: promote every diagnostic that is ON; the off ones stay off */
+	for (int d = 0; d < D_COUNT; d++) if (diag_sev[d] != SEV_OFF) diag_sev[d] = (unsigned char)sev;
+}
 int pic = 0;   /* -fPIC: position-independent code — a preemptible symbol through the GOT, the rest PC-relative */
 int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32), never movw/movt halves */
 int default_vis = 0;   /* -fvisibility= */
@@ -92,10 +119,11 @@ static void *compile(void *unused) {
 		else if (!strcmp(argv[i], "-fPIC") || !strcmp(argv[i], "-fpic")) pic = 1;
 		else if (!strcmp(argv[i], "-fno-PIC") || !strcmp(argv[i], "-fno-pic")   /* gcc: last one wins, so a later */
 		      || !strcmp(argv[i], "-fno-PIE") || !strcmp(argv[i], "-fno-pie")) pic = 0;   /* negative CANCELS -fPIC */
-		else if (!strcmp(argv[i], "-Wno-implicit-function-declaration") || !strcmp(argv[i], "-Wno-implicit")
-		      || !strcmp(argv[i], "-w")) warn_implicit_fn = 0;
-		else if (!strcmp(argv[i], "-Werror=implicit-function-declaration") || !strcmp(argv[i], "-Werror")
-		      || !strcmp(argv[i], "-Werror=implicit")) warn_implicit_fn = 2;
+		else if (!strcmp(argv[i], "-w")) diag_inhibit = 1;
+		else if (!strcmp(argv[i], "-Werror")) diag_all(SEV_ERROR);
+		else if (!strncmp(argv[i], "-Werror=", 8) && diag_set(argv[i] + 8, SEV_ERROR)) ;
+		else if (!strncmp(argv[i], "-Wno-", 5) && diag_set(argv[i] + 5, SEV_OFF)) ;
+		else if (argv[i][0] == '-' && argv[i][1] == 'W' && diag_set(argv[i] + 2, SEV_WARN)) ;
 		else if (!strcmp(argv[i], "-mword-relocations")) word_relocs = 1;
 		else if (!strncmp(argv[i], "-fvisibility=", 13)) {
 			const char *v = argv[i] + 13;

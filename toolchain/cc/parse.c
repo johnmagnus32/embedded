@@ -531,6 +531,7 @@ static void no_type_attrs(void) { if (pend_vsize || pend_mode || pend_tunion) di
  * `td` is set iff `typedef` appears; `sc` collects the storage-class bits (SC_EXTERN/SC_STATIC). Both are
  * out-params (may be NULL), NOT globals — a recursive declspec (struct members) would clobber a global. */
 static Type *declspec(int *td, int *sc) {
+	Token *start_tk = tk;              /* for -Wimplicit-int: where the declaration began */
 	if (td) *td = 0;
 	if (sc) *sc = 0;
 	enum { B_NONE, B_VOID, B_CHAR, B_SHORT, B_INT, B_LONG, B_LLONG, B_BOOL, B_FLOAT, B_DOUBLE } base = B_NONE;
@@ -587,6 +588,15 @@ static Type *declspec(int *td, int *sc) {
 		if (!seen && tk->kind == TK_IDENT && typedef_find(tk->text)) { tagty = typedef_find(tk->text); tk = tk->next; seen = 1; continue; }
 		break;
 	}
+	/* -Wimplicit-int: no type specifier at all, so it defaults to int. Measured against gcc, which reports this
+	 * in EVERY context — `static x;`, `extern z;`, `const y = 1;`, `typedef t;`, a bare `f();`, a local
+	 * `register r;`, and each identifier-list (K&R) parameter — and stays quiet only when a type is written.
+	 * The kernel compiles with -Werror=implicit-int, so anywhere gcc is quiet we must be too. */
+	/* ...but only if the declaration DECLARES something. A bare `;` is an empty declaration, and the kernel
+	 * generates them in quantity: __DEFINE_UNLOCK_GUARD expands `__VA_ARGS__` to nothing, leaving `;` as a
+	 * struct member, which gcc passes without a word. Requiring a declarator took this from 311 of 324 kernel
+	 * translation units reporting to zero. */
+	if (!seen && !is(";")) diag_at(D_IMPLICIT_INT, start_tk, "type defaults to 'int' in declaration");
 	Type *r;
 	if (tagty) r = tagty;
 	else switch (base) {
@@ -1825,10 +1835,8 @@ static Node *builtin_lower(char *name) {
 					 * rewritten the name to memset, so there is no declaration to find and none is needed
 					 * — the compiler predeclares its own builtins, as GCC does. A __builtin_ it does not
 					 * know still reaches the linker, exactly as before. */
-					if (warn_implicit_fn && !via_builtin && strncmp(name, "__builtin_", 10)) {
-						if (warn_implicit_fn == 2) die_at(tk, "parse: implicit declaration of function '%s'", name);
-						warn_at(tk, "implicit declaration of function '%s'", name);
-					}
+					if (!via_builtin && strncmp(name, "__builtin_", 10))
+						diag_at(D_IMPLICIT_FN, tk, "implicit declaration of function '%s'", name);
 					idcpy(n->name, name);             /* -Wno-implicit-function-declaration: the old direct call */
 				}
 			}
@@ -3451,7 +3459,15 @@ static void typedef_decl(Type *base, Attr battr) {
  * parameters — callers apply the default promotions), else 0. Arrays/functions adjust to pointers. */
 static int proto_params(Type ***ptsp, int *np) {   /* *ptsp: a fresh array of the types (the caller's) */
 	Node *vla_mark = vla_pt; int cap = 8; Type **pts = *ptsp = malloc(cap * sizeof *pts);
+	Token *lp = tk;                    /* the "(" — where gcc points this diagnostic */
 	expect("("); *np = 0;
+	/* -Wstrict-prototypes: `int f();` promises nothing about its parameters, so a caller gets no checking at
+	 * all. Measured against gcc: it reports this for a declaration, a definition, a function POINTER and a
+	 * typedef with an empty list — anywhere a function type has one — and stays quiet for (void) and for any
+	 * real parameter. Here rather than in func_proto because the OUTERMOST parameter list of a declaration is
+	 * parsed by its caller, which is the commonest case of all (`int f();` at file scope). OFF by default, as
+	 * in gcc: a K&R declaration is legal C that only a project with a policy wants told about. */
+	if (is(")")) diag_at(D_STRICT_PROTOTYPES, lp, "function declaration isn't a prototype");
 	if (consume(")")) return 2;
 	if (is("void") && !strcmp(tk->next->text, ")")) { tk = tk->next->next; return 0; }
 	int va = 0; in_proto++; in_params++;
@@ -3507,6 +3523,9 @@ static Func *function_tail(const char *name, Type *ret, Token *params) {
 	 * conversion should keep using them. In a valid prototype every parameter begins with declaration
 	 * specifiers, so an identifier that is not a typename can only be an identifier list. */
 	int kr_list = !unproto && tk->kind == TK_IDENT && !is_typename();
+	/* -Wstrict-prototypes, the common half: this path handles a file-scope `int f();` and `int g() { }` as well
+	 * as a K&R definition, and gcc reports all three. (proto_params covers function pointers and typedefs.) */
+	if (unproto || kr_list) diag_at(D_STRICT_PROTOTYPES, tk, "function declaration isn't a prototype");
 	if (is("void") && !strcmp(tk->next->text, ")")) tk = tk->next;   /* (void) = no params */
 	else if (!is(")")) {
 		in_params++;

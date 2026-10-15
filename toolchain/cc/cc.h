@@ -276,7 +276,35 @@ typedef struct Gvar {
 	struct Gvar *next;
 } Gvar;
 extern Gvar *globals;            /* built by parse(), consumed by gen() */
-extern int warn_implicit_fn;     /* an undeclared call: 0 silent, 1 warn (default, as gcc 13), 2 error (-Werror=) */
+/* ---- diagnostics the compiler can be asked about -----------------------------------------------------------
+ * One entry per CHECK WE ACTUALLY IMPLEMENT, each with a severity: off, warn, or error. -W<name> turns one on,
+ * -Wno-<name> off, -Werror=<name> makes it fatal; -w silences all; a bare -Werror promotes all that are on.
+ * The kernel compiles with SEVEN of these as -Werror=, which is its whole static-check layer, and six of them
+ * used to be accepted-and-dropped by the driver — so a bad pointer assignment, a missing prototype or a
+ * function that forgets to return compiled clean for us and errored for gcc.
+ * Deliberately NOT a full copy of gcc's option table: a name we do not implement must keep reaching the
+ * driver's own filter rather than being silently claimed here. */
+enum {
+	D_IMPLICIT_FN,          /* implicit-function-declaration: a call with no declaration in scope */
+	D_IMPLICIT_INT,         /* implicit-int: a declaration with no type specifier at all */
+	D_STRICT_PROTOTYPES,    /* strict-prototypes: `int f();` — a declaration that is not a prototype */
+	D_INCOMPATIBLE_PTR,     /* incompatible-pointer-types: assigning/passing/returning the wrong pointer type */
+	D_RETURN_TYPE,          /* return-type: a non-void function that can fall off its end */
+	D_DESIGNATED_INIT,      /* designated-init: a __designated_init struct initialised positionally */
+	D_DATE_TIME,            /* date-time: __DATE__/__TIME__, which break a reproducible build */
+	D_COUNT
+};
+enum { SEV_OFF, SEV_WARN, SEV_ERROR };
+extern unsigned char diag_sev[D_COUNT];
+extern int diag_inhibit;        /* -w: suppress every diagnostic, wherever it appears on the command line */
+const char *diag_name(int d);
+int  diag_set(const char *name, int sev);   /* 1 if `name` is one of ours (-W/-Wno-/-Werror= handling) */
+void diag_all(int sev);                     /* -w (SEV_OFF) / -Werror (promote every enabled one) */
+/* Raise diagnostic `d` at a token: nothing when off, a warning when on, fatal under -Werror=. */
+#define diag_at(d, t, ...) do { if (diag_inhibit) break; \
+                                if (diag_sev[d] == SEV_ERROR) die_at(t, __VA_ARGS__); \
+                                else if (diag_sev[d] == SEV_WARN) warn_at(t, __VA_ARGS__); } while (0)
+#define diag_on(d) (!diag_inhibit && diag_sev[d] != SEV_OFF)
 const char *lex_file(void);          /* the original file the lexer is in (cpp's line markers) */
 int lex_inc_depth(void);             /* how many #includes deep, for `In file included from` */
 const char *lex_inc_file(int i);
