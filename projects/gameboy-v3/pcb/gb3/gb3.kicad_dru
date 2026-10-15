@@ -27,8 +27,9 @@
 # is what made the power strip unroutable on the first attempt. [step 3 fix: + the 'pins: <ref>' rule areas from
 # route/footprint_keepouts.py - the EasyEDA courtyards hug the bodies, so intersectsCourtyard() alone missed the pin
 # tips (U15's sit up to 1.4 mm outside its courtyard): its Kelvin taps and the pin stubs failed 'HighCurrent width'.]
+# [step 4: + U9.2 GAIN_SLOT's strap to SYS, a logic level, in its own area from footprint_keepouts.py]
 (rule "HighCurrent neck-down, 0.5 mm-pitch pins"
-	(condition "A.NetClass == 'HighCurrent' && (A.intersectsCourtyard('U9') || A.intersectsCourtyard('U10') || A.intersectsCourtyard('U12') || A.intersectsCourtyard('U13') || A.intersectsCourtyard('U15') || A.intersectsCourtyard('U17') || A.intersectsArea('pins: U9') || A.intersectsArea('pins: U10') || A.intersectsArea('pins: U12') || A.intersectsArea('pins: U13') || A.intersectsArea('pins: U15') || A.intersectsArea('pins: U17'))")
+	(condition "A.NetClass == 'HighCurrent' && (A.intersectsCourtyard('U9') || A.intersectsCourtyard('U10') || A.intersectsCourtyard('U12') || A.intersectsCourtyard('U13') || A.intersectsCourtyard('U15') || A.intersectsCourtyard('U17') || A.intersectsArea('pins: U9') || A.intersectsArea('pins: U10') || A.intersectsArea('pins: U12') || A.intersectsArea('pins: U13') || A.intersectsArea('pins: U15') || A.intersectsArea('pins: U17') || A.intersectsArea('pins: U9 GAIN_SLOT strap'))")
 	(constraint track_width (min 0.25mm) (opt 0.25mm)))
 
 # U1's pins are 0.2 mm wide on a 0.4 mm pitch

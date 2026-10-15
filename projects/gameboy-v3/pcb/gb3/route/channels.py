@@ -117,14 +117,15 @@ CHANNELS = {
     # ---------------------------------------------------------------- long-haul F bands (soft)
     "H1 F highway":         ("F", R(52.6, 50.6, 123.4, 64.3),
                              "east-west on F over In1 between the USB band and P1, N->S as they leave W4: I2S1 DOUT/BCLK/LRCK "
-                             "(U9 branch), GND guard, I2C1 SCL/SDA; they turn east at y >= 51.5 (the SD via row V13 is at y 50.85) "
+                             "(U9 branch), GND guard, I2C1 SCL/SDA; they turn east at y >= 51.4 (the SD via row V13 is at y 50.85) "
                              "and pass P1 north of y 61.9 (the D4/D5 vias). CC_SENSE left H1: it runs north of the USB band"),
     "M1 east lane":         ("F", R(106.8, 50.6, 127.0, 83.6),
                              "north-south on F east of P1 / the display landing: right-grip buttons from U16's east pins, I2C1 "
                              "to U16/FPC1/U8, SPK_EN up from E1, charger and gauge lines from S2, into T1"),
     "S2 south band":        ("F", R(57.5, 92.0, 127.0, 110.5),
-                             "east-west on F south of the RGB field: left-grip buttons to U16's west pins, CHG_FAST/CHG_PGOOD/"
-                             "GAUGE_ALRT east from S1, DAC_XSMT/HP_EN west to the audio block"),
+                             "east-west on F south of the RGB field: the six left-grip buttons (y 94.4-95.9) from U16's west pins; "
+                             "CHG_FAST/CHG_PGOOD/GAUGE_ALRT east from S1 on B just north of it (y 91.0-92.5, group 80); "
+                             "DAC_XSMT/HP_EN west to the audio block"),
     "T0 U17 to strip":      ("F", R(97.5, 41.2, 123.5, 44.0),
                              "PWR_EN (U17.9 -> U12.12's via (137.5,42.45)) and /PB (U17.6 -> SW14) east on F from U17's vias, "
                              "south of +5V (y 40.7) and north of CC_SENSE (y 45.4); they enter T1 at y 42.45 / 41.65 (T1's "
@@ -133,8 +134,8 @@ CHANNELS = {
     "T1 strip F highway":   ("F", R(123.5, 40.0, 182.0, 51.8),
                              "the only left<->right link on F, over In1, above the B power cluster: 20 lanes at 0.30 pitch weave "
                              "fixed bands between the reserved vias (V3-V12). x 124 N->S: /PB (B hop at x 124.6-127.6 under the "
-                             "north lanes), PWR_EN, CHG_PGOOD, I2C1 SCL/SDA, GAUGE_ALRT, R1, VOL+, VOL-, (/PB), B, X, SELECT, Y, "
-                             "A, CHG_FAST, SPK_EN, I2S DOUT/BCLK/LRCK; CHG_TS joins at its via (154.6,48.0). +5V and BAT keep "
+                             "north lanes), PWR_EN, CHG_PGOOD, I2C1 SCL/SDA, GAUGE_ALRT, R1, VOL+, VOL-, (/PB), A, X, SELECT, B, "
+                             "Y, CHG_FAST, SPK_EN, I2S DOUT/BCLK/LRCK; CHG_TS joins at its via (154.6,48.0). +5V and BAT keep "
                              "the north edge. The buttons drop to B in V12's staircase; I2C1/GAUGE at V11; the south five leave "
                              "through T1n. Trial s4 strip_lanes: explicit, DRC-clean"),
     "T1n F neck":           ("F", [(179.5, 50.3), (181.4, 50.3), (184.0, 52.9), (184.0, 83.0), (182.2, 83.0), (182.2, 53.2),
@@ -144,7 +145,7 @@ CHANNELS = {
                              "deg octagon r 3.85-2.65 about the arc's centre (1.08 mm spare to CN1.4: 3 more lanes), down x "
                              "183.55-182.35 to their drops at R17 (CHG_TS), R14 (SPK_EN) and U9 (DOUT/BCLK/LRCK); no vias in the neck"),
     "T1b B neck":           ("B", R(174.3, 42.7, 188.2, 45.9),
-                             "the 9 right-grip lanes (R1, VOL+, VOL-, /PB, B, X, SELECT, Y, A at y 42.925-45.325, 0.30 pitch) from "
+                             "the 9 right-grip lanes (R1, VOL+, VOL-, /PB, A, X, SELECT, B, Y at y 42.925-45.325, 0.30 pitch) from "
                              "V12's staircase east through the 10.8 mm B neck between R43 (y <= 41.03) and SYS's east branch "
                              "(y >= 47.2): 1.8 mm spare on each side. East of it they fan on B (columns x 187.9-206.3) to vias "
                              "beside the switch pads (VIA_SPOTS V20)"),
@@ -297,9 +298,9 @@ VIA_SPOTS = {
     "V22 NOR hops /6":               ("*", R(69.35, 62.75, 70.25, 63.65), "NOR_IO0 / NOR_IO3 F hop pairs at U3, C7.2's GND via"),
     "V22 NOR hops /7":               ("*", R(70.55, 60.40, 71.45, 61.30), "NOR_IO0 / NOR_IO3 F hop pairs at U3, C7.2's GND via"),
     "V23 CC_SENSE hop /1":           ("*", R(64.35, 44.95, 65.25, 45.85), "CC_SENSE's B hop under the I2S lanes (x 64.8, y 52.4 -> 45.4)"),
-    "V23 CC_SENSE hop /2":           ("*", R(64.35, 51.95, 65.25, 52.85), "CC_SENSE's B hop under the I2S lanes (x 64.8, y 52.4 -> 45.4)"),
+    "V23 CC_SENSE hop /2":           ("*", R(64.35, 51.85, 65.25, 52.75), "CC_SENSE's B hop under the I2S lanes (x 64.8, y 52.3 -> 45.4)"),
     "V24 CC_SENSE drops /1":         ("*", R(113.45, 44.95, 114.35, 45.85), "CC_SENSE F -> B to R56.2 (x 113.9) and R57.2 (x 122.1), either side of the USB pair's B legs"),
-    "V24 CC_SENSE drops /2":         ("*", R(121.65, 44.95, 122.55, 45.85), "CC_SENSE F -> B to R56.2 (x 113.9) and R57.2 (x 122.1), either side of the USB pair's B legs"),
+    "V24 CC_SENSE drops /2":         ("*", R(120.35, 44.95, 121.25, 45.85), "CC_SENSE F -> B to R56.2 (x 113.9) and, from x 120.8, R57.2 (x 122.1), either side of the USB pair's B legs"),
     "V25 USB D4 end":                ("*", R(116.60, 46.55, 119.40, 48.65), "the pair's D4-end vias D- (117.05,48.2), D+ (118.95,47.0), C93.2's GND via"),
     "V26 U17 locals /1":             ("*", R(95.75, 35.15, 96.65, 36.05), "U17's /PB and PWR_EN F exits into T0, its GND via"),
     "V26 U17 locals /2":             ("*", R(98.40, 37.00, 99.30, 39.45), "U17's /PB and PWR_EN F exits into T0, its GND via"),
@@ -341,7 +342,7 @@ VIA_POINTS = {   # the vias each spot reserves, as placed on fix/trial/s5 (x, y,
     "V11 I2C1 / GAUGE drops /1":     [(179.400, 41.250, 0.6, "I2C1_SCL"), (178.650, 41.800, 0.6, "I2C1_SDA"), (177.900, 41.250, 0.6, "I2C1_SCL")],
     "V11 I2C1 / GAUGE drops /2":     [(180.450, 38.950, 0.6, "+3V3")],
     "V11 I2C1 / GAUGE drops /3":     [(182.300, 42.350, 0.6, "GAUGE_ALRT")],
-    "V12 B-neck staircase":          [(180.200, 45.550, 0.6, "BTN_A"), (179.500, 45.250, 0.6, "BTN_Y"), (178.800, 44.950, 0.6, "BTN_SELECT"), (178.100, 44.650, 0.6, "BTN_X"), (177.400, 44.350, 0.6, "BTN_B"), (176.700, 44.050, 0.6, "/power-ctrl/PWR_BTN"), (176.000, 43.750, 0.6, "BTN_VOLDOWN"), (175.300, 43.450, 0.6, "BTN_VOLUP"), (174.600, 43.150, 0.6, "BTN_R1")],
+    "V12 B-neck staircase":          [(180.200, 45.550, 0.6, "BTN_Y"), (179.500, 45.250, 0.6, "BTN_B"), (178.800, 44.950, 0.6, "BTN_SELECT"), (178.100, 44.650, 0.6, "BTN_X"), (177.400, 44.350, 0.6, "BTN_A"), (176.700, 44.050, 0.6, "/power-ctrl/PWR_BTN"), (176.000, 43.750, 0.6, "BTN_VOLDOWN"), (175.300, 43.450, 0.6, "BTN_VOLUP"), (174.600, 43.150, 0.6, "BTN_R1")],
     "V13 SD support row /1":         [(44.600, 46.910, 0.6, "+3V3")],
     "V13 SD support row /2":         [(49.350, 50.850, 0.6, "+3V3")],
     "V13 SD support row /3":         [(53.700, 50.850, 0.6, "+3V3"), (52.850, 50.850, 0.6, "GND")],
@@ -374,15 +375,15 @@ VIA_POINTS = {   # the vias each spot reserves, as placed on fix/trial/s5 (x, y,
     "V19 audio core /4":             [(42.150, 113.400, 0.6, "GND")],
     "V19 audio core /5":             [(42.900, 100.150, 0.6, "HP_L")],
     "V20 grip drops /1":             [(182.550, 82.600, 0.6, "I2S1_LRCK")],
-    "V20 grip drops /2":             [(184.000, 78.950, 0.6, "I2S1_DOUT"), (182.900, 79.600, 0.6, "I2S1_BCLK")],
+    "V20 grip drops /2":             [(183.550, 78.500, 0.6, "I2S1_DOUT"), (182.900, 79.600, 0.6, "I2S1_BCLK")],
     "V20 grip drops /3":             [(184.100, 60.400, 0.6, "/charger/CHG_TS")],
     "V20 grip drops /4":             [(185.000, 76.000, 0.6, "SPK_EN")],
-    "V20 grip drops /5":             [(187.900, 71.900, 0.6, "BTN_A")],
+    "V20 grip drops /5":             [(187.900, 71.900, 0.6, "BTN_Y")],
     "V20 grip drops /6":             [(192.990, 40.600, 0.6, "BTN_R1")],
-    "V20 grip drops /7":             [(194.400, 79.900, 0.6, "BTN_Y")],
+    "V20 grip drops /7":             [(194.400, 79.900, 0.6, "BTN_B")],
     "V20 grip drops /8":             [(195.200, 47.000, 0.6, "BTN_SELECT")],
     "V20 grip drops /9":             [(195.900, 63.950, 0.6, "BTN_X")],
-    "V20 grip drops /10":            [(203.200, 71.800, 0.6, "BTN_B")],
+    "V20 grip drops /10":            [(203.200, 71.800, 0.6, "BTN_A")],
     "V20 grip drops /11":            [(204.900, 61.990, 0.6, "/power-ctrl/PWR_BTN")],
     "V20 grip drops /12":            [(205.600, 53.990, 0.6, "BTN_VOLDOWN")],
     "V20 grip drops /13":            [(206.300, 45.990, 0.6, "BTN_VOLUP")],
@@ -400,9 +401,9 @@ VIA_POINTS = {   # the vias each spot reserves, as placed on fix/trial/s5 (x, y,
     "V22 NOR hops /6":               [(69.800, 63.200, 0.6, "GND")],
     "V22 NOR hops /7":               [(71.000, 60.850, 0.6, "GND")],
     "V23 CC_SENSE hop /1":           [(64.800, 45.400, 0.6, "USBC_CC_SENSE")],
-    "V23 CC_SENSE hop /2":           [(64.800, 52.400, 0.6, "USBC_CC_SENSE")],
+    "V23 CC_SENSE hop /2":           [(64.800, 52.300, 0.6, "USBC_CC_SENSE")],
     "V24 CC_SENSE drops /1":         [(113.900, 45.400, 0.6, "USBC_CC_SENSE")],
-    "V24 CC_SENSE drops /2":         [(122.100, 45.400, 0.6, "USBC_CC_SENSE")],
+    "V24 CC_SENSE drops /2":         [(120.800, 45.400, 0.6, "USBC_CC_SENSE")],
     "V25 USB D4 end":                [(118.950, 47.000, 0.6, "USB_D+"), (118.000, 48.000, 0.6, "GND"), (117.050, 48.200, 0.6, "USB_D-")],
     "V26 U17 locals /1":             [(96.200, 35.600, 0.6, "/power-ctrl/PWR_BTN")],
     "V26 U17 locals /2":             [(98.850, 39.000, 0.6, "GND"), (98.850, 37.450, 0.6, "PWR_EN")],

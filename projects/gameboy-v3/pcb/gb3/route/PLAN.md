@@ -62,7 +62,7 @@ Drafts, nothing applied: `~/.cache/gb3-step3/fix/proposed/` (`nets_changes.csv`,
 | A2 | SD_CD PF6 (13) → PG10 (5) [cd-gpios <&pio 6 10>] | PG10: SD_CD joins the planar B fan. With A8 and P4, every ESD tap and pull-up routed: 0 vias, SD bus 25.57–29.34 mm, skew 3.77 mm (DRU 5), SD_CD 34.80 mm. PF6 has to cross all six SD lines (2-via F hop, ESCAPE_ALT) | adopt |
 | A3 | JACK_DET PE12 (32) → PG14 (126) [hp-det-gpios <&pio 6 14>; the i2s1 pin group must not claim PG14] | Required by group 40: its RGB_R2 column (x 73.4) takes PE12's only F path. PG14: 47.8 mm / 2 vias, same pull class (T113 DS Table 5-4) | adopt |
 | A4 | USBLC6 D4: I/O1 (1/6) = D−, I/O2 (3/4) = D+ | 3 D+/D− crossings receptacle→D4 plus 1 at U1 → 1 (the receptacle's own jumper), drawn DRC-clean | adopt |
-| A5 | PCA9555 U16: port 0 (east pins 4–11) = right grip in the order the strip lanes reach it (U16.4–11 = R1, VOL+, VOL−, B, X, SELECT, Y, A; second review), port 1 (west 13–18) = left grip [keymap] | 416 → 356 mm, 20 → 14 vias | adopt |
+| A5 | PCA9555 U16: port 0 (east pins 4–11) = right grip in the order the strip lanes reach it (U16.4–11 = R1, VOL+, VOL−, A, X, SELECT, B, Y; second review; step 4: face nets named by position, Nintendo layout), port 1 (west 13–18) = left grip [keymap; step 4: U16.18–13 = L1, START, UP, RIGHT, LEFT, DOWN, the grip's planar order, D-pad nets named by position] | 416 → 356 mm, 20 → 14 vias | adopt |
 | A6 | TPA6132A2 channel swap (north R/C chain carries left) | the DAC outputs nest with 0 vias (combined trial, audio core routed before the buttons) | adopt |
 | A7 | PE0 (44) ↔ PE1 (45): U1.44 = IMU_INT2, U1.45 = IMU_INT1 [IMU interrupt specifiers] | with P2 the ribbon to U7 is planar: 0 vias, all 14 U7 pads and their passives routed | adopt, with P2 |
 | A8 | SP3004 channel remap (new): D1.3 = SD_D0, D1.4 = SD_D1, D1.6 = SD_CD, D2.6 = SD_CMD, D2.4 = NC (D1.1 SD_CLK, D2.1 SD_D2, D2.3 SD_D3 unchanged) | the four I/O channels are identical (SP3004 C207280 p.1: I/O1 1, GND 2, I/O2 3, I/O3 4, VCC 5, I/O4 6). With today's pinout CD sits on D1's east column and SD_D1 on its west, so their taps cross; remapped, every tap is a stub off its own lane (0 vias). The remap alone (without P4) left 2 nets unrouted in the exploratory taps trial | adopt, with P4 |
@@ -212,9 +212,9 @@ The strip (x 127.5–181.7, y 32–52.3, 20.3 mm) is the only link between the l
 
 | x | Bands N→S (y) |
 |---|---|
-| 124 (handoff from T0/M1/H1, group 80) | /PB 41.65 (B hop (124.6, 41.65) → (127.6, 46.95) under the north lanes), PWR_EN 42.45, CHG_PGOOD 43.0, SCL 43.3, SDA 43.6, GAUGE 43.9, R1 44.2, VOL+ 44.5, VOL− 44.8, B 47.8, X 48.1, SELECT 48.4, Y 48.7, A 49.0, CHG_FAST 49.3, SPK_EN 49.6, DOUT 49.9, BCLK 50.2, LRCK 50.5 (/PB rejoins at 47.5) |
+| 124 (handoff from T0/M1/H1, group 80) | /PB 41.65 (B hop (124.6, 41.65) → (127.6, 46.95) under the north lanes), PWR_EN 42.45, CHG_PGOOD 43.0, SCL 43.3, SDA 43.6, GAUGE 43.9, R1 44.2, VOL+ 44.5, VOL− 44.8, A 47.8, X 48.1, SELECT 48.4, B 48.7, Y 49.0, CHG_FAST 49.3, SPK_EN 49.6, DOUT 49.9, BCLK 50.2, LRCK 50.5 (/PB rejoins at 47.5) |
 | 133–145 (U12 field) | PWR_EN ends at its via (137.5, 42.45); 7 lanes 43.0–44.8 between it and C60/C61/R23's vias (45.7–46.95); 11 lanes 47.5–50.5 south of them |
-| 152–161 (U10 field) | SCL, SDA, GAUGE, R1, VOL+ 42.65–43.85 (+5V drops above, GND row 44.63–44.75 below); VOL−, /PB, B, X, SELECT, Y, A 45.3–47.1; CHG_TS from its via 48.0; CHG_FAST 48.6 to its via; SPK_EN, DOUT, BCLK, LRCK 49.2–50.1 |
+| 152–161 (U10 field) | SCL, SDA, GAUGE, R1, VOL+ 42.65–43.85 (+5V drops above, GND row 44.63–44.75 below); VOL−, /PB, A, X, SELECT, B, Y 45.3–47.1; CHG_TS from its via 48.0; CHG_FAST 48.6 to its via; SPK_EN, DOUT, BCLK, LRCK 49.2–50.1 |
 | 163–182 | SCL/SDA/GAUGE up to 41.0–41.6 (between C66/C44's vias and BAT) to their drops (V11); the 9 button lanes into the staircase (V12, vias (174.6 + 0.7k, 43.15 + 0.3k), each F lane 0.225 S of its via, each B lane 0.225 N); CHG_TS and the I2S/SPK_EN down to 50.45–51.65 for T1n |
 
 - **Plane neck:** In1 GND keeps ≥ 14.35 mm of the strip's 19.25 mm height at every x in 160–182.5 (narrowest at x
@@ -225,19 +225,19 @@ The strip (x 127.5–181.7, y 32–52.3, 20.3 mm) is the only link between the l
 
 The cutout's corner is an arc (centre 179.7/54.3, r 2.0; copper limit r 2.5); CN1 occupies F x 182.6–190.8,
 y 40.77–50.23, and BAT now holds F north of CN1, so the grip is reached on B (9 lanes) and through the F neck (5).
-- **B neck (T1b):** the 9 lanes R1, VOL+, VOL−, /PB, B, X, SELECT, Y, A at y 42.925–45.325 (0.30 pitch) between R43
+- **B neck (T1b):** the 9 lanes R1, VOL+, VOL−, /PB, A, X, SELECT, B, Y at y 42.925–45.325 (0.30 pitch) between R43
   (y ≤ 41.03) and SYS's east branch (y ≥ 47.2): 1.8 mm spare on each side. East of the neck they fan on B, each turning
   where it is the outermost lane: R1 NE to its via (192.99, 40.6) → SW16.2; VOL+ (206.3, 45.99) → SW12.2; VOL−
-  (205.6, 53.99) → SW13.2; /PB (204.9, 61.99) → SW14.2; B (203.2, 71.8) → SW7.1; X (195.9, 63.95) → SW8.1; SELECT
-  (195.2, 47.0) → SW11.1; Y (194.4, 79.9) → SW9.1; A (187.9, 71.9) → SW6.1, all columns east of SYS (x 186.8). 2 vias per
+  (205.6, 53.99) → SW13.2; /PB (204.9, 61.99) → SW14.2; A (203.2, 71.8) → SW7.1; X (195.9, 63.95) → SW8.1; SELECT
+  (195.2, 47.0) → SW11.1; B (194.4, 79.9) → SW9.1; Y (187.9, 71.9) → SW6.1, all columns east of SYS (x 186.8). 2 vias per
   button; /PB 5 (U17's exit, the hop pair, the staircase, the grip).
 - **F neck (T1n):** CHG_TS, SPK_EN, DOUT, BCLK, LRCK as a 45° octagon r 3.85 .. 2.65 about the arc's centre (1.08 mm
   spare to CN1.4's corner: 3 more lanes), then down the wall at x 183.55 .. 182.35 on F to their drops: CHG_TS (184.1,
-  60.4) → R17.1; SPK_EN (185.0, 76.0) → R14.2; DOUT (184.0, 78.95) → U9.1; BCLK (182.9, 79.6) → U9.16; LRCK (182.55,
+  60.4) → R17.1; SPK_EN (185.0, 76.0) → R14.2; DOUT (183.55, 78.5) → U9.1 (step 4: NW of U9.1, for GAIN_SLOT's strap); BCLK (182.9, 79.6) → U9.16; LRCK (182.55,
   82.6) → U9.14. No vias in the neck.
 - **SYS to U9:** B east at y 47.5 through the B neck, down x 186.8 to C53.1/C54.1 → U9.7/8.
-- Left for group 85: U9.2 (GAIN_SLOT → SYS) is boxed in on the north by R14/SPK_SD (route it under U9's body or move
-  R14 0.5 mm east); the TS-1187A pad ties.
+- Group 85 (step 4): U9.2's GAIN_SLOT strap runs north between DOUT's stub and R14 to SYS's B lane (no part moved;
+  0.25 mm in its own DRU area); the TS-1187A pads are jumper groups, so no copper ties.
 
 ## Channels (route/channels.py)
 
@@ -262,7 +262,7 @@ via in a hard channel is the channel's own).
 | W4 | F | hard | I2S T, CC_SENSE's riser, the I2C1 risers |
 | USB | F | hard | USB riser and band (y 47.0 / 47.475) |
 | W5 | B | soft | UART3 to U18 |
-| H1 / M1 / S2 / T0 | F | soft | highways (H1's lanes turn east at y ≥ 51.5, clear of the SD via row) |
+| H1 / M1 / S2 / T0 | F | soft | highways (H1's lanes turn east at y ≥ 51.4, clear of the SD via row) |
 | T1 / T1n / T1b | F / F / B | soft / hard / hard | strip highway / the F neck + wall / the B neck |
 | T2 / T3 | B | hard / soft | strip power band (SYS, y 50.6) / SYS west to U6 and U17 |
 | P2 | B | hard | C45 → U6.4 boost return |
@@ -413,9 +413,25 @@ Then 70 and 75 (step 4b; unconnected 138 -> 92, DRC errors 4 -> 4):
   JACK_SW to R49 by maze (F / B).
 - 20 gained the F links to the bulk caps C35 (LDOB), C39 (+0V9), C92 (AVCC); 10 the power LED (R12 -> U5, one via).
 
-Open: 80_highways (SPK_EN from x 101; the T0 vias for /PB and PWR_EN; the T1 drops group 10 placed: CHG_TS,
-CHG_FAST, CHG_PGOOD, GAUGE_ALRT, I2C1_SDA; the I2C1 risers at y 63.0; the I2S U9-branch F ends at y 66.0), 85_grips,
-then fanout / pour / checks / silk.
+Then 80 and 85 (step 4c; unconnected 92 -> 52, all plane pins; DRC errors 4 -> 4; a full rebuild equals the staged one):
+- **80:** T0: /PB runs east along y 35.6 before its SE leg, so the leg stays NE of PWR_EN's and clear of U17's GND via;
+  then the dip under D4. H1: six lanes at 0.3 pitch under the SD via row (DOUT, BCLK, LRCK, CC_SENSE (group 30 moved
+  its run 0.1 mm, to y 52.3), SCL, SDA); east of the row the I2S lanes step to 0.6 pitch (y 50.4 / 51.0 / 51.6) and the
+  I2C pair to 53.4 / 53.7, round CC_SENSE's B hop via, U3's GND via, NOR_IO0's F hop and the U6 GND vias. The I2S B hop
+  under M1 is at 0.6 pitch, CHG_PGOOD's B crossing of the I2C pair south of it. M1, T1, T1n and the B neck as trialled
+  (s4 strip_lanes); GAUGE's top via steps west of R1's lane. S2: CHG_FAST / CHG_PGOOD / GAUGE_ALRT east on B (y 91.0 /
+  91.75 / 92.5); CHG_FAST stays on B under the other two's F legs to its riser. The I2C1 drops are drawn: 7 vias (the
+  maze took 10), one SCL crossing (B, between U8's pin rows).
+- **85:** the left grip: U16's port 1 -> a via column in the pocket west of U16 (x 104.5, inside SPK_EN's B loop) -> F
+  SW over S2's B lanes -> west along S2 (y 94.4-95.9) -> north up a corridor (x 48.3-49.8) between the D-pad and W4,
+  each lane peeling off west at its switch. That needed the keymap change (user-approved): U16.18-13 = L1, START, UP,
+  RIGHT, LEFT, DOWN, and the D-pad and face nets are now named by position (Nintendo layout). One via per button,
+  87-122 mm. U9: SPK_P / SPK_N 0.25 mm out of the pins, 0.4 mm to J3; SD_MODE; GAIN_SLOT's strap to SYS (DOUT's drop
+  via moved NW of U9.1; 0.25 mm in the new 'pins: U9 GAIN_SLOT strap' DRU area). U8: REG -> C50, LRA+/- -> J2 at
+  0.3 mm. BT830: VREG18 -> C70.
+
+Open: fanout (one plane via per remaining plane pad: +3V3 39 and GND 13 unconnected), pour, planecheck, ipc_check,
+i2c_check, audit, silk; then fab.
 
 ## Second review (2026-10-14): items for step 4
 

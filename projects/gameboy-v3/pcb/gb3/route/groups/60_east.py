@@ -45,10 +45,12 @@ AUTOROUTE(m, "BL_CTRL", (77.6, 52.0, "B"), "R51.1", w=0.15, layers="B", via_cost
 AUTOROUTE(m, "BL_CTRL", "R51.1", "U6.2", w=0.15, layers="B", via_cost=40, through=[(103.85, 50.8, "B"), (103.85, 54.40, "B")])   # from the pad (2nd review)
 
 # ---- E1 east (B): the touch FPC and the expander's INT. The three turn NE in step (TOUCH_RST at x 101.0, TOUCH_INT
-#      101.4, EXP_INT 101.8: 0.57 mm c-c on the diagonals); EXP_INT runs north of U16's decaps C43 / C67 (y 71.6) so
-#      their GND pads keep both thermal spokes, then round R29 from the east. SPK_EN stays the south lane (group 80).
-T("TOUCH_RST", "B", W, [(101.0, P("U1.38")[1]), (103.6, 69.95), (114.95, 69.95), (115.7, 69.2), (120.3, 69.2), (121.0, 69.9), P("FPC1.6")])
-T("TOUCH_INT", "B", W, [(101.0, P("U1.39")[1]), (101.4, P("U1.39")[1]), (104.05, 70.3), (115.3, 70.3), (115.7, 70.7), (119.3, 70.7), (120.0, 70.0), P("FPC1.5")])
+#      101.4, EXP_INT 101.8: 0.57 mm c-c on the diagonals). Both touch lanes pass NORTH of FPC1's pins 1-4 (RST at y
+#      68.9, INT at 69.2: 0.225 mm from the pads) and turn south into pins 6 / 5, so pins 1-4 (+3V3, GND, SCL, SDA)
+#      keep their south side free for their own vias. EXP_INT runs north of U16's decaps C43 / C67 (y 71.6) so their GND
+#      pads keep both thermal spokes, then rounds R29 from the east. SPK_EN stays the south lane (group 80).
+T("TOUCH_RST", "B", W, [(101.0, P("U1.38")[1]), (104.65, 68.9), (120.3, 68.9), (121.0, 69.6), P("FPC1.6")])
+T("TOUCH_INT", "B", W, [(101.0, P("U1.39")[1]), (101.4, P("U1.39")[1]), (105.15, 69.2), (119.5, 69.2), (120.0, 69.7), P("FPC1.5")])
 T("EXP_INT", "B", W, [(101.0, P("U1.40")[1]), (101.8, P("U1.40")[1]), (103.55, 71.6), (113.8, 71.6), (113.8, 73.6), (113.25, P("R29.1")[1]), P("R29.1")])
 T("EXP_INT", "B", W, [P("R29.1"), (P("R29.1")[0], P("U16.1")[1] - 0.3), P("U16.1")])
 

@@ -7,9 +7,9 @@
 #   B7 (D-) / B6 (D+); A6 joins D+ on B, A7 jumps over A6 on F (the receptacle's own interleave: 2 x 0.5/0.3 vias). D-
 #   has 4 vias, D+ 2 (DRU <= 4); in-pair skew 1.30 mm (DRU 4 mm), uncoupled 14.37 mm (DRU 16) on the trial board.
 # CC1 / CC2 -> Rd R52 / R53 (5.1k) -> R56 / R57 (200k) into CC_SENSE (step 1c's charge-current sense on GPADC0).
-# CC_SENSE (U1.101 = GPADC0): group 20's island via -> C94.1 on F -> W along W4 x 56.1 north -> E at y 52.4 -> B hop down
+# CC_SENSE (U1.101 = GPADC0): group 20's island via -> C94.1 on F -> W along W4 x 56.1 north -> E at y 52.3 -> B hop down
 #   x 64.8 under the I2S lanes and the band -> F east along y 45.4 (north of the band, south of T0) -> B drops to R56.2
-#   (x 113.9) and R57.2 (x 122.1), either side of the pair's B legs.
+#   (x 113.9) and, from x 120.8 (clear of group 80's M1 bundle), to R57.2 (x 122.1), either side of the pair's B legs.
 W, WR = 0.275, 0.2
 
 # ---- U1 end: B escape (W2) -> vias -> F riser
@@ -33,12 +33,13 @@ VIA("USB_D-", 118.25, 39.50, d=0.5, h=0.3); T("USB_D-", "B", WR, [P("USBC1.A7"),
 T("USB_D-", "F", WR, [(118.25, 39.50), (117.25, 40.50)]); VIA("USB_D-", 117.25, 40.50, d=0.5, h=0.3)
 
 # ---- CC_SENSE
-T("USBC_CC_SENSE", "F", 0.15, [P("C94.1"), (56.95, P("C94.1")[1]), (56.1, 80.95), (56.1, 53.1), (56.8, 52.4), (64.8, 52.4)])
-VIA("USBC_CC_SENSE", 64.8, 52.4)
-T("USBC_CC_SENSE", "B", 0.15, [(64.8, 52.4), (64.8, 45.4)]); VIA("USBC_CC_SENSE", 64.8, 45.4)
-T("USBC_CC_SENSE", "F", 0.15, [(64.8, 45.4), (122.1, 45.4)])
-for r in ("R56.2", "R57.2"):
-    x = P(r)[0]; VIA("USBC_CC_SENSE", x, 45.4); T("USBC_CC_SENSE", "B", 0.15, [(x, 45.4), P(r)])
+T("USBC_CC_SENSE", "F", 0.15, [P("C94.1"), (56.95, P("C94.1")[1]), (56.1, 80.95), (56.1, 53.0), (56.8, 52.3), (64.8, 52.3)])
+VIA("USBC_CC_SENSE", 64.8, 52.3)
+T("USBC_CC_SENSE", "B", 0.15, [(64.8, 52.3), (64.8, 45.4)]); VIA("USBC_CC_SENSE", 64.8, 45.4)
+T("USBC_CC_SENSE", "F", 0.15, [(64.8, 45.4), (120.8, 45.4)])
+VIA("USBC_CC_SENSE", P("R56.2")[0], 45.4); T("USBC_CC_SENSE", "B", 0.15, [(P("R56.2")[0], 45.4), P("R56.2")])
+# R57.2's drop: B from x 120.8 (the F run stops west of group 80's M1 bundle, which passes north at x >= 121.4)
+VIA("USBC_CC_SENSE", 120.8, 45.4); T("USBC_CC_SENSE", "B", 0.15, [(120.8, 45.4), (P("R57.2")[0], 44.1), P("R57.2")])
 
 # ---- CC1 / CC2 -> Rd -> the sense dividers (B)
 m = MAZE((44.0, 36.0, 126.0, 84.0))

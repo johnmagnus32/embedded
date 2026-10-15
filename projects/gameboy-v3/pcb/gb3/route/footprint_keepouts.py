@@ -92,6 +92,16 @@ for f in B.GetFootprints():
     ol = z.Outline(); ol.NewOutline()
     for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)): ol.Append(int(MM(x)), int(MM(y)))
     B.Add(z); n += 1
+# U9.2 GAIN_SLOT's strap to SYS (MAX98357A gain 6 dB; a logic level, no current) leaves 'pins: U9' northwards between
+# DOUT's B stub and R14 to SYS's B lane (route/groups/85_grips.py): one more DRC-only area, so the 0.5 mm-pitch
+# neck-down rule (0.25 mm) covers the strap instead of SYS's 0.6 mm class width
+z = pcbnew.ZONE(B); z.SetIsRuleArea(True); z.SetZoneName("pins: U9 GAIN_SLOT strap")
+ls = pcbnew.LSET(); ls.AddLayer(pcbnew.B_Cu); z.SetLayerSet(ls)
+z.SetDoNotAllowTracks(False); z.SetDoNotAllowVias(False); z.SetDoNotAllowZoneFills(False)
+z.SetDoNotAllowPads(False); z.SetDoNotAllowFootprints(False)
+ol = z.Outline(); ol.NewOutline()
+for x, y in ((183.9, 74.7), (187.2, 74.7), (187.2, 79.6), (183.9, 79.6)): ol.Append(int(MM(x)), int(MM(y)))
+B.Add(z); n += 1
 # the hole footprints themselves (board-only, NPTH, out of the BOM / CPL); stale H<n> board-only parts go
 ATTR = pcbnew.FP_BOARD_ONLY | pcbnew.FP_EXCLUDE_FROM_BOM | pcbnew.FP_EXCLUDE_FROM_POS_FILES
 for ref, cx, cy in HOLES:

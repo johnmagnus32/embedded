@@ -472,9 +472,9 @@ The plan is `gb3/route/PLAN.md`, with the reserved channels in `route/channels.p
 - **Charger:** `gpio-charger` `gpios = <&pio 1 6 GPIO_ACTIVE_LOW>` (PB6).
 - **BT:** VREG_EN_RST# = PB4.
 - **uart3:** BT uses the PG0–3 group only, never the MangoPi default `uart3_pb_pins`. PB6 is now the charger's open-drain /PGOOD, which a TX idling high would fight, and PB7 is CHG_FAST.
-- **Buttons** (`gpio-keys` on the PCA9555):
-  - P00 R1, P01 VOL+, P02 VOL−, P03 B, P04 X, P05 SELECT, P06 Y, P07 A;
-  - P10 UP, P11 DOWN, P12 LEFT, P13 RIGHT, P14 START, P15 L1.
+- **Buttons** (`gpio-keys` on the PCA9555; step 4: the names follow the switches' positions, see below):
+  - P00 R1, P01 VOL+, P02 VOL−, P03 A, P04 X, P05 SELECT, P06 B, P07 Y;
+  - P10 DOWN, P11 LEFT, P12 RIGHT, P13 UP, P14 START, P15 L1.
 
 **Checks:**
 - ERC: 0 errors.
@@ -486,3 +486,24 @@ The plan is `gb3/route/PLAN.md`, with the reserved channels in `route/channels.p
 **Next (step 4):**
 - The route groups in order (05, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 85), with the second review's items (end of `route/PLAN.md`).
 - Then fanout, pours, checks, silk and the fab outputs.
+
+## Routing, step 4 (2026-10-14 — keymap user-approved)
+
+All twelve route groups are built in the repo (`route/route.py`, groups 05–85). Only plane pins are left unconnected (+3V3 39, GND 13), for fanout.
+
+**Buttons: pins and names follow the switches' positions (user-approved).**
+- **Port 1 (left grip):** the six lanes leave one corridor one by one, so U16.18–13 must run in that order: L1, START, then the top, right, left and bottom switch. U16.13–16 moved. The D-pad nets were transposed against the switches (SW4, the top switch, was BTN_LEFT), so they are now named by position: SW4 BTN_UP, SW3 BTN_RIGHT, SW5 BTN_DOWN, SW2 BTN_LEFT. One via per button, no crossing.
+- **Port 0 (face buttons):** renamed to the Nintendo layout; the copper did not change. SW8 (top) BTN_X, SW7 (right) BTN_A, SW9 (bottom) BTN_B, SW6 (left) BTN_Y.
+- **Keymap** (replaces step 3's): P00 R1, P01 VOL+, P02 VOL−, P03 A, P04 X, P05 SELECT, P06 B, P07 Y; P10 DOWN, P11 LEFT, P12 RIGHT, P13 UP, P14 START, P15 L1.
+
+**Other step-4 notes:**
+- **U9 GAIN_SLOT** stays on SYS (6 dB) and no part moved. The strap runs 0.25 mm between DOUT's stub and R14, in its own DRC area (`pins: U9 GAIN_SLOT strap`, from `route/footprint_keepouts.py`) that the DRU's 0.5 mm-pitch neck-down rule covers. SYS's 0.6 mm class width is for current, and the strap carries none.
+- **Charger status lines** (CHG_FAST, CHG_PGOOD, GAUGE_ALRT) run east on B along S2. The left grip's F lanes cross over them.
+- **I2C1 drops** to U8, FPC1 and U16 are drawn, not maze-routed: 7 vias, one SCL crossing.
+
+**Checks:**
+- ERC: 0 errors.
+- Board vs schematic: sync's second run is all zeros. KiCad's parity check: 387 cosmetic warnings, as before.
+- DRC: 4 errors, all at USBC1 (pre-existing). A full rebuild equals the group-by-group build.
+
+**Next:** port gb2's fanout, pours, planecheck, ipc_check, i2c_check, audit and silk; then the fab outputs.

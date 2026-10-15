@@ -566,16 +566,16 @@ U16,3,GND,gnd,A2 strap=0 for I2C base addr 0x20
 U16,4,BTN_R1,,"P00 input; R bumper SW16 (step 3: port 0 = right grip, in the order the strip lanes reach it)"
 U16,5,BTN_VOLUP,,P01 input; volume SW12
 U16,6,BTN_VOLDOWN,,P02 input; volume SW13
-U16,7,BTN_B,,P03 input; face SW7 (label nominal)
-U16,8,BTN_X,,P04 input; face SW8 (label nominal)
+U16,7,BTN_A,,P03 input; face SW7 = right = A (step 4: Nintendo layout, nets named by position)
+U16,8,BTN_X,,P04 input; face SW8 = top = X
 U16,9,BTN_SELECT,,P05 input; SW11
-U16,10,BTN_Y,,P06 input; face SW9 (label nominal)
-U16,11,BTN_A,,P07 input; face SW6 (A/B/X/Y label nominal)
+U16,10,BTN_B,,P06 input; face SW9 = bottom = B
+U16,11,BTN_Y,,P07 input; face SW6 = left = Y
 U16,12,GND,gnd,GND — ground family
-U16,13,BTN_UP,,"P10 input; D-pad SW2 (direction label nominal, set in gpio-keys keymap) (step 3: port 1 = left grip)"
-U16,14,BTN_DOWN,,P11 input; D-pad SW3 (label nominal)
-U16,15,BTN_LEFT,,P12 input; D-pad SW4 (label nominal)
-U16,16,BTN_RIGHT,,P13 input; D-pad SW5 (label nominal)
+U16,13,BTN_DOWN,,"P10 input; D-pad SW5 = bottom = DOWN (step 3: port 1 = left grip; step 4: pins in the grip's planar order, nets named by position)"
+U16,14,BTN_LEFT,,P11 input; D-pad SW2 = left = LEFT
+U16,15,BTN_RIGHT,,P12 input; D-pad SW3 = right = RIGHT
+U16,16,BTN_UP,,P13 input; D-pad SW4 = top = UP
 U16,17,BTN_START,,P14 input; SW10
 U16,18,BTN_L1,,P15 input; L bumper SW15
 U16,19,,,"P16 spare/NC expander input (14 buttons on 16 pins); PCA9555 POR internal ~100k pull-up holds it, leave open"
@@ -584,36 +584,36 @@ U16,21,GND,gnd,A0 strap=0 for I2C base addr 0x20
 U16,22,I2C1_SCL,,SCL — I2C1 bus
 U16,23,I2C1_SDA,,SDA — I2C1 bus
 U16,24,+3V3,pwr,VCC — rail: #85 i2c1 expander 3.3V logic
-SW2,1,BTN_UP,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW2,2,BTN_UP,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW2,1,BTN_LEFT,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW2,2,BTN_LEFT,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW2,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW2,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
-SW3,1,BTN_DOWN,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW3,2,BTN_DOWN,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW3,1,BTN_RIGHT,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW3,2,BTN_RIGHT,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW3,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW3,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
-SW4,1,BTN_LEFT,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW4,2,BTN_LEFT,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW4,1,BTN_UP,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW4,2,BTN_UP,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW4,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW4,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
-SW5,1,BTN_RIGHT,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW5,2,BTN_RIGHT,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW5,1,BTN_DOWN,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW5,2,BTN_DOWN,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW5,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW5,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
-SW6,1,BTN_A,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW6,2,BTN_A,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW6,1,BTN_Y,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW6,2,BTN_Y,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW6,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW6,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
-SW7,1,BTN_B,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW7,2,BTN_B,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW7,1,BTN_A,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW7,2,BTN_A,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW7,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW7,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
 SW8,1,BTN_X,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
 SW8,2,BTN_X,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW8,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW8,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
-SW9,1,BTN_Y,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
-SW9,2,BTN_Y,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
+SW9,1,BTN_B,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
+SW9,2,BTN_B,,[AUDIT/DS] pad2(B) common with pad1(A) = signal (FIX: was GND -> was shorting signal to GND)
 SW9,3,GND,gnd,[AUDIT/DS] pad3(C) common with pad4(D) = GND terminal (FIX: was signal)
 SW9,4,GND,gnd,"[AUDIT/DS] {3,4}=C,D internally common = GND terminal"
 SW10,1,BTN_START,,"[AUDIT/DS C318884] TS-1187A: {1,2}=A,B internally common = signal terminal"
