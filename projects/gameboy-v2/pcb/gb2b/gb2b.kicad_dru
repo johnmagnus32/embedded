@@ -1,0 +1,13 @@
+(version 1)
+
+# J7 (USB-C, TYPE-C-31-M-12): its front shell tabs are placed deliberately 0.3 mm from the board edge so the
+# receptacle reaches the shell opening (place.py USB_TAB_EDGE_GAP); the board-wide copper-to-edge rule is 0.5 mm.
+(rule "J7 USB-C shell tabs overhang toward the edge"
+  (condition "A.memberOfFootprint('J7')")
+  (constraint edge_clearance (min 0.29mm)))
+
+# J7's library footprint puts its two alignment-peg NPTH holes 0.235 mm from its own GND pads (A1B12/B1A12);
+# fine for fabrication (JLC hole-to-copper minimum 0.2 mm), so relax hole clearance inside that one footprint.
+(rule "J7 USB-C footprint pegs (library geometry)"
+  (condition "A.memberOfFootprint('J7') && B.memberOfFootprint('J7')")
+  (constraint hole_clearance (min 0.2mm)))

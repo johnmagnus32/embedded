@@ -1,0 +1,6 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "easyeda2kicad")(type "KiCad")(uri "${KIPRJMOD}/../../../../cad/symbols/easyeda2kicad.kicad_sym")(options "")(descr ""))
+	(lib (name "manual")(type "KiCad")(uri "${KIPRJMOD}/../../../../cad/symbols/manual.kicad_sym")(options "")(descr ""))
+	(lib (name "gb2b")(type "KiCad")(uri "${KIPRJMOD}/lib/gb2b.kicad_sym")(options "")(descr "gb2 rev B project-local parts"))
+)

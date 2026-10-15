@@ -1,0 +1,82 @@
+(footprint "GNDPad_3.2x1.75mm"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Exposed ENIG GND contact pad 3.2 x 1.75 mm on F.Cu (no part placed; plate tab MP4). Mask open, no paste. Add >= 4 GND vias to In1 beside it at layout. gb2 rev B, REVB_DESIGN.md 4.8 / 3.5")
+	(property "Reference" "REF**"
+		(at 0 -1.88 0)
+		(layer "F.SilkS")
+		(uuid "c064bdf0-e6de-435e-b55f-6ec4723a81c0")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(property "Value" "GNDPad_3.2x1.75mm"
+		(at 0 1.88 0)
+		(layer "F.Fab")
+		(uuid "a5760a13-7865-47e7-b780-32de4babb742")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "1658e613-227d-4aa5-ba79-c6a3b4277f37")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "deb9c47c-08b1-40ac-8cbc-57d0ca427108")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd exclude_from_pos_files exclude_from_bom)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_rect
+		(start -1.85 -1.125)
+		(end 1.85 1.125)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "fee45526-495f-455f-b778-51168e94c434")
+	)
+	(fp_rect
+		(start -1.6 -0.875)
+		(end 1.6 0.875)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "aa42737f-00c4-4384-aa44-9f1d818598b5")
+	)
+	(pad "1" smd rect
+		(at 0 0)
+		(size 3.2 1.75)
+		(layers "F.Cu" "F.Mask")
+		(uuid "cddaa46b-92e3-4f30-88d0-a573b00136ab")
+	)
+	(embedded_fonts no)
+)

@@ -1,0 +1,5 @@
+__pycache__/
+*-erc.json
+gb2b.kicad_prl
+# 3D models: the .wrl files are committed; the large .step files are re-fetchable with easyeda2kicad
+lib/gb2b.3dshapes/*.step

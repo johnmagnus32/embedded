@@ -1,0 +1,1050 @@
+{
+ "T": {
+  "title": "Variant T - panel taped flat to the board (FPC through a board opening, J3 on the back)",
+  "cell": [
+   65.6,
+   40.0,
+   104.1,
+   102.0
+  ],
+  "bay": [
+   62.8,
+   37.0,
+   120.7,
+   108.0
+  ],
+  "opening": [
+   118.25,
+   47.55,
+   133.05,
+   94.45
+  ],
+  "zones": [
+   {
+    "side": "F",
+    "cat": "POWER",
+    "name": "F-PWR  power entry: USB-C, charger,\nQ1, buck-boost, LCD boost (rev A, kept)",
+    "box": [
+     60.5,
+     32.6,
+     112.9,
+     45.4
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "HMI",
+    "name": "F-HMI-L  D-pad, Start/Select, L,\nexpander U11, haptics U8 + LRA",
+    "box": [
+     22.6,
+     33.5,
+     62.9,
+     106.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "AUDIO",
+    "name": "F-AUD  amp U6, speaker, J5\n+ A/B, Vol, R keys",
+    "box": [
+     136.5,
+     34.5,
+     167.2,
+     104.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "F-NOR/IMU",
+    "box": [
+     113.2,
+     33.5,
+     129.0,
+     43.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "RF",
+    "name": "B-RF  BT830 corner",
+    "box": [
+     22.6,
+     36.0,
+     38.5,
+     62.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "CORE",
+    "name": "B-CORE-R  MCU hub",
+    "box": [
+     134.5,
+     36.0,
+     160.0,
+     59.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "CORE",
+    "name": "B-CORE-T  FPGA + LDO",
+    "box": [
+     113.0,
+     32.8,
+     133.8,
+     47.2
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DISPLAY",
+    "name": "B-DISP  J3 + backlight",
+    "box": [
+     104.7,
+     46.8,
+     118.2,
+     86.5
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DEBUG",
+    "name": "B-BAY  test pads (door open)",
+    "box": [
+     66.0,
+     102.7,
+     118.0,
+     107.3
+    ]
+   }
+  ],
+  "blocks": [
+   {
+    "side": "B",
+    "cat": "CORE",
+    "name": "MCU",
+    "members": "U1 + decap ring C1-C10, FB1, R1, Y1/C11/C12/R3, R13/R14 (I2C pull-ups), R26/R27/C45 (BAT sense)",
+    "box": [
+     136.0,
+     38.5,
+     158.0,
+     58.5
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "CORE",
+    "name": "FPGA",
+    "members": "U2 + ring C13-C20, FB2, R4-R7, D2, R29 (WR 33R at the pin), R38",
+    "box": [
+     113.5,
+     33.2,
+     128.5,
+     47.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "CORE",
+    "name": "LDO",
+    "members": "U3 + C21-C23 (+1V2), TP7",
+    "box": [
+     129.0,
+     39.0,
+     133.4,
+     46.8
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "NOR",
+    "members": "U4 W25Q128 (SOIC-8 ok, 2.07 < 4.4) + C24, R8",
+    "box": [
+     120.4,
+     33.8,
+     128.6,
+     42.6
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "IMU",
+    "members": "U7 + C31, C32, R12 (13.8 mm from the screw)",
+    "box": [
+     113.4,
+     35.0,
+     119.4,
+     42.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "BATTERY",
+    "name": "J8",
+    "members": "J8 PH-2 (5.5 tall, in the bay) directly behind U9: BAT trunk ~5 mm",
+    "box": [
+     104.9,
+     37.3,
+     112.9,
+     45.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DISPLAY",
+    "name": "BL",
+    "members": "backlight: R32-R35, Q2, R36, R37, C25, C26 by J3 pins 1-5",
+    "box": [
+     104.9,
+     47.0,
+     112.2,
+     55.2
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DISPLAY",
+    "name": "J3",
+    "members": "AFC07-S50ECA-00 top contact (fixed by the FPC joggle)",
+    "box": [
+     105.4,
+     55.66,
+     112.75,
+     86.34
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DISPLAY",
+    "name": "CAPS",
+    "members": "C52 10u / C53 100n for VCI/VDDI (pins 40-42)",
+    "box": [
+     104.9,
+     86.7,
+     110.6,
+     88.8
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "BATTERY",
+    "name": "NTC",
+    "members": "R20 at the cell edge, 56 mm from U9",
+    "box": [
+     104.7,
+     95.0,
+     106.5,
+     96.3
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DEBUG",
+    "name": "SWD",
+    "members": "Tag-Connect TC2030-NL + TP8 BOOT0, TP11/12 console, next to the MCU",
+    "box": [
+     137.5,
+     59.0,
+     142.0,
+     63.4
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DEBUG",
+    "name": "TP",
+    "members": "rail pads VBUS BAT SYS +3V3 +5V_LCD +1V2 GND x2, 2.54 pitch",
+    "box": [
+     70.0,
+     103.0,
+     92.0,
+     106.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "POWER",
+    "name": "ESD",
+    "members": "VBUS TVS + USB D+/D- ESD at J7 (new)",
+    "box": [
+     88.0,
+     41.5,
+     92.5,
+     44.6
+    ]
+   }
+  ],
+  "keepouts": [
+   {
+    "side": "F",
+    "kind": "zero",
+    "label": "under panel: no parts, masked copper only",
+    "bounds": [
+     62.95,
+     45.6,
+     133.85,
+     96.4
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "FPC opening (through) + 0.5",
+    "bounds": [
+     117.75,
+     47.05,
+     133.55,
+     94.95
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "cell",
+    "label": "cell: no parts",
+    "bounds": [
+     65.1,
+     39.5,
+     104.6,
+     102.5
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "zero",
+    "label": "FPC sweep",
+    "bounds": [
+     111.48,
+     57.25,
+     118.25,
+     84.75
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "rf",
+    "label": "BT830 antenna: no copper, any layer",
+    "bounds": [
+     25.2,
+     38.6,
+     34.9,
+     52.4
+    ]
+   },
+   {
+    "side": "F",
+    "kind": "zero",
+    "label": "D-pad pivot",
+    "bounds": [
+     34.65,
+     58.79,
+     45.25,
+     69.39
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "screw r3",
+    "bounds": [
+     54.39,
+     32.47,
+     60.39,
+     38.47
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "screw r3",
+    "bounds": [
+     130.19,
+     32.45,
+     136.19,
+     38.45
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "screw r3",
+    "bounds": [
+     26.24,
+     88.91,
+     32.24,
+     94.91
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     37.45,
+     53.59,
+     42.45,
+     58.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     37.45,
+     69.59,
+     42.45,
+     74.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     29.45,
+     61.59,
+     34.45,
+     66.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     45.45,
+     61.59,
+     50.45,
+     66.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     46.99,
+     81.32,
+     51.99,
+     86.32
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     46.94,
+     89.32,
+     51.94,
+     94.32
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     154.38,
+     59.42,
+     159.38,
+     64.42
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     141.44,
+     63.75,
+     146.44,
+     68.75
+    ]
+   }
+  ],
+  "routes": [
+   {
+    "kind": "bus",
+    "label": "Display bus x13 (J3 -> U2): L1 under the panel, 2 vias/net",
+    "est_mm": 41.3,
+    "target_mm": 45
+   },
+   {
+    "kind": "fast",
+    "label": "PPU SPI x5 (U1 -> U2)",
+    "est_mm": 18.6,
+    "target_mm": 20
+   },
+   {
+    "kind": "fast",
+    "label": "SPI3 x4 (U1 -> NOR on F)",
+    "est_mm": 17.9,
+    "target_mm": 20
+   },
+   {
+    "kind": "fast",
+    "label": "USB FS D+/D- (J7 -> U1 PA11/12), 90R pair",
+    "est_mm": 53.7,
+    "target_mm": 55
+   },
+   {
+    "kind": "slow",
+    "label": "BT UART x4 + BT_EN (U1 -> U12)",
+    "est_mm": 107.3,
+    "target_mm": 115
+   },
+   {
+    "kind": "slow",
+    "label": "I2C1 (U1 -> U7 -> U11 -> U8)",
+    "est_mm": 128.1,
+    "target_mm": 135
+   },
+   {
+    "kind": "pwr",
+    "label": "BAT 1.5 A (J8 -> U9): via array straight up",
+    "est_mm": 2.1,
+    "target_mm": 5
+   },
+   {
+    "kind": "pwr",
+    "label": "SYS 1 A (Q1 -> amp U6)",
+    "est_mm": 51.0,
+    "target_mm": 60
+   },
+   {
+    "kind": "pwr",
+    "label": "+5V_LCD 80 mA (U5 -> backlight)",
+    "est_mm": 44.9,
+    "target_mm": 50
+   },
+   {
+    "kind": "slow",
+    "label": "Right-grip keys + I2S (local)",
+    "est_mm": 13.6,
+    "target_mm": 25
+   }
+  ],
+  "rf_mm": {
+   "panel frame": 28.4,
+   "cell": 30.7,
+   "nearest shell screw": 22.7,
+   "speaker (magnet/frame)": 107.6,
+   "LRA": 25.6,
+   "MCU": 101.1,
+   "FPGA": 78.6,
+   "MT3608 U5 (switch node)": 34.9,
+   "TPS63021 U10/L2": 47.1
+  },
+  "issues": []
+ },
+ "F": {
+  "title": "Variant F - panel floating 2.3 mm above the board (core under the panel, J3 on the front, no opening)",
+  "cell": [
+   76.0,
+   40.0,
+   114.5,
+   102.0
+  ],
+  "bay": [
+   62.8,
+   37.0,
+   123.8,
+   108.0
+  ],
+  "opening": null,
+  "zones": [
+   {
+    "side": "F",
+    "cat": "POWER",
+    "name": "F-PWR  power entry (rev A, kept)",
+    "box": [
+     60.5,
+     32.6,
+     112.9,
+     45.4
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "HMI",
+    "name": "F-HMI-L  D-pad, Start/Select, L,\nexpander U11, haptics U8 + LRA",
+    "box": [
+     22.6,
+     33.5,
+     62.9,
+     106.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "AUDIO",
+    "name": "F-AUD  amp U6, speaker, J5\n+ A/B, Vol, R keys",
+    "box": [
+     136.5,
+     34.5,
+     167.2,
+     104.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "F-CORE (under panel, <= 2.0 mm)",
+    "box": [
+     64.0,
+     46.5,
+     104.6,
+     83.5
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "DISPLAY",
+    "name": "",
+    "box": [
+     96.5,
+     50.0,
+     111.7,
+     88.9
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "RF",
+    "name": "B-RF  BT830 corner",
+    "box": [
+     22.6,
+     36.0,
+     38.5,
+     62.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DEBUG",
+    "name": "B-BAY-L  SWD + pads\n(door open)",
+    "box": [
+     63.0,
+     46.0,
+     75.4,
+     74.0
+    ]
+   }
+  ],
+  "blocks": [
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "MCU",
+    "members": "U1 + ring, Y1/C11/C12/R3, FB1, R1, R13/R14, R26/R27/C45",
+    "box": [
+     74.0,
+     47.0,
+     96.0,
+     67.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "FPGA",
+    "members": "U2 + ring, FB2, R4-R7, D2, R29, R38; bus side faces J3",
+    "box": [
+     88.0,
+     68.5,
+     102.5,
+     82.3
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "LDO",
+    "members": "U3 + C21-C23, TP7; +1V2 island on L3 under U2",
+    "box": [
+     82.5,
+     70.0,
+     87.0,
+     77.7
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "NOR",
+    "members": "U4 as WSON-8 6x5 (0.80 max) + C24, R8",
+    "box": [
+     65.5,
+     69.0,
+     73.5,
+     77.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "CORE",
+    "name": "IMU",
+    "members": "U7 + C31, C32, R12 at the board centre (no posts/screws near)",
+    "box": [
+     75.0,
+     70.0,
+     81.0,
+     76.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "DISPLAY",
+    "name": "BL",
+    "members": "backlight R32-R37, Q2, C25, C26 by J3 pins 1-5",
+    "box": [
+     97.0,
+     50.5,
+     104.3,
+     57.9
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "DISPLAY",
+    "name": "J3",
+    "members": "bottom-contact 50p 0.5 mm (C262574) or dual-contact AFC24 (C262687), <= 2.0 tall",
+    "box": [
+     104.65,
+     55.66,
+     111.65,
+     86.34
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "DISPLAY",
+    "name": "CAPS",
+    "members": "C52/C53 at pins 40-42",
+    "box": [
+     102.8,
+     78.0,
+     104.5,
+     82.3
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "BATTERY",
+    "name": "J8",
+    "members": "J8 PH-2 beside the cell top-right: BAT trunk ~14 mm",
+    "box": [
+     115.5,
+     37.3,
+     123.5,
+     45.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "BATTERY",
+    "name": "NTC",
+    "members": "R20 at the cell edge",
+    "box": [
+     115.2,
+     95.0,
+     117.0,
+     96.3
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DEBUG",
+    "name": "SWD",
+    "members": "TC2030-NL behind the MCU",
+    "box": [
+     64.0,
+     64.0,
+     72.0,
+     69.0
+    ]
+   },
+   {
+    "side": "B",
+    "cat": "DEBUG",
+    "name": "TP",
+    "members": "rail + console pads (2 x 6 @ 2.54)",
+    "box": [
+     64.0,
+     48.0,
+     74.0,
+     62.0
+    ]
+   },
+   {
+    "side": "F",
+    "cat": "POWER",
+    "name": "ESD",
+    "members": "VBUS TVS + USB D+/D- ESD at J7 (new)",
+    "box": [
+     88.0,
+     41.5,
+     92.5,
+     44.6
+    ]
+   }
+  ],
+  "keepouts": [
+   {
+    "side": "F",
+    "kind": "low",
+    "label": "under panel: parts <= 2.0 mm",
+    "bounds": [
+     62.95,
+     45.6,
+     133.85,
+     96.4
+    ]
+   },
+   {
+    "side": "F",
+    "kind": "zero",
+    "label": "folded FPC: no parts",
+    "bounds": [
+     111.65,
+     48.05,
+     133.55,
+     93.95
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "cell",
+    "label": "cell: no parts",
+    "bounds": [
+     75.5,
+     39.5,
+     115.0,
+     102.5
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "rf",
+    "label": "BT830 antenna: no copper, any layer",
+    "bounds": [
+     25.2,
+     38.6,
+     34.9,
+     52.4
+    ]
+   },
+   {
+    "side": "F",
+    "kind": "zero",
+    "label": "D-pad pivot",
+    "bounds": [
+     34.65,
+     58.79,
+     45.25,
+     69.39
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "screw r3",
+    "bounds": [
+     54.39,
+     32.47,
+     60.39,
+     38.47
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "screw r3",
+    "bounds": [
+     130.19,
+     32.45,
+     136.19,
+     38.45
+    ]
+   },
+   {
+    "side": "A",
+    "kind": "hole",
+    "label": "screw r3",
+    "bounds": [
+     26.24,
+     88.91,
+     32.24,
+     94.91
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     37.45,
+     53.59,
+     42.45,
+     58.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     37.45,
+     69.59,
+     42.45,
+     74.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     29.45,
+     61.59,
+     34.45,
+     66.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     45.45,
+     61.59,
+     50.45,
+     66.59
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     46.99,
+     81.32,
+     51.99,
+     86.32
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     46.94,
+     89.32,
+     51.94,
+     94.32
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     154.38,
+     59.42,
+     159.38,
+     64.42
+    ]
+   },
+   {
+    "side": "B",
+    "kind": "post",
+    "label": "key post",
+    "bounds": [
+     141.44,
+     63.75,
+     146.44,
+     68.75
+    ]
+   }
+  ],
+  "routes": [
+   {
+    "kind": "bus",
+    "label": "Display bus x13 (J3 -> U2): L1, one layer, no vias",
+    "est_mm": 11.2,
+    "target_mm": 12
+   },
+   {
+    "kind": "fast",
+    "label": "PPU SPI x5 (U1 -> U2)",
+    "est_mm": 15.8,
+    "target_mm": 20
+   },
+   {
+    "kind": "fast",
+    "label": "SPI3 x4 (U1 -> NOR)",
+    "est_mm": 16.1,
+    "target_mm": 20
+   },
+   {
+    "kind": "fast",
+    "label": "USB FS D+/D- (J7 -> U1), 90R pair",
+    "est_mm": 19.0,
+    "target_mm": 20
+   },
+   {
+    "kind": "slow",
+    "label": "BT UART x4 + BT_EN (U1 -> U12)",
+    "est_mm": 43.1,
+    "target_mm": 45
+   },
+   {
+    "kind": "slow",
+    "label": "I2C1 (U1 -> U7, U11, U8)",
+    "est_mm": 69.4,
+    "target_mm": 80
+   },
+   {
+    "kind": "pwr",
+    "label": "BAT 1.5 A (J8 -> U9)",
+    "est_mm": 12.4,
+    "target_mm": 15
+   },
+   {
+    "kind": "pwr",
+    "label": "SYS 1 A (Q1 -> amp U6)",
+    "est_mm": 51.0,
+    "target_mm": 60
+   },
+   {
+    "kind": "pwr",
+    "label": "+5V_LCD 80 mA (U5 -> backlight)",
+    "est_mm": 38.4,
+    "target_mm": 45
+   },
+   {
+    "kind": "slow",
+    "label": "Right-grip keys + I2S (U1 -> right grip)",
+    "est_mm": 63.8,
+    "target_mm": 70
+   }
+  ],
+  "rf_mm": {
+   "panel frame": 28.4,
+   "cell": 41.1,
+   "nearest shell screw": 22.7,
+   "speaker (magnet/frame)": 107.6,
+   "LRA": 25.6,
+   "MCU": 39.1,
+   "FPGA": 55.5,
+   "MT3608 U5 (switch node)": 34.9,
+   "TPS63021 U10/L2": 47.1
+  },
+  "issues": []
+ }
+}

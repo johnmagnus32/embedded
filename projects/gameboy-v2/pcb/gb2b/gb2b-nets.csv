@@ -1,0 +1,631 @@
+refdes,pin,net,kind,note
+U1,1,+3V3,pwr,VBAT — no coin cell: tie to VDD (#1)
+U1,2,,,PC13
+U1,3,,,PC14-OSC32_IN
+U1,4,,,PC15_OSC32_OUT
+U1,5,HSE_IN,,"PH0_OSC_IN — OSC_IN, 8 MHz crystal (#74)"
+U1,6,HSE_OUT_MCU,,PH1_OSC_OUT — OSC_OUT via 0 Ω series R (#77)
+U1,7,NRST,,NRST — 100 nF filter + SWD header J1 pin 5; internal pull-up
+U1,8,BAT_SENSE,,PC0 — ADC1_IN10 ← BAT/2 divider (#51) (moved from PA0 2026-10-10: PA0 is now USART2_CTS)
+U1,9,CHG_STAT,,PC1 — EXTI1 ← BQ24073 /CHG (+10k pull-up) (swapped with /PGOOD 2026-10-10 so both route under J7 without crossing)
+U1,10,CHG_PGOOD,,PC2 — EXTI2 ← BQ24073 /PGOOD (+10k pull-up)
+U1,11,BB_PSYNC,,"PC3 — push-pull → TPS63021 PS/SYNC: high = forced PWM; R25 100k pull-up = forced PWM through reset and in the ROM bootloader (rev B; low = power-save, firmware only) (swapped with BT_EN 2026-10-11: the buck-boost is north of the MCU)"
+U1,12,GND,gnd,VSSA/VREF-
+U1,13,+3V3A,pwr,VDDA/VREF+ — after ferrite FB (#5)
+U1,14,USART2_CTS,,PA0 — USART2_CTS (AF7) ← BT830 UART_RTS#
+U1,15,USART2_RTS,,PA1 — USART2_RTS (AF7) → BT830 UART_CTS#
+U1,16,USART2_TX,,PA2 — USART2_TX (AF7) → BT830 UART_RX (BT HCI moved here from USART1 2026-10-10: these pins face the module)
+U1,17,USART2_RX,,PA3 — USART2_RX (AF7) ← BT830 UART_TX
+U1,18,GND,gnd,VSS
+U1,19,+3V3,pwr,VDD
+U1,20,FPGA_SS_B,,"PA4 — SPI1 select → iCE40 SPI_SS (pin 16): drive LOW through CRESET release = slave-config strap; in user mode the PPU's command-bus select, ACTIVE-HIGH so it idles low with R6 (one SPI1 bus for config + runtime, 2026-10-12)"
+U1,21,PPU_SPI_SCK,,"PA5 — SPI1 SCK → iCE40 SPI_SCK (pin 15): bitstream at boot, PPU commands after (2026-10-12)"
+U1,22,,,PA6 — SPI1 MISO unused — PPU bus is write-only
+U1,23,PPU_SPI_MOSI,,"PA7 — SPI1 MOSI → iCE40 SPI_SI (pin 17): bitstream at boot, PPU commands after (2026-10-12)"
+U1,24,,,PC4
+U1,25,,,PC5
+U1,26,FPGA_CDONE,,"PB0 — iCE40 CDONE (poll) (rev B: moved from PB2, which is the BOOT1 strap)"
+U1,27,FPGA_CRESET_B,,PB1 — iCE40 CRESET_B
+U1,28,BOOT1,,"PB2 — BOOT1 strap, R39 10k pull-down (rev B: was FPGA_CDONE, high once the FPGA is configured, so BOOT0 + NRST booted SRAM)"
+U1,29,,,PB10 — spare (I2C2_SCL free again; IMU INT1 moved to PB5 2026-10-10)
+U1,30,VCAP1,,VCAP_1 — 4.7 µF to GND
+U1,31,GND,gnd,VSS
+U1,32,+3V3,pwr,VDD
+U1,33,I2S2_WS,,PB12 — I2S2 WS → MAX98357A LRCLK
+U1,34,I2S2_CK,,PB13 — I2S2 CK → MAX98357A BCLK
+U1,35,BTN_B,,PB14 — EXTI14 ← B (internal pull-up)
+U1,36,I2S2_SD,,PB15 — I2S2 SD → MAX98357A DIN
+U1,37,LCD_LITE,,PC6 — TIM3_CH1 (AF2) push-pull PWM → R36 → Q2 gate (high = backlight on); R37 holds it off through reset (rev B)
+U1,38,BT_EN,,"PC7 — push-pull → BT830 VREG_EN_RST# (boot low, then high) (swapped with BB_PSYNC 2026-10-11: leaves under the MCU into the west channel)"
+U1,39,,,PC8
+U1,40,MCO2,,PC9 — MCO2 (HSE/SYSCLK out) → test point TP9 for checking the crystal
+U1,41,,,PA8 — kept free: I2C3_SCL escape bus
+U1,42,USART1_TX,,PA9 — USART1_TX (AF7) console → test pad TP11 (the J2 header was dropped 2026-10-12)
+U1,43,USART1_RX,,PA10 — USART1_RX (AF7) console ← test point TP12
+U1,44,USB_DN,,PA11 — USB_FS_DM (OTG FS device; ROM DFU) (rev B)
+U1,45,USB_DP,,PA12 — USB_FS_DP (rev B)
+U1,46,SWDIO,,PA13 — SWD → J1 pin 2 (rev B: right-angle header in the battery-door column)
+U1,47,GND,gnd,VSS
+U1,48,+3V3,pwr,VDD
+U1,49,SWCLK,,PA14 — SWD → J1 pin 3
+U1,50,BTN_VOLDOWN,,PA15 — EXTI15 ← Vol− (internal pull-up)
+U1,51,SPI3_SCK,,PC10 — SPI3 SCK → W25Q128 (NOR only since the FPGA moved to SPI1)
+U1,52,SPI3_MISO,,PC11 — SPI3 MISO ← W25Q128 DO
+U1,53,SPI3_MOSI,,PC12 — SPI3 MOSI → W25Q128 DI
+U1,54,NOR_CS,,"PD2 — W25Q128 /CS (+10k pull-up); beside SPI3 MOSI/MISO/SCK (pins 53/52/51), same side as the NOR"
+U1,55,BTN_A,,PB3 — EXTI3 ← A (internal pull-up; costs SWO trace output)
+U1,56,BTN_VOLUP,,PB4 — EXTI4 ← Vol+ (internal pull-up; NJTRST pull-up at reset is harmless). I2C3 escape now = PA8 + PC9
+U1,57,IMU_INT1,,"PB5 — EXTI5 ← LSM6DSOX INT1 (input, no pull at boot); right side, facing the IMU"
+U1,58,,,"PB6 — spare (FPGA_SS_B moved to PA4, 2026-10-12)"
+U1,59,I2C1_SDA,,PB7 — I2C1_SDA (AF4; moved from PB9 2026-10-10 so SCL/SDA/INT1 leave in the order they reach the IMU)
+U1,60,BOOT0,,BOOT0 — 10k pull-down: boot from main flash
+U1,61,I2C1_SCL,,PB8 — I2C1_SCL (AF4)
+U1,62,BTN_R,,PB9 — EXTI9 ← R shoulder (internal pull-up); right-grip buttons wired direct 2026-10-10 (the left-grip corridor past J3 is full)
+U1,63,GND,gnd,VSS
+U1,64,+3V3,pwr,VDD
+C1,1,+3V3,pwr,1
+C1,2,GND,gnd,2
+C2,1,+3V3,pwr,1
+C2,2,GND,gnd,2
+C3,1,+3V3,pwr,1
+C3,2,GND,gnd,2
+C4,1,+3V3,pwr,1
+C4,2,GND,gnd,2
+C5,1,+3V3,pwr,1
+C5,2,GND,gnd,2
+C6,1,NRST,,1
+C6,2,GND,gnd,2
+C7,1,VCAP1,,1
+C7,2,GND,gnd,2
+C8,1,+3V3,pwr,1
+C8,2,GND,gnd,2
+FB1,1,+3V3,pwr,1
+FB1,2,+3V3A,pwr,2
+C9,1,+3V3A,pwr,1
+C9,2,GND,gnd,2
+C10,1,+3V3A,pwr,1
+C10,2,GND,gnd,2
+R1,1,BOOT0,,1
+R1,2,GND,gnd,2
+R2,1,+3V3,pwr,1
+R2,2,PWR_LED_A,,2
+D1,1,GND,gnd,- — cathode
+D1,2,PWR_LED_A,,+ — anode
+Y1,1,HSE_IN,,OSC1
+Y1,2,GND,gnd,NC — not connected inside — grounded as guard
+Y1,3,HSE_OUT,,OSC2
+Y1,4,GND,gnd,NC — not connected inside — grounded as guard
+C11,1,HSE_IN,,1
+C11,2,GND,gnd,2
+C12,1,HSE_OUT,,1
+C12,2,GND,gnd,2
+R3,1,HSE_OUT_MCU,,1 — PH1 side
+R3,2,HSE_OUT,,2 — crystal side
+U2,1,+3V3,pwr,VCCIO_2
+U2,2,,,IOB_6a — spare
+U2,3,,,IOB_9b — spare
+U2,4,,,IOB_8a — spare
+U2,5,+1V2,pwr,VCC — core 1.2 V from AP2127K
+U2,6,,,IOB_13b — spare
+U2,7,FPGA_CDONE,,CDONE
+U2,8,FPGA_CRESET_B,,creset_b
+U2,9,,,IOB_16a — spare
+U2,10,,,"IOB_18a — spare (the command bus moved onto the config pins, 2026-10-12)"
+U2,11,,,IOB_20a — spare (2026-10-12)
+U2,12,,,IOB_22a — spare (2026-10-12)
+U2,13,,,IOB_24a — spare
+U2,14,,,"IOB_32a_SPI_SO — not connected (slave config is write-only; was SPI3 MISO, 2026-10-12)"
+U2,15,PPU_SPI_SCK,,IOB_34a_SPI_SCK — config clock at boot; the PPU command-bus SCK in user mode (2026-10-12)
+U2,16,FPGA_SS_B,,"IOB_35b_SPI_SS — config select (low = slave mode at CRESET release); the PPU command-bus select in user mode, active-high (2026-10-12)"
+U2,17,PPU_SPI_MOSI,,IOB_33b_SPI_SI — config data at boot; the PPU command-bus MOSI in user mode (2026-10-12)
+U2,18,,,IOB_31b — spare (PPU CS moved to pin 12)
+U2,19,,,IOB_29b — spare
+U2,20,,,IOB_25b_G3 — spare (PPU SCK moved to pin 11)
+U2,21,,,IOB_23b — spare (PPU MOSI moved to pin 10)
+U2,22,+3V3,pwr,SPI_Vccio1
+U2,23,LCD_RST,,"IOT_37a — panel RESET, push-pull + R38 pull-up (rev B: moved from 36 so the J3 fan-out has no crossings)"
+U2,24,+3V3,pwr,VPP_2V5
+U2,25,LCD_D7,,IOT_36b — data pins reversed vs J3 order (U2 sits rot 180 facing J3)
+U2,26,LCD_D6,,IOT_39a
+U2,27,LCD_D5,,IOT_38b
+U2,28,LCD_D4,,IOT_41a
+U2,29,+1V2_PLL,pwr,VCCPLL — via ferrite (#5)
+U2,30,+1V2,pwr,VCC
+U2,31,LCD_D3,,IOT_42b
+U2,32,LCD_D2,,IOT_43a
+U2,33,+3V3,pwr,VCCIO_0
+U2,34,LCD_D1,,IOT_44b
+U2,35,LCD_D0,,IOT_46b_G0 — (D0 moved from pin 36 2026-10-10 so LCD_RST can take 36)
+U2,36,,,IOT_48b — spare (rev B: LCD_RST moved to 23)
+U2,37,LCD_WR_FPGA,,IOT_45a_G1 — → 33 Ω series R (source termination) → LCD_WR (moved from 38 2026-10-10)
+U2,38,,,IOT_50b — spare
+U2,39,,,RGB0 — spare
+U2,40,,,RGB1 — spare
+U2,41,,,RGB2 — spare
+U2,42,LCD_DC,,IOT_51a
+U2,43,LCD_CS,,IOT_49a
+U2,44,LCD_TE,,IOB_3b_G6 — ← panel TE (rev B)
+U2,45,,,IOB_5b — spare
+U2,46,,,IOB_0a — spare
+U2,47,,,IOB_2a — spare
+U2,48,,,IOB_4a — spare
+U2,49,GND,gnd,EP — exposed pad = only ground
+C13,1,+1V2,pwr,1
+C13,2,GND,gnd,2
+C14,1,+1V2,pwr,1
+C14,2,GND,gnd,2
+C15,1,+3V3,pwr,1
+C15,2,GND,gnd,2
+C16,1,+3V3,pwr,1
+C16,2,GND,gnd,2
+C17,1,+3V3,pwr,1
+C17,2,GND,gnd,2
+C18,1,+3V3,pwr,1
+C18,2,GND,gnd,2
+C19,1,+1V2_PLL,pwr,1
+C19,2,GND,gnd,2
+C20,1,+1V2_PLL,pwr,1
+C20,2,GND,gnd,2
+R29,1,LCD_WR_FPGA,,1 — iCE40 pin 37 side
+R29,2,LCD_WR,,2 — J3 pin 36 (WRX) side
+FB2,1,+1V2,pwr,1
+FB2,2,+1V2_PLL,pwr,2
+R4,1,FPGA_CRESET_B,,1
+R4,2,+3V3,pwr,2
+R5,1,FPGA_CDONE,,1
+R5,2,+3V3,pwr,2
+R6,1,FPGA_SS_B,,1
+R6,2,GND,gnd,2
+R7,1,+3V3,pwr,1
+R7,2,CDONE_LED_A,,2
+D2,1,FPGA_CDONE,,- — cathode on CDONE
+D2,2,CDONE_LED_A,,+ — anode via 510 Ω to +3V3
+U3,1,+3V3,pwr,VIN
+U3,2,GND,gnd,GND
+U3,3,+3V3,pwr,~{SHUTDOWN} — EN is active-high with 3 MΩ pull-down — MUST tie to VIN
+U3,4,,,NC/ADJ — NC on the fixed version
+U3,5,+1V2,pwr,VOUT
+C21,1,+3V3,pwr,1
+C21,2,GND,gnd,2
+C22,1,+1V2,pwr,1
+C22,2,GND,gnd,2
+C23,1,+1V2,pwr,1
+C23,2,GND,gnd,2
+U4,1,NOR_CS,,~{CS}
+U4,2,SPI3_MISO,,DO
+U4,3,+3V3,pwr,IO2 — /WP hard-tied high (QE=1 part)
+U4,4,GND,gnd,GND
+U4,5,SPI3_MOSI,,DI
+U4,6,SPI3_SCK,,CLK
+U4,7,+3V3,pwr,IO3 — /HOLD hard-tied high
+U4,8,+3V3,pwr,VCC
+C24,1,+3V3,pwr,1
+C24,2,GND,gnd,2
+R8,1,NOR_CS,,1
+R8,2,+3V3,pwr,2
+J1,1,+3V3,pwr,1
+J1,2,SWDIO,,2
+J1,3,SWCLK,,3
+J1,4,GND,gnd,4
+J1,5,NRST,,5
+J3,1,LCD_LEDK,,LEDK — common cathode of the 4 backlight LEDs → Q2 drain
+J3,2,LCD_LEDA1,,LEDA1 ← R32 110 Ω ← +5V_LCD
+J3,3,LCD_LEDA2,,LEDA2 ← R33
+J3,4,LCD_LEDA3,,LEDA3 ← R34
+J3,5,LCD_LEDA4,,LEDA4 ← R35
+J3,6,GND,gnd,IM0 — IM[3:0] = 0000: 8080 MCU 8-bit bus I (p.10)
+J3,7,GND,gnd,IM1
+J3,8,GND,gnd,IM2
+J3,9,GND,gnd,IM3
+J3,10,LCD_RST,,RESET ← U2.23; R38 10k pull-up to +3V3
+J3,11,GND,gnd,VSYNC — RGB interface unused: fix to VSS
+J3,12,GND,gnd,HSYNC — unused: VSS
+J3,13,GND,gnd,DOTCLK — unused: VSS
+J3,14,GND,gnd,DE — unused: VSS
+J3,15,GND,gnd,DB17 — unused in 8-bit mode: fix to VSS
+J3,16,GND,gnd,DB16 — unused in 8-bit mode: fix to VSS
+J3,17,GND,gnd,DB15 — unused in 8-bit mode: fix to VSS
+J3,18,GND,gnd,DB14 — unused in 8-bit mode: fix to VSS
+J3,19,GND,gnd,DB13 — unused in 8-bit mode: fix to VSS
+J3,20,GND,gnd,DB12 — unused in 8-bit mode: fix to VSS
+J3,21,GND,gnd,DB11 — unused in 8-bit mode: fix to VSS
+J3,22,GND,gnd,DB10 — unused in 8-bit mode: fix to VSS
+J3,23,GND,gnd,DB9 — unused in 8-bit mode: fix to VSS
+J3,24,GND,gnd,DB8 — unused in 8-bit mode: fix to VSS
+J3,25,LCD_D7,,DB7
+J3,26,LCD_D6,,DB6
+J3,27,LCD_D5,,DB5
+J3,28,LCD_D4,,DB4
+J3,29,LCD_D3,,DB3
+J3,30,LCD_D2,,DB2
+J3,31,LCD_D1,,DB1
+J3,32,LCD_D0,,DB0
+J3,33,,,SDO — not used: left open (ILI9341 §4)
+J3,34,GND,gnd,SDI — not used: fix to VSS
+J3,35,+3V3,pwr,RD — fix to VDDI (write-only bus)
+J3,36,LCD_WR,,WRX ← R29 33 Ω ← U2.37
+J3,37,LCD_DC,,D/CX ← U2.42
+J3,38,LCD_CS,,CSX ← U2.43
+J3,39,LCD_TE,,TE → U2.44
+J3,40,+3V3,pwr,VDDI
+J3,41,+3V3,pwr,VDDI
+J3,42,+3V3,pwr,VCI
+J3,43,GND,gnd,GND
+J3,44,,,X+ — NC (no-touch panel; p.18 'NC terminal should be open')
+J3,45,,,Y+ — NC
+J3,46,,,X- — NC
+J3,47,,,Y- — NC
+J3,48,GND,gnd,GND
+J3,49,GND,gnd,GND
+J3,50,GND,gnd,GND
+J3,51,GND,gnd,fitting nail
+J3,52,GND,gnd,fitting nail
+C25,1,+5V_LCD,pwr,1
+C25,2,GND,gnd,2
+C26,1,+5V_LCD,pwr,1
+C26,2,GND,gnd,2
+R38,1,LCD_RST,,1 — panel RESET pull-up (holds RESX high while the FPGA configures)
+R38,2,+3V3,pwr,2
+R39,1,BOOT1,,1 — PB2 (BOOT1)
+R39,2,GND,gnd,2
+C52,1,+3V3,pwr,"1 — panel VCI/VDDI bulk 10 µF, at J3 pins 40-42"
+C52,2,GND,gnd,2
+C53,1,+3V3,pwr,"1 — panel VCI/VDDI HF 100 nF, at J3 pins 40-42"
+C53,2,GND,gnd,2
+MP1,1,GND,gnd,"panel-frame contact pad (left strip, under the panel; conductive foam to the frame)"
+MP2,1,GND,gnd,"panel-frame contact pad (centre column, under the panel)"
+MP3,1,GND,gnd,"plate tab pad (top bridge, west)"
+MP4,1,GND,gnd,"plate tab pad (top bridge, east)"
+MP5,1,GND,gnd,plate tab pad (bottom left)
+MP6,1,GND,gnd,plate tab pad (bottom right)
+MP7,1,GND,gnd,"plate copper-foil bridge pad (left strip, under the panel, at the plate's long-edge midpoint y ≈ 76.9)"
+MP8,1,GND,gnd,"plate copper-foil bridge pad (centre column west edge, under the panel, y ≈ 76.9)"
+R32,1,+5V_LCD,pwr,1
+R32,2,LCD_LEDA1,,2 — → J3.2 LEDA1
+R33,1,+5V_LCD,pwr,1
+R33,2,LCD_LEDA2,,2 — → J3.3 LEDA2
+R34,1,+5V_LCD,pwr,1
+R34,2,LCD_LEDA3,,2 — → J3.4 LEDA3
+R35,1,+5V_LCD,pwr,1
+R35,2,LCD_LEDA4,,2 — → J3.5 LEDA4
+Q2,1,BL_GATE,,G
+Q2,2,GND,gnd,S
+Q2,3,LCD_LEDK,,D — ← J3.1 LEDK (low-side backlight switch)
+R36,1,LCD_LITE,,1 — PC6 side
+R36,2,BL_GATE,,2 — Q2 gate side
+R37,1,BL_GATE,,1 — gate pull-down: backlight off through reset
+R37,2,GND,gnd,2
+U5,1,BST_SW,,SW
+U5,2,GND,gnd,GND
+U5,3,BST_FB,,FB — 0.6 V ref
+U5,4,SYS,pwr,EN — always on (post-switch)
+U5,5,SYS,pwr,IN
+U5,6,,,NC
+L1,1,SYS,pwr,1
+L1,2,BST_SW,,2
+D3,1,+5V_LCD,pwr,K — cathode → 5 V out
+D3,2,BST_SW,,A — anode ← SW
+C27,1,SYS,pwr,1
+C27,2,GND,gnd,2
+C28,1,+5V_LCD,pwr,1
+C28,2,GND,gnd,2
+R9,1,+5V_LCD,pwr,1
+R9,2,BST_FB,,2
+R10,1,BST_FB,,1
+R10,2,GND,gnd,2
+U6,1,I2S2_SD,,DIN
+U6,2,SYS,pwr,GAIN_SLOT — GAIN_SLOT → VDD = 6 dB
+U6,3,GND,gnd,GND
+U6,4,AMP_SD_MODE,,~{SD_MODE} — 620k to 3V3 = (L+R)/2 mono
+U6,5,,,N.C.
+U6,6,,,N.C.
+U6,7,SYS,pwr,VDD
+U6,8,SYS,pwr,VDD
+U6,9,SPK_P,,OUTP
+U6,10,SPK_N,,OUTN
+U6,11,GND,gnd,GND
+U6,12,,,N.C.
+U6,13,,,N.C.
+U6,14,I2S2_WS,,LRCLK
+U6,15,GND,gnd,GND
+U6,16,I2S2_CK,,BCLK
+U6,17,GND,gnd,EP — exposed pad → GND pour + vias
+R11,1,AMP_SD_MODE,,1
+R11,2,+3V3,pwr,2
+C29,1,SYS,pwr,1
+C29,2,GND,gnd,2
+C30,1,SYS,pwr,1
+C30,2,GND,gnd,2
+J5,1,SPK_P,,1 — speaker +
+J5,2,SPK_N,,2 — speaker −
+U7,1,GND,gnd,SDO/SA0 — addr 0x6A
+U7,2,GND,gnd,SDX — Mode-1: unused aux pin tied
+U7,3,GND,gnd,SCX — Mode-1: unused aux pin tied
+U7,4,IMU_INT1,,INT1 — 10k pull-down (no I3C latch)
+U7,5,+3V3,pwr,VDDIO
+U7,6,GND,gnd,GND
+U7,7,GND,gnd,GND
+U7,8,+3V3,pwr,VDD
+U7,9,,,INT2 — unused (output low by default)
+U7,10,,,OSC_AUX
+U7,11,,,SDO_AUX
+U7,12,+3V3,pwr,CS — selects I2C
+U7,13,I2C1_SCL,,SCL
+U7,14,I2C1_SDA,,SDA
+R12,1,IMU_INT1,,1
+R12,2,GND,gnd,2
+C31,1,+3V3,pwr,1
+C31,2,GND,gnd,2
+C32,1,+3V3,pwr,1
+C32,2,GND,gnd,2
+U8,1,HAP_REG,,REG — 1 µF mandatory
+U8,2,I2C1_SCL,,SCL
+U8,3,I2C1_SDA,,SDA
+U8,4,GND,gnd,IN/TRIG — I2C-only mode
+U8,5,+3V3,pwr,EN
+U8,6,+3V3,pwr,VDD/NC — tied to VDD (datasheet-preferred)
+U8,7,LRA_P,,OUT+
+U8,8,GND,gnd,GND
+U8,9,LRA_N,,OUT-
+U8,10,+3V3,pwr,VDD
+C33,1,HAP_REG,,1
+C33,2,GND,gnd,2
+C34,1,+3V3,pwr,1
+C34,2,GND,gnd,2
+C35,1,+3V3,pwr,1
+C35,2,GND,gnd,2
+J6,1,LRA_P,,1 — LRA red +
+J6,2,LRA_N,,2 — LRA blue −
+R13,1,I2C1_SCL,,1
+R13,2,+3V3,pwr,2
+R14,1,I2C1_SDA,,1
+R14,2,+3V3,pwr,2
+J7,1,GND,gnd,EH — shell / retention post
+J7,2,GND,gnd,EH — shell / retention post
+J7,3,GND,gnd,EH — shell / retention post
+J7,4,GND,gnd,EH — shell / retention post
+J7,A1B12,GND,gnd,GND
+J7,A4B9,VBUS,pwr,VBUS
+J7,A5,USBC_CC1,,CC1
+J7,A6,USB_DP,,DP1 — D+ → U13 → PA12 (rev B)
+J7,A7,USB_DN,,DN1 — D− → U13 → PA11 (rev B)
+J7,A8,,,SBU1 — SBU1
+J7,B1A12,GND,gnd,GND
+J7,B4A9,VBUS,pwr,VBUS
+J7,B5,USBC_CC2,,CC2
+J7,B6,USB_DP,,DP2 — D+ (rev B)
+J7,B7,USB_DN,,DN2 — D− (rev B)
+J7,B8,,,SBU2 — SBU2
+U13,1,USB_DN,,I/O1 — D− line (flow-through to pin 6)
+U13,2,GND,gnd,GND
+U13,3,USB_DP,,I/O2 — D+ line (flow-through to pin 4)
+U13,4,USB_DP,,I/O2
+U13,5,VBUS,pwr,VBUS — biases the clamp (ST recommended)
+U13,6,USB_DN,,I/O1
+D4,1,VBUS,pwr,K — SMF5.0A cathode (banded end) on VBUS
+D4,2,GND,gnd,A
+R15,1,USBC_CC1,,1
+R15,2,GND,gnd,2
+R16,1,USBC_CC2,,1
+R16,2,GND,gnd,2
+U9,1,CHG_TS,,TS — NTC to VSS (#43): 75 µA → >2.1 V = cold / <0.30 V = hot → charging paused
+U9,2,BAT,pwr,BAT
+U9,3,BAT,pwr,BAT
+U9,4,GND,gnd,~{CE} — charge enabled
+U9,5,CHG_EN2,,EN2 — 0 Ω to SYS_SRC
+U9,6,GND,gnd,EN1 — EN1=0/EN2=1 = ILIM-resistor mode
+U9,7,CHG_PGOOD,,~{PGOOD} — open-drain → PC2 + 10k pull-up
+U9,8,GND,gnd,VSS
+U9,9,CHG_STAT,,~{CHG} — open-drain → PC1 + 10k pull-up; 2 Hz blink = timer fault
+U9,10,SYS_SRC,pwr,OUT
+U9,11,SYS_SRC,pwr,OUT
+U9,12,CHG_ILIM,,ILIM
+U9,13,VBUS,pwr,IN
+U9,14,CHG_TMR,,TMR — 68k → 6.8/9.1/11.3 h
+U9,15,GND,gnd,TD — tied low = termination enabled (BQ24073: TD must not float; was ITERM on the BQ24074, swapped 2026-10-12 for stock)
+U9,16,CHG_ISET,,ISET
+U9,17,GND,gnd,EP — exposed pad → VSS
+R17,1,CHG_EN2,,1
+R17,2,SYS_SRC,pwr,2
+C36,1,VBUS,pwr,1
+C36,2,GND,gnd,2
+C37,1,SYS_SRC,pwr,1
+C37,2,GND,gnd,2
+C38,1,BAT,pwr,1
+C38,2,GND,gnd,2
+R18,1,CHG_ISET,,1
+R18,2,GND,gnd,2
+R19,1,CHG_ILIM,,1
+R19,2,GND,gnd,2
+R20,1,CHG_TS,,1
+R20,2,GND,gnd,2
+R21,1,CHG_TMR,,1
+R21,2,GND,gnd,2
+R22,1,CHG_STAT,,1
+R22,2,+3V3,pwr,2
+R23,1,CHG_PGOOD,,1
+R23,2,+3V3,pwr,2
+J8,1,BAT,pwr,1 — cell + (Adafruit 258 red) — verify polarity with a meter
+J8,2,GND,gnd,2 — cell −
+J8,3,GND,gnd,3 — board-lock tab
+J8,4,GND,gnd,4 — board-lock tab
+SW1,1,GND,gnd,1 — ON throw → pulls the Q1 gate low
+SW1,2,PWR_SW,,2 — common (datasheet ②) → R31 → Q1 gate (soft-start)
+SW1,3,,,3 — OFF throw — open (100k holds Q1 off)
+SW1,4,GND,gnd,4 — metal shell / mounting tabs
+Q1,1,Q1_GATE,,"G — pulled low through R31 when SW1 is on; C51 (gate-drain) slews SYS up over ~2 ms"
+Q1,2,SYS_SRC,pwr,S — charger OUT
+Q1,3,SYS,pwr,D — system node; body diode blocks SYS_SRC→SYS when off
+R30,1,Q1_GATE,,1 — gate
+R30,2,SYS_SRC,pwr,2 — source
+R31,1,PWR_SW,,1 — from SW1 (gate drive series R: sets the soft-start slope with C51)
+R31,2,Q1_GATE,,2
+C51,1,Q1_GATE,,1 — Miller cap gate→drain: SYS rises at ~I_gate/C51 ≈ 2 V/ms → ~70 mA inrush into ~40 uF
+C51,2,SYS,pwr,2
+U10,1,SYS,pwr,VINA — control supply — MUST tie to VIN
+U10,2,GND,gnd,GND
+U10,3,BB_FB,,FB — 0 Ω to VOUT (fixed 3.3 V)
+U10,4,+3V3,pwr,VOUT
+U10,5,+3V3,pwr,VOUT
+U10,6,BB_L2,,L2
+U10,7,BB_L2,,L2
+U10,8,BB_L1,,L1
+U10,9,BB_L1,,L1
+U10,10,SYS,pwr,VIN
+U10,11,SYS,pwr,VIN
+U10,12,SYS,pwr,EN — on whenever the switch is on
+U10,13,BB_PSYNC,,PS/SYNC — from STM32 PC3; R25 100k pull-up to +3V3 (rev B): forced PWM unless firmware drives it low
+U10,14,,,PG — power-good unused
+U10,15,GND,gnd,PGND — exposed pad → PGND + vias
+R24,1,BB_FB,,1
+R24,2,+3V3,pwr,2
+R25,1,BB_PSYNC,,1
+R25,2,+3V3,pwr,2 — pull-up (rev B; was GND)
+C39,1,SYS,pwr,1
+C39,2,GND,gnd,2
+C40,1,SYS,pwr,1
+C40,2,GND,gnd,2
+C41,1,SYS,pwr,1
+C41,2,GND,gnd,2
+C42,1,+3V3,pwr,1
+C42,2,GND,gnd,2
+C43,1,+3V3,pwr,1
+C43,2,GND,gnd,2
+C44,1,+3V3,pwr,1
+C44,2,GND,gnd,2
+L2,1,BB_L1,,1
+L2,2,BB_L2,,2
+R26,1,BAT,pwr,1
+R26,2,BAT_SENSE,,2
+R27,1,BAT_SENSE,,1
+R27,2,GND,gnd,2
+C45,1,BAT_SENSE,,1
+C45,2,GND,gnd,2
+U11,1,,,~{INT} — not connected: the expander is polled over I2C (frees a track through the left-grip corridor)
+U11,2,GND,gnd,A1
+U11,3,GND,gnd,A2
+U11,4,BTN_L,,P00
+U11,5,BTN_LEFT,,P01 (swapped with BTN_UP 2026-10-12 for routing: LEFT passes north of SW2)
+U11,6,BTN_UP,,P02
+U11,7,BTN_DOWN,,P03
+U11,8,BTN_SELECT,,P04 (swapped with BTN_START 2026-10-12 for routing: Start's line drops into SW8 east of Select's)
+U11,9,BTN_START,,P05
+U11,10,BTN_RIGHT,,P06
+U11,11,,,P07 — spare (internal pull-up)
+U11,12,GND,gnd,GND
+U11,13,,,P10 — spare (internal pull-up)
+U11,14,,,P11 — spare (internal pull-up)
+U11,15,,,P12 — spare (internal pull-up)
+U11,16,,,P13 — spare (internal pull-up)
+U11,17,,,P14 — spare (internal pull-up)
+U11,18,,,P15 — spare (internal pull-up)
+U11,19,,,P16 — spare (internal pull-up)
+U11,20,,,P17 — spare (internal pull-up)
+U11,21,GND,gnd,A0 — addr 0x20
+U11,22,I2C1_SCL,,SCL
+U11,23,I2C1_SDA,,SDA
+U11,24,+3V3,pwr,VCC
+C46,1,+3V3,pwr,1
+C46,2,GND,gnd,2
+SW2,1,BTN_UP,,A — A/B pair
+SW2,2,BTN_UP,,B — A/B pair
+SW2,3,GND,gnd,C — C/D pair
+SW2,4,GND,gnd,D — C/D pair
+SW3,1,BTN_DOWN,,A — A/B pair
+SW3,2,BTN_DOWN,,B — A/B pair
+SW3,3,GND,gnd,C — C/D pair
+SW3,4,GND,gnd,D — C/D pair
+SW4,1,BTN_LEFT,,A — A/B pair
+SW4,2,BTN_LEFT,,B — A/B pair
+SW4,3,GND,gnd,C — C/D pair
+SW4,4,GND,gnd,D — C/D pair
+SW5,1,BTN_RIGHT,,A — A/B pair
+SW5,2,BTN_RIGHT,,B — A/B pair
+SW5,3,GND,gnd,C — C/D pair
+SW5,4,GND,gnd,D — C/D pair
+SW6,1,BTN_A,,A — A/B pair
+SW6,2,BTN_A,,B — A/B pair
+SW6,3,GND,gnd,C — C/D pair
+SW6,4,GND,gnd,D — C/D pair
+SW7,1,BTN_B,,A — A/B pair
+SW7,2,BTN_B,,B — A/B pair
+SW7,3,GND,gnd,C — C/D pair
+SW7,4,GND,gnd,D — C/D pair
+SW8,1,BTN_START,,A — A/B pair
+SW8,2,BTN_START,,B — A/B pair
+SW8,3,GND,gnd,C — C/D pair
+SW8,4,GND,gnd,D — C/D pair
+SW9,1,BTN_SELECT,,A — A/B pair
+SW9,2,BTN_SELECT,,B — A/B pair
+SW9,3,GND,gnd,C — C/D pair
+SW9,4,GND,gnd,D — C/D pair
+SW10,1,GND,gnd,1
+SW10,2,BTN_VOLUP,,2
+SW10,3,GND,gnd,3
+SW10,4,GND,gnd,4 — mounting lug
+SW10,5,GND,gnd,5 — mounting lug
+SW11,1,GND,gnd,1
+SW11,2,BTN_VOLDOWN,,2
+SW11,3,GND,gnd,3
+SW11,4,GND,gnd,4 — mounting lug
+SW11,5,GND,gnd,5 — mounting lug
+SW12,1,GND,gnd,1
+SW12,2,BTN_L,,2
+SW12,3,GND,gnd,3
+SW12,4,GND,gnd,4 — mounting lug
+SW12,5,GND,gnd,5 — mounting lug
+SW13,1,GND,gnd,1
+SW13,2,BTN_R,,2
+SW13,3,GND,gnd,3
+SW13,4,GND,gnd,4 — mounting lug
+SW13,5,GND,gnd,5 — mounting lug
+U12,1,+3V3,pwr,VDD_PADS
+U12,2,GND,gnd,GND
+U12,3,,,PIO2
+U12,4,USART2_CTS,,~{UART_RTS} — module RTS# → STM32 CTS (PA0)
+U12,5,USART2_RX,,UART_TX — module TX → STM32 RX (PA3)
+U12,6,USART2_RTS,,~{UART_CTS} — STM32 RTS (PA1) → module CTS#
+U12,7,USART2_TX,,UART_RX — STM32 TX (PA2) → module RX
+U12,8,BT_EN,,VREG_EN_~{RST} — from PC3 push-pull
+U12,9,+3V3,pwr,VREG_IN_HV
+U12,10,BT_VREG18,,VREG_OUT_HV — cap-to-GND only (abs-max 2.0 V)
+U12,11,GND,gnd,GND
+U12,12,GND,gnd,GND
+U12,13,GND,gnd,GND
+U12,14,GND,gnd,GND
+U12,15,GND,gnd,GND
+U12,16,GND,gnd,GND
+U12,17,,,RF — integrated antenna
+U12,18,GND,gnd,GND
+U12,19,,,PCM_SYNC/SPI_~{CS}/PIO23 — unused
+U12,20,,,PCM_CLK/SPI_CLK/PIO24 — unused
+U12,21,,,PCM_IN/SPI_MOSI/PIO21 — unused
+U12,22,,,PCM_OUT/SPI_MISO/PIO22 — unused
+U12,23,GND,gnd,GND
+U12,24,,,PIO0/32K_CLK_IN — unused
+U12,25,,,PIO1/BT_ACTIVE — unused
+U12,26,,,PIO9/BT_PRIORITY — unused
+U12,27,,,PIO4/WLAN_ACTIVE — unused
+U12,28,GND,gnd,SPI_~{PCM}_SEL — selects PCM (unused)
+U12,29,,,PIO3/HOST_WAKE_UP — unused
+U12,30,GND,gnd,GND
+C47,1,BT_VREG18,,1
+C47,2,GND,gnd,2
+C48,1,+3V3,pwr,1
+C48,2,GND,gnd,2
+C49,1,+3V3,pwr,1
+C49,2,GND,gnd,2
+C50,1,+3V3,pwr,1
+C50,2,GND,gnd,2
+TP1,1,VBUS,pwr,USB 5 V in
+TP2,1,BAT,pwr,cell (at the charger BAT side)
+TP3,1,SYS,pwr,switched system rail (after Q1)
+TP4,1,GND,gnd,ground (power strip)
+TP5,1,+3V3,pwr,3.3 V logic rail
+TP6,1,+5V_LCD,pwr,screen 5 V
+TP7,1,+1V2,pwr,iCE40 core
+TP8,1,BOOT0,,"BOOT0 pad in the battery door: bridge to +3V3 (TP5 / J1 pin 1), then cycle SW1 or pulse NRST (J1 pin 5) → ROM bootloader (USB DFU / USART1); R39 holds BOOT1 low"
+TP9,1,MCO2,,PC9 MCO2 clock out
+TP10,1,GND,gnd,ground (by the MCU)
+TP11,1,USART1_TX,,console TX out (PA9) — console pad row along the bottom edge
+TP12,1,USART1_RX,,console RX in (PA10)
