@@ -345,7 +345,7 @@ else
   [ -n "${ttext}" ] && ldflags+=(-Ttext "${ttext}")
   [ -n "${entry}" ] && ldflags+=(-e "${entry}")
 fi
-start=(); finish=(); libs=()
+start=(); finish=(); libs=(); sysdirs=()
 if [ -n "${sysroot}" ]; then                         # gcc's link line against a C library
   sysfile() { local f; for f in "${sysroot}/usr/lib/$1" "${sysroot}/lib/$1"; do [ -f "${f}" ] && { echo "${f}"; return; }; done; die "--sysroot ${sysroot}: no $1"; }
   if [ -z "${nostdlib}${nostartfiles}" ]; then
@@ -354,11 +354,15 @@ if [ -n "${sysroot}" ]; then                         # gcc's link line against a
     else start=("$(sysfile crt1.o)" "$(sysfile crti.o)"); fi
     finish=("$(sysfile crtn.o)")
   fi
-  ldflags+=(-L "${sysroot}/lib" -L "${sysroot}/usr/lib")
+  # AFTER the user's -L, not before: measured `gcc -### -L/dir` puts the user's dirs first on the ld line and
+  # the sysroot's last. Getting this backwards meant -lc resolved to the sysroot's libc instead of the one the
+  # caller pointed at -- which is how the dynamic boot came to link against musl's SONAME-less libc.so and
+  # record DT_NEEDED [libc.so]. -L is order-of-appearance priority, so these go last (see the link line below).
+  sysdirs=(-L "${sysroot}/lib" -L "${sysroot}/usr/lib")
   [ -n "${nostdlib}${nodefaultlibs}" ] || libs+=(-lc)
 fi
 if [ -z "${nostdlib}${nodefaultlibs}" ]; then          # the compiler runtime, last (gcc's libgcc)
   [ -f "${RTLIB}" ] || die "compiler runtime ${RTLIB} missing (build toolchain/rt and install it beside bin/)"
   libs+=("${RTLIB}")
 fi
-"${LD}" "${ldflags[@]}" "${ldextra[@]}" -o "${out}" "${start[@]}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${libs[@]}" "${finish[@]}"
+"${LD}" "${ldflags[@]}" "${ldextra[@]}" -o "${out}" "${start[@]}" "${objs[@]}" "${linkobjs[@]}" "${libargs[@]}" "${sysdirs[@]}" "${libs[@]}" "${finish[@]}"

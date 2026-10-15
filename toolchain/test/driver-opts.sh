@@ -125,5 +125,30 @@ for spec in "-fPIC" "-fpic" "-fno-PIC" "-fno-pic" "-fPIC -fno-PIC" "-fno-PIC -fP
 	  || no "PIC order '$spec': gcc $g ($gb), ours $o ($ob)"
 done
 
+# 10. LIBRARY SEARCH ORDER: the user's -L dirs come BEFORE the sysroot's. Measured from `gcc -###`, which puts
+#     -L<user> first on the ld line and the sysroot's lib/ then usr/lib/ last. We had it backwards, so -lc
+#     resolved inside the sysroot even when the caller pointed -L at another libc -- which is how the dynamic
+#     boot came to link against musl's SONAME-less libc.so and record DT_NEEDED [libc.so] instead of our own
+#     libc.so.1. Tested with the name that collides -- `c`, which every sysroot also has -- since a stub under
+#     some unused name resolves in the user's directory either way and proves nothing.
+mkdir -p $t/userdir
+printf 'int stub_one(void){return 1;}\n' > $t/dup.c
+if "${CC}" -fPIC -shared -soname libc-userdir.so.1 -o $t/userdir/libc.so $t/dup.c 2>/dev/null; then
+	printf 'int stub_one(void);\nvoid _start(void){stub_one();}\n' > $t/l.c
+	"${CC}" -fPIC -nostdlib -c $t/l.c -o $t/l.o 2>/dev/null
+	# the SONAME recorded says which directory -lc resolved in: ours, or the sysroot's libc
+	"${CC}" -nostdlib -Ttext 0x40000000 -L$t/userdir $t/l.o -lc -o $t/l.out 2>/dev/null
+	n=$("${GNU}readelf" -dW $t/l.out 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\].*/\1/p')
+	[ "$n" = libc-userdir.so.1 ] && ok || no "-L order: -lc must resolve in the user's -L, DT_NEEDED is [$n]"
+	# gcc's own answer for the same link, as the oracle for that expectation -- entirely GNU-built, and without
+	# -Ttext, which makes its own ld trip a BFD assertion on a dynamic link (a separate question from search order)
+	mkdir -p $t/gnudir
+	"${GNU}gcc" -fPIC -shared -Wl,-soname,libc-userdir.so.1 -nostdlib -o $t/gnudir/libc.so $t/dup.c 2>/dev/null
+	"${GNU}gcc" -fPIC -nostdlib -c $t/l.c -o $t/gl.o 2>/dev/null
+	"${GNU}gcc" -nostdlib -L$t/gnudir $t/gl.o -lc -o $t/g.out 2>/dev/null
+	gn=$("${GNU}readelf" -dW $t/g.out 2>/dev/null | sed -n 's/.*NEEDED.*\[\(.*\)\].*/\1/p')
+	[ "$gn" = "$n" ] && ok || no "-L order vs gcc: gcc records [$gn], ours [$n]"
+else echo "SKIP -L order (cannot build a stub .so)"; fi
+
 echo "driver options: $pass passed, $fail failed"
 [ $fail -eq 0 ]

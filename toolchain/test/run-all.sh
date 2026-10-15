@@ -12,7 +12,15 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TC="$(cd "${HERE}/.." && pwd)"; REPO="$(cd "${TC}/.." && pwd)"
 IMG="${REPO}/projects/gameboy-v3/image/build/qemu"
 BIN="${IMG}/toolchain-custom/bin"; DYN="${IMG}/libc/stage-libc-custom-dynamic"
-KERNEL="${IMG}/output/zImage"; GIC="${IMG}/hosttools/bin/gen_init_cpio"
+# The gate's OWN copy of the reference kernel, outside the engine's deploy slot. ${IMG}/output/zImage is that
+# slot: every kernel provider writes it, so a product build silently replaced the gate's reference and the next
+# run read as a toolchain regression. Kept under build/ rather than beside this script because toolchain/ is a
+# recipe's hashed source directory -- dropping an 11 MB kernel in it re-hashes the toolchain on every run.
+# Record a new one deliberately with refkernel-check.sh --record.
+GATEDIR="${REPO}/projects/gameboy-v3/image/build/toolchain-gate"
+KERNEL="${GATEDIR}/refkernel/zImage"
+[ -f "${KERNEL}" ] || KERNEL="${IMG}/output/zImage"      # not saved yet: fall back, and say which one it is
+GIC="${IMG}/hosttools/bin/gen_init_cpio"
 UAPI="$(find "${IMG}" -type d -name include -path '*linux-libc-headers*' 2>/dev/null | head -1)"
 pass=0; fail=0; skip=0; known=0
 red(){ printf '\033[31m%s\033[0m\n' "$*"; }; grn(){ printf '\033[32m%s\033[0m\n' "$*"; }; yel(){ printf '\033[33m%s\033[0m\n' "$*"; }

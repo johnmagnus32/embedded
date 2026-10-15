@@ -52,7 +52,9 @@ rm -rf "${BUILD}"; mkdir -p "${BUILD}"
 echo "  cc + as : ${SRC##*/} -> init.o ($([ "${PIC}" = 1 ] && echo -fPIC || echo non-PIC))"
 "${CC}" $([ "${PIC}" = 1 ] && echo -fPIC) -I"${LIBC_INCLUDE}" -I"${UAPI_INCLUDE}" -c "${SRC}" -o "${BUILD}/init.o" || die "compile failed"
 echo "  ld      : crt0 + init.o -lc -L stage -> init (dynamic ARM ELF, PT_INTERP=/lib/ld.so.1)"
-"${CC}" -Ttext 0x40000000 -lc -L"${LIBC_DYN_STAGE}" "${LIBC_DYN_STAGE}/crt0.S.o" "${BUILD}/init.o" \
+# -nostdlib with the runtime named explicitly: our own crt0 and libc.so below, not the sysroot's (see boot.sh)
+"${CC}" -nostdlib -Ttext 0x40000000 -L"${LIBC_DYN_STAGE}" "${LIBC_DYN_STAGE}/crt0.S.o" "${BUILD}/init.o" \
+    -lc "$("${CC}" -print-file-name=libgcc.a)" \
   -o "${BUILD}/init" || die "dynamic link failed"
 
 echo "  pack    : /init + /lib/{ld.so.1,libc.so.1} + /dev/console -> initramfs.cpio.gz"

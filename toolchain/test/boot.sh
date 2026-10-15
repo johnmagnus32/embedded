@@ -49,7 +49,13 @@ rm -rf "${BUILD}"; mkdir -p "${BUILD}"
 echo "  cc + as : ${SRC##*/} -> init.o"
 "${CC}" -I"${LIBC_INCLUDE}" -I"${UAPI_INCLUDE}" -c "${SRC}" -o "${BUILD}/init.o" || die "compile failed"
 echo "  ld      : crt0 + init.o + libc.a -> init (static ARM ELF)"
-"${CC}" "${LIBC_STAGE}/crt0.S.o" "${BUILD}/init.o" "${LIBC_STAGE}/libc.a" -Ttext 0x40000000 -o "${BUILD}/init" \
+# -nostdlib, plus the compiler runtime named explicitly. This program brings its OWN start file and libc, so
+# it must not get the sysroot's: toolchain-custom stages a `sysroot` symlink at whichever libc the product
+# selected, os-cc finds it, and the result collides as "duplicate definition of _start". That only appears once
+# the toolchain is restaged, which is why this gate passed for weeks and then broke all four boot steps at once.
+# -nostartfiles -nodefaultlibs would be the obvious pair but drops the runtime -- verified to be exactly what
+# gcc does with those flags too -- hence asking the driver where libgcc.a is and passing it.
+"${CC}" -nostdlib "${LIBC_STAGE}/crt0.S.o" "${BUILD}/init.o" "${LIBC_STAGE}/libc.a" "$("${CC}" -print-file-name=libgcc.a)" -Ttext 0x40000000 -o "${BUILD}/init" \
   || die "link failed (a libc symbol our cc still can't produce?)"
 
 echo "  pack    : /init + /dev/console -> initramfs.cpio.gz"
