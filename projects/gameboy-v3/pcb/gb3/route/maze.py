@@ -8,6 +8,7 @@ by construction (DRC still checks it). Routed copper is added to the obstacle ma
 in the same session route around earlier ones.
 
     m = Maze(B, (x0, y0, x1, y1))                 # window, board mm
+    m = Maze(B, box, keepouts=[("B", [(x, y), ...])])   # + extra per-layer keep-out polygons (a channel kept clear)
     pts = m.route(net, (x, y, "F"), (x, y, "B"), w=0.15, layers="FB", cost=None)
         -> [(x, y, layer), ...] corner points (a layer change = a via at that point), or None
     m.commit(net, pts, w)                         # mark it as an obstacle for the next routes
@@ -38,8 +39,9 @@ def _classes():
 
 
 class Maze:
-    def __init__(self, B, box, layers=("F", "B")):
+    def __init__(self, B, box, layers=("F", "B"), keepouts=(), limit=1500000):
         self.B = B; self.x0, self.y0, self.x1, self.y1 = box
+        self.keepouts = list(keepouts); self.limit = limit      # limit: search expansions before giving up
         self.nx = int((self.x1 - self.x0) / RES) + 1; self.ny = int((self.y1 - self.y0) / RES) + 1
         self.layers = layers; self.clr = _classes()
         self.LID = {"F": pcbnew.F_Cu, "B": pcbnew.B_Cu}
@@ -79,10 +81,15 @@ class Maze:
                     if t.GetLayer() == self.LID[L]:
                         self.items[L].append((t.GetNetname(), ("seg", (ax, ay, bx, by, TO(t.GetWidth()) / 2)), self.clr(t.GetNetname())))
         for z in B.Zones():
-            if not z.GetIsRuleArea(): continue
+            # a rule area blocks tracks only where it forbids them, on its own layers (the DRC-only "pins: <ref>"
+            # areas forbid nothing; "no tracks over X1" is F only)
+            if not z.GetIsRuleArea() or not z.GetDoNotAllowTracks(): continue
             bb = z.GetBoundingBox()
             if not inwin(TO(bb.GetLeft()), TO(bb.GetTop()), TO(bb.GetRight()), TO(bb.GetBottom())): continue
-            for L in self.layers: self.items[L].append(("<keepout>", ("zone", z), 0.0))
+            for L in self.layers:
+                if z.IsOnLayer(self.LID[L]): self.items[L].append(("<keepout>", ("zone", z), 0.0))
+        for L, pts in self.keepouts:
+            if L in self.layers: self.items[L].append(("<keepout>", ("poly", [tuple(p) for p in pts]), 0.0))
         ps = pcbnew.SHAPE_POLY_SET(); B.GetBoardPolygonOutlines(ps, True); self.board = ps
 
     @staticmethod
@@ -99,6 +106,14 @@ class Maze:
         if k == "zone":
             z = d; v = pcbnew.VECTOR2I(int(pcbnew.FromMM(x)), int(pcbnew.FromMM(y)))
             return 0.0 if z.Outline().Contains(v) else TO(int(math.sqrt(z.Outline().SquaredDistance(v))))
+        if k == "poly":
+            inside, best = False, 1e9
+            for (ax, ay), (bx, by) in zip(d, d[1:] + d[:1]):
+                if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay): inside = not inside
+                dx, dy = bx - ax, by - ay; L = dx * dx + dy * dy
+                t = 0 if L == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / L))
+                best = min(best, math.hypot(x - ax - t * dx, y - ay - t * dy))
+            return 0.0 if inside else best
         return 1e9
 
     def _edges(self):
@@ -120,6 +135,7 @@ class Maze:
         if k == "box": bx0, by0, bx1, by1 = d
         elif k == "circle": bx0, by0, bx1, by1 = d[0] - d[2], d[1] - d[2], d[0] + d[2], d[1] + d[2]
         elif k == "seg": bx0, by0, bx1, by1 = min(d[0], d[2]) - d[4], min(d[1], d[3]) - d[4], max(d[0], d[2]) + d[4], max(d[1], d[3]) + d[4]
+        elif k == "poly": bx0, by0, bx1, by1 = min(p[0] for p in d), min(p[1] for p in d), max(p[0] for p in d), max(p[1] for p in d)
         else:
             bb = d.GetBoundingBox(); bx0, by0, bx1, by1 = TO(bb.GetLeft()), TO(bb.GetTop()), TO(bb.GetRight()), TO(bb.GetBottom())
         i0 = max(0, int((bx0 - reach - self.x0) / RES)); i1 = min(self.nx - 1, int((bx1 + reach - self.x0) / RES) + 1)
@@ -228,7 +244,7 @@ class Maze:
             i, j, L, d = s
             if (i, j, L) == (ti, tj, tL): goal = s; break
             n += 1
-            if n > 1500000: break
+            if n > self.limit: break
             for k, (dx, dy) in enumerate(DIRS):
                 if d >= 0:
                     turn = min((k - d) % 8, (d - k) % 8)

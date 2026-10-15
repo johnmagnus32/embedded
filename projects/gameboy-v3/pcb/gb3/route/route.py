@@ -12,6 +12,8 @@ In a group file:
     VIA(net, x, y, d=0.6, h=0.3)  through via (default = gb3's Default-netclass via; board minimum is 0.5/0.3)
     Every 90 deg corner in a T() polyline is mitered automatically (two 45 deg turns); see miter().
     ZONE(net, layer, pts, name)    copper pour (solid pad connection, 0.2 mm clearance, islands removed), filled
+    m = MAZE(box, keepouts=[("B", pts)])     the maze router over a window (extra per-layer keep-outs optional)
+    AUTOROUTE(m, net, a, b, w, layers, via_cost=, through=())  a / b = (x, y, "F"/"B") or a pad key ("U1.5")
     nets are exact board names or, for a sheet-local net, the bare name if unique ("BB_FB" = "/buck-boost/BB_FB")
 
 Run:  <kicad python> route/route.py [--board gb3.kicad_pcb] [group ...]      (no groups = all)
@@ -38,7 +40,15 @@ def strip(path, names):
     items = [it for g in kill for it in g.GetItems()]
     for it in items: B.Remove(it)
     for g in kill: B.Remove(g)
-    pcbnew.SaveBoard(path, B); sys.stdout.flush(); os._exit(0)
+    save(path, B); sys.stdout.flush(); os._exit(0)
+
+
+def save(path, B):
+    """SaveBoard, keeping the project file as it was (SaveBoard rewrites .kicad_pro; it isn't ours to change)"""
+    pro = os.path.splitext(path)[0] + ".kicad_pro"
+    keep = open(pro, "rb").read() if os.path.exists(pro) else None
+    pcbnew.SaveBoard(path, B)
+    if keep is not None and open(pro, "rb").read() != keep: open(pro, "wb").write(keep)
 
 
 def build(path, names, files):
@@ -116,12 +126,20 @@ def build(path, names, files):
             ol = z.Outline(); ol.NewOutline()
             for x, y in pts: ol.Append(V(x, y))
             B.Add(z); g.AddItem(z)
-        def MAZE(box, layers=("F", "B")):
-            return maze.Maze(B, box, layers)
+        def MAZE(box, layers=("F", "B"), keepouts=(), limit=1500000):
+            return maze.Maze(B, box, layers, keepouts, limit)
+        def END(e, default_layer):
+            """a route end: (x, y, layer) as given, or a pad key -> its centre on its copper layer (a through-hole pad
+            takes default_layer)"""
+            if not isinstance(e, str): return e
+            if e not in pads: sys.exit(f"{name}: no pad {e}")
+            p = pads[e]; x, y = P(e); onF, onB = p.IsOnLayer(pcbnew.F_Cu), p.IsOnLayer(pcbnew.B_Cu)
+            return (x, y, default_layer if (onF and onB) else ("F" if onF else "B"))
         def AUTOROUTE(m, net, a, b, w=0.15, layers="FB", cost=None, via_cost=60.0, through=()):
             """maze-route a -> [through ...] -> b (each (x, y, "F"/"B")), lay it down as T()/VIA() and mark it for
             later routes. `through` waypoints steer a route the search would not find on its own."""
             net = NET(net).GetNetname()                     # the board's full name ("/mcu/NRST"), as the maze sees it
+            a, b = END(a, layers[0]), END(b, layers[0])
             pts, legs = [], [a, *through, b]
             for k, (u, v) in enumerate(zip(legs, legs[1:])):
                 leg = m.route(net, u, v, w, layers, cost, via_cost, relax=(k == 0, k == len(legs) - 2))
@@ -146,7 +164,7 @@ def build(path, names, files):
     if lint: print("LINT (saved anyway: --force, for inspection only):\n  " + "\n  ".join(lint))
     if lint_warn: report.append("  lint warnings:\n    " + "\n    ".join(lint_warn))
     pcbnew.ZONE_FILLER(B).Fill(B.Zones())
-    pcbnew.SaveBoard(path, B)
+    save(path, B)
     print("\n".join(report)); sys.stdout.flush(); os._exit(0)
 
 

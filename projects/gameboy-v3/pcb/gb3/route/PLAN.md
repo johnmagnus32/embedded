@@ -380,6 +380,30 @@ west half (deliver T1's x-124 order through the H1/M1/T0 junction: the I2C1 lane
 up M1); the left grip (85); U9.2's strap and the TS-1187A ties (85); port fanout/pour/planecheck/ipc_check/i2c_check/
 audit/silk.
 
+## Step 4 (2026-10-14): groups 05-60 built in the repo
+
+`route.py` (no arguments) rebuilds 05, 10, 20, 25, 30, 40, 50, 60 from the bare board; a full rebuild equals the staged
+group-by-group build (1096 items). DRC errors 4 -> 4 (USBC1's), unconnected 388 -> 138, KiCad parity unchanged, sync
+all zeros. Tooling: `maze.py` now blocks tracks only in rule areas that forbid them and only on their own layers (the
+DRC-only "pins: <ref>" areas used to wall off their parts), takes extra per-layer keep-outs and a search budget;
+`route.py` takes pad keys as route ends and keeps `.kicad_pro` as it was.
+
+What changed against the trials:
+- **10:** + the strip's pin locals (trial), the U2 core buck (SW 0.6 mm, VIN -> CIN, L1 -> COUT 1.0 mm, RUN, FB; the
+  divider top and the feed-forward cap Kelvin-sensed at L1 / TP8, routed west of the RUN / FB parts and over L1), the
+  +0V9 trunk (W3), U6's boost loop (SW node U6.3 / L2.2 / D3.2, D3 -> C45, C45.2 -> U6.4 up P2).
+- **20:** the island stubs are on the 45 deg grid: 12 vias re-fitted by <= 0.33 mm (`mcu_escape.py` has the new spots)
+  and U1.28 shares U1.26's LDOA via; the LDOA ring is on B (4 maze legs, ~35 mm, a few mA).
+- **25:** RESET's NE2 leg is explicit (north, then 45 deg to SW1.1): a fresh maze took the diagonal first and boxed
+  PSHOLD in.
+- **60:** PWR_BTN_3V3 / PSHOLD are the trial's parallel 45 deg pair, explicit; BL_CTRL's second leg starts at R51.1
+  (second review); E1 east is explicit: TOUCH_RST / TOUCH_INT to FPC1, EXP_INT north of U16's decaps (C43 / C67 keep
+  both thermal spokes) to R29 and U16.1. SPK_EN ends at x 101 for group 80.
+- A few trial segments were 1-16 deg off the 45 deg grid (route.py lint): redrawn.
+
+Open: 70_west, 75_audio, 80_highways (SPK_EN from x 101; the T0 vias for /PB and PWR_EN; the T1 drops group 10
+placed: CHG_TS, CHG_FAST, CHG_PGOOD, GAUGE_ALRT, I2C1_SDA), 85_grips, then fanout / pour / checks / silk.
+
 ## Second review (2026-10-14): items for step 4
 
 The second independent review reproduced the fix pass (same DRC, measurements and zones) and kept the plan's
