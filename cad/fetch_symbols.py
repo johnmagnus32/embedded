@@ -17,32 +17,12 @@ There is no hardcoded parts list: pass whatever LCSC ids you need.
 import argparse
 import re
 import subprocess
-import time
 import sys
 from pathlib import Path
 
 OUTPUT = Path(__file__).resolve().parent / "symbols"
 SYM_FILE = OUTPUT / "easyeda2kicad.kicad_sym"
 
-
-# easyeda2kicad hardcodes "User-Agent: easyeda2kicad v<ver>", which EasyEDA's CDN now
-# blocks with a 403 (the API itself is fine — curl with a browser UA returns JSON).
-# Rather than edit the installed package (lost on reinstall), run it through this
-# bootstrap, which patches the UA in-process and then delegates to its real main().
-_UA_BOOTSTRAP = """
-import sys
-from easyeda2kicad.easyeda import easyeda_api as _api
-_orig_init = _api.EasyedaApi.__init__
-def _init(self):
-    _orig_init(self)
-    self.headers["User-Agent"] = (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-    )
-_api.EasyedaApi.__init__ = _init
-from easyeda2kicad.__main__ import main
-sys.exit(main(sys.argv[1:]))
-"""
 
 def already_fetched(lcsc_id):
     """True if this LCSC id is already in the .kicad_sym library."""
@@ -58,28 +38,11 @@ def fetch(lcsc_id):
         return True
     # invoke via the current interpreter so it works whether or not the venv is activated
     r = subprocess.run(
-        [sys.executable, "-c", _UA_BOOTSTRAP, f"--lcsc_id={lcsc_id}",
-         "--symbol", "--footprint", "--output", str(OUTPUT / "easyeda2kicad")],
+        [sys.executable, "-m", "easyeda2kicad", f"--lcsc_id={lcsc_id}",
+         "--symbol", "--footprint", "--output", str(OUTPUT)],
         capture_output=True, text=True)
-    out = (r.stderr or "") + (r.stdout or "")
-    # EasyEDA's CDN rate-limits bursts and answers with an HTML error page, which
-    # surfaces as a JSONDecodeError. Retry with backoff rather than failing the part.
-    for attempt in (1, 2, 3):
-        if r.returncode == 0 or "JSONDecodeError" not in out:
-            break
-        time.sleep(5 * attempt)
-        r = subprocess.run(
-            [sys.executable, "-c", _UA_BOOTSTRAP, f"--lcsc_id={lcsc_id}",
-             "--symbol", "--footprint", "--output", str(OUTPUT / "easyeda2kicad")],
-            capture_output=True, text=True)
-        out = (r.stderr or "") + (r.stdout or "")
     if r.returncode != 0:
-        # Benign: many passives share a footprint (e.g. every 0402), so easyeda2kicad
-        # refuses to re-add it and exits non-zero *after* creating the symbol we want.
-        if "Created Kicad symbol" in out and "footprint for this id is already" in out:
-            print(f"  {lcsc_id} — fetched (symbol only; footprint already in lib)")
-            return True
-        print(f"  {lcsc_id} — FAILED: {out.strip()}")
+        print(f"  {lcsc_id} — FAILED: {(r.stderr or r.stdout).strip()}")
         return False
     print(f"  {lcsc_id} — fetched")
     return True
@@ -181,7 +144,7 @@ def main():
         ap.error("--desc can only be used with a single LCSC_ID")
 
     print(f"Fetching from JLCPCB/LCSC into {OUTPUT} ...")
-    ok = all([fetch(lcsc) for lcsc in args.lcsc])   # list, not genexp: never short-circuit
+    ok = all(fetch(lcsc) for lcsc in args.lcsc)
     if args.desc and ok:
         patch_description(args.lcsc[0], args.desc)
     print(f"Done. Library: {SYM_FILE}")
