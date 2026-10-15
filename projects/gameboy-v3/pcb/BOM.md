@@ -450,10 +450,14 @@ The plan is `gb3/route/PLAN.md`, with the reserved channels in `route/channels.p
   - the antenna keep-out, trimmed to clear U18's pad 14 (DRC errors 5 → 4; the 4 left are all at USBC1: its pads against its own NPTH holes and the board edge).
 - **Jumper pad groups** (`gb3/jumper_groups.py`): the TS-1187A switches' internally common pads (1/2, 3/4) and D4's pass-through pins (1/6, 3/4) need no copper tie.
 
-**Mounting holes:**
-- **H2** (M2, at 180.5, 35.0) is placed, with a 2.75 mm keep-out.
-- **H1 is dropped:** its M2 head would sit ~0.9 mm under the display module (y 37.0).
-- Scheme, as gb2: screws clamp, shell fingers locate. The other grip-corner holes will be picked from free board area before the grip routing (group 85), and shown on a render first.
+**Mounting holes** (five M2, NPTH 2.2 mm, copper keep-out r 2.75 mm on F and B; user-approved 2026-10-14):
+- Scheme, as gb2: screws clamp, shell fingers locate. Each grip is clamped at its ends; the right grip hangs off the 20 mm strip above the cell notch, so it gets three screws. The display module and the notch rule out the middle, so shell ribs carry it.
+- **H1** (26.5, 58.0): left grip, outer edge between the BT module and the D-pad. It is 23.6 mm from the BT830 antenna; the datasheet (12.1.1) says to keep all mounting hardware clear, and metal closer than 20 mm degrades the antenna. That rules out the left grip's top corner.
+- **H2** (180.5, 35.0): right grip, top inner corner.
+- **H3** (204.0, 37.5): right grip, top outer corner by the R bumper.
+- **H4** (208.0, 83.5): right grip, under the ABXY cluster's outer corner.
+- **H5** (26.25, 110.75): left grip, bottom-left corner, 11 mm from the jack (takes the plug force).
+- The spots came from a free-area scan (parts, pads, keep-outs, routing channels, via spots); each new hole is ≥ 3.9 mm from the board edge, and none adds a DRC error. The first H1, at (102.0, 36.0), was dropped: its M2 head would sit ~0.9 mm under the display module (y 37.0).
 
 **Battery connector (CN1):** the JST PH is rated 2 A per contact, and the cell's 1C rate is also 2 A. The all-at-once worst case is 2.7 A (U12 1.87 + U6 0.33 + U9 0.5 A). The BAT copper is sized for 2.7 A, but 2 A is the continuous limit. **Decision: firmware load cap.** On battery, powerd caps backlight and volume when the INA226 (U15) reads > 1.8 A.
 

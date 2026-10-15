@@ -12,8 +12,8 @@ here was checked on ONE combined scratch board (`~/.cache/gb3-step3/fix/trial/s5
 together); see "Status". Revised 2026-10-14 after the first review (its items 1-6; the "fix" pass).
 
 **Applied 2026-10-14 (step 3, user-approved):** netlist A1-A8 + O1 (A5 in the second review's port-0 order, see the
-table), placement P1-P4 (`placement/step3.csv`), the return caps C95/C96 (the trial's C_RET1/2), the mounting hole H2
-(H1 dropped), the keep-outs and "pins:" areas (`route/footprint_keepouts.py`), the jumper pad groups
+table), placement P1-P4 (`placement/step3.csv`), the return caps C95/C96 (the trial's C_RET1/2), the mounting holes H1-H5
+(the first H1 at (102, 36) dropped), the keep-outs and "pins:" areas (`route/footprint_keepouts.py`), the jumper pad groups
 (`jumper_groups.py`) and the DRU. Groups 05/10/40 are drafted here but not built yet (step 4). The second review's
 items for step 4 are listed under "Second review" at the end.
 
@@ -78,7 +78,7 @@ Drafts, nothing applied: `~/.cache/gb3-step3/fix/proposed/` (`nets_changes.csv`,
 | — | alternatives to P2 | keep U7: variant C (escape trial C) costs 8 vias | — |
 | P3 | 2 × 100 nF +3V3/GND return-path caps C95 (90.6, 82.6) and C96 (84.6, 89.6), rot 90, B, BOM #19 (C14663), new parts | nearest +3V3/GND decap to the bus vias 5.1–17.2 → 4.0–8.4 mm | adopt |
 | P4 | SD support row (new): D1 (51.1, 50.8) 0, D2 (58.3, 50.8) 0, R8 (49.75, 52.85) 90, R7 (52.0, 52.85) 90, R6 (55.35, 52.85) 90, R10 (59.35, 52.85) 270, R9 (62.0, 49.3) 0, C11 (54.2, 48.75) 180, C40 (61.8, 52.6) 270 | with A8 the seven lanes pass under D1/D2 and every tap / pull-up is a stub; the SP3004 VCC/GND and the pull-ups' +3V3 share one via row at y 50.85 (V13, reserved; H1's lanes turn east at y ≥ 51.5) | adopt, with A8 |
-| M1 | M2 mounting holes (MountingHole_2.2mm_M2 NPTH, keep-out r 2.75 F+B, board-only footprints placed by `route/footprint_keepouts.py`): **H2 (180.5, 35.0)** placed. **H1 dropped** (user review: its M2 head would sit ~0.9 mm under the display module, y 37.0). Scheme (gb2 practice): screws clamp, shell fingers locate; the other grip-corner holes are chosen before group 85 and added to `HOLES` | screws only where no front-shell boss meets the display module, the antenna or the cell buffer | adopted (H2) |
+| M1 | M2 mounting holes (MountingHole_2.2mm_M2 NPTH, keep-out r 2.75 F+B, board-only footprints placed by `route/footprint_keepouts.py`): **H2 (180.5, 35.0)** placed. The first H1 (102.0, 36.0) dropped (user review: its M2 head would sit ~0.9 mm under the display module, y 37.0). Scheme (gb2 practice): screws clamp, shell fingers locate. **Five holes (user-approved 2026-10-14, after a free-area scan):** H1 (26.5, 58.0) left grip outer edge, 23.6 mm from the BT830 antenna (DS 12.1.1: metal < 20 mm degrades it); H2; H3 (204.0, 37.5) right grip top outer; H4 (208.0, 83.5) under the ABXY corner; H5 (26.25, 110.75) left grip bottom, 11 mm from the jack | screws only where no front-shell boss meets the display module, the antenna or the cell buffer; each grip clamped at its ends, the right grip (it hangs off the 20 mm strip above the cell notch) at three points | adopted (H1-H5) |
 
 **DRU** (`proposed/gb3.kicad_dru`, a full replacement). Under the repo's rules the combined board fails exactly these:
 8 diff_pair_gap, 5 HighCurrent width, 4 NOR skew, 1 USB skew, 1 USB via count, 1 USB uncoupled (plus the 4 USBC1).
@@ -359,7 +359,7 @@ D1, C95/C96 and H2's reference at the edge).
 ## Status (2026-10-14, fix pass): plan revised, no copper in the repo
 
 **One combined scratch board** (`~/.cache/gb3-step3/fix/scripts/build_trial.sh`, KiCad 10.0.4, the proposed DRU):
-1. s1: the 16 placement moves, the re-net (nets_changes.csv), the new parts (C_RET1/2 = C95/C96 in the repo; H1/H2 - H1 later dropped), footprint_keepouts.py.
+1. s1: the 16 placement moves, the re-net (nets_changes.csv), the new parts (C_RET1/2 = C95/C96 in the repo; H1/H2 - that H1, at (102, 36), later dropped), footprint_keepouts.py.
 2. s2: route.py groups 05, 10, 40 and the P1 plane-via preview: lint clean.
 3. s3: the U1 escape geometry (58 vias, 188 stubs, no item re-netted).
 4. s4: the trials on the same board, in group order: ne (60), imu (60), usb + CC_SENSE (30), sd (50), nor (50), audio
@@ -390,8 +390,8 @@ decisions. Its trial-level findings, each to be closed by the group that owns it
   A1c from the corrected result.
 - **60_east (BL_CTRL):** the maze chamfered into R51.1 and left a 0.5 mm gap; start the second leg at R51.1. The trial
   build must fail when a trialled net is still unconnected.
-- **80_highways (west half):** A5's port-0 order is now in the netlist (above). H1 (the hole) is gone, so T0 has its
-  normal exit; plan T0's dip under D4 (y 43.4 / 43.7, /PB on top). I2S needs a B hop under the M1 bundle (+6 vias, 4
+- **80_highways (west half):** A5's port-0 order is now in the netlist (above). The old H1 hole at (102, 36) is gone, so T0 has
+  its normal exit; plan T0's dip under D4 (y 43.4 / 43.7, /PB on top). I2S needs a B hop under the M1 bundle (+6 vias, 4
   per line) or an entry via S2 from the south-east. Widen M1 to x ≈ 128.5. Prove T0 + the H1 channel + M1 by a trial
   without the pour stand-in.
 - **Jumper pads:** done in step 3 (`jumper_groups.py`: D4 1–6 / 3–4, TS-1187A SW1–SW11 1–2 / 3–4), so no copper ties.

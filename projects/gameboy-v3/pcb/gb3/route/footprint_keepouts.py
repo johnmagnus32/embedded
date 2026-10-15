@@ -13,8 +13,8 @@
       stops 0.15 mm short of U18.14 (the old y 39.72 edge put the pad 0.12 mm inside: the 5th DRC error).
   SW12-SW16 ALPS SKRT (F): "Prohibited area of copper tracks", 2.0 x 1.2 mm between the mounting lugs (C127481.pdf
       p.2; same footprint frame as gb2's SKRT switches).
-  M2 mounting holes H1/H2 (F+B): r 2.75 mm copper keep-outs (5.5 mm, the step-2 board survey's figure) round the
-      default hole spots, so no track or via is planned under a screw head or boss.
+  M2 mounting holes H1-H5 (F+B): r 2.75 mm copper keep-outs (5.5 mm, the step-2 board survey's figure) round the
+      hole spots, so no track or via is planned under a screw head or boss.
   U4 A-MicroTF-1.85A (B): two hatched "PROHIBITION AREA"s in the recommended PCB layout (C22467599.pdf p.2), mapped
       from the drawing with the socket centre line at x 56.40 (pegs -4.95 / +3.05, #1 at +2.25) and +0.3 mm margin.
 
@@ -25,9 +25,15 @@ import pcbnew, os, sys, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE, "..", "gb3.kicad_pcb")
 # M2 mounting holes: placed here as board-only footprints, with their copper keep-outs below (one list for both).
-# H1 (102.0, 36.0) was dropped at step 3: its M2 head would sit ~0.9 mm under the display module (y 37.0). The other
-# grip-corner holes are added here once their spots are chosen (before the grip route groups).
-HOLES = [("H2", 180.5, 35.0)]
+# Scheme (user-approved 2026-10-14): screws clamp, shell fingers locate; each grip is clamped at its ends, the right
+# grip (it hangs off the 20 mm strip above the cell notch) at three points. The display module and the notch rule out
+# the middle. Spots from a free-area scan (parts, pads, keep-outs, channels, via spots; edge web >= 3.9 mm):
+#   H1 left grip, outer edge between U18 and the D-pad: 23.6 mm from the BT830 antenna (EZ-DS-BT830 12.1.1: "keep all
+#      mounting hardware ... clear", metal < 20 mm degrades it), so nothing nearer the top-left corner
+#   H2 right grip, top inner corner (step 3); H3 right grip, top outer corner by SW16; H4 under the ABXY corner
+#   H5 left grip, bottom-left corner, 11 mm from the jack (plug force)
+# (the first H1 at (102.0, 36.0) was dropped at step 3: its M2 head sat ~0.9 mm under the display module, y 37.0)
+HOLES = [("H1", 26.5, 58.0), ("H2", 180.5, 35.0), ("H3", 204.0, 37.5), ("H4", 208.0, 83.5), ("H5", 26.25, 110.75)]
 HOLE_LIB = os.path.join(HERE, "..", "..", "..", "..", "..", "cad", "symbols", "manual.pretty")
 _io = pcbnew.PCB_IO_MGR.FindPlugin(pcbnew.PCB_IO_MGR.KICAD_SEXP)      # footprints load BEFORE LoadBoard (KiCad 10 bug)
 _hole_fps = {ref: _io.FootprintLoad(HOLE_LIB, "MountingHole_2.2mm_M2") for ref, _, _ in HOLES}
@@ -43,9 +49,8 @@ FIXED = [  # (name, layers, board-frame polygon, allow pour[, allow vias])
     ("U4 card-detect side bar (A-MicroTF-1.85A)", [pcbnew.B_Cu], [(48.3, 40.9), (49.7, 40.9), (49.7, 45.4), (48.3, 45.4)], False),
 ]
 # M2 mounting holes (step-3 default, decision M1): NPTH 2.2 mm (KiCad MountingHole_2.2mm_M2), both outer layers copper-free
-# within r 2.75 mm (step-2 board survey's 5.5 mm keep-out: M2 pan head 4.4 mm + margin). H1 (102.0, 36.0): 0.5 mm east of
-# the (101.5, 36.0) default, which reached U17's PWR_EN via (98.85, 37.45) by 0.03 mm. H2 (180.5, 35.0): 1.5 mm north of the
-# (180.5, ~36.5) default, which put U13's pins 2.05 mm from the screw axis; BAT passes south of it at y 39.5-40.7.
+# within r 2.75 mm (step-2 board survey's 5.5 mm keep-out: M2 pan head 4.4 mm + margin). H2 (180.5, 35.0): 1.5 mm north
+# of the (180.5, ~36.5) default, which put U13's pins 2.05 mm from the screw axis; BAT passes south of it at y 39.5-40.7.
 for ref, cx, cy in HOLES:
     FIXED.append(("%s M2 mounting hole (r 2.75 mm, F+B)" % ref, [pcbnew.F_Cu, pcbnew.B_Cu],
                   [(cx + 2.75 * math.cos(k * math.pi / 16), cy + 2.75 * math.sin(k * math.pi / 16)) for k in range(32)], False))
