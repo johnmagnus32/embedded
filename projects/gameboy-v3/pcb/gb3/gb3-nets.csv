@@ -365,12 +365,12 @@ P1,39,,,spare/NC — panel pin39=NC
 P1,40,,,spare/NC — panel pin40=NC
 P1,41,GND,gnd,"assumed FPC shield/mechanical mount tab -> GND. VERIFY vs symbol pin order (40-pin conn, symbol shows 42)."
 P1,42,GND,gnd,assumed FPC shield/mechanical mount tab -> GND. VERIFY vs symbol.
-FPC1,1,+3V3,pwr,"touch VDD (FT7311, 2.8-3.3V)"
-FPC1,2,GND,gnd,touch GND
-FPC1,3,I2C1_SCL,,touch I2C clock -> T113 PG-bank I2C1
-FPC1,4,I2C1_SDA,,touch I2C data -> I2C1
-FPC1,5,TOUCH_INT,,FT7311 INT -> T113 PE8 (EINT)
-FPC1,6,TOUCH_RST,,FT7311 RST -> T113 PE9
+FPC1,1,TOUCH_RST,,"FT7311 RST -> T113 PE9 (tail pin 6; rotated 180 on B, pre-fab fix 2026-10-15: pad n sits at x 122 - n, so the tail's contacts keep their x)"
+FPC1,2,TOUCH_INT,,FT7311 INT -> T113 PE8 (EINT) (tail pin 5)
+FPC1,3,I2C1_SDA,,touch I2C data -> I2C1 (tail pin 4)
+FPC1,4,I2C1_SCL,,touch I2C clock -> T113 PG-bank I2C1 (tail pin 3)
+FPC1,5,GND,gnd,touch GND (tail pin 2)
+FPC1,6,+3V3,pwr,"touch VDD (FT7311, 2.8-3.3V) (tail pin 1)"
 FPC1,7,GND,gnd,connector is 6-pin (HDGC 1.0K-1.5-6PWB) but symbol shows 8 pins; assumed shield/mount tab -> GND. VERIFY symbol pin order/count.
 FPC1,8,GND,gnd,assumed shield/mount tab -> GND (see pin7). VERIFY symbol.
 U6,1,SYS,pwr,rail: #28 VIN from SYS/5V not 3.3V (REVIEW: SYS vs +5V)
@@ -566,7 +566,7 @@ U16,3,GND,gnd,A2 strap=0 for I2C base addr 0x20
 U16,4,BTN_R1,,"P00 input; R bumper SW16 (step 3: port 0 = right grip, in the order the strip lanes reach it)"
 U16,5,BTN_VOLUP,,P01 input; volume SW12
 U16,6,BTN_VOLDOWN,,P02 input; volume SW13
-U16,7,BTN_A,,P03 input; face SW7 = right = A (step 4: Nintendo layout, nets named by position)
+U16,7,BTN_A,,"P03 input; face SW7 = right = A (step 4: Nintendo layout, nets named by position)"
 U16,8,BTN_X,,P04 input; face SW8 = top = X
 U16,9,BTN_SELECT,,P05 input; SW11
 U16,10,BTN_B,,P06 input; face SW9 = bottom = B
@@ -654,10 +654,10 @@ SW16,3,GND,gnd,"[DS C127481] ALPS {1,3} = common terminal -> GND (confirmed)"
 SW16,4,GND,gnd,mounting lug -> GND
 SW16,5,GND,gnd,mounting lug -> GND
 U17,1,SYS,pwr,rail: #94 VCC always-on SYS
-U17,2,,,#SR — STM6601 /SR Smart-Reset input unused -> leave open per BOM #94. Relies on device-option internal SR pull-up; verify STM6601CA2 has it else tie to VCC(SYS)
+U17,2,PWR_BTN,,"#SR — tied to /PB (pre-fab fix, fab review fpic-1): holding the power button for tSRD (CSRD C97, 3.5-7 s) forces EN off, the hang recovery. Never grounded permanently (datasheet p13)"
 U17,3,STM_VREF,,1.5V VREF -> CREF cap C69 to GND (mandatory even though VREF unused)
 U17,4,PSHOLD,,PS_HOLD gpio-poweroff handshake -> T113 PE11 (PSHOLD)
-U17,5,,,C_SRD Smart-Reset delay cap input unused -> leave open per BOM #94
+U17,5,STM_CSRD,,C_SRD Smart-Reset delay: C97 0.47 uF to GND -> tSRD = C x 1.5 V / (100-200 nA) = 3.5-7 s (Table 5 p41)
 U17,6,PWR_BTN,,#PB — /PB push-button input <- SW14 center + T113 PE13 (PWR_BTN_3V3 side via /PB_OUT). Has internal pull-up
 U17,7,,,"#VCC_LO — /VCC_LO comparator output unused -> leave open per BOM #94 (open-drain, no pull-up needed)"
 U17,8,PWR_BTN_3V3,,#PB_OUT — [AUDIT] /PB_OUT open-drain -> PWR_BTN_3V3 (+#117 pull-up) -> T113 PE13
@@ -669,6 +669,11 @@ C68,1,SYS,pwr,100nF STM6601 VCC decoupling; VCC(U17 pin1)=always-on SYS
 C68,2,GND,gnd,100nF STM6601 VCC decoupling: GND side
 C69,1,STM_VREF,,1uF CREF on STM6601 VREF (U17 pin3)
 C69,2,GND,gnd,1uF CREF: GND side
+C97,1,STM_CSRD,,0.47uF CSRD on STM6601 C_SRD (U17 pin5): sets the long-press force-off delay
+C97,2,GND,gnd,0.47uF CSRD: GND side
+R58,1,PSHOLD,,"100k PSHOLD pull-up (pre-fab fix, fab review fpic-2): reboots, RESET and FEL keep EN on (PE11 Hi-Z); software power-off still drives PE11 low"
+R58,2,+3V3,pwr,100k PSHOLD pull-up: top to +3V3 (exists only while EN is on)
+TP13,1,PSHOLD,,test point: PSHOLD (U17.4 / PE11) — bare probe pad on the back
 R30,1,I2C1_SCL,,I2C1 SCL pull-up (1.5k #97); joins bus SCL already assigned on peripherals
 R30,2,+3V3,pwr,pull-up top to 3.3V
 R31,1,I2C1_SDA,,I2C1 SDA pull-up (1.5k #97); joins bus SDA

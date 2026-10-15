@@ -16,7 +16,8 @@ the In1 plane and the In2 GND islands (ported from gb2's route/pour.py; PLAN "Gr
 
 A via goes only where it sits inside BOTH outer pours' fill with margin (so it clears every other net's copper on
 F.Cu and B.Cu), on In1 (always GND) and on In2's GND or +3V3 copper (any: an antipad there is fine), keeps the
-hole-to-hole rule to every other drill, and stays out of rule areas that forbid vias. Vias are the Default 0.6/0.3.
+hole-to-hole rule to every other drill, stays PAD_KEEP off every SMD pad (its own net's too: no via-in-pad) and out
+of rule areas that forbid vias. Vias are the Default 0.6/0.3.
 Rerunnable (strips route:pour first). Order: route.py -> fanout.py -> pour.py.
 
 Run:  <kicad python> route/pour.py [board]
@@ -36,6 +37,8 @@ ISLAND_PITCH = 1.5
 USB_PITCH, USB_OFF = 2.0, 0.69   # mm along the band; mm outside the pair's outer edges (between D+ and CC_SENSE north)
 USB_BAND = [((52.0, 47.0), (116.6, 47.0)), ((52.15, 47.475), (116.6, 47.475))]   # D+ / D- straight F runs (group 30)
 HOLE_CLR = 0.25 + 0.05           # board min_hole_clearance / min_hole_to_hole + margin
+PAD_KEEP = 0.15                  # mm: a via's ring stays this far off every SMD pad, its own net's included (no via-in-pad;
+                                 # the fill test alone let GND vias into GND pads: fab review 2026-10-15)
 PLANE_NETS = {"GND", "+3V3", "+0V9"}
 
 board_path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE, "..", "gb3.kicad_pcb")
@@ -88,6 +91,17 @@ def in_channel(x, y, m=0.35):
     return any(_inside(x + dx, y + dy, poly) for name, (_, poly, _) in CHANNELS.items() if name not in SOFT
                for dx, dy in ((0, 0), (m, 0), (-m, 0), (0, m), (0, -m)))
 
+smd = []                         # (bbox, shape) of every SMD pad on F / B
+for fp in B.GetFootprints():
+    for p in fp.Pads():
+        if p.HasHole(): continue
+        bb = p.GetBoundingBox()
+        for L in (pcbnew.F_Cu, pcbnew.B_Cu):
+            if p.IsOnLayer(L): smd.append((TO(bb.GetLeft()), TO(bb.GetTop()), TO(bb.GetRight()), TO(bb.GetBottom()), p.GetEffectiveShape(L)))
+def off_pads(x, y):
+    m = VIA_D / 2 + PAD_KEEP
+    c = pcbnew.SHAPE_CIRCLE(V(x, y), int(MM(VIA_D / 2)))
+    return not any(x0 - m < x < x1 + m and y0 - m < y < y1 + m and sh.Collide(c, int(MM(PAD_KEEP))) for x0, y0, x1, y1, sh in smd)
 def ring(x, y, r):
     return [(x, y)] + [(x + r * math.cos(a), y + r * math.sin(a)) for a in [k * math.pi / 4 for k in range(8)]]
 def on_copper(L, x, y, r):
@@ -99,6 +113,7 @@ def fits(x, y, island_ok=True):
     if any(math.hypot(hx - x, hy - y) < hr + VIA_H / 2 + HOLE_CLR for hx, hy, hr in holes): return False
     if any(z.Outline().Contains(V(x, y)) or z.Outline().SquaredDistance(V(x, y)) < MM(VIA_D / 2 + 0.1) ** 2 for z in no_via): return False
     if not (on_copper(pcbnew.F_Cu, x, y, VIA_D / 2 + 0.03) and on_copper(pcbnew.B_Cu, x, y, VIA_D / 2 + 0.03)): return False
+    if not off_pads(x, y): return False
     # In1 is GND everywhere but antipads; In2 must be plane copper (+3V3 or a GND island), not the edge of the +0V9 island
     return on_inner(pcbnew.In1_Cu, x, y, VIA_D / 2) and on_inner(pcbnew.In2_Cu, x, y, VIA_D / 2)
 

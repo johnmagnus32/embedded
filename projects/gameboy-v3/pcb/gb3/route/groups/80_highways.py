@@ -174,19 +174,19 @@ T("CHG_PGOOD", "F", W, [(112.85, 91.75), (BX["CHG_PGOOD"], 83.2)])
 T("GAUGE_ALRT", "B", W, [(X82, 84.81), (X82, 91.7), (X82 + 0.8, 92.5), (113.0, 92.5)]); VIA("GAUGE_ALRT", 113.0, 92.5)
 T("GAUGE_ALRT", "F", W, [(113.0, 92.5), (BX["GAUGE_ALRT"], 83.2)])
 # I2C1 drops (U8, FPC1, U16). SCL, the trunk's north lane, crosses SDA once, on B: a via north of the trunk at x 118.4,
-# down between U8's pin rows (under its body) to U8.2 and on to a via south of U8; from there F south to FPC1.3's via
-# and west at y 61.3. SDA (the south lane) drops on F at x 119.0 to FPC1.4's via and branches west at y 60.7 (U8.3's
+# down between U8's pin rows (under its body) to U8.2 and on to a via south of U8; from there F south to FPC1.4's via (SCL; pad 3 = SDA since the pre-fab rotation)
+# and west at y 61.3. SDA (the south lane) drops on F at x 119.0 to FPC1.3's via and branches west at y 60.7 (U8.3's
 # via joins it from the north). The west pair passes P1.42's tab on its east (x 106.6 / 107.3) and steps SW into U16's
 # pocket: vias west of U16.23 / U16.22 (TOUCH_RST / TOUCH_INT and EXP_INT wall U16's and FPC1's north sides on B).
 T("I2C1_SCL", "F", W, [(118.4, 53.4), (118.4, 52.9)]); VIA("I2C1_SCL", 118.4, 52.9)
 T("I2C1_SCL", "B", W, [(118.4, 52.9), (118.4, 61.3)]); VIA("I2C1_SCL", 118.4, 61.3)
 T("I2C1_SCL", "B", W, [(118.4, 59.45), (118.15, 59.7), P("U8.2")])
-T("I2C1_SCL", "F", W, [(118.4, 61.3), (118.4, 70.6), (118.0, 71.0)]); VIA("I2C1_SCL", 118.0, 71.0)
-T("I2C1_SCL", "B", W, [(118.0, 71.0), P("FPC1.3")])
+T("I2C1_SCL", "F", W, [(118.4, 61.3), (118.4, 69.9), (118.0, 70.3)]); VIA("I2C1_SCL", 118.0, 70.3)
+T("I2C1_SCL", "B", W, [(118.0, 70.3), P("FPC1.4")])
 T("I2C1_SCL", "F", W, [(118.4, 61.3), (107.3, 61.3), (107.3, 70.2), (105.0, 72.5), (105.0, 77.0)]); VIA("I2C1_SCL", 105.0, 77.0)
 T("I2C1_SCL", "B", W, [(105.0, 77.0), (105.27, 76.73), P("U16.22")])
-T("I2C1_SDA", "F", W, [(119.0, 53.7), (119.0, 71.0)]); VIA("I2C1_SDA", 119.0, 71.0)
-T("I2C1_SDA", "B", W, [(119.0, 71.0), P("FPC1.4")])
+T("I2C1_SDA", "F", W, [(119.0, 53.7), (119.0, 70.3)]); VIA("I2C1_SDA", 119.0, 70.3)
+T("I2C1_SDA", "B", W, [(119.0, 70.3), P("FPC1.3")])
 T("I2C1_SDA", "F", W, [(119.0, 60.7), (106.6, 60.7), (106.6, 70.2), (104.3, 72.5), (104.3, 75.8)]); VIA("I2C1_SDA", 104.3, 75.8)
 T("I2C1_SDA", "B", W, [(104.3, 75.8), (104.58, 76.08), P("U16.23")])
 VIA("I2C1_SDA", 116.15, 59.2); T("I2C1_SDA", "B", W, [(116.15, 59.2), P("U8.3")])

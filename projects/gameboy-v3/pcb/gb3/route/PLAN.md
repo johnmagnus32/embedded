@@ -479,7 +479,7 @@ lines (54 top, 140 bottom), hand-fit U18 (BT830), J2 / J3 (the LRA and speaker l
 board: 1030 x 0.3 + 7 x 0.4 vias, USBC1's 4 slotted shell holes, 11 NPTH. fab/FOOTPRINT_CHECKLIST.md (committed) lists
 every part line, highest risk first, with what to check against the datasheet; none is verified yet.
 
-Order spec: JLC04161H-7628, 1.6 mm, 1 oz outer, ENIG, vias tented, U1's EP vias plugged + capped; never the
+Order spec: JLC04161H-7628, 1.6 mm, 1 oz outer, ENIG, all vias epoxy-filled + capped (step 7: 39 exposed-pad vias sit in pad openings); never the
 Fabrication Toolkit button (its bottom rotations are wrong for JLC).
 
 ## Second review (2026-10-14): items for step 4

@@ -6,7 +6,7 @@
 #   (U1.36) x 77.2; BL_CTRL (U1.37 PE10 / PWM4) x 77.6. They fan out in NE2 (B only): PWR_BTN_3V3 -> R40.1 (the /PB_OUT
 #   pull-up) -> U17.8, PSHOLD -> U17.4, BL_CTRL -> R51.1 (100k pull-down) -> U6.2 (TPS61165 CTRL) under U6's body.
 #   U17's and U6's local links first (VREF cap, PWR_EN / /PB vias, Rset Kelvin, COMP).
-# E1: TOUCH_RST / TOUCH_INT east to the touch FPC1 (pins 6 / 5), EXP_INT east to R29.1 (pull-up) and U16.1 (PCA9555
+# E1: TOUCH_RST / TOUCH_INT east to the touch FPC1 (pins 1 / 2 since the pre-fab rotation), EXP_INT east to R29.1 (pull-up) and U16.1 (PCA9555
 #   INT); SPK_EN east to x 101 (group 80 takes it on through M1 / T1 to R14 in the right grip).
 # IMU (P2 + A7, B only, 0 vias): U7's 14 pads, C48 / C49 / R13 / R41 / R42 and their plane vias, then the ribbon that
 #   peels off the bottom of E1, westmost first.
@@ -31,6 +31,16 @@ T("/power-ctrl/STM_VREF", "B", 0.2, [(94.6, 37.4), (95.0, 37.75), (95.55, 37.95)
 T("PWR_EN", "B", 0.15, [(97.98, 37.45), (98.85, 37.45)]); VIA("PWR_EN", 98.85, 37.45)
 T("/power-ctrl/PWR_BTN", "B", 0.15, [(96.22, 36.45), (96.22, 35.6)]); VIA("/power-ctrl/PWR_BTN", 96.22, 35.6)
 T("GND", "B", 0.2, [(97.98, 38.95), (98.85, 38.95)]); VIA("GND", 98.85, 38.95)
+# pre-fab (fab review fpic-1 / fpic-2, 2026-10-15): #SR tied to /PB and C_SRD to C97 (on F), both through 0.5 / 0.3 vias in
+# the 0.86 mm channel between U17's pad rows (B is full west of the pins: PSHOLD wraps pin 5, VREF / SYS box pin 2). SR's F
+# leg joins /PB's F run on its diagonal. PSHOLD's 100k pull-up R58 sits between the PWR_BTN_3V3 lane and the PSHOLD run
+# (its +3V3 pad gets a plane via in fanout.py); TP13 hangs off the PSHOLD diagonal on a 45 deg stub.
+T("/power-ctrl/PWR_BTN", "B", 0.15, [P("U17.2"), (97.1, 38.45)]); VIA("/power-ctrl/PWR_BTN", 97.1, 38.45, d=0.5, h=0.3)
+T("/power-ctrl/PWR_BTN", "F", 0.15, [(97.1, 38.45), (97.6, 38.45), (98.1, 37.95), (98.1, 35.9)])
+T("/power-ctrl/STM_CSRD", "B", 0.15, [P("U17.5"), (97.1, 36.95)]); VIA("/power-ctrl/STM_CSRD", 97.1, 36.95, d=0.5, h=0.3)
+T("/power-ctrl/STM_CSRD", "F", 0.15, [(97.1, 36.95), P("C97.1")])
+T("PSHOLD", "B", W, [P("R58.1"), (P("R58.1")[0], 36.65)])
+T("PSHOLD", "B", W, [P("TP13.1"), (88.025, 41.025)])
 # ---- U6 locals (B): FB -> Rset, Rset GND Kelvin to U6.4 under the SOT-23 (west of BL_CTRL's lane, BOM #33), COMP
 T("BL_LED_N", "B", 0.25, [(102.35, 53.45), (102.40, 53.15), (102.40, 51.83)])
 T("GND", "B", 0.2, [(102.40, 50.97), (102.95, 50.97), (103.25, 51.27), (103.25, 55.05), (102.95, 55.35), (102.35, 55.35)])
@@ -39,20 +49,20 @@ m = MAZE((66.0, 32.6, 112.0, 88.0))
 # ---- NE corridor west to east (RESET, the west lane, is group 25's): PWR_BTN_3V3 (x 73.0) and PSHOLD (x 77.2) as one
 #      parallel 45 deg pair (the trial's maze paths, fixed: a fresh maze run boxes PSHOLD in), BL_CTRL (x 77.6) east
 T("PWR_BTN_3V3", "B", 0.2, [(73.0, 52.0), (89.95, 35.05), (95.95, 35.05), (96.0, 35.0), (97.75, 35.0), P("R40.1")])
-T("PWR_BTN_3V3", "B", 0.2, [P("R40.1"), (97.2, 35.65), (97.2, 36.75), (97.4, 36.95), P("U17.8")])
+T("PWR_BTN_3V3", "B", 0.2, [P("R40.1"), (98.4, 35.05), (98.8, 35.45), (98.8, 36.6), (98.45, 36.95), P("U17.8")])   # from the east (pre-fab: the channel is SR / CSRD's)
 T("PSHOLD", "B", W, [(77.2, 52.0), (77.2, 51.85), (92.4, 36.65), (95.15, 36.65), (95.5, 37.0), (95.5, 37.25), (95.7, 37.45), P("U17.4")])
 AUTOROUTE(m, "BL_CTRL", (77.6, 52.0, "B"), "R51.1", w=0.15, layers="B", via_cost=40, through=[(100.75, 50.8, "B")])
 AUTOROUTE(m, "BL_CTRL", "R51.1", "U6.2", w=0.15, layers="B", via_cost=40, through=[(103.85, 50.8, "B"), (103.85, 54.40, "B")])   # from the pad (2nd review)
 
 # ---- E1 east (B): the touch FPC and the expander's INT. The three turn NE in step (TOUCH_RST at x 101.0, TOUCH_INT
-#      101.4, EXP_INT 101.8: 0.57 mm c-c on the diagonals). Both touch lanes pass NORTH of FPC1's pins 1-4 (RST at y
-#      68.9, INT at 69.2: 0.225 mm from the pads) and turn south into pins 6 / 5, so pins 1-4 (+3V3, GND, SCL, SDA)
-#      keep their south side free for their own vias. EXP_INT runs north of U16's decaps C43 / C67 (y 71.6) so their GND
-#      pads keep both thermal spokes, then rounds R29 from the east. SPK_EN stays the south lane (group 80).
-T("TOUCH_RST", "B", W, [(101.0, P("U1.38")[1]), (104.65, 68.9), (120.3, 68.9), (121.0, 69.6), P("FPC1.6")])
-T("TOUCH_INT", "B", W, [(101.0, P("U1.39")[1]), (101.4, P("U1.39")[1]), (105.15, 69.2), (119.5, 69.2), (120.0, 69.7), P("FPC1.5")])
-T("EXP_INT", "B", W, [(101.0, P("U1.40")[1]), (101.8, P("U1.40")[1]), (103.55, 71.6), (113.8, 71.6), (113.8, 73.6), (113.25, P("R29.1")[1]), P("R29.1")])
-T("EXP_INT", "B", W, [P("R29.1"), (P("R29.1")[0], P("U16.1")[1] - 0.3), P("U16.1")])
+#      101.4, EXP_INT 101.8: 0.57 mm c-c on the diagonals). Both touch lanes pass NORTH of FPC1's pad row (RST at y
+#      68.9, INT at 69.2) and turn south into pins 1 / 2, so pads 3-6 (SDA, SCL, GND, +3V3) keep their north side for
+#      their own vias. EXP_INT runs north of U16's decaps C43 / C67 (y 71.6) so their GND
+#      pads keep both thermal spokes, then drops into R29.1 and on to U16.1 west of FPC1's tab. SPK_EN stays the south lane (group 80).
+T("TOUCH_RST", "B", W, [(101.0, P("U1.38")[1]), (104.65, 68.9), (120.3, 68.9), (121.0, 69.6), P("FPC1.1")])
+T("TOUCH_INT", "B", W, [(101.0, P("U1.39")[1]), (101.4, P("U1.39")[1]), (105.15, 69.2), (119.5, 69.2), (120.0, 69.7), P("FPC1.2")])
+T("EXP_INT", "B", W, [(101.0, P("U1.40")[1]), (101.8, P("U1.40")[1]), (103.55, 71.6), (110.9, 71.6), P("R29.1")])
+T("EXP_INT", "B", W, [P("R29.1"), (111.6, 72.55), (112.05, 73.0), (112.05, 75.43), P("U16.1")])   # west of FPC1's tab (pad 7)
 
 # ---- IMU (trial s4 imu)
 # ---- supply (explicit): pocket A (INT1|INT2): one +3V3 via shared by C48/C49, GND vias north of C48 and south of C49

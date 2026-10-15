@@ -32,7 +32,8 @@ KICAD_CLI = os.environ.get("KICAD_CLI", "/Applications/KiCad/KiCad.app/Contents/
 # step 1b R47-R53/C92/C93/TP4-TP12 + C13/C39, step 1 R43-R46/TP1-TP3 + C33/C35/C42). New parts land near their anchor;
 # place_moves.py then puts them on their planned spot (placement/step3.csv).
 # new part -> the pad it belongs beside (ref, pad)
-ANCHOR = {"C95": ("R39", "1"), "C96": ("R39", "1")}
+ANCHOR = {"C95": ("R39", "1"), "C96": ("R39", "1"),
+          "C97": ("U17", "5"), "R58": ("U17", "4"), "TP13": ("U17", "4")}    # pre-fab fixes (fab review 2026-10-15)
 # existing part whose job changed -> its new pin
 MOVE = {}
 SEARCH = (1.5, 9.0)      # mm: ring radii searched for a free spot

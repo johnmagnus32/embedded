@@ -153,6 +153,28 @@
 	(condition "A.Type == 'Pad' && A.NetName == 'GND' && (A.memberOfFootprint('C3') || A.memberOfFootprint('C5') || A.memberOfFootprint('C28') || A.memberOfFootprint('C69'))")
 	(constraint min_resolved_spokes 1))
 
+# the 0603 status LEDs are two-terminal chip parts too (pre-fab, fab review rules-5: U5's GND end was solid, its anode on
+# a trace: the tombstoning asymmetry the rule above exists for)
+(rule "Pour: thermal reliefs on the 0603 status LEDs"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'SMD' && A.NetName == 'GND' && (A.memberOfFootprint('U5') || A.memberOfFootprint('U14'))")
+	(constraint zone_connection thermal_reliefs)
+	(constraint thermal_relief_gap (min 0.25mm))
+	(constraint thermal_spoke_width (opt 0.3mm)))
+
+# USBC1's four shell legs are the receptacle's only mechanical anchors: they reflow as pin-in-paste (route/silk.py puts the
+# B.Paste apertures on them), so they get 4 x 0.5 mm spokes rather than solid joins to three planes, or the slots would
+# not wet through the 1.6 mm, 4-layer board (pre-fab, fab review rules-2 / mech-3)
+(rule "Pour: thermal reliefs on USBC1's shell legs"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.memberOfFootprint('USBC1')")
+	(constraint zone_connection thermal_reliefs)
+	(constraint thermal_relief_gap (min 0.25mm))
+	(constraint thermal_spoke_width (opt 0.5mm)))
+
+# the optional USB-C / D4 In2 GND island covers the rear legs (pads 1 / 4) only in part: one spoke resolves there
+(rule "Pour: USBC1's rear legs on the In2 island"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole' && A.memberOfFootprint('USBC1')")
+	(constraint min_resolved_spokes 1))
+
 # ---------------------------------------------------------------- USB-C receptacle land pattern [step 5]
 
 # USBC1 (TYPE-C-31-M-12, C165948) as its land pattern draws it: A1B12 / B1A12 sit 0.235 mm from the NPTH locating

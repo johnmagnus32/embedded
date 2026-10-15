@@ -142,6 +142,8 @@ SW16,buttons,C127481,easyeda2kicad:SKRTLBE010,L/R bumper tactiles · ALPS SKRTLB
 U17,power-ctrl,C109022,easyeda2kicad:STM6601CA2BDM6F,Push-button power controller · STM6601CA2BDM6F · #94
 C68,power-ctrl,C14663,easyeda2kicad:CC0603KRX7R9BB104,STM6601 VCC decoupling · CC0603KRX7R9BB104 · #95
 C69,power-ctrl,C15849,easyeda2kicad:CL10A105KB8NNNC,STM6601 VREF cap (CREF) · CL10A105KB8NNNC · #96
+C97,power-ctrl,C1623,easyeda2kicad:CL10B474KA8NNNC,STM6601 Smart-Reset delay cap (CSRD) · CL10B474KA8NNNC · #137
+R58,power-ctrl,C14675,easyeda2kicad:RC0603FR-07100KL,PSHOLD pull-up 100k · RC0603FR-07100KL · #138
 R30,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C pull-ups (SDA/SCL) · 0603WAF1501T5E · #97
 R31,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C pull-ups (SDA/SCL) · 0603WAF1501T5E · #97
 D4,usb-c,C7519,easyeda2kicad:USBLC6-2SC6,USB2 D+/D− ESD array · USBLC6-2SC6 · #98
@@ -208,3 +210,4 @@ TP9,soc,,manual:TestPoint,Test point LDOA 1.8 V · bare probe pad on the back (n
 TP10,soc,,manual:TestPoint,Test point LDOB 1.5 V (VCC-DRAM) · bare probe pad on the back (not assembled) · #131
 TP11,backlight,,manual:TestPoint,Test point BL_LED_P · bare probe pad on the back (not assembled) · #131
 TP12,charger,,manual:TestPoint,Test point GND · bare probe pad on the back (not assembled) · #131
+TP13,power-ctrl,,manual:TestPoint,Test point PSHOLD · bare probe pad on the back (not assembled) · #131

@@ -1,0 +1,6 @@
+ref,x,y,rot,side,why
+FPC1,118.500,72.800,180,B,[step7 pre-fab] rotated 180 so the FFC slot faces the board's bottom edge (+y): the touch tail wraps the notch edge (y 111.0) and arrives from +y. Pads remapped in gb3-nets.csv so each net keeps its x (pad n at x 122 - n). Lid edge y 76.28: the furthest south the west tab (pad 7) clears U16.1 (0.18); the enclosure fold model puts the U-turn 0.16 outside the display loop at nominal tail length
+R29,110.900,73.300,270,B,[step7 pre-fab] EXP_INT 10k pull-up moved west out of FPC1's west tab: pad 1 north on the y 71.6 lane, +3V3 pad south
+C97,95.600,36.950,180,F,[step7 pre-fab] STM6601 CSRD 0.47 uF on F above U17: pad 1 east to the in-channel via at U17.5 (B is full round U17's pins)
+R58,93.500,35.850,0,B,[step7 pre-fab] PSHOLD 100k pull-up between the PWR_BTN_3V3 lane (y 35.05) and the PSHOLD run (y 36.65): pad 1 taps PSHOLD below, +3V3 pad east to its plane via
+TP13,89.500,42.500,0,B,[step7 pre-fab] PSHOLD test pad SE of the PSHOLD diagonal (45 deg stub)

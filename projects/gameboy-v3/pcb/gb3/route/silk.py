@@ -7,7 +7,8 @@ stroke). A spot is clear when the text box (+0.1 mm) misses every pad on that si
 copper), every reference already placed, every other part's courtyard on that side (the text would sit under the
 part), and stays >= 0.3 mm inside the board edge. Vias are tented (board setup), so silk may cross them. Big parts go
 first. A part with no clear spot keeps its reference on the Fab layer (the assembly drawing), as do the board-only
-mounting holes H1-H5. First, footprint silk graphics: a piece over exposed copper, over another part's silk (the
+mounting holes H1-H5. Step 0 adds the board-level marks (pin-1 / polarity where the footprint has none that prints, and
+USBC1's pin-in-paste apertures) and moves wrong-end footprint marks to Fab. First, footprint silk graphics: a piece over exposed copper, over another part's silk (the
 smaller part's piece) or within 0.2 mm of the board edge (the overhanging jack / USB-C outlines) moves to Fab;
 footprints linked to a library (the step 1-3 parts) keep their graphics, so the board never drifts from the library.
 
@@ -16,6 +17,8 @@ Run:  <kicad python> route/silk.py [board]
 import pcbnew, os, sys, math
 HERE = os.path.dirname(os.path.abspath(__file__))
 path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE, "..", "gb3.kicad_pcb")
+import subprocess        # strip the previous run's marks in a child process (B.Remove breaks this process's SWIG casts)
+subprocess.run([sys.executable, os.path.join(HERE, "route.py"), "--strip", path, "marks"], check=True)
 B = pcbnew.LoadBoard(path); MM, TO = pcbnew.FromMM, pcbnew.ToMM
 V = lambda x, y: pcbnew.VECTOR2I(int(round(MM(x))), int(round(MM(y))))
 SIZES = (1.0, 0.8)
@@ -79,6 +82,66 @@ def yard_area(ref):
 def area(fp): return yard_area(fp.GetReference())
 stats = {"silk": 0, "silk 0.8": 0, "fab": 0, "holes": 0, "outline": 0}
 
+# ---- 0. board-level marks (pre-fab, fab review 2026-10-15): a readable pin-1 / polarity mark where the footprint's own is
+# missing (moved to Fab here as it sat on a pad), too small to print or at the wrong end, and USBC1's pin-in-paste apertures
+# (its four shell legs are the receptacle's only anchors; JLC prints paste only where the B.Paste layer has it). Rebuilt
+# every run in the group "route:marks"; the marks are obstacles for the references below.
+MARK_D = 0.5
+MG = pcbnew.PCB_GROUP(B); MG.SetName("route:marks"); B.Add(MG)      # the old group went in the child process above
+marks = []                                   # (copper side, box) obstacles
+PADBOX = {(fp.GetReference(), p.GetNumber()): box(p.GetBoundingBox()) for fp in fps for p in fp.Pads()}
+def pad_box(ref, num):
+    return PADBOX[(ref, num)]
+def _add(item, side):
+    B.Add(item); MG.AddItem(item)
+    if side is not None: marks.append((side, box(item.GetBoundingBox(), 0.05)))
+def dot(x, y, side):                         # filled pin-1 dot
+    c = pcbnew.PCB_SHAPE(B); c.SetShape(pcbnew.SHAPE_T_CIRCLE); c.SetLayer(SIDE[side][0]); c.SetFilled(True)
+    c.SetCenter(V(x, y)); c.SetEnd(V(x + MARK_D / 2, y)); c.SetWidth(MM(0.1)); _add(c, side)
+def label(x, y, t, side):                    # polarity text
+    tx = pcbnew.PCB_TEXT(B); tx.SetText(t); tx.SetLayer(SIDE[side][0]); tx.SetPosition(V(x, y))
+    tx.SetTextSize(V(1.0, 1.0)); tx.SetTextThickness(MM(STROKE)); tx.SetMirrored(side == pcbnew.B_Cu)
+    tx.SetHorizJustify(pcbnew.GR_TEXT_H_ALIGN_CENTER); tx.SetVertJustify(pcbnew.GR_TEXT_V_ALIGN_CENTER); _add(tx, side)
+def paste(x0, y0, x1, y1, layer):            # a paste aperture
+    r = pcbnew.PCB_SHAPE(B); r.SetShape(pcbnew.SHAPE_T_RECT); r.SetLayer(layer); r.SetFilled(True)
+    r.SetStart(V(x0, y0)); r.SetEnd(V(x1, y1)); r.SetWidth(0); _add(r, None)
+F_, B_ = pcbnew.F_Cu, pcbnew.B_Cu
+def spot(ref, num, side, prefer):            # a mark's place beside a pad: clear of every pad and silk graphic on that side
+    b = pad_box(ref, num); cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2; r = MARK_D / 2
+    L = SIDE[side][0]
+    obst = [box(g.GetBoundingBox()) for f in fps for g in f.GraphicalItems() if g.GetLayer() == L and g.GetClass() == "PCB_SHAPE"]
+    obst += [bb for sd, bb in marks if sd == side]
+    for gap in (0.35, 0.5, 0.7, 1.0):
+        for dx, dy in prefer:
+            x = b[2] + gap + r if dx > 0 else b[0] - gap - r if dx < 0 else cx
+            y = b[3] + gap + r if dy > 0 else b[1] - gap - r if dy < 0 else cy
+            bi = (x - r - 0.1, y - r - 0.1, x + r + 0.1, y + r + 0.1)
+            if inside(bi) and not any(hit(bi, q) for q in pads[side]) and not any(hit(bi, q) for q in obst): return x, y
+    sys.exit(f"silk: no clear spot for the {ref} pin-1 mark")
+b = pad_box("P1", "1"); t41 = pad_box("P1", "41")
+dot(t41[0] - 0.45, b[1] + 0.25, F_)                         # P1: the flex's pin 1 (VLED-), west end (footprint's is at pad 40)
+b = pad_box("U18", "1"); dot((b[0] + b[2]) / 2, b[3] + 0.65, B_)   # BT830 pin 1 (footprint's dot is at the antenna end)
+dot(*spot("U13", "1", B_, ((1, 0), (1, -1), (0, -1), (1, 1))), B_)     # MAX17048 pin 1 (its dot sat on the pad)
+dot(*spot("U17", "1", B_, ((0, 1), (-1, 1), (-1, 0), (1, 1))), B_)    # STM6601 pin 1 (likewise)
+for num, t in (("1", "+"), ("2", "-")):                             # CN1: BAT on pad 1 (JST-PH, red lead = +)
+    b = pad_box("CN1", num); label((b[0] + b[2]) / 2, b[1] - 0.9, t, F_)
+for num in ("1", "2", "3", "4"):                                    # USBC1 shell legs: pin-in-paste on B, 0.2 over the pad
+    b = pad_box("USBC1", num); front = num in ("2", "3")              # (pads 2 / 3 sit 0.35 from the edge: no overprint there)
+    paste(b[0] - 0.2, b[1] - (0.0 if front else 0.2), b[2] + 0.2, b[3] + 0.2, pcbnew.B_Paste)
+WRONG = 0
+for fp in fps:                              # footprint marks that point the wrong way -> Fab
+    ref = fp.GetReference()
+    for g in fp.GraphicalItems():
+        L = g.GetLayer()
+        if L not in (pcbnew.F_SilkS, pcbnew.B_SilkS): continue
+        circ = g.GetClass() == "PCB_SHAPE" and g.GetShape() == pcbnew.SHAPE_T_CIRCLE
+        poly = g.GetClass() == "PCB_SHAPE" and g.GetShape() == pcbnew.SHAPE_T_POLY
+        if ((ref == "P1" and ((circ and TO(g.GetRadius()) > 0.3) or poly)) or        # its pin-1 circle + triangle: pad-40 end
+                (ref == "U18" and circ and math.hypot(TO(g.GetCenter().x) - sum(PADBOX[("U18", "1")][0::2]) / 2,
+                                                      TO(g.GetCenter().y) - sum(PADBOX[("U18", "1")][1::2]) / 2) > 3.0) or
+                (ref == "J2" and g.GetClass() == "PCB_TEXT" and g.GetText() == "+")):     # an LRA has no polarity
+            g.SetLayer(pcbnew.F_Fab if L == pcbnew.F_SilkS else pcbnew.B_Fab); WRONG += 1
+
 # ---- 1. footprint silk graphics: a piece that runs over exposed copper (any pad on that side), over another part's
 # silk, or within the board-edge clearance goes to Fab (JLC clips silk over pads anyway; the overhanging jack / USB-C
 # outlines would print off the board)
@@ -123,6 +186,7 @@ for L, items in gfx.items():
 for fp in fps:
     for g in fp.GraphicalItems():
         if g.GetLayer() in COPPER: placed[COPPER[g.GetLayer()]].append(box(g.GetBoundingBox()))
+for side, bb in marks: placed[side].append(bb)
 
 # ---- 2. references, big parts first
 for fp in sorted(fps, key=lambda f: -area(f)):
@@ -148,6 +212,7 @@ pro = os.path.splitext(path)[0] + ".kicad_pro"
 keep = open(pro, "rb").read() if os.path.exists(pro) else None
 pcbnew.SaveBoard(path, B)
 if keep is not None and open(pro, "rb").read() != keep: open(pro, "wb").write(keep)   # SaveBoard rewrites the project file
+print("silk: %d board-level marks, %d wrong-end footprint marks to Fab" % (len(MG.GetItems()), WRONG))
 print("silk: %(outline)d outline pieces to Fab (over pads / other parts' silk / the edge); references: %(silk)d at 1.0 mm, "
       "%(silk 0.8)d at 0.8 mm, %(fab)d on Fab (no clear spot), %(holes)d holes on Fab" % stats)
 sys.stdout.flush(); os._exit(0)

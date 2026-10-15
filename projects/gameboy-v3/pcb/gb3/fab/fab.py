@@ -42,6 +42,10 @@ bom = list(csv.DictReader(open(os.path.join(BRD, "gb3-bom.csv"), encoding="utf-8
 def idx(note):                     # "... · #N" (some notes go on after it: " · #9 · multi-part row ...")
     m = re.search(r"(?:^|·)\s*#(\d+)\b", note); return int(m.group(1)) if m else None
 def clean(part): return re.sub(r"[*`~]", "", re.sub(r"\s*·.*", "", part)).strip()
+def comment(part, lcsc):           # a multi-part row ("A (C1) + B (C2)") -> the piece that names this LCSC code
+    for piece in re.split(r"\s+\+\s+", part):
+        if "(" + lcsc + ")" in piece: return clean(piece.replace("(" + lcsc + ")", "")), True
+    return clean(part), False
 placed = {r["Ref"]: r for r in csv.DictReader(open(pos, encoding="utf-8"))}
 jlc, hand, problems = collections.OrderedDict(), [], []
 for b in bom:
@@ -50,7 +54,9 @@ for b in bom:
     if ref not in placed: problems.append(f"{ref}: not on the board"); continue
     if src == "JLC":
         if not b["lcsc"].startswith("C"): problems.append(f"{ref}: JLC part with no LCSC number"); continue
-        jlc.setdefault(b["lcsc"], {"comment": clean(part), "refs": []})["refs"].append(ref)
+        c, multi = comment(part, b["lcsc"])
+        e = jlc.setdefault(b["lcsc"], {"comment": c, "multi": multi, "refs": []}); e["refs"].append(ref)
+        if e["multi"] and not multi and row: e.update(comment=c, multi=False)   # prefer the code's own row's name
     elif src == "Hand":
         hand.append((ref, clean(part), row[4] if row else "", placed[ref]["Side"]))
     elif src != "—":
@@ -79,14 +85,15 @@ for p in problems: print("  PROBLEM:", p)
 
 # ======================================================================== footprint checklist
 SPECIAL = {
-    "U1": "T113-S3: pin-1 corner, 0.4 mm pitch, the exposed pad's 4 x 4 via grid (plugged / capped); land pattern vs the datasheet's.",
+    "U1": "T113-S3: pin-1 corner, 0.4 mm pitch, the exposed pad's 4 x 4 via grid (epoxy-filled + capped with the rest); land pattern vs the datasheet's.",
     "USBC1": "USB-C TYPE-C-31-M-12: the mouth faces out of the top edge. Its land pattern puts the shell tabs 0.35 mm from the edge and A1B12 / B1A12 0.235 mm from the pegs (DRU exception at exactly those values).",
     "CN1": "**Battery JST-PH:** pin 1 = BAT (+). Check against the cell's leads (red = +) before the first plug-in; swap the crimps if reversed, no board change.",
     "X1": "24 MHz 3225 crystal: pins 1 / 3 are the crystal, 2 / 4 GND. Check the footprint's numbering against the datasheet (a 90 deg error shorts the oscillator).",
     "X2": "32.768 kHz SC-20S: no copper between the pads (rule area); pad 1 = RTC_IN.",
     "U18": "BT830 (hand-fit, back): the antenna end in the top-left keep-out; pin 1; castellated pads, no copper under the body.",
-    "P1": "Display FPC (40 pin): pin 1 and the contact side against the ATM0500D27's flex as it folds behind the panel.",
-    "FPC1": "Touch FFC (6 pin, 1.0 mm): pin order against the panel's touch flex (FT7311: SCL / SDA / INT / RST).",
+    "P1": "Display FPC (40 pin): the flex's pin 1 (VLED-) lands on the west end (the silk dot; the footprint's own mark, at pad 40, is on Fab); the contact side against the ATM0500D27's flex as it folds behind the panel.",
+    "FPC1": "Touch FFC (6 pin, 1.0 mm, B side): rotated 180 deg before fab, so the slot faces the board's bottom edge and the tail arrives round the notch edge (y 111). Pads are numbered 6..1 west to east: pad 6 = VDD = the tail's pin 1 (x 116), 5 GND, 4 SCL, 3 SDA, 2 INT, 1 RST (x 121). Before ordering: wrap the real tail (or a 53.4 mm paper strip from the glass edge) round a 1.6 mm board edge at the notch; its end must reach y 72.2 (4.1 inside the lid at y 76.3).",
+    "U17": "STM6601 TDFN-12: pin 1; SR (pin 2) is tied to /PB and C_SRD (pin 5) to C97 (0.47 uF, F side) through the two 0.5 / 0.3 vias between its pad rows: holding the power button 3.5-7 s forces EN off.",
     "Audio1": "3.5 mm jack: the barrel overhangs the bottom edge (its silk is on Fab); tip / ring / sleeve / switch against the datasheet.",
     "SW2": "TS-1187A: pads 1 / 2 and 3 / 4 are joined inside (jumper pad groups). The keymap follows the switch positions (BOM.md, routing step 4).",
     "SW12": "ALPS SKRT side switch: the actuator faces out of the board edge; the no-copper area between the lugs is a keep-out.",
@@ -134,8 +141,13 @@ with open(os.path.join(HERE, "FOOTPRINT_CHECKLIST.md"), "w", encoding="utf-8") a
             f"  especially the {side['bottom']} **bottom-side** parts: their CPL angle is written as 180 - θ (JLC's 'seen from above\n"
             "  the part' convention).\n"
             "- **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the impedance and I2C estimates assume it); 1 oz outer;\n"
-            "  min track / space 0.15 / 0.15 mm; vias 0.6 / 0.3 mm (U1.27's 0.5 / 0.3), tented; U1's exposed-pad vias plugged and\n"
-            "  capped; ENIG (U1's 0.4 mm pitch, the 0.5 mm-pitch QFNs).\n"
+            "  min track / space 0.15 / 0.15 mm; vias 0.6 / 0.3 mm (0.5 / 0.3 at U1.27 and between U17's pad rows); **Via Covering:\n"
+            "  Epoxy Filled & Capped, all vias** (39 exposed-pad vias sit in pad openings: U1 16, U12 8, U10 5, U9 4, U20 4, U13 2;\n"
+            "  JLC fills 0.15-0.55 mm holes); ENIG (U1's 0.4 mm pitch, the 0.5 mm-pitch QFNs).\n"
+            "- **Panel:** the outline has cut-outs and parts over both long edges (USBC1, Audio1): let JLC add the rails, fiducials\n"
+            "  and tooling holes (expect a DFM query), with a routed relief, not V-score, in front of USBC1 and Audio1.\n"
+            "- **USBC1's shell legs** carry B.Paste apertures (pin-in-paste): ask JLC in the order notes to make sure the four legs\n"
+            "  are soldered, and check them at incoming inspection (hand-solder from the F side if not).\n"
             f"- **Double-sided assembly** (back: U1 and most of the board; front: U1's decap island, the buttons, the jack,\n"
             f"  P1, CN1, the LEDs). Hand-fit after: {', '.join(f'{r} ({p})' for r, p, *_ in hand)}.\n")
 print("checklist: fab/FOOTPRINT_CHECKLIST.md,", len(lines), "lines")

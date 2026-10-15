@@ -9,7 +9,7 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
 
 | ✓ | Refs | Part | Footprint | Side | Fit | What to check |
 |---|---|---|---|---|---|---|
-| ☐ | U1 | T113-S3 ([C5197687](https://www.lcsc.com/product-detail/C5197687.html)) | `LQFP-128_L14.0-W14.0-P0.40-LS16.0-BL-EP5.6` | bottom | JLC | T113-S3: pin-1 corner, 0.4 mm pitch, the exposed pad's 4 x 4 via grid (plugged / capped); land pattern vs the datasheet's. |
+| ☐ | U1 | T113-S3 ([C5197687](https://www.lcsc.com/product-detail/C5197687.html)) | `LQFP-128_L14.0-W14.0-P0.40-LS16.0-BL-EP5.6` | bottom | JLC | T113-S3: pin-1 corner, 0.4 mm pitch, the exposed pad's 4 x 4 via grid (epoxy-filled + capped with the rest); land pattern vs the datasheet's. |
 | ☐ | U2 | FP6161KR-LF-ADJ ([C77234](https://www.lcsc.com/product-detail/C77234.html)) | `SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U3 | W25Q128JVSIQ ([C97521](https://www.lcsc.com/product-detail/C97521.html)) | `SOIC-8_L5.3-W5.3-P1.27-LS8.0-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U4 | A-MicroTF-1.85A ([C22467599](https://www.lcsc.com/product-detail/C22467599.html)) | `TF-SMD_A-MICROTF-1.85A` | bottom | JLC | microSD socket (A-MicroTF-1.85A): the card slot faces the board edge; its two prohibition bars are copper keep-outs. |
@@ -24,7 +24,7 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
 | ☐ | U14 | 19-213SYGC/S454/5T ([C2986057](https://www.lcsc.com/product-detail/C2986057.html)) | `LED0603-RD` | top | JLC | 0603 LED: cathode mark against pad 1 (the footprint's polarity) in JLC's preview. |
 | ☐ | U15 | TI INA226AIDGSR ([C49851](https://www.lcsc.com/product-detail/C49851.html)) | `MSOP-10_L3.0-W3.0-P0.50-LS5.0-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U16 | PCA9555PWR ([C2864778](https://www.lcsc.com/product-detail/C2864778.html)) | `TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
-| ☐ | U17 | STM6601CA2BDM6F ([C109022](https://www.lcsc.com/product-detail/C109022.html)) | `TDFN-12_L3.0-W2.0-P0.50-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
+| ☐ | U17 | STM6601CA2BDM6F ([C109022](https://www.lcsc.com/product-detail/C109022.html)) | `TDFN-12_L3.0-W2.0-P0.50-BL` | bottom | JLC | STM6601 TDFN-12: pin 1; SR (pin 2) is tied to /PB and C_SRD (pin 5) to C97 (0.47 uF, F side) through the two 0.5 / 0.3 vias between its pad rows: holding the power button 3.5-7 s forces EN off. |
 | ☐ | U18 | Ezurio BT830-SA-01 (—) | `XCVR_BT830-SA-01-T_R` | bottom | Hand | BT830 (hand-fit, back): the antenna end in the top-left keep-out; pin 1; castellated pads, no copper under the body. |
 | ☐ | U19 | TI PCM5102APWR ([C107671](https://www.lcsc.com/product-detail/C107671.html)) | `TSSOP-20_L6.5-W4.4-P0.65-LS6.4-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U20 | TI TPA6132A2RTER ([C69901](https://www.lcsc.com/product-detail/C69901.html)) | `WQFN-16_L3.0-W3.0-P0.50-TL-EP1.6` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
@@ -36,10 +36,10 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
 | ☐ | X2 | SC-20S 32.768kHz ([C97607](https://www.lcsc.com/product-detail/C97607.html)) | `OSC-SMD_L2.0-W1.2` | top | JLC | 32.768 kHz SC-20S: no copper between the pads (rule area); pad 1 = RTC_IN. |
 | ☐ | Audio1 | PJ-327C-4A ([C145813](https://www.lcsc.com/product-detail/C145813.html)) | `AUDIO-SMD_PJ-327C-4A` | top | JLC | 3.5 mm jack: the barrel overhangs the bottom edge (its silk is on Fab); tip / ring / sleeve / switch against the datasheet. |
 | ☐ | CN1 | S2B-PH-SM4-TB(LF)(SN) ([C295747](https://www.lcsc.com/product-detail/C295747.html)) | `CONN-SMD_P2.00_S2B-PH-SM4-TB-LF-SN` | top | JLC | **Battery JST-PH:** pin 1 = BAT (+). Check against the cell's leads (red = +) before the first plug-in; swap the crimps if reversed, no board change. |
-| ☐ | FPC1 | HDGC 1.0K-1.5-6PWB ([C2919568](https://www.lcsc.com/product-detail/C2919568.html)) | `FPC-SMD_6P-P1.00_HDGC_1.0K-1.5-6PWB` | bottom | JLC | Touch FFC (6 pin, 1.0 mm): pin order against the panel's touch flex (FT7311: SCL / SDA / INT / RST). |
+| ☐ | FPC1 | HDGC 1.0K-1.5-6PWB ([C2919568](https://www.lcsc.com/product-detail/C2919568.html)) | `FPC-SMD_6P-P1.00_HDGC_1.0K-1.5-6PWB` | bottom | JLC | Touch FFC (6 pin, 1.0 mm, B side): rotated 180 deg before fab, so the slot faces the board's bottom edge and the tail arrives round the notch edge (y 111). Pads are numbered 6..1 west to east: pad 6 = VDD = the tail's pin 1 (x 116), 5 GND, 4 SCL, 3 SDA, 2 INT, 1 RST (x 121). Before ordering: wrap the real tail (or a 53.4 mm paper strip from the glass edge) round a 1.6 mm board edge at the notch; its end must reach y 72.2 (4.1 inside the lid at y 76.3). |
 | ☐ | J2 | Vybronics VG0832022D (—) | `SolderPad_1x02_SMD` | bottom | Hand | LRA wire pads (an LRA has no polarity). |
 | ☐ | J3 | Same Sky CES-2704-088L050 (—) | `SolderPad_1x02_SMD` | bottom | Hand | Speaker wire pads: SPK_P on pad 1. |
-| ☐ | P1 | BOOMELE 0.5-40PFGPZ ([C9160](https://www.lcsc.com/product-detail/C9160.html)) | `FPC-SMD_40P-P0.50_FG-H2.0-40P` | top | JLC | Display FPC (40 pin): pin 1 and the contact side against the ATM0500D27's flex as it folds behind the panel. |
+| ☐ | P1 | BOOMELE 0.5-40PFGPZ ([C9160](https://www.lcsc.com/product-detail/C9160.html)) | `FPC-SMD_40P-P0.50_FG-H2.0-40P` | top | JLC | Display FPC (40 pin): the flex's pin 1 (VLED-) lands on the west end (the silk dot; the footprint's own mark, at pad 40, is on Fab); the contact side against the ATM0500D27's flex as it folds behind the panel. |
 | ☐ | USBC1 | TYPE-C-31-M-12 ([C165948](https://www.lcsc.com/product-detail/C165948.html)) | `USB-C_SMD-TYPE-C-31-M-12_1` | bottom | JLC | USB-C TYPE-C-31-M-12: the mouth faces out of the top edge. Its land pattern puts the shell tabs 0.35 mm from the edge and A1B12 / B1A12 0.235 mm from the pegs (DRU exception at exactly those values). |
 | ☐ | SW1 | TS-1187A-B-A-B ([C318884](https://www.lcsc.com/product-detail/C318884.html)) | `SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5` | bottom | JLC | TS-1187A: pads 1 / 2 and 3 / 4 are joined inside (jumper pad groups). The keymap follows the switch positions (BOM.md, routing step 4). |
 | ☐ | SW2, SW3, SW4, SW5 | TS-1187A-B-A-B ([C318884](https://www.lcsc.com/product-detail/C318884.html)) | `SW-SMD_4P-L5.1-W5.1-P3.70-LS6.5-TL_H1.5` | top | JLC | TS-1187A: pads 1 / 2 and 3 / 4 are joined inside (jumper pad groups). The keymap follows the switch positions (BOM.md, routing step 4). |
@@ -92,6 +92,7 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
 | ☐ | C92 | CC0805KKX7R9BB225 ([C125847](https://www.lcsc.com/product-detail/C125847.html)) | `C0805` | top | JLC | standard chip part |
 | ☐ | C93 | CC0603KRX7R9BB104 ([C14663](https://www.lcsc.com/product-detail/C14663.html)) | `C0603` | bottom | JLC | standard chip part |
 | ☐ | C94 | CC0603KRX7R9BB104 ([C14663](https://www.lcsc.com/product-detail/C14663.html)) | `C0603` | top | JLC | standard chip part |
+| ☐ | C97 | CL10B474KA8NNNC ([C1623](https://www.lcsc.com/product-detail/C1623.html)) | `C0603` | top | JLC | standard chip part |
 | ☐ | R2 | 0603WAF1503T5E ([C22807](https://www.lcsc.com/product-detail/C22807.html)) | `R0603` | bottom | JLC | standard chip part |
 | ☐ | R3 | 0603WAF7502T5E ([C23242](https://www.lcsc.com/product-detail/C23242.html)) | `R0603` | bottom | JLC | standard chip part |
 | ☐ | R4 | 100 kΩ 0603 (C14675) + 100 nF 0603 (C14663) ([C14675](https://www.lcsc.com/product-detail/C14675.html)) | `R0603` | bottom | JLC | standard chip part |
@@ -130,17 +131,23 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
 | ☐ | R54 | 0603WAF1801T5E ([C4177](https://www.lcsc.com/product-detail/C4177.html)) | `R0603` | bottom | JLC | standard chip part |
 | ☐ | R55 | RC0603JR-0710KL ([C99198](https://www.lcsc.com/product-detail/C99198.html)) | `R0603` | bottom | JLC | standard chip part |
 | ☐ | R56, R57 | 0603WAF2003T5E ([C25811](https://www.lcsc.com/product-detail/C25811.html)) | `R0603` | bottom | JLC | standard chip part |
+| ☐ | R58 | RC0603FR-07100KL ([C14675](https://www.lcsc.com/product-detail/C14675.html)) | `R0603` | bottom | JLC | standard chip part |
 | ☐ | TP1, TP2, TP3 | bare pad (manual:TestPoint) (—) | `TestPoint_Pad_D1.5mm` | bottom | — | bare test pad, nothing assembled |
-| ☐ | TP4, TP5, TP6, TP7, TP8, TP9, TP10, TP11, TP12 | bare pad (manual:TestPoint) (—) | `TestPoint_Pad_D1.5mm` | bottom | — | bare test pad, nothing assembled |
+| ☐ | TP4, TP5, TP6, TP7, TP8, TP9, TP10, TP11, TP12, TP13 | bare pad (manual:TestPoint) (—) | `TestPoint_Pad_D1.5mm` | bottom | — | bare test pad, nothing assembled |
 
 ## Assembly files (fab/out/, check in JLC's online preview)
 
 - **Rotations:** easyeda2kicad footprints come from the same EasyEDA library JLC's placement uses, so most need no
   offset, but check every polarized part (ICs, diodes, LEDs, Q1, the crystals) in JLC's 3D / 2D preview, and
-  especially the 140 **bottom-side** parts: their CPL angle is written as 180 - θ (JLC's 'seen from above
+  especially the 141 **bottom-side** parts: their CPL angle is written as 180 - θ (JLC's 'seen from above
   the part' convention).
 - **Board:** 4 layers, 1.6 mm, stackup **JLC04161H-7628** (the impedance and I2C estimates assume it); 1 oz outer;
-  min track / space 0.15 / 0.15 mm; vias 0.6 / 0.3 mm (U1.27's 0.5 / 0.3), tented; U1's exposed-pad vias plugged and
-  capped; ENIG (U1's 0.4 mm pitch, the 0.5 mm-pitch QFNs).
+  min track / space 0.15 / 0.15 mm; vias 0.6 / 0.3 mm (0.5 / 0.3 at U1.27 and between U17's pad rows); **Via Covering:
+  Epoxy Filled & Capped, all vias** (39 exposed-pad vias sit in pad openings: U1 16, U12 8, U10 5, U9 4, U20 4, U13 2;
+  JLC fills 0.15-0.55 mm holes); ENIG (U1's 0.4 mm pitch, the 0.5 mm-pitch QFNs).
+- **Panel:** the outline has cut-outs and parts over both long edges (USBC1, Audio1): let JLC add the rails, fiducials
+  and tooling holes (expect a DFM query), with a routed relief, not V-score, in front of USBC1 and Audio1.
+- **USBC1's shell legs** carry B.Paste apertures (pin-in-paste): ask JLC in the order notes to make sure the four legs
+  are soldered, and check them at incoming inspection (hand-solder from the F side if not).
 - **Double-sided assembly** (back: U1 and most of the board; front: U1's decap island, the buttons, the jack,
   P1, CN1, the LEDs). Hand-fit after: U18 (Ezurio BT830-SA-01), J2 (Vybronics VG0832022D), J3 (Same Sky CES-2704-088L050).
