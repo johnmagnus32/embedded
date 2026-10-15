@@ -21,7 +21,7 @@ ok(){ grn "PASS  $*"; pass=$((pass+1)); }; no(){ red "FAIL  $*"; fail=$((fail+1)
 kn(){ yel "KNOWN $*"; known=$((known+1)); }
 
 echo "==== 1. build every tool ===="
-TOOLS="cpp cc as ar ld rt nm objcopy objdump readelf size"
+TOOLS="cpp cc as ar ld rt nm objcopy objdump readelf size addr2line"
 for t in ${TOOLS}; do
   make -s -C "${TC}/${t}" >/dev/null 2>&1 && echo "  built ${t}" || { no "build ${t}"; exit 1; }
 done
