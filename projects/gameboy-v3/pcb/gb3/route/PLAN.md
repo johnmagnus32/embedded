@@ -433,6 +433,34 @@ Then 80 and 85 (step 4c; unconnected 92 -> 52, all plane pins; DRC errors 4 -> 4
 Open: fanout (one plane via per remaining plane pad: +3V3 39 and GND 13 unconnected), pour, planecheck, ipc_check,
 i2c_check, audit, silk; then fab.
 
+## Step 5 (2026-10-15): fanout, pours and the checks
+
+Order: `route.py` -> `fanout.py` -> `pour.py` (route.py strips route:fanout / route:pour first), then the checks. All
+four tools are ported from gb2 (`route/`). The routing setup's unnamed whole-board F/B GND pours (stand-ins) are gone:
+pour.py owns the outer pours, so fanout judges every plane pad against its inner plane alone (each decap its own via).
+- **fanout:** 204 plane pads off-plane -> 178 stub vias (GND 145, +3V3 33) + 20 short ties + 6 decap -> pin ties + 3 QFN
+  GND pins into U9's EP; median stub 0.8 mm. It honours the DRU's TP11 isolation (0.6 mm) and only via-forbidding rule
+  areas. Four pads had no spot and got hand copper in their groups: the core buck's RUN RC (10: the +0V9 Kelvin sense
+  moved 0.7 mm west, so R4.1 / C2.2 get vias), U19's CPGND (75: its own via under the body; DAC_OUTR drawn under U19 at
+  x 44.2), U8's IN/TRIG tie (85). C5.2 and FPC1.7 reach GND through the outer pours.
+- **pour:** GND on F and B, solid (the DRU's chip-part thermal rules apply), 566 stitching vias: 36 In2-island (1.5 mm
+  grid), 41 along both sides of the USB band, 100 return vias beside signal vias, 149 edge, 240 field. 51 signal vias
+  have no GND via within 1.2 mm (no room: U1's island and the display staircase).
+- **planecheck:** no B.Cu signal crosses an In2 island edge except DC / slow lines (the plan's list + the DC rails and
+  BB_FB, the TPS63021 divider tap stepping onto its own +3V3 output). 21 plane gaps >= 1 mm, all via-antipad crossings:
+  PWR_BTN_3V3 4.95 mm over X1's island gap (static), SYS 2.2, BAT 1.9, I2C1_SCL 1.6 at V11, RGB_VSYNC 1.3 at the display
+  staircase, the button lanes ~1.1 at their via columns.
+- **ipc_check:** all within the 10 C curve; tightest SYS_SRC / R27's 1.2 mm at 2.7 A (2.73 A), the U12 branch 0.75 mm
+  at 1.87 A (1.94 A), BAT's B side only <= 1.4 mm necks into U10; BAT's 3 drop vias 2.61 A for the 1.8 A cap.
+- **i2c_check:** I2C1 ~79 pF per line, 100 ns rise with R30 / R31 1.5 k (Fast mode, 3x margin).
+- **audit:** no back-turns or off-grid segments; detours are the highways' by design, via counts as planned (/PB 5).
+  It found three, now fixed: UART3_TX's maze route looped back under U1's body (UART3 is drawn now: CTS / TX / RTS as
+  one 0.42 mm-spaced NW fan, TX's F hop at U18), NOR_IO3's and JACK_DET's short overshoots.
+- DRC: errors 4 (USBC1's, pre-existing), unconnected 0; KiCad parity 387 cosmetic (as before); sync all zeros.
+
+Open: silk; the USBC1 footprint's 4 DRC errors (shell pads at the edge, A1B12 / B1A12 next to the pegs) need a DRU
+exception or a footprint fix before fab; then fab.
+
 ## Second review (2026-10-14): items for step 4
 
 The second independent review reproduced the fix pass (same DRC, measurements and zones) and kept the plan's

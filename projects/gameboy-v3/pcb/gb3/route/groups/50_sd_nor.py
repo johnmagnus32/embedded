@@ -16,7 +16,7 @@ for j, (n, pin) in enumerate((("SD_CD", 5), ("SD_D1", 7), ("SD_D0", 8), ("SD_CLK
     x = P("U1.%d" % pin)[0]; yb = 66.9 - 0.1 * j
     T(n, "B", W, [(x, 68.69), (x, yb), (x - 1.8, yb - 1.8), (x - 1.8, 61.5)])
 for pin, n in ((14, "NOR_IO3"), (15, "NOR_IO2"), (16, "NOR_IO1"), (17, "NOR_IO0"), (18, "NOR_CS"), (19, "NOR_CLK")):
-    x = P("U1.%d" % pin)[0]; T(n, "B", W, [(x, 68.69), (x, 62.0)])
+    x = P("U1.%d" % pin)[0]; T(n, "B", W, [(x, 68.69), (x, 63.5 if n == "NOR_IO3" else 62.0)])   # IO3 turns NW to its hop
 
 # ---- SD: socket -> lanes -> taps -> plane pins -> the fan into the escape (trial s4 sd)
 # ---- lanes, socket -> y 54.2 (W -> E: CD, D1, D0, CLK, CMD, D3, D2)
@@ -67,7 +67,7 @@ T("+3V3", "B", 0.25, [P("U3.8"), (71.0, 57.4), P("C7.1")])
 VIA("GND", 71.0, 60.85); T("GND", "B", 0.25, [P("C7.2"), (71.0, 60.85)])
 VIA("GND", 62.2, 53.6);  T("GND", "B", 0.25, [P("U3.4"), (62.2, 53.6)])
 # IO3: westmost at U1, E column at U3 -> one F hop over the five others (its via west of the 0.4-pitch bundle)
-T("NOR_IO3", "B", 0.15, [(63.5, 62.0), (63.5, 62.3), (62.9, 62.9)]); VIA("NOR_IO3", 62.9, 62.9)
+T("NOR_IO3", "B", 0.15, [(63.5, 63.5), (62.9, 62.9)]); VIA("NOR_IO3", 62.9, 62.9)
 T("NOR_IO3", "F", 0.15, [(62.9, 62.9), (69.2, 56.6)]); VIA("NOR_IO3", 69.2, 56.6)
 T("NOR_IO3", "B", 0.15, [(69.2, 56.6), (69.67, 56.13), P("U3.7")])
 m = MAZE((58.0, 50.0, 76.0, 70.0), keepouts=KEEP_NOR)

@@ -133,7 +133,7 @@ T("/core-buck/CORE_FB", "B", W, [P("R3.2"), (P("R3.2")[0], 76.33), P("C1.2")])
 # divider top (R3.1) and the feed-forward cap (C1.1) Kelvin-sensed at L1 / TP8 (0.2 mm, the Power minimum): west of
 # the RUN / FB parts, north over L1
 T("+0V9", "B", 0.2, [P("C1.1"), (P("R3.1")[0], P("C1.1")[1] + (P("C1.1")[0] - P("R3.1")[0])), P("R3.1")])
-T("+0V9", "B", 0.2, [P("R3.1"), (39.0, P("R3.1")[1]), (39.0, 70.0), (39.8, 69.2), (47.45, 69.2), (48.25, 68.4)])
+T("+0V9", "B", 0.2, [P("R3.1"), (38.3, P("R3.1")[1]), (38.3, 70.0), (39.1, 69.2), (47.45, 69.2), (48.25, 68.4)])   # x 38.3: R4.1 / C2.2 keep room for their plane vias
 # +0V9 trunk (W3, 0.6 mm, ~4.8 mV at 0.8 A): COUT -> U1.116 / U1.117's outer ends (the island takes them inward)
 T("+0V9", "B", 0.6, [(48.6, 75.15), (55.9, 75.15)])
 T("+0V9", "B", 0.2, [(56.44, 74.95), (55.9, 75.15)]); T("+0V9", "B", 0.2, [(56.44, 75.35), (55.9, 75.15)])

@@ -507,3 +507,13 @@ All twelve route groups are built in the repo (`route/route.py`, groups 05–85)
 - DRC: 4 errors, all at USBC1 (pre-existing). A full rebuild equals the group-by-group build.
 
 **Next:** port gb2's fanout, pours, planecheck, ipc_check, i2c_check, audit and silk; then the fab outputs.
+
+## Plane fanout, pours and checks, step 5 (2026-10-15)
+
+`route/fanout.py`, `route/pour.py` and the checks (`planecheck.py`, `ipc_check.py`, `i2c_check.py`, `audit.py`) are ported from gb2. The board is fully connected.
+- **Fanout:** every GND / +3V3 plane pad gets its own via or a short tie (178 vias). Four boxed-in pads got hand copper: the core buck's RUN RC, U19's charge-pump ground (CPGND), U8's IN/TRIG tie.
+- **Pours:** GND on F and B, stitched by 566 vias (In2 islands, both sides of the USB band, beside signal vias, along the edge, a 4 mm field).
+- **Checks:** no fast signal crosses an In2 island edge. The power copper is within IPC-2221 at a 10 °C rise. I2C1 rises in 100 ns (Fast mode, 3× margin). The route audit found three faults, all fixed: UART3's TX loop under U1, and two short overshoots.
+- **DRC:** 4 errors, all from the USBC1 footprint (pre-existing). Fix them before fab.
+
+**Next:** silk, the USBC1 DRC items, then the fab outputs.

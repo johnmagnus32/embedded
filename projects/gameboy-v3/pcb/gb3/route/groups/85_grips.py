@@ -14,7 +14,7 @@
 #     SW15, SW10, the north, east, west and south switches. The nets are read from U16's pads.
 # Right grip: U9 (MAX98357A) SPK_P / SPK_N 0.25 mm out of the 0.5-pitch pins, 0.4 mm to J3; SD_MODE R14.1 -> U9.4;
 #   GAIN_SLOT's strap to SYS.
-# Haptics: U8 (DRV2605L) REG -> C50, OUT+ / OUT- -> J2 (0.3 mm).
+# Haptics: U8 (DRV2605L) REG -> C50, OUT+ / OUT- -> J2 (0.3 mm), IN/TRIG's GND tie (boxed in for fanout).
 # BT830: VREG18 (U18.10) -> C70, clear of the module's body (no copper under it).
 W = 0.15
 
@@ -54,6 +54,8 @@ T("SYS", "B", 0.25, [P("U9.2"), (184.5, 79.45), (184.22, 79.17), (184.22, 75.1),
 
 # ---- haptics: U8 locals
 T("/haptics/HAP_REG", "B", 0.25, [P("U8.1"), P("C50.1")])
+T("GND", "B", W, [P("U8.4"), (116.6, P("U8.4")[1]), (116.25, P("U8.4")[1] - 0.35), (115.8, P("U8.4")[1] - 0.35)])   # IN/TRIG tied low
+VIA("GND", 115.8, P("U8.4")[1] - 0.35)
 T("/haptics/LRA_P", "B", 0.3, [P("U8.7"), (123.2, 58.7), (124.45, 57.45), P("J2.1")])
 T("/haptics/LRA_N", "B", 0.3, [P("U8.9"), (123.2, 59.7), (124.45, 60.95), P("J2.2")])
 

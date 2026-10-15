@@ -1,12 +1,12 @@
 # 70_west -- U1's west side: I2C1's escape to its pull-ups, UART3 to the BT830 (W1 / W5), BT_EN_RST, and the I2S /
 # JACK_DET staircase into W4 with the DAC branch (step-3 escape + PLAN channels W1 / W4 / W5 / S1).
 #
-# I2C1 (N row): U1.3 SCL / U1.4 SDA west on B to the 2k2 pull-ups R30 / R31; F risers x 56.75 / 57.5 (W4) north to
+# I2C1 (N row): U1.3 SCL / U1.4 SDA west on B to the 1k5 pull-ups R30 / R31; F risers x 56.75 / 57.5 (W4) north to
 #   y 63.0, where group 80 takes the bus east (H1 -> M1 -> U16 / FPC1 / U8, T1 -> U15 / U13).
 # UART3 (W1 -> W5, B): U1.118-121 west, north at x 50.2-51.4 (0.4 pitch), west through the vacated core-buck zone and
 #   north into U18's pins 4-7. The lanes arrive in the order CTS, TX, RTS, RX (N -> S) and the pads need CTS, RX, RTS,
 #   TX: two swaps, so RX and TX each take one F hop (PLAN W5: 2 via pairs at the U18 end); CTS and RTS stay on B. No
-#   copper under the module's body (its bottom sits on the B side).
+#   copper under the module's body (its bottom sits on the B side). All four are drawn (a maze TX looped under U1).
 # BT_EN_RST (U1.84 PB4, O1): DAC_XSMT / HP_EN (U1.85 / 86, west of it) head south-west into the audio core, BT_EN_RST
 #   north-west to U18, so it crosses their stubs once: an F hop right below the pin row (past U1.91's AGND via), then
 #   B west at y 86.3 (north of the audio core A1c and of U1's bulk caps C37 / C38) and up the left grip to U18.8.
@@ -26,8 +26,11 @@ STAIR = (("I2S1_DOUT", 127, (53.25, 70.95)), ("JACK_DET", 126, (54.0, 71.5)), ("
 for n, pin, (vx, vy) in STAIR:
     y = P("U1.%d" % pin)[1]
     T(n, "B", W, [(56.44, y), (vx, y)] if abs(vy - y) < 1e-6 else [(56.44, y), (vx + abs(vy - y), y), (vx, vy)])
-    VIA(n, vx, vy); T(n, "F", W, [(vx, vy), (vx, 78.0)])
-    if n != "JACK_DET": T(n, "F", W, [(vx, vy), (vx, 66.0)])
+    VIA(n, vx, vy)
+    if n == "JACK_DET":                                        # down to its hop via under the I2S branch (group 75 goes on)
+        T(n, "F", W, [(vx, vy), (vx, 77.7), (53.85, 77.85)]); VIA(n, 53.85, 77.85)
+    else:
+        T(n, "F", W, [(vx, vy), (vx, 78.0)]); T(n, "F", W, [(vx, vy), (vx, 66.0)])
 
 # ---- UART3 W1 escapes
 UART = (("UART3_CTS", 121, 51.4, 56.8), ("UART3_TX", 120, 51.0, 57.2), ("UART3_RTS", 119, 50.6, 57.6), ("UART3_RX", 118, 50.2, 58.0))
@@ -39,19 +42,24 @@ for n, pin, xr, yw in UART:
 T("BT_EN_RST", "B", W, [(P("U1.84")[0], 84.81), (P("U1.84")[0], 85.7), (63.3, 85.9)]); VIA("BT_EN_RST", 63.3, 85.9)
 T("BT_EN_RST", "F", W, [(63.3, 85.9), (61.75, 85.9), (60.9, 86.75), (59.0, 86.75)]); VIA("BT_EN_RST", 59.0, 86.75)
 
+# ---- UART3 to U18, drawn: CTS / TX / RTS north to their turns, west south of the SD fan (y > 55.2), one NW 45 deg fan
+# (x - y = -9.0 / -9.6 / -10.2: 0.42 mm apart) to y 48.2 / 48.8 / 49.4, west, and north into the pads; TX takes its F
+# hop over RTS and RX there (the pads want TX west-most), RX its own from the SE (the lanes arrive CTS, TX, RTS, RX
+# and the pads need TX, RTS, RX, CTS W -> E)
+T("UART3_CTS", "B", W, [(51.4, 66.0), (51.4, 56.4), (47.4, 56.4), (39.2, 48.2), (P("U18.4")[0], 48.2), P("U18.4")])
+T("UART3_RTS", "B", W, [(50.6, 66.0), (50.6, 57.2), (47.0, 57.2), (39.2, 49.4), (P("U18.6")[0], 49.4), P("U18.6")])
+T("UART3_TX", "B", W, [(51.0, 66.0), (51.0, 56.8), (47.2, 56.8), (39.2, 48.8), (36.8, 48.8)]); VIA("UART3_TX", 36.8, 48.8)
+T("UART3_TX", "F", W, [(36.8, 48.8), (34.1, 46.1), (31.65, 46.1), (31.05, 46.7)]); VIA("UART3_TX", 31.05, 46.7)
+T("UART3_TX", "B", W, [(31.05, 46.7), (30.83, 46.48), P("U18.7")])
+T("UART3_RX", "B", W, [(50.2, 66.0), (34.2, 50.0)]); VIA("UART3_RX", 34.2, 50.0)
+T("UART3_RX", "F", W, [(34.2, 50.0), (33.35, 49.15), (32.45, 49.15), (32.45, 46.7)]); VIA("UART3_RX", 32.45, 46.7)
+T("UART3_RX", "B", W, [(32.45, 46.7), (32.45, 46.0), P("U18.5")])
+
 # ---- the long legs, maze-routed (A1c / A1f are group 75's: kept clear)
 A1C = ("B", [(35.5, 86.6), (49.6, 86.6), (49.6, 113.8), (35.5, 113.8)])
 A1F = ("F", [(40.4, 99.8), (43.3, 99.8), (43.3, 108.9), (40.4, 108.9)])
 U18_BODY = ("B", [(30.05, 33.6), (36.45, 33.6), (36.45, 44.9), (30.05, 44.9)])       # inside U18's pad ring
 m = MAZE((22.0, 40.0, 66.0, 118.0), keepouts=[A1C, A1F, U18_BODY], limit=3000000)
-# CTS / RTS explicit on B: north to the turn, west south of the SD fan (y > 55.2), one NW 45 deg bundle (x - y = -9.4 /
-# -10.2) to y 48.6 / 49.4, west, and straight north into the pads; RX and TX then find their F hops (2 via pairs).
-T("UART3_CTS", "B", W, [(51.4, 66.0), (51.4, 56.4), (47.0, 56.4), (39.2, 48.6), (P("U18.4")[0], 48.6), P("U18.4")])
-T("UART3_RTS", "B", W, [(50.6, 66.0), (50.6, 57.2), (47.0, 57.2), (39.2, 49.4), (P("U18.6")[0], 49.4), P("U18.6")])
-m.commit("UART3_CTS", [(51.4, 66.0, "B"), (51.4, 56.4, "B"), (47.0, 56.4, "B"), (39.2, 48.6, "B"), (P("U18.4")[0], 48.6, "B"), (*P("U18.4"), "B")], W)
-m.commit("UART3_RTS", [(50.6, 66.0, "B"), (50.6, 57.2, "B"), (47.0, 57.2, "B"), (39.2, 49.4, "B"), (P("U18.6")[0], 49.4, "B"), (*P("U18.6"), "B")], W)
-AUTOROUTE(m, "UART3_RX", (50.2, 66.0, "B"), "U18.5", w=W, layers="FB", via_cost=20)
-AUTOROUTE(m, "UART3_TX", (51.0, 66.0, "B"), "U18.7", w=W, layers="FB", via_cost=20)
 # BT_EN_RST: west north of A1c, up the left edge (x 23.2: between the board edge and H1's keep-out), into U18.8 from the
 # west between C72 and C73 (U18.8 is boxed in by U18.9 / U18.30 north and south and the body east)
 AUTOROUTE(m, "BT_EN_RST", (59.0, 86.75, "B"), "U18.8", w=W, layers="B",

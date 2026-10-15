@@ -34,6 +34,13 @@ T("/dac/DAC_BCK", "B", W, [P("R32.2"), (48.38, P("U19.13")[1]), P("U19.13")])
 T("/dac/DAC_DIN", "B", W, [P("R34.2"), (49.36, P("U19.14")[1]), P("U19.14")])
 T("/dac/DAC_LRCK", "B", W, [P("R33.2"), (49.39, P("U19.15")[1]), P("U19.15")])
 
+# CPGND (U19.3) between the flying-cap lanes: its own GND via under the body, east of the pin; DAC_OUTR runs under the
+# body at x 44.2, clear of it, and out past C78 / C74 to the south chain (R35)
+T("GND", "B", WA, [P("U19.3"), (43.4, P("U19.3")[1])]); VIA("GND", 43.4, P("U19.3")[1])
+T("/dac/DAC_OUTR", "B", WA, [P("U19.7"), (43.9, P("U19.7")[1]), (44.2, P("U19.7")[1] + 0.3), (44.2, 93.6), (42.9, 94.9),
+                             (42.9, 95.95), (42.5, 96.35), (41.25, 96.35), (40.6, 97.0), (40.6, 101.45), (40.45, 101.6),
+                             (38.1, 101.6), P("R35.1")])
+
 # ---- U20 locals
 T("/headphone-amp/TPA_CPP", "B", WA, [P("U20.11"), (P("C87.1")[0], P("U20.11")[1])])
 T("/headphone-amp/TPA_CPN", "B", WA, [P("U20.9"), (P("C87.2")[0], P("U20.9")[1])])
@@ -67,11 +74,10 @@ T("DAC_XSMT", "B", W, [(53.33, 92.9), (53.33, P("R44.1")[1]), P("R44.1")])
 T("HP_EN", "B", W, [(P("U1.86")[0], 84.81), (P("U1.86")[0], 88.3), (57.4, 88.3), (57.4, 92.15)]); VIA("HP_EN", 57.4, 92.15)
 T("HP_EN", "F", W, [(57.4, 92.15), (57.4, 93.65)]); VIA("HP_EN", 57.4, 93.65)
 
-# ---- the long legs (maze)
+# ---- the long legs (maze; DAC_OUTR is drawn above)
 m = MAZE((30.5, 76.0, 66.0, 117.3), limit=3000000)
 AUTOROUTE(m, "/dac/DAC_OUTL", "U19.6", "R36.1", w=WA, layers="B")      # DAC OUTL -> the north chain (A6)
-AUTOROUTE(m, "/dac/DAC_OUTR", "U19.7", "R35.1", w=WA, layers="B")      # DAC OUTR -> the south chain
 AUTOROUTE(m, "HP_EN", (57.4, 93.65, "B"), "R37.1", w=W, layers="B")
 AUTOROUTE(m, "HP_EN", "R37.1", "U20.13", w=W, layers="B")
 AUTOROUTE(m, "/jack/JACK_SW", "Audio1.4", "R49.1", w=W, layers="FB", via_cost=20)
-AUTOROUTE(m, "JACK_DET", (54.0, 78.0, "F"), "R49.2", w=W, layers="FB", via_cost=20)
+AUTOROUTE(m, "JACK_DET", (53.85, 77.85, "B"), "R49.2", w=W, layers="FB", via_cost=20)   # from group 70's hop via
