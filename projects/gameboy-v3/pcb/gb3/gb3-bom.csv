@@ -70,7 +70,7 @@ R12,power-led,C23193,easyeda2kicad:0603WAF5100T5E,Power-LED resistor · 0603WAF5
 P1,display,C9160,easyeda2kicad:FPCConnector40PIN0.5MM,Display FPC connector · BOOMELE 0.5-40PFGPZ · #26
 FPC1,touch,C2919568,easyeda2kicad:1.0K-1.5-6PWB,Touch FFC connector · HDGC 1.0K-1.5-6PWB · #27
 U6,backlight,C58756,easyeda2kicad:TPS61165DBVR,Backlight WLED boost · TI TPS61165DBVR · #28
-R51,backlight,C14675,easyeda2kicad:RC0603FR-07100KL,BL_CTRL pull-down 100k (holds CTRL low while PE13 is Hi-Z) · RC0603FR-07100KL · #127
+R51,backlight,C14675,easyeda2kicad:RC0603FR-07100KL,BL_CTRL pull-down 100k (holds CTRL low while PE10 is Hi-Z) · RC0603FR-07100KL · #127
 L2,backlight,C135263,easyeda2kicad:SMNR4020-10UH,Boost inductor · SMNR4020-10UH · #29
 D3,backlight,C2481,easyeda2kicad:SS16,Boost diode · MDD SS16 · #30
 C45,backlight,C125847,easyeda2kicad:CC0805KKX7R9BB225,Boost output cap (Cout) · YAGEO CC0805KKX7R9BB225 · #31
@@ -147,6 +147,8 @@ R31,i2c,C22843,easyeda2kicad:0603WAF1501T5E,I2C pull-ups (SDA/SCL) · 0603WAF150
 D4,usb-c,C7519,easyeda2kicad:USBLC6-2SC6,USB2 D+/D− ESD array · USBLC6-2SC6 · #98
 C93,usb-c,C14663,easyeda2kicad:CC0603KRX7R9BB104,USBLC6 VBUS cap (CBUS) · CC0603KRX7R9BB104 · #130
 C94,soc,C14663,easyeda2kicad:CC0603KRX7R9BB104,CC-sense filter cap 100nF at U1.101 · CC0603KRX7R9BB104 · #136
+C95,display,C14663,easyeda2kicad:CC0603KRX7R9BB104,RGB via-field return-path cap · CC0603KRX7R9BB104 · #19
+C96,display,C14663,easyeda2kicad:CC0603KRX7R9BB104,RGB via-field return-path cap · CC0603KRX7R9BB104 · #19
 R52,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,USB-C CC1 Rd 5.1 kΩ (Type-C sink; gb2 R15 / breakout R1) · RC0603FR-075K1L · #128
 R53,usb-c,C105580,easyeda2kicad:RC0603FR-075K1L,USB-C CC2 Rd 5.1 kΩ (Type-C sink; gb2 R16 / breakout R2) · RC0603FR-075K1L · #128
 R56,usb-c,C25811,easyeda2kicad:0603WAF2003T5E,USB-C CC sense R 200k → GPADC0 · 0603WAF2003T5E · #135
@@ -184,9 +186,9 @@ C90,headphone-amp,C125847,easyeda2kicad:CC0805KKX7R9BB225,TPA6132A2 2.2 µF caps
 C91,headphone-amp,C14663,easyeda2kicad:CC0603KRX7R9BB104,TPA6132A2 VDD HF cap · CC0603KRX7R9BB104 · #113
 R37,headphone-amp,C14675,easyeda2kicad:RC0603FR-07100KL,TPA6132A2 EN pull-down · RC0603FR-07100KL · #114
 Audio1,jack,C145813,easyeda2kicad:PJ-327C-4A,3.5 mm headphone jack · PJ-327C-4A · #115
-R49,jack,C99198,easyeda2kicad:RC0603JR-0710KL,JACK_DET series R 10k (PE12 clamp/ESD limit) · RC0603JR-0710KL · #125
+R49,jack,C99198,easyeda2kicad:RC0603JR-0710KL,JACK_DET series R 10k (PG14 clamp/ESD limit) · RC0603JR-0710KL · #125
 R39,display,C99198,easyeda2kicad:RC0603JR-0710KL,DISP pull-up 10k · RC0603JR-0710KL · #116 · [AUDIT] PANEL_DISP->+3V3; BOM.md #116 (fills line-64 gap)
-R40,power-ctrl,C99198,easyeda2kicad:RC0603JR-0710KL,STM6601 /PB_OUT pull-up 10k · RC0603JR-0710KL · #117 · [AUDIT] PWR_BTN_3V3 -> PE10; BOM.md #117 (fixes PE10 SYS-overvoltage)
+R40,power-ctrl,C99198,easyeda2kicad:RC0603JR-0710KL,STM6601 /PB_OUT pull-up 10k · RC0603JR-0710KL · #117 · [AUDIT] PWR_BTN_3V3 -> PE13 (PE-EINT13; A1 plain swap
 R41,imu,C22843,easyeda2kicad:0603WAF1501T5E,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
 R42,imu,C22843,easyeda2kicad:0603WAF1501T5E,i2c2 pull-up (IMU bus) · 0603WAF1501T5E · #118 · [AUDIT] i2c2 SCL/SDA->+3V3; BLOCKER fix (bus had no pull-ups). 1.5k reuses #97
 J2,haptics,,manual:SolderPad_1x02_SMD,"LRA motor solder pads (Vybronics VG0832022D flying leads; direct-solder, no connector) · #46"

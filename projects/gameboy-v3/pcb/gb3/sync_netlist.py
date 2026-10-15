@@ -28,11 +28,11 @@ REPO = os.path.abspath(os.path.join(HERE, "..", "..", "..", ".."))
 FPLIBS = {n: os.path.join(REPO, "cad", "symbols", n + ".pretty") for n in ("easyeda2kicad", "manual")}
 KICAD_CLI = os.environ.get("KICAD_CLI", "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli")
 
-# Per-change tables (this change: step 1c, 2026-10-13; step 1b had R47-R53/C92/C93/TP4-TP12 + C13/C39,
-# step 1 R43-R46/TP1-TP3 + C33/C35/C42). New parts are added in refdes order, so R55 can anchor to Q1.
+# Per-change tables (this change: step 3, 2026-10-14 - the display return-path caps; step 1c had Q1/R54-R57/C94,
+# step 1b R47-R53/C92/C93/TP4-TP12 + C13/C39, step 1 R43-R46/TP1-TP3 + C33/C35/C42). New parts land near their anchor;
+# place_moves.py then puts them on their planned spot (placement/step3.csv).
 # new part -> the pad it belongs beside (ref, pad)
-ANCHOR = {"Q1": ("U10", "12"), "R54": ("R16", "1"), "R55": ("Q1", "1"), "R56": ("R52", "1"),
-          "R57": ("R53", "1"), "C94": ("U1", "101")}
+ANCHOR = {"C95": ("R39", "1"), "C96": ("R39", "1")}
 # existing part whose job changed -> its new pin
 MOVE = {}
 SEARCH = (1.5, 9.0)      # mm: ring radii searched for a free spot

@@ -23,8 +23,8 @@ charge/power-path, onboard Bluetooth. **Stock checked 2026-10-13 (JLC + Digi-Key
 | 9 | 2 | Core-buck RUN RC | 100 kΩ 0603 (C14675) + 100 nF 0603 (C14663) | C14675 / C14663 | +3V3 → R → RUN(pin1); C: RUN→GND | ✅ | JLC | Delays VDD-CORE ~6 ms after +3V3 (τ 10 ms to the 1.5 V RUN threshold; ≥2 ms after VCC-IO). Step 2: fed from +3V3 instead of the STM6601 EN. |
 | 10 | 1 | DDR ZQ | 0603WAF2400T5E | C23350 | T113 pin 47 → GND | ✅ | JLC | 240 Ω 1% (JEDEC ZQ-cal nominal). |
 | 11 | 1 | SPI-NOR | W25Q128JVSIQ | C97521 | SPI0 boot | ✅ | JLC | 128 Mbit, SOIC-8, QE=1. |
-| 12 | 1 | microSD socket | A-MicroTF-1.85A | C22467599 | SDC0 | ✅ | JLC | Push-push. Card-detect (pin 9) is N.O. to the shell (GND) and closes on insert → PF6 + R48 10 kΩ pull-up (#124): active-low. |
-| 13 | 2 | microSD ESD array | Littelfuse SP3004-04XTG ×2 | C207280 | SDC0 CLK/CMD/DAT0-3 | ✅ | JLC | 2× 4-ch → the 6 SD lines + SD_CD (D1 = CLK/SD_CD/D0/D1, D2 = D2/D3/CMD; D2.6 spare). 0.85 pF ultra-low-cap, SOT-563, unidirectional rail-clamp. |
+| 12 | 1 | microSD socket | A-MicroTF-1.85A | C22467599 | SDC0 | ✅ | JLC | Push-push. Card-detect (pin 9) is N.O. to the shell (GND) and closes on insert → PG10 (step 3; was PF6) + R48 10 kΩ pull-up (#124): active-low. |
+| 13 | 2 | microSD ESD array | Littelfuse SP3004-04XTG ×2 | C207280 | SDC0 CLK/CMD/DAT0-3 | ✅ | JLC | 2× 4-ch → the 6 SD lines + SD_CD (step 3 remap: D1.1 CLK, D1.3 D0, D1.4 D1, D1.6 SD_CD; D2.1 D2, D2.3 D3, D2.6 CMD; D2.4 spare). 0.85 pF ultra-low-cap, SOT-563, unidirectional rail-clamp. |
 | 14 | 6 | SD/RESET pull-ups | RC0603JR-0710KL | C99198 | SD CMD+DAT0-3 → 3.3 V | ✅ | JLC | 10 KΩ. **⚠️ RESET pull-up goes to the 1.8 V VCC-RTC rail, NOT 3.3 V** (RESET buffer = VCC-RTC, abs-max 2.16 V). SD-line pulls stay on 3.3 V. **[AUDIT] netlist ties VCC-RTC to the 1.8 V LDOA rail — verify it's the same copper vs the breakout.** |
 | 15 | 1 | HOSC crystal | X322524MRB4SI | C70571 | 24 MHz | ✅ | JLC | SMD3225-4P, CL 18 pF (loads #17). |
 | 16 | 1 | RTC crystal | SC-20S 32.768kHz | C97607 | RTC | ✅ | JLC | SMD2012-2P (loads #18). |
@@ -47,10 +47,10 @@ charge/power-path, onboard Bluetooth. **Stock checked 2026-10-13 (JLC + Digi-Key
 
 | # | Qty | Role | Part | LCSC # | Interface / net | Src | Fit | Note |
 |---|-----|------|------|--------|-----------------|-----|-----|------|
-| 25 | 1 | 5" IPS panel (+ FT7311 touch on-panel) | Zettler ATM0500D27-CT | DigiKey (module) | RGB666 PD0–21; touch on FFC #27 | ✅ | Hand | 24-bit RGB, IPS, logic 2.7–3.6 V. **RGB bit-map NOT datasheet-resolved — get Zettler's map; default = drive 6 MSBs R7..R2, ground R1/R0.** Touch = FocalTech **FT7311, I2C 0x38**; bind `edt,edt-ft5506` (or add `focaltech,ft7311`) — confirm on panel. **Sourcing (2026-10-13): Digi-Key sells it only as non-stock, in multiples of 510 ($66, 22 weeks) — find another channel for 10.** |
+| 25 | 1 | 5" IPS panel (+ FT7311 touch on-panel) | Zettler ATM0500D27-CT | DigiKey (module) | RGB666 PD0–21; touch on FFC #27 | ✅ | Hand | 24-bit RGB, IPS, logic 2.7–3.6 V. **RGB bit-map bench-verified 2026-08-23 (BOM-REVIEW H2): drive the 6 MSBs R7..R2, ground R1/R0; RGB order, no swap.** Touch = FocalTech **FT7311, I2C 0x38**; bind `edt,edt-ft5506` (or add `focaltech,ft7311`) — confirm on panel. **Sourcing (2026-10-13): Digi-Key sells it only as non-stock, in multiples of 510 ($66, 22 weeks) — find another channel for 10.** |
 | 26 | 1 | Display FPC connector | BOOMELE 0.5-40PFGPZ | C9160 | 40P 0.5 mm ZIF, right-angle SMD | ✅ | JLC | **Bottom-contact → mount on the TOP/screen-facing face** (ribbon copper-down). **Pin 1 = LEFT end seen from the front (confirmed 2026-10-13); the EasyEDA footprint numbered its pads right-to-left and was renumbered to the connector's own circuit order.** Test-fit before locking. |
 | 27 | 1 | Touch FFC connector | HDGC 1.0K-1.5-6PWB | C2919568 | 6P 1.0 mm (1=VDD 2=GND 3=SCL 4=SDA 5=INT 6=RST) | ✅ | JLC | Bottom-contact, latching lid. **⚠️ Opposite orientation from #26 → mount on the BOTTOM/back face** (touch ribbon copper-up, wraps around the board edge). Check fold/length. |
-| 28 | 1 | Backlight WLED boost | TI TPS61165DBVR | C58756 | WLED CC boost + CTRL | ✅ | JLC | SOT-23-6. **VIN from SYS/5 V, NOT 3.3 V.** 40 mA via #33. **CTRL on PE13 = hardware PWM5** (the T113 has PWM0–7; the mainline D1/T113 PWM driver is still out of tree, v13), with EasyScale or on/off on the same pin meanwhile. PWM at 6.5–100 kHz (DS p.14); EasyScale: never step up from 0 mV (DS p.20). R51 100 kΩ pull-down (#127) holds CTRL low while PE13 is Hi-Z. Open-LED OVP is internal (no OVP pin). |
+| 28 | 1 | Backlight WLED boost | TI TPS61165DBVR | C58756 | WLED CC boost + CTRL | ✅ | JLC | SOT-23-6. **VIN from SYS/5 V, NOT 3.3 V.** 40 mA via #33. **CTRL on PE10 = hardware PWM4** (step 3; was PE13/PWM5) (the T113 has PWM0–7; the mainline D1/T113 PWM driver is still out of tree, v13), with EasyScale or on/off on the same pin meanwhile. PWM at 6.5–100 kHz (DS p.14); EasyScale: never step up from 0 mV (DS p.20). R51 100 kΩ pull-down (#127) holds CTRL low while PE10 is Hi-Z. Open-LED OVP is internal (no OVP pin). |
 | 29 | 1 | Boost inductor | SMNR4020-10UH | C135263 | boost | ✅ | JLC | 10 µH 1.6 A shielded. |
 | 30 | 1 | Boost diode | MDD SS16 | C2481 | boost | ✅ | JLC | 60 V 1 A Schottky, SMA(DO-214AC). |
 | 31 | 1 | Boost output cap (Cout) | YAGEO CC0805KKX7R9BB225 | C125847 | boost | ✅ | JLC | 2.2 µF 50 V X7R 0805 (≥1 µF after 19 V derate; ≥50 V clears OVP). |
@@ -59,7 +59,7 @@ charge/power-path, onboard Bluetooth. **Stock checked 2026-10-13 (JLC + Digi-Key
 | 34 | 1 | Boost COMP cap | YAGEO CC0402KRX7R7BB224 | C326590 | COMP (SOT-23 pin 5) → GND | ✅ | JLC | 220 nF 16 V X7R — **mandatory loop-comp; omit → unstable.** Place close to pin 5. |
 
 **§2 notes:**
-- **RGB666 bit-map (copper-committing, unverified):** panel is genuine 24-bit, datasheet silent on bit order. **Get Zettler's R/G/B bit-to-pin map before routing.** Convention-safe default: drive the 6 MSBs **R7..R2 / G7..G2 / B7..B2**, tie the 2 LSBs (R1/R0, G1/G0, B1/B0) to GND. Grounding the wrong pair (MSBs) caps each channel at ~25 % → dark/no white.
+- **RGB666 bit-map (bench-verified 2026-08-23, BOM-REVIEW H2):** the panel is genuine 24-bit. Drive the 6 MSBs **R7..R2 / G7..G2 / B7..B2** and tie the 2 LSBs (R1/R0, G1/G0, B1/B0) to GND; the bench test showed RGB order (no swap), a monotonic gray ramp and full-brightness white. (Grounding the wrong pair, the MSBs, would cap each channel at ~25 % → dark, no white.)
 - **Timing:** DCLK **25 MHz** (§3.2.4; 27 MHz max — pll-video0 ÷12 = 25.00). **SYNC-DE mode; HSYNC/VSYNC active-low, DE active-high.** Do NOT use a 33.3 MHz template.
 - **DISP (FPC pin 31):** display-on input, no internal pull → **10 KΩ pull-up + a spare GPIO (PD22)**; floats dark otherwise.
 - Wire onto `lcd_rgb666_pins` (PD0–21) + `tcon_lcd0_out` RGB endpoint; enable `&de`.
@@ -70,7 +70,7 @@ charge/power-path, onboard Bluetooth. **Stock checked 2026-10-13 (JLC + Digi-Key
 
 | # | Qty | Role | Part | LCSC # | Interface / net | Src | Fit | Note |
 |---|-----|------|------|--------|-----------------|-----|-----|------|
-| 35 | 1 | IMU (6-axis) | LSM6DSOXTR | C481766 | **i2c2** 0x6A + INT1/INT2 | ✅ | JLC | `st,lsm6dsox`. CS high = I2C (#38); SA0→GND = 0x6A (#39). **⚠️ INT1 must NOT be pulled to VDD_IO** (selects I3C-only = dead IMU) → 10 KΩ pulldown #40 + pinmux input-no-pull through boot. **Unused aux pins (Mode-1, DS Table 1 / Fig 24): SDx (pin 2) → GND, SCx (pin 3) → GND** — mandatory hard tie (must not float; no pull-R). **OCS_Aux (pin 10) = intentional NC** (do NOT tie — could perturb the aux path); **SDO_Aux (pin 11) = NC** (or VDDIO). INT2 (pin 9) → PE1 GPIO (programmable output, no tie). |
+| 35 | 1 | IMU (6-axis) | LSM6DSOXTR | C481766 | **i2c2** 0x6A + INT1/INT2 | ✅ | JLC | `st,lsm6dsox`. CS high = I2C (#38); SA0→GND = 0x6A (#39). **⚠️ INT1 must NOT be pulled to VDD_IO** (selects I3C-only = dead IMU) → 10 KΩ pulldown #40 + pinmux input-no-pull through boot. **Unused aux pins (Mode-1, DS Table 1 / Fig 24): SDx (pin 2) → GND, SCx (pin 3) → GND** — mandatory hard tie (must not float; no pull-R). **OCS_Aux (pin 10) = intentional NC** (do NOT tie — could perturb the aux path); **SDO_Aux (pin 11) = NC** (or VDDIO). INT2 (pin 9) → PE0 GPIO (programmable output, no tie; step 3, was PE1; INT1 is now on PE1). |
 | 36 | 1 | IMU VDD decoupling | CC0603KRX7R9BB104 | C14663 | VDD (pin 8) | ✅ | JLC | 100 nF (datasheet-required). |
 | 37 | 1 | IMU VDDIO decoupling | CC0603KRX7R9BB104 | C14663 | VDDIO (pin 5) | ✅ | JLC | 100 nF (datasheet-required). |
 | 38 | 1 | IMU CS tie | 0 Ω / short | — (net) | CS (pin 12) → VDD_IO | ✅ | JLC | **CS high selects I2C** — mandatory. |
@@ -152,7 +152,7 @@ Topology: battery ↔ **BQ24073 power-path → SYS (~3.0–4.4 V)** → **TPS630
 | 91 | 2 | Volume ± tactiles | ALPS SKRTLBE010 | C127481 | 2× expander pin → GND | ✅ | JLC | Side-actuated SMD (4.5×3.4 mm, 1.6 N), footprint `KEY-SMD_SKRTLAE010-1`. `KEY_VOLUMEUP/DOWN`. Shared part w/ #92/#93 (qty 5). |
 | 92 | 1 | Soft power button | ALPS SKRTLBE010 | C127481 | STM6601 PB (#94) **AND** native SoC EINT | ✅ | JLC | `KEY_POWER`. **EINT MUST be a native SoC pin, not the expander** (must wake/power-on from off). **[AUDIT] Route the SoC EINT from STM6601 /PB_OUT via #117, not the raw PB node (PB idles ~SYS 4.4 V).** |
 | 93 | 2 | L/R bumper tactiles | ALPS SKRTLBE010 | C127481 | 2× expander pin → GND | ✅ | JLC | `KEY_L1/KEY_R1`. 100k-cycle — upgrade to 500k/1M (ALPS SKHHLNA010/SKHHLQA010) in a later rev if they wear. |
-| 94 | 1 | Push-button power controller | STM6601CA2BDM6F | C109022 | PB←#92; EN(pin9)→TPS63021 EN; PSHOLD(pin4)↔GPIO | ✅ | JLC | TDFN-12. **`C`** = active-high EN, long-push deasserts (true off). **VCC → always-on SYS** (NOT the switched 3.3 V). PSHOLD = `gpio-poweroff` handshake. Caps #95/#96. EN push-pull (no pull-up); RST/INT/VCCLO/SR/CSRD leave open; **PBOUT → 3.3 V pull-up (#117) → T113 PE10** [AUDIT: was 'leave open'; levels the button EINT off the ~SYS PB node]. **Stock (2026-10-13): JLC has 49 (36 pre-orderable) — pre-order ~12 into the JLC parts library, or buy at Digi-Key (9,628) and consign.** |
+| 94 | 1 | Push-button power controller | STM6601CA2BDM6F | C109022 | PB←#92; EN(pin9)→TPS63021 EN; PSHOLD(pin4)↔GPIO | ✅ | JLC | TDFN-12. **`C`** = active-high EN, long-push deasserts (true off). **VCC → always-on SYS** (NOT the switched 3.3 V). PSHOLD = `gpio-poweroff` handshake. Caps #95/#96. EN push-pull (no pull-up); RST/INT/VCCLO/SR/CSRD leave open; **PBOUT → 3.3 V pull-up (#117) → T113 PE13** (step 3; was PE10) [AUDIT: was 'leave open'; levels the button EINT off the ~SYS PB node]. **Stock (2026-10-13): JLC has 49 (36 pre-orderable) — pre-order ~12 into the JLC parts library, or buy at Digi-Key (9,628) and consign.** |
 | 95 | 1 | STM6601 VCC decoupling | CC0603KRX7R9BB104 | C14663 | VCC (pin 1) → GND | ✅ | JLC | 100 nF, close to device. |
 | 96 | 1 | STM6601 VREF cap (CREF) | CL10A105KB8NNNC | C15849 | VREF (pin 3) → GND | ✅ | JLC | 1 µF — mandatory even though VREF unused. Place close. |
 
@@ -194,8 +194,8 @@ Topology: battery ↔ **BQ24073 power-path → SYS (~3.0–4.4 V)** → **TPS630
 **Integration notes (multi-pin modules):**
 - **BT830 (#99):** UART3 with 4-wire HW flow control (RTS/CTS); `VREG_EN_RST#` (pin 8) driven from a GPIO (boot low, hold >5 ms, then high — do NOT strap through 10 kΩ; ≤4.7 kΩ if strapped). `VREG_IN_HV`(9)=3.3 V, `VDD_PADS`(1)=3.3 V. `VREG_OUT_HV`(10) needs #100. `SPI_PCM#_SEL`(28) → GND (or leave; internal pulldown).
 - **PCM5102A (#103):** **SCK(12)→GND** (MCLK-less internal PLL; float/high = dead). FMT(16)/FLT(11)/DEMP(10)→GND. **XSMT(17)→PB3 + R44 10 k pull-down (#120)** (boots soft-muted; not hard-high; soft-mute the DAC when headphones unplugged). **Constraint: run I2S1 at 64fs (or 32fs), fs ≥ 16 kHz** or the DAC PLL won't lock.
-- **TPA6132A2 (#110):** inverting single-ended — DAC → #108 RC → #111 coupling cap → INL−(1)/INR−(4); INL+(2)/INR+(3) → GND. OUTL(16)/OUTR(5) → jack tip/ring direct (no caps); SGND(15) → sleeve. G0(6)=G1(7)→GND (−6 dB). EP → GND + vias (never VDD). Cap ALSA softvol max (amp clips into 16 Ω at full DAC scale).
-- **Audio routing (software):** speaker amp #47 + DAC #103 share I2S1 (both receivers) → route by enable/disable. Jack detect (#115) → `simple-audio-card,hp-det-gpios` on PE12 (reports SW_HEADPHONE_INSERT; don't also bind gpio-keys to PE12; speaker-off on insert needs `pin-switches = "Speaker"` + a rule, HP_EN follows the Headphones pin); IN → speaker off (SPK_EN low) + HP on (EN high); OUT → reverse. **3 native GPIOs: jack-detect (PE12 in, via R49 10 kΩ, bias-pull-up, high = inserted), speaker-EN (PE6, push-pull), HP-EN (out).** Analog HP audio has no external ESD array (relies on the amp's ±8 kV); route HP traces away from switchers/backlight/RF, clean SGND return.
+- **TPA6132A2 (#110):** inverting single-ended — DAC → #108 RC → #111 coupling cap → INL−(1)/INR−(4); INL+(2)/INR+(3) → GND. OUTR(5) → jack tip (L), OUTL(16) → ring (R), direct (no caps): step 3 swapped the channels, so the amp's R channel carries LEFT (DAC OUTL → R36/C86 → INR−(4)) and its L channel RIGHT (R35/C85 → INL−(1)); the two channels are identical, with shared EN and gain; SGND(15) → sleeve. G0(6)=G1(7)→GND (−6 dB). EP → GND + vias (never VDD). Cap ALSA softvol max (amp clips into 16 Ω at full DAC scale).
+- **Audio routing (software):** speaker amp #47 + DAC #103 share I2S1 (both receivers) → route by enable/disable. Jack detect (#115) → `simple-audio-card,hp-det-gpios` on PG14 (step 3; was PE12) (reports SW_HEADPHONE_INSERT; don't also bind gpio-keys to PG14; speaker-off on insert needs `pin-switches = "Speaker"` + a rule, HP_EN follows the Headphones pin); IN → speaker off (SPK_EN low) + HP on (EN high); OUT → reverse. **3 native GPIOs: jack-detect (PG14 in, via R49 10 kΩ, bias-pull-up, high = inserted), speaker-EN (PE6, push-pull), HP-EN (out).** Analog HP audio has no external ESD array (relies on the amp's ±8 kV); route HP traces away from switchers/backlight/RF, clean SGND return.
 
 ---
 
@@ -204,17 +204,17 @@ Topology: battery ↔ **BQ24073 power-path → SYS (~3.0–4.4 V)** → **TPS630
 **Power tree:** battery ↔ BQ24073 → **SYS (~3.0–4.4 V)** → TPS63021 buck-boost → **3.3 V** (sole source) → FP6161 → **0.9 V core** (the core buck runs from +3V3 since step 2). Internal LDOs make 1.8 V + 1.5 V-DDR from 3.3 V. Rails to widen/thermal: 3.3 V (~1.4 A worst incl. the core buck; TPS63021 2 A boost / 4 A buck) + SYS. Exposed-pad thermal-via arrays on **FP6161 (#3), TPS63021 (#66), BQ24073 (#53), MAX98357A (#47)**. 4-layer minimum.
 
 **Pinmux (mainline `pinctrl-sun20i-d1`; 72 bonded GPIO, PD bank full):**
-- RGB666 LCD = **PD0-21**, DISP = **PD22** · SPI0-NOR = **PC2-5** · microSD = **PF0-5** + card-detect **PF6** · UART0 console = **PE2/3**
+- RGB666 LCD = **PD0-21**, DISP = **PD22** · SPI0-NOR = **PC2-5** · microSD = **PF0-5** + card-detect **PG10** (step 3; was PF6) · UART0 console = **PE2/3**
 - **BT HCI = UART3 PG0-3** (NOT UART1 — its flow-control PG6-9 clashes i2c1) · I2S1 = **PG12/13/15** · i2c1 (touch/haptics/expander/gauge/INA) = **PG8/9** · IMU **i2c2 = PE4/5**
 - USB0 (USB-C) dedicated balls; USB1 unused. **Never use phantom D1 pins** PC0/1, PB0/1/8-12, PE14-17, PG16-18.
-- Native single GPIOs needed: PCA9555-INT, power-btn EINT, touch INT+RST, jack-detect, speaker-EN, SD-CD (PF6), HP-EN, backlight-CTRL, XSMT, /PGOOD, ALRT, DISP.
+- Native single GPIOs needed: PCA9555-INT, power-btn EINT, touch INT+RST, jack-detect, speaker-EN, SD-CD (PG10), HP-EN, backlight-CTRL, XSMT, /PGOOD, ALRT, DISP.
 
 **I2C address map (collision-free):**
 - **i2c1:** PCA9555 `0x20` · MAX17048 `0x36` · FT7311 touch `0x38` · INA226 `0x40` · DRV2605L `0x5A`
 - **i2c2:** LSM6DSOX `0x6A`
 
 **Routing rules:**
-- **RGB666:** data/DE/HSYNC/VSYNC may use `drive-strength=<10>` (optional); **PD18 DCLK** stays at the reset Level 1 (`<20>`) or `<30>`, never `<10>` (needs its own DT pin group); **R50 33 Ω DCLK source R at U1.75 (#126)**; route the 22-line bus over solid GND; keep the ribbon away from GPADC/touch/I2S. **Confirm the bit-map/MSB order before committing copper.**
+- **RGB666:** data/DE/HSYNC/VSYNC may use `drive-strength=<10>` (optional); **PD18 DCLK** stays at the reset Level 1 (`<20>`) or `<30>`, never `<10>` (needs its own DT pin group); **R50 33 Ω DCLK source R at U1.75 (#126)**; route the 22-line bus over solid GND; keep the ribbon away from GPADC/touch/I2S. The bit-map/MSB order is bench-verified (BOM-REVIEW H2).
 - Keep **I2S clocks (PG12/13) away from the slow i2c1 pair (PG8/9)** — ground trace between; unused I2S MCLK (PG11) = static GPIO.
 - **Kelvin-route** the INA226 shunt (#82) and the Rset ground (#33).
 - Route analog headphone traces away from switchers / backlight / RF.
@@ -237,7 +237,7 @@ A per-subsystem netlist-correctness audit (vs. component datasheets) found two p
 | # | Qty | Role | Part | LCSC | Net | Src | Fit | Notes |
 |---|----:|------|------|------|-----|:---:|-----|-------|
 | 116 | 1 | DISP pull-up | RC0603JR-0710KL | C99198 | PANEL_DISP → 3.3 V | ✅ | JLC | 10 KΩ. Line 64 requires it ("DISP … 10 KΩ pull-up") but no part was listed. refdes **R39**. Part # confirmed via C99198 carry-over (#14/#84/#89). |
-| 117 | 1 | STM6601 /PB_OUT pull-up | RC0603JR-0710KL | C99198 | /PB_OUT → 3.3 V → PE10 | ✅ | JLC | 10 KΩ. Levels the power-button EINT to 3.3 V; PE10 now reads /PB_OUT instead of the ~SYS PB node. refdes **R40**. See #92/#94. Part # = C99198 carry-over. |
+| 117 | 1 | STM6601 /PB_OUT pull-up | RC0603JR-0710KL | C99198 | /PB_OUT → 3.3 V → PE13 | ✅ | JLC | 10 KΩ. Levels the power-button EINT to 3.3 V; PE13 (step 3; was PE10) reads /PB_OUT instead of the ~SYS PB node. refdes **R40**. See #92/#94. Part # = C99198 carry-over. |
 | 118 | 2 | i2c2 pull-ups (IMU bus) | 0603WAF1501T5E | C22843 | I2C2_SCL/SDA → 3.3 V | ✅ | JLC | 1.5 KΩ ×2 (reuses #97 part; 2.2–4.7 K also fine). **🔴 BLOCKER: i2c2 had no pull-ups → IMU never ACKs.** refdes R41/R42. Part # = C22843 carry-over (#97). |
 
 **Also applied to `gb3-nets.csv` (net-only, NO new parts):** VCC-RTC→LDOA merge (blocker: was a dead island), SW1 pad-pairing (later corrected to `{1,2}=RESET/{3,4}=GND` per datasheet — see round 3), R21 wired as a real series `VBUS_SENSE`, C19–C22 decoupling re-pointed to AVCC/HPVCC/VRA1/VRA2, and R38 = wiring the **existing #33** Rset (FB→GND, backlight blocker).
@@ -274,7 +274,7 @@ Six open schematic decisions + four fab blockers, each verified against the data
 | 122 | 3 | Console probe pads | bare pad (`manual:TestPoint`) | — | UART0_TX_PAD / UART0_RX_PAD / GND | — | — | 1.5 mm bare pads on the back: TP1 = TX, TP2 = RX, TP3 = GND. Fit — : fab.py leaves them out of the JLC BOM and CPL. |
 
 **Net-only changes (no new parts):**
-- **Speaker amp SD/MODE → DS Fig 5** (#48): PE13 (`SPK_EN`) → R14 680 K → SD_MODE (`SPK_SD`); the amp boots in shutdown. Firmware: PE13 push-pull output, high = on. (Step 1b moved SPK_EN to PE6 so PE13's PWM5 can drive the backlight.)
+- **Speaker amp SD/MODE → DS Fig 5** (#48): PE13 (`SPK_EN`) → R14 680 K → SD_MODE (`SPK_SD`); the amp boots in shutdown. Firmware: PE13 push-pull output, high = on. (Step 1b moved SPK_EN to PE6 so PE13's PWM5 can drive the backlight; step 3 then moved the backlight to PE10/PWM4 and the power-button EINT to PE13.)
 - **`USB_DP`/`USB_DM` → `USB_D+`/`USB_D-`**, so KiCad pairs them: netclass patterns and the "USB pair" rule in `gb3.kicad_dru` (gap, uncoupled length, in-pair skew) updated.
 - **BAT_SENSE divider deleted** (#75/#76, R24/R25); U1.101 GPADC0 = NC.
 - **Internal LDO bulk:** C35 (#20, 10 µF) → LDOB at U1.30, C42 (#21, 4.7 µF) → LDOA at U1.28. Both were spare +3V3 bulk.
@@ -291,10 +291,10 @@ The 17 "should-fix" items from the step-1 sweep, each re-derived from the datash
 | # | Qty | Role | Part | LCSC | Net | Src | Fit | Notes |
 |---|----:|------|------|------|-----|:---:|-----|-------|
 | 123 | 1 | Charge safety-timer R (TMR) | 0603WAF6802T5E | C23231 | TMR (U10.14) → VSS | ✅ | JLC | 68 kΩ 1% (as gb2 R21): tMAXCHG 6.8/9.1/11.3 h, tPRECHG 41/54/68 min (bq24074.pdf p.13; eq. 6/7 p.27). The floating default (4/5/6 h) can expire before a from-empty charge at 445 mA finishes. Never tie TMR to VSS (no backstop). refdes **R47**. |
-| 124 | 1 | SD card-detect pull-up | RC0603JR-0710KL | C99198 | SD_CD → 3.3 V (PF6) | ✅ | JLC | 10 kΩ (MangoPi R48). The socket's CD switch closes to the shell on insert → active-low on PF6, so the DT can use `cd-gpios` instead of `broken-cd` polling. refdes **R48**. |
-| 125 | 1 | Jack-detect series R | RC0603JR-0710KL | C99198 | JACK_SW → JACK_DET (PE12) | ✅ | JLC | 10 kΩ at the jack: the tip switch rests on the ground-centred TPA6132 OUTL (±1.5 V when on); caps PE12's clamp current at ≤ 0.1 mA and is its only ESD current limit. Unplugged + amp off ≤ 0.5 V worst case (VIL max 0.99 V). refdes **R49**. |
+| 124 | 1 | SD card-detect pull-up | RC0603JR-0710KL | C99198 | SD_CD → 3.3 V (PG10) | ✅ | JLC | 10 kΩ (MangoPi R48). The socket's CD switch closes to the shell on insert → active-low on PG10 (step 3; was PF6), so the DT can use `cd-gpios` instead of `broken-cd` polling. refdes **R48**. |
+| 125 | 1 | Jack-detect series R | RC0603JR-0710KL | C99198 | JACK_SW → JACK_DET (PG14) | ✅ | JLC | 10 kΩ at the jack: the tip switch rests on the ground-centred TPA6132 output that drives the tip (OUTR since the step-3 channel swap; ±1.5 V when on); caps PG14's clamp current at ≤ 0.1 mA and is its only ESD current limit. Unplugged + amp off ≤ 0.5 V worst case (VIL max 0.99 V). refdes **R49**. |
 | 126 | 1 | RGB DCLK series R | 0603WAF330JT5E | C23140 | U1.75 PD18 (LCD0_CLK) → RGB_DCLK → P1.30 | ✅ | JLC | 33 Ω source termination at the T113 pin (≤ 8 mm, target ≤ 5): ~48 mm of PCB + the panel's 53 mm FPC; removes the drive-Level-2/3 overshoot and cuts harmonics up to ~6 dB (MangoPi R59 33R, gb2 #79). Kept in subcircuit soc so RGB_DCLK keeps its DRU rules. refdes **R50**. |
-| 127 | 1 | Backlight CTRL pull-down | RC0603FR-07100KL | C14675 | BL_CTRL → GND | ✅ | JLC | 100 kΩ at U6.2: holds CTRL below 0.4 V while PE13 is Hi-Z (reset; a disabled PWM channel in suspend) for pad leakage up to ~4 µA (the internal pull-down alone: ~0.25 µA; typical leakage is nA). 33 kΩ would also cover the T113's 10 µA worst case. refdes **R51**. |
+| 127 | 1 | Backlight CTRL pull-down | RC0603FR-07100KL | C14675 | BL_CTRL → GND | ✅ | JLC | 100 kΩ at U6.2: holds CTRL below 0.4 V while PE10 is Hi-Z (reset; a disabled PWM channel in suspend) for pad leakage up to ~4 µA (the internal pull-down alone: ~0.25 µA; typical leakage is nA). 33 kΩ would also cover the T113's 10 µA worst case. refdes **R51**. |
 | 128 | 2 | USB-C CC Rd | RC0603FR-075K1L | C105580 | CC1 / CC2 → GND | ✅ | JLC | 5.1 kΩ ×2: Type-C sink, 5 V only (as gb2 R15/R16 and the breakout R1/R2). Replaces the discontinued CH224K (#61–#65). refdes **R52/R53**. |
 | 129 | 1 | AVCC (ALDO) output cap | CC0805KKX7R9BB225 | C125847 | U1.89 AVCC → GND | ✅ | JLC | 2.2 µF X7R 0805 beside C19: the internal ALDO is on at reset (POWER_REG ALDO_EN = 1, 1.80 V); MangoPi C11 / DevTerm C60 2.2 µF. refdes **C92**. |
 | 130 | 1 | VBUS HF cap | CC0603KRX7R9BB104 | C14663 | +5V → GND at D4.5 | ✅ | JLC | 100 nF at the USBLC6 VBUS pin (ST Fig 18); not bulk. refdes **C93**. |
@@ -309,8 +309,8 @@ The 17 "should-fix" items from the step-1 sweep, each re-derived from the datash
   - C39 → 10 µF core bulk at the core balls; C34 = the FP6161 COUT (core-buck sheet); C36 = LDO-IN/VCC-PE bulk.
   - C7 (U3), C11 and C40 (U4) relabelled to the sheets they physically serve; R11 → soc (it sits at U1.27).
   - The AVCC (89) / HPVCC (97) notes now state the decision: their own internal-LDO nodes, never merged with LDOA. VCC-TVIN (107) stays on LDOA, as MangoPi's R71/C70 does, and never on +3V3 (2.16 V abs-max).
-- **SD card-detect:** U4.9 → PF6 (SD_CD) + R48 (#124), with ESD on D1.3. SD_CMD moved to D2.4, beside its pad.
-- **Backlight PWM:** BL_CTRL → PE13 (PWM5) and SPK_EN → PE6 (#28, #48), plus R51 (#127).
+- **SD card-detect:** U4.9 → PF6 (SD_CD) + R48 (#124), with ESD on D1.3. SD_CMD moved to D2.4, beside its pad. (Step 3: CD → PG10, and the SP3004 channels remapped: CD on D1.6, CMD on D2.6.)
+- **Backlight PWM:** BL_CTRL → PE13 (PWM5) and SPK_EN → PE6 (#28, #48), plus R51 (#127). (Step 3: BL_CTRL → PE10/PWM4.)
 - **Jack detect:** R49 (#125) in series; the tip-switch net is now JACK_SW.
 - **DCLK:** R50 33 Ω (#126); the U1 side is the local net /soc/LCD0_CLK.
 - **USB-C:** CH224K + R19/R20/R21/C58 (#61–#65) deleted → R52/R53 Rd (#128).
@@ -323,13 +323,13 @@ The 17 "should-fix" items from the step-1 sweep, each re-derived from the datash
 - Check every polarized part in JLC's placement preview before ordering.
 
 **Devicetree / firmware:**
-- **SD:** keep the stock `cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>`. Drop the `&mmc0 { broken-cd; }` block from gb3 builds by moving it into a breakout-Rev-A-only overlay.
-- **WiFi conflict:** the inherited MangoPi DT enables `&mmc1` (WiFi) on PG0–PG5 and `wifi_pwrseq` on PG12. gb3 uses PG0–PG3 for UART3/BT and PG12 for I2S1_LRCK, so gb3's overlays must disable both.
+- **SD:** override the stock `cd-gpios` (PF6) with `cd-gpios = <&pio 6 10 GPIO_ACTIVE_LOW>` (PG10, step 3). Drop the `&mmc0 { broken-cd; }` block from gb3 builds by moving it into a breakout-Rev-A-only overlay.
+- **WiFi conflict:** the inherited MangoPi DT enables `&mmc1` (WiFi) on PG0–PG5 and `wifi_pwrseq` on PG12. gb3 uses PG0–PG3 for UART3/BT and PG12 for I2S1_LRCK, so gb3's overlays must disable both. Disabling `&mmc1` also releases PG10 (PINOUT.md), now the SD card-detect.
 - **Backlight:**
-  - Now: `gpio-backlight` on PE13, or EasyScale.
-  - Later: the out-of-tree pwm-sun8i (v13) + `pwm-backlight` at ~25 kHz (`pwms = <&pwm 5 40000 0>`). Give it no `enable-gpios` or `power-supply`, so brightness 0 holds duty 0.
+  - Now: `gpio-backlight` on PE10 (step 3; was PE13), or EasyScale.
+  - Later: the out-of-tree pwm-sun8i (v13) + `pwm-backlight` at ~25 kHz (`pwms = <&pwm 4 40000 0>`, PWM4 on PE10). Give it no `enable-gpios` or `power-supply`, so brightness 0 holds duty 0.
 - **Speaker:** `sdmode-gpios = <&pio 4 6 GPIO_ACTIVE_HIGH>` (PE6).
-- **Jack:** PE12 `gpio_in` + bias-pull-up, `simple-audio-card,hp-det-gpios = <&pio 4 12 GPIO_ACTIVE_HIGH>`; HP_EN (PB2) via `simple-audio-amplifier` on the Headphones path.
+- **Jack:** PG14 `gpio_in` + bias-pull-up, `simple-audio-card,hp-det-gpios = <&pio 6 14 GPIO_ACTIVE_HIGH>` (step 3; was PE12); gb3's I2S1 pin group must not claim PG14 (DIN unused); HP_EN (PB2) via `simple-audio-amplifier` on the Headphones path.
 - **Bring-up:** TP10 first shows whether boot code raised LDOB from its 1.35 V default to 1.5 V.
 
 **Purchases:** BT830 (#99) last-time buy now; the panel (#25) needs a channel other than Digi-Key; STM6601 (#94) pre-order at JLC or consign.
@@ -358,7 +358,7 @@ The charger drew up to 1.34 A from any source while the handheld ran (no VIN-DPM
 
 **Firmware (to do when the image is brought up):**
 - **Kernel:** a config fragment with `CONFIG_SUN20I_GPADC=y` and `CONFIG_CHARGER_GPIO=y` (`sunxi_defconfig` has neither), plus a DT overlay in the gb3 image layer:
-  - `gpio-charger` with `gpios = <&pio 1 4 GPIO_ACTIVE_LOW>` (PB4 /PGOOD), `charge-current-limit-gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>` (PB7) and `charge-current-limit-mapping = <1340000 0x1>, <420000 0x0>`;
+  - `gpio-charger` with `gpios = <&pio 1 6 GPIO_ACTIVE_LOW>` (PB6 /PGOOD; step 3, was PB4), `charge-current-limit-gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>` (PB7) and `charge-current-limit-mapping = <1340000 0x1>, <420000 0x0>`;
   - `&gpadc { status = "okay"; channel@0 { reg = <0>; }; }`.
   - Find the IIO device by name (`sun20i-gpadc`), not by index (the IMU registers IIO too).
 - **Policy, in powerd (`src/services/powerd.c`), driven by NETLINK uevents:**
@@ -411,3 +411,74 @@ Placement after the original `place.py` run is data now: `gb3/placement/step2.cs
 - **Pours:** thermal reliefs on small SMD pads (0402 tombstoning).
 - **Silk pass:** 851 silk warnings vs 321 before. Move F-island refs to F.Fab; keep polarity marks printable; add CN1 '+'/'−', J2 '+' and test-pad labels.
 - **Bring-up check:** before the first power-up, meter +0V9, LDOA, LDOB and AVCC against +3V3 on the first boards.
+
+## Routing plan, step 3 (2026-10-14 — user-approved)
+
+The plan is `gb3/route/PLAN.md`, with the reserved channels in `route/channels.py` and U1's per-pin escape in `route/mcu_escape.py`. Every decision in it was measured on one scratch board with all the drafted groups routed together. Applied now: pin swaps, placement, two new caps, keep-outs, jumper pad groups and the DRU. There is no copper on the board yet: route groups 05, 10 and 40 are drafted, and step 4 builds them.
+
+**Pin swaps** (each removes crossings or vias measured in the trial):
+
+| # | Change | Gain |
+|---|---|---|
+| A1 | PE13 ↔ PE10: power-button EINT on PE13, backlight CTRL on PE10 (PWM4) | the PWM lane no longer passes 0.56 mm from X1's HOSC_IN load cap, and needs no via pair across PSHOLD |
+| A2 | SD card-detect PF6 → PG10 | CD no longer crosses the six SD lines (−2 vias) |
+| A3 | Jack detect PE12 → PG14 (I2S1-DIN0, unused) | the display bus needs PE12's only F path |
+| A4 | USBLC6 D4: I/O1 (1/6) = D−, I/O2 (3/4) = D+ | the pair runs straight from the receptacle through D4 to U1 |
+| A5 | PCA9555 U16: port 0 = right grip, port 1 = left grip (keymap below) | 416 → 356 mm, 20 → 14 vias |
+| A6 | TPA6132A2 channels swapped: amp channel R carries LEFT (OUTR → tip), channel L carries RIGHT | the two DAC chains nest with 0 vias; the channels are identical, with shared EN and gain |
+| A7 | PE0 ↔ PE1: IMU INT2 on PE0, INT1 on PE1 | the IMU ribbon is planar (0 vias) |
+| A8 | SP3004 channels: D1.3 SD_D0, D1.4 SD_D1, D1.6 SD_CD, D2.6 SD_CMD (D2.4 spare) | every ESD tap is a stub off its own lane |
+| O1 | PB4 ↔ PB6: charger /PGOOD on PB6, BT VREG_EN_RST# on PB4 | saves BT_EN_RST's via pair |
+
+**Placement** (`gb3/placement/step3.csv`, 18 rows):
+- R39 (the DISP pull-up) is out of the backlight feed's lane.
+- The IMU cluster (U7 + 5 passives) sits east of the RGB via field.
+- The SD support row (D1/D2, the pull-ups and two caps) lets the seven SD lanes pass under the ESD parts.
+- **New: C95/C96**, 100 nF +3V3/GND (BOM #19, C14663), beside the RGB via field. The B.Cu display traces reference the +3V3 plane, so their return current needs a cap where it changes planes. The nearest decap to the bus vias was 5.1–17.2 mm away; it is now 4.0–8.4 mm.
+
+**Rules and areas:**
+- **DRU:**
+  - DCLK stays on F with 0 vias, and its 33 Ω source stub is ≤ 4.5 mm.
+  - USB pair: ≤ 4 vias, skew ≤ 4 mm (≈ 25 ps against the 2.08 ns UI), uncoupled ≤ 16 mm, plus a gap exception inside the USBC1/D4 pin fields.
+  - NOR skew ≤ 12 mm.
+  - TP11 (the 37–39 V backlight OVP node) is ≥ 0.6 mm from everything (IPC-2221B B2).
+  - Thermal reliefs on small GND pads.
+  - The HighCurrent width rules also cover pin tips outside the EasyEDA courtyards.
+- **Keep-outs** (`route/footprint_keepouts.py`):
+  - no copper under X2 (F) and no tracks over X1 (F);
+  - U4's prohibition bars (B) and the SW12–16 lug gaps (F);
+  - the antenna keep-out, trimmed to clear U18's pad 14 (DRC errors 5 → 4; the 4 left are all at USBC1: its pads against its own NPTH holes and the board edge).
+- **Jumper pad groups** (`gb3/jumper_groups.py`): the TS-1187A switches' internally common pads (1/2, 3/4) and D4's pass-through pins (1/6, 3/4) need no copper tie.
+
+**Mounting holes:**
+- **H2** (M2, at 180.5, 35.0) is placed, with a 2.75 mm keep-out.
+- **H1 is dropped:** its M2 head would sit ~0.9 mm under the display module (y 37.0).
+- Scheme, as gb2: screws clamp, shell fingers locate. The other grip-corner holes will be picked from free board area before the grip routing (group 85), and shown on a render first.
+
+**Battery connector (CN1):** the JST PH is rated 2 A per contact, and the cell's 1C rate is also 2 A. The all-at-once worst case is 2.7 A (U12 1.87 + U6 0.33 + U9 0.5 A). The BAT copper is sized for 2.7 A, but 2 A is the continuous limit. **Decision: firmware load cap.** On battery, powerd caps backlight and volume when the INA226 (U15) reads > 1.8 A.
+
+**Fab:** ask JLC for plugged/capped vias in U1's exposed pad (16 open 0.3 mm holes under the 5.6 mm pad).
+
+**Devicetree / firmware** (the DT lines above are updated to match):
+- **SD:** `cd-gpios = <&pio 6 10 GPIO_ACTIVE_LOW>` (PG10) overrides the stock MangoPi value (PF6). Disabling the inherited `&mmc1`, already required, frees PG10.
+- **Jack:** `hp-det-gpios = <&pio 6 14 GPIO_ACTIVE_HIGH>` (PG14). gb3's I2S1 pin group must not claim PG14.
+- **Backlight:** `gpio-backlight` on PE10 now; later PWM4, `pwms = <&pwm 4 40000 0>`.
+- **Power-button EINT:** PE13.
+- **IMU:** INT1 = PE1, INT2 = PE0.
+- **Charger:** `gpio-charger` `gpios = <&pio 1 6 GPIO_ACTIVE_LOW>` (PB6).
+- **BT:** VREG_EN_RST# = PB4.
+- **uart3:** BT uses the PG0–3 group only, never the MangoPi default `uart3_pb_pins`. PB6 is now the charger's open-drain /PGOOD, which a TX idling high would fight, and PB7 is CHG_FAST.
+- **Buttons** (`gpio-keys` on the PCA9555):
+  - P00 R1, P01 VOL+, P02 VOL−, P03 B, P04 X, P05 SELECT, P06 Y, P07 A;
+  - P10 UP, P11 DOWN, P12 LEFT, P13 RIGHT, P14 START, P15 L1.
+
+**Checks:**
+- ERC: 0 errors.
+- Board vs schematic: 0 net or part mismatches. KiCad's parity check lists 387 warnings, all library-name/field cosmetics, the same as before step 3.
+- DRC: 4 errors, all at USBC1 (pre-existing); 388 unconnected (no copper yet).
+- Every step-3 tool reruns with no change.
+- Groups 05/10/40 built on a scratch copy: DRC errors 4 → 4, unconnected 388 → 312.
+
+**Next (step 4):**
+- The route groups in order (05, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 85), with the second review's items (end of `route/PLAN.md`).
+- Then fanout, pours, checks, silk and the fab outputs.

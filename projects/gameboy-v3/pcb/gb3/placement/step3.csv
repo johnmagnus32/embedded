@@ -1,0 +1,19 @@
+ref,x,y,rot,side,why
+R39,90.600,77.450,0,B,[step3 display] PANEL_DISP 10k pull-up beside the DISP via (87.68 78.15); its old spot (88.4 61.9) is the backlight feed's lane north of P1 (P1.31 moved to x 98.95 with the corrected pin order)
+U7,96.600,80.200,90,B,[step3 IMU] east of the display via field: U1.42-45 leave the E column south of the east-bound 38-41 and U7 sits south-east of them -> the four IMU lines route on B with 0 vias (with PE0<->PE1). At (82.3 54.35) every route crossed 38-41
+R13,95.850,84.200,270,B,[step3 IMU] INT1 10k pull-down at U7.4 (INT1 lands on U7's S edge from the west)
+R41,97.500,76.900,270,B,[step3 IMU] I2C2_SCL 1.5k pull-up in the INT2|SCL pocket north-east of U7, rot 270: SCL pad north taps the SCL lane, +3V3 pad south shares the CS via (98.00 78.55)
+R42,100.300,80.700,0,B,[step3 IMU] I2C2_SDA 1.5k pull-up east of SDA's landing (SDA is the outer line)
+C48,94.400,77.300,90,B,[step3 IMU] VDD 100n in the INT1|INT2 pocket, rot 90: +3V3 pad south on the pocket's shared +3V3 via (94.40 79.30) and 1.3 mm from U7.8, GND pad north on its via (95.25 76.30; x+y >= 171.33 keeps it east of RGB_DE on F)
+C49,94.400,81.450,270,B,[step3 IMU] VDDIO 100n in the INT1|INT2 pocket: +3V3 pad north on the shared via, 1.0 mm from U7.5; GND pad south on its via (93.55 82.15); 0.15 mm south of the integration spot so U7.6/7 get their GND via (95.05 79.85)
+D1,51.100,50.800,0,B,[step3 SD] SP3004 #1 centred on the SD via row (y 50.8): CD taps pin 6 from its west lane, SD_D1/SD_D0 pass under the body (pins 4/3), CLK taps pin 1 from the east; VDD/GND get vias beside the trapped middle pins (49.35 / 52.85 50.85)
+D2,58.300,50.800,0,B,[step3 SD] SP3004 #2 on the via row, 0.4 east: CMD taps pin 6 from the west, SD_D3 passes under the body (pin 3), SD_D2 taps pin 1 from the east; VDD/GND vias (56.775 / 59.80 50.85)
+R8,49.750,52.850,90,B,[step3 SD] SD_D1 pull-up between the CD and SD_D1 lanes: SD pad south taps SD_D1, +3V3 pad north on D1's VDD via (it was west of the CD lane: unreachable for SD_D1)
+R7,52.000,52.850,90,B,[step3 SD] SD_D0 pull-up east of the SD_D0 lane: SD pad south taps SD_D0, +3V3 pad north on the row's +3V3 via (53.70 50.85)
+R6,55.350,52.850,90,B,[step3 SD] SD_CMD pull-up between the CLK and CMD lanes: SD pad south taps CMD, +3V3 pad north on the via (55.35 50.85) shared with U4.4/C11
+R10,59.350,52.850,270,B,[step3 SD] SD_D3 pull-up between the D3 and D2 lanes: SD pad north taps D3, +3V3 pad south on its via (59.35 54.55; the row spot there is D2's GND)
+R9,62.000,49.300,0,B,[step3 SD] SD_D2 pull-up 0.5 east so the SD_D2 lane (x 60.45) clears D2's GND via; +3V3 pad on the via (62.75 50.85)
+C11,54.200,48.750,180,B,[step3 SD] microSD VDD 100 nF straddling the CLK lane right under the socket: GND pad on U4.6, +3V3 pad on U4.4 (CLK passes between the pads, 0.225 mm each side)
+C40,61.800,52.600,270,B,[step3 SD] microSD 10 uF bulk east of the SD_D2 lane: +3V3 pad on the via (62.75 50.85), GND pad on its via (61.80 55.00); the old spot sat under the USB riser
+C95,90.600,82.600,90,B,[step3 P3] 100 nF +3V3/GND return-path cap beside the RGB via field (nearest decap to the bus vias 5.1-17.2 -> 4.0-8.4 mm)
+C96,84.600,89.600,90,B,[step3 P3] 100 nF +3V3/GND return-path cap, south group of the RGB via field

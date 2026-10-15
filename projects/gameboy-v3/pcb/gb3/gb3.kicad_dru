@@ -20,13 +20,15 @@
 
 # 0.95 mm-pitch parts whose HighCurrent pads are 0.49-0.6 mm wide
 (rule "HighCurrent neck-down, SOT-23 and USB-C pins"
-	(condition "A.NetClass == 'HighCurrent' && (A.intersectsCourtyard('U2') || A.intersectsCourtyard('U6') || A.intersectsCourtyard('D4') || A.intersectsCourtyard('USBC1'))")
+	(condition "A.NetClass == 'HighCurrent' && (A.intersectsCourtyard('U2') || A.intersectsCourtyard('U6') || A.intersectsCourtyard('D4') || A.intersectsCourtyard('USBC1') || A.intersectsArea('pins: U2') || A.intersectsArea('pins: U6') || A.intersectsArea('pins: D4') || A.intersectsArea('pins: USBC1'))")
 	(constraint track_width (min 0.4mm) (opt 0.8mm)))
 
 # 0.5 mm-pitch QFN/DFN/MSOP parts whose HighCurrent pads are 0.25-0.28 mm wide. The fixed 0.8 mm width
-# is what made the power strip unroutable on the first attempt.
+# is what made the power strip unroutable on the first attempt. [step 3 fix: + the 'pins: <ref>' rule areas from
+# route/footprint_keepouts.py - the EasyEDA courtyards hug the bodies, so intersectsCourtyard() alone missed the pin
+# tips (U15's sit up to 1.4 mm outside its courtyard): its Kelvin taps and the pin stubs failed 'HighCurrent width'.]
 (rule "HighCurrent neck-down, 0.5 mm-pitch pins"
-	(condition "A.NetClass == 'HighCurrent' && (A.intersectsCourtyard('U9') || A.intersectsCourtyard('U10') || A.intersectsCourtyard('U12') || A.intersectsCourtyard('U13') || A.intersectsCourtyard('U15') || A.intersectsCourtyard('U17'))")
+	(condition "A.NetClass == 'HighCurrent' && (A.intersectsCourtyard('U9') || A.intersectsCourtyard('U10') || A.intersectsCourtyard('U12') || A.intersectsCourtyard('U13') || A.intersectsCourtyard('U15') || A.intersectsCourtyard('U17') || A.intersectsArea('pins: U9') || A.intersectsArea('pins: U10') || A.intersectsArea('pins: U12') || A.intersectsArea('pins: U13') || A.intersectsArea('pins: U15') || A.intersectsArea('pins: U17'))")
 	(constraint track_width (min 0.25mm) (opt 0.25mm)))
 
 # U1's pins are 0.2 mm wide on a 0.4 mm pitch
@@ -50,11 +52,21 @@
 	(condition "A.inDiffPair('USB_D')")
 	(constraint track_width (min 0.2mm) (opt 0.275mm))
 	(constraint diff_pair_gap (min 0.18mm) (opt 0.2mm) (max 0.25mm))
-	(constraint diff_pair_uncoupled (max 12mm))
-	(constraint skew (max 0.5mm) (within_diff_pairs))
-	# USBC1 interleaves D+/D- (B7 D-, A6 D+, A7 D-, B6 D+): tying each net's two pads takes one jumper via on
-	# top of the layer change, so 3 per net is the geometric minimum (step-2 review)
-	(constraint via_count (max 3)))
+	# [step 3 fix, measured on the combined trial (fix/trial/s4): uncoupled 14.37 mm, nearly all of it the inherent D4 split
+	# (pins 1.9 mm apart) and the receptacle's interleaved A6/A7/B6/B7; skew 1.30 mm in KiCad's total length, which counts
+	# the A7 jumper's 2 extra vias (3.17 mm) on D-. Limits: 16 mm uncoupled, 4 mm skew (~25 ps vs the 2.08 ns HS UI).]
+	(constraint diff_pair_uncoupled (max 16mm))
+	(constraint skew (max 4mm) (within_diff_pairs))
+	# USBC1 interleaves D+/D- (B7 D-, A6 D+, A7 D-, B6 D+): one net ties its two receptacle pads with an F jumper
+	# (2 vias) on top of its two layer changes (U1 end, D4 end) = 4; the other net has 2. [step 3: 3 -> 4, decision D3;
+	# keeping 3 means merging the jumper into the F run, which leaves a 6-8 mm stub at the receptacle]
+	(constraint via_count (max 4)))
+
+# the pins the pair cannot couple through: USBC1's 0.5 mm-pitch interleaved contacts (A6/B6 D+, A7/B7 D-, 0.3 mm gaps)
+# and USBLC6 D4's flow-through rows (D+ / D- 1.9 mm apart). Gap only; width, skew, uncoupled and vias stay the pair's.
+(rule "USB pair through USBC1 / D4 pins"
+	(condition "A.inDiffPair('USB_D') && (A.intersectsArea('pins: USBC1') || A.intersectsArea('pins: D4'))")
+	(constraint diff_pair_gap (min 0.18mm) (max 2.0mm)))
 
 # ---------------------------------------------------------------- clocks and buses
 
@@ -70,22 +82,72 @@
 	(constraint via_count (max 1))
 	(constraint length (max 15mm)))
 
-# parallel RGB, ~30 MHz pixel clock (33 ns period): 25 mm of skew is ~150 ps, still negligible. The rule
-# spans the whole bus, syncs and DCLK included; 10 mm forced serpentines onto HSYNC/VSYNC for no benefit.
+# parallel RGB, 23-27 MHz pixel clock (ATM0500D27 p.9: period >= 37 ns, half period >= 18.5 ns). The rule spans the
+# whole bus, syncs and DCLK included, and keeps it bundled: 25 mm is ~0.15 ns at ~6 ps/mm. The step-3 display group
+# measures 23.66 mm (B2 32.15 .. DE 55.83 mm incl. 1.586 mm per via) and passes. [step 3: kept at 25 mm (the review: the
+# 35 mm relaxation is not needed); use 35-40 mm only if the panel's colour map turns out swapped (36.5 mm then)]
 (rule "RGB bus matched"
 	(condition "A.NetName == 'RGB_*'")
 	(constraint skew (max 25mm)))
 
+# R50 (33R source termination) is on F under U1.75 (step 2): RGB_DCLK runs R50 -> P1.30 on F over In1 GND with no via,
+# and the pin -> R50 stub (/soc/LCD0_CLK) is one inner via long. [step 3: via_count 2 -> 0, new LCD0_CLK rule]
 (rule "RGB pixel clock"
 	(condition "A.NetName == 'RGB_DCLK'")
-	(constraint via_count (max 2)))
+	(constraint via_count (max 0)))
 
+# KiCad counts each via as its 1.586 mm barrel: pin -> inner via -> R50 measures 3.77 mm on the step-3 trial
+(rule "Pixel clock source stub"
+	(condition "A.NetName == '/soc/LCD0_CLK'")
+	(constraint length (max 4.5mm))
+	(constraint via_count (max 1)))
+
+# [step 3 fix, all taps routed (fix/trial/s4 sd: SP3004 remap A8 + the support-row moves): 0 vias, SD_D3 25.57 .. SD_D1
+# 29.34 mm incl. the ESD and pull-up stubs, skew 3.77 mm (SD_CD 34.80 mm is not in the rule)]
 (rule "SD bus"
 	(condition "A.NetName == 'SD_CLK' || A.NetName == 'SD_CMD' || A.NetName == 'SD_D*'")
 	(constraint skew (max 5mm))
 	(constraint via_count (max 2)))
 
+# [step 3 fix: 5 -> 12 mm. The W25Q / T113 pin orders need 6 single-layer crossings: IO0 and IO3 hop over on F (2 vias each,
+# 3.17 mm of KiCad length each). Combined trial (fix/trial/s4 nor): 11.76 (CS) .. 21.94 mm (IO3), skew 10.19 mm; 12 mm is ~75 ps
+# at ~6 ps/mm, < 1 % of a 10 ns QSPI period at 100 MHz]
 (rule "NOR QSPI bus"
 	(condition "A.NetName == 'NOR_*'")
-	(constraint skew (max 5mm))
+	(constraint skew (max 12mm))
 	(constraint via_count (max 2)))
+
+# ---------------------------------------------------------------- isolation
+
+# TP11 is a bare test pad on BL_LED_P: 16.8-19.2 V in use, up to the TPS61165 OVP (37-39 V) with the LED string open.
+# IPC-2221B Table 6-1 B2 (external, uncoated, 31-50 V): 0.6 mm. Coated copper elsewhere is B4 (0.13 mm), which the
+# 0.15 mm default covers. [step 3]
+(rule "TP11 isolation"
+	(condition "A.Type == 'Pad' && A.memberOfFootprint('TP11')")
+	(constraint clearance (min 0.6mm)))
+
+# ---------------------------------------------------------------- pours (step 3 draft)
+
+# The pours connect pads SOLID (zone setting), which suits IC GND pins, exposed pads (TPS61165 p.22: the EP
+# "must be soldered to the analog ground ... using thermal vias"), the switchers' power-loop caps (FP6161
+# checklist #5, TPS63021 p.23 "wide and short traces for the main current path and for the power ground"),
+# shells, tabs and the jack sleeve. Two-terminal 0402/0603 chip parts get thermal reliefs instead, so both ends
+# reflow together (the step-2 manufacturing check flagged C1/C3/C4/C5/C6 on solid pours). 0805 and larger stay
+# solid: they are the bulk / power-loop caps.
+(rule "Pour: thermal reliefs on 0402/0603 chip parts"
+	(condition "A.Type == 'Pad' && A.Pad_Type == 'SMD' && A.NetName == 'GND' && (A.memberOfFootprint('C*') || A.memberOfFootprint('R*')) && A.Size_X < 1.0mm && A.Size_Y < 1.0mm")
+	(constraint zone_connection thermal_reliefs)
+	(constraint thermal_relief_gap (min 0.25mm))
+	(constraint thermal_spoke_width (opt 0.3mm)))
+
+# hemmed-in pads that cannot resolve 2 spokes (DRC starved_thermal on the step-3 scratch fill): solid
+(rule "Pour: solid where two spokes do not fit"
+	(condition "A.Type == 'Pad' && A.NetName == 'GND' && (A.memberOfFootprint('C2') || A.memberOfFootprint('C21'))")
+	(constraint zone_connection solid))
+
+# hemmed in by the planned escape copper (step-3 integration trial): C3 / C5 are the 0402 crystal load caps that the
+# step-2 manufacturing check wants off solid pours (tombstoning), C28 sits beside the LDOB lane, C69 beside U17's VREF
+# link. One resolved spoke keeps them thermal.
+(rule "Pour: one spoke where two do not fit"
+	(condition "A.Type == 'Pad' && A.NetName == 'GND' && (A.memberOfFootprint('C3') || A.memberOfFootprint('C5') || A.memberOfFootprint('C28') || A.memberOfFootprint('C69'))")
+	(constraint min_resolved_spokes 1))

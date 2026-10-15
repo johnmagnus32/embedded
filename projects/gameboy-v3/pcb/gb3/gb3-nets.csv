@@ -3,7 +3,7 @@ U1,1,,,spare/NC — PG6 free GPIO (per PINOUT)
 U1,2,,,spare/NC — PG7 free GPIO
 U1,3,I2C1_SCL,,PG8 TWI1-SCK joins the shared i2c1 bus + pull-up
 U1,4,I2C1_SDA,,PG9 TWI1-SDA joins the shared i2c1 bus + pull-up
-U1,5,,,spare/NC — PG10 free GPIO
+U1,5,SD_CD,,PG10 (PG-EINT10) microSD card-detect in; low = card present; R48 10k pull-up; DT cd-gpios = <&pio 6 10 GPIO_ACTIVE_LOW> (step 3: moved from PF6 so CD no longer crosses the six SD lines)
 U1,6,I2S1_MCLK,,PG11 I2S1-MCLK; per task guidance kept as I2S1_MCLK though MAX98357A/PCM5102A need no MCLK — effectively single-pin/static; confirm route vs static GPIO
 U1,7,SD_D1,,PF0 MMC0-D1
 U1,8,SD_D0,,PF1 MMC0-D0
@@ -11,7 +11,7 @@ U1,9,SD_CLK,,PF2 MMC0-CLK
 U1,10,SD_CMD,,PF3 MMC0-CMD
 U1,11,SD_D3,,PF4 MMC0-D3
 U1,12,SD_D2,,PF5 MMC0-D2
-U1,13,SD_CD,,PF6 (PF-EINT6) microSD card-detect in; low = card present; R48 10k pull-up; DT cd-gpios = <&pio 5 6 GPIO_ACTIVE_LOW>
+U1,13,,,spare/NC — PF6 free GPIO (step 3: SD_CD moved to PG10)
 U1,14,NOR_IO3,,PC7 SPI0-HOLD/IO3 → W25Q128 U3
 U1,15,NOR_IO2,,PC6 SPI0-WP/IO2 → W25Q128 U3
 U1,16,NOR_IO1,,PC5 SPI0-MISO/IO1 → W25Q128 U3; also BOOT-SEL1 strap at reset
@@ -29,21 +29,21 @@ U1,27,RESET,,RESET (low-active) → reset btn R22? + 100nF + 10K pull-up to VCC_
 U1,28,LDOA,pwr,LDOA-OUT internal 1.8V regulator output (1.764/1.8/1.836) + bypass cap→GND; source of the 1.8V rail feeding VCC-PLL/VCC-LVDS/VDD18-DRAM/VCC-TVIN. VERIFY vs t113-breakout
 U1,29,+3V3,pwr,"LDO-IN internal LDOA/B input, 2.4/3.3/3.6V → 3.3V rail"
 U1,30,LDOB,pwr,LDOB-OUT internal regulator output (default 1.35V; firmware sets 1.5V for DDR3) + bypass cap→GND; feeds VCC-DRAM0/1. VERIFY vs t113-breakout
-U1,31,BL_CTRL,,"PE13 (PWM5, mux 3) → TPS61165 CTRL: HW PWM 6.5–100 kHz (D1 PWM driver, out of tree) or GPIO EasyScale/on-off; Z at reset = R51 100k + internal 400k–1.6M pull-down = backlight off"
-U1,32,JACK_DET,,"PE12 (EINT) ← R49 10k ← jack tip switch; bias-pull-up: high = inserted, low = unplugged"
+U1,31,PWR_BTN_3V3,,"PE13 (PE-EINT13) <- STM6601 /PB_OUT via #117 pull-up (step 3: moved from PE10; same PE bank, EINT and wake behaviour). The N4 riser beside X1's HOSC_IN load cap C3 now carries this static button line, not the backlight PWM"
+U1,32,,,spare/NC — PE12 free GPIO (step 3: JACK_DET moved to PG14)
 U1,33,UART0_RX,,PE3 UART0-RX (console) ← R46 510R ← TP2
 U1,34,+3V3,pwr,"VCC-PE — PE-bank I/O supply, 3.3V"
 U1,35,UART0_TX,,PE2 UART0-TX (console) → R45 510R → TP1
 U1,36,PSHOLD,,PE11 → STM6601 PSHOLD (gpio-poweroff handshake)
-U1,37,PWR_BTN_3V3,,[AUDIT] PE10 <- STM6601 /PB_OUT via #117 pull-up (was raw PWR_BTN idling ~SYS on a 3.3V pin)
+U1,37,BL_CTRL,,PE10 (PWM4) → TPS61165 CTRL: HW PWM 6.5–100 kHz (PWM4/PWM5 are one D1 PWM controller pair; PWM5 now unused) or GPIO EasyScale/on-off; Z at reset = R51 100k + internal 400k–1.6M pull-down = backlight off. Step 3: moved from PE13 (off the crystal side; the NE corridor routes planar)
 U1,38,TOUCH_RST,,PE9 → touch FFC → FT7311 reset
 U1,39,TOUCH_INT,,PE8 → touch FFC → FT7311 INT
 U1,40,EXP_INT,,PE7 → PCA9555 INT + pull-up
 U1,41,SPK_EN,,PE6 → R14 680k → MAX98357A SD_MODE (DS Fig 5 push-pull): high = (L/2+R/2) mono; low or Z (reset) = shutdown via internal 100k RPD
 U1,42,I2C2_SDA,,PE5 TWI2-SDA joins dedicated i2c2 (IMU) bus
 U1,43,I2C2_SCL,,PE4 TWI2-SCK joins dedicated i2c2 (IMU) bus
-U1,44,IMU_INT1,,"PE0 → LSM6DSOX INT1 (+ 10K pulldown, also sets I2C-not-I3C at POR)"
-U1,45,IMU_INT2,,PE1 → LSM6DSOX INT2
+U1,44,IMU_INT2,,PE0 (PE-EINT0) → LSM6DSOX INT2 (programmable). Step 3: swapped with PE1 so the IMU lines leave U1 in U7's pad order (no crossing)
+U1,45,IMU_INT1,,"PE1 (PE-EINT1) → LSM6DSOX INT1 (+ R13 10K pulldown, also sets I2C-not-I3C at POR). Step 3: swapped with PE0"
 U1,46,+0V9,pwr,"VDD-SYS0 = 0.9V (datasheet: 0.85/0.95/0.99, shares CPU/core rail) — dictionary default +3V3 overridden. VERIFY vs t113-breakout + FP6161 budget (VDD-CPU+VDD-SYS ≤800mA)"
 U1,47,DDR_ZQ,,DZQ DRAM ZQ-cal → 240Ω R5 → GND (section-local net)
 U1,48,LDOB,pwr,"VCC-DRAM0 = 1.5V DDR3 supply (datasheet 1.425/1.5/1.575), fed from LDOB. VERIFY vs t113-breakout SiP DDR"
@@ -78,11 +78,11 @@ U1,76,RGB_DE,,PD19 LCD0-DE → panel
 U1,77,+3V3,pwr,VCC-TVOUT = 3.3V (datasheet typ 3.3); TVOUT block unused but supply kept at 3.3V
 U1,78,,,spare/NC — TVOUT0 CVBS output unused
 U1,79,CHG_FAST,,"PB7 out → Q1 2N7002 gate (R55 10k pull-down at the FET): high = fast input limit (ILIM 3.6k||1.8k = 1.2k → 1.24/1.34/1.45 A); low or Z (reset, boot, system off) = safe 3.6k (0.37/0.42/0.48 A). Push-pull; never bias-pull-up (10k keeps the gate ≤ 0.40 V even against the 80–120k internal pull-up). DT gpio-charger charge-current-limit-gpios = <&pio 1 7 GPIO_ACTIVE_HIGH>"
-U1,80,BT_EN_RST,,PB6 → BT830 VREG_EN_RST# (boot low >5ms then high)
+U1,80,CHG_PGOOD,,PB6 (PB-EINT6) → BQ24073 /PGOOD + R28 pull-up (open-drain in); DT gpio-charger gpios = <&pio 1 6 GPIO_ACTIVE_LOW> (online + wakeup IRQ). Step 3: moved from PB4
 U1,81,+0V9,pwr,VDD-SYS2 = 0.9V core/system rail (see pin 46). VERIFY vs t113-breakout
 U1,82,GAUGE_ALRT,,PB5 (PB-EINT5) → MAX17048 ALRT + R43 pull-up (open-drain in; DT IRQ_TYPE_LEVEL_LOW + wakeup-source)
 U1,83,+3V3,pwr,VCC-IO = 3.3V digital I/O supply
-U1,84,CHG_PGOOD,,PB4 (PB-EINT4) → BQ24073 /PGOOD + R28 pull-up (open-drain in); DT gpio-charger gpios = <&pio 1 4 GPIO_ACTIVE_LOW> (online + wakeup IRQ)
+U1,84,BT_EN_RST,,PB4 → BT830 VREG_EN_RST# (boot low >5ms then high). Step 3: moved from PB6
 U1,85,DAC_XSMT,,PB3 → PCM5102A XSMT (soft-mute); drive push-pull; R44 10k pull-down = muted at reset
 U1,86,HP_EN,,PB2 → TPA6132A2 EN (+ pull-down)
 U1,87,,,spare/NC — MICIN3P (internal codec mic-in unused)
@@ -124,7 +124,7 @@ U1,122,,,spare/NC — PG5 free GPIO
 U1,123,,,spare/NC — PG4 free GPIO
 U1,124,I2S1_LRCK,,PG12 I2S1-LRCK → MAX98357A + PCM5102A
 U1,125,I2S1_BCLK,,PG13 I2S1-BCLK → MAX98357A + PCM5102A
-U1,126,I2S1_DIN,,PG14 I2S1-DIN0; per task guidance kept as I2S1_DIN though nothing drives T113 I2S RX — effectively single-pin/static; confirm route vs static GPIO
+U1,126,JACK_DET,,"PG14 (PG-EINT14) ← R49 10k ← jack tip switch; bias-pull-up: high = inserted, low = unplugged. Same 80–120k internal pull class as PE12 (T113 DS Table 5-4), so the R49 divider is unchanged. DT: the i2s1 pin group must not claim PG14 (I2S1-DIN0 unused); hp-det-gpios = <&pio 6 14 GPIO_ACTIVE_HIGH>. Step 3: was PE12 at the NE corner (the single-pin net I2S1_DIN is dropped)"
 U1,127,I2S1_DOUT,,PG15 I2S1-DOUT0 → MAX98357A DIN + PCM5102A DIN (via series-R)
 U1,128,+3V3,pwr,"VCC-PG — PG-bank I/O supply, 3.3V"
 U1,129,GND,gnd,EPAD — ground family
@@ -197,20 +197,20 @@ U4,5,SD_CLK,,CLK -> PF2
 U4,6,GND,gnd,VSS — ground family
 U4,7,SD_D0,,DAT0 -> PF1
 U4,8,SD_D1,,DAT1 -> PF0
-U4,9,SD_CD,,CARD_DETECT — N.O. switch to pin 10 (shell GND); closes on card insert (A-MicroTF-1.85A drawing p.2) -> PF6 + R48 pull-up + D1.3 clamp
+U4,9,SD_CD,,CARD_DETECT — N.O. switch to pin 10 (shell GND); closes on card insert (A-MicroTF-1.85A drawing p.2) -> PG10 + R48 pull-up + D1.3 clamp
 U4,10,GND,gnd,GROUND — socket shell/mechanical ground; CD switch return
 D1,1,SD_CLK,,SP3004 ch I/O1 shunt-clamp on SD_CLK
 D1,2,GND,gnd,GND — ground family
-D1,3,SD_CD,,I/O2 clamp on SD_CD (beside socket pad 9)
-D1,4,SD_D0,,I/O3 clamp on SD_D0
+D1,3,SD_D0,,SP3004 ch I/O2 clamp on SD_D0 (step 3: was SD_CD; the lane passes under the body)
+D1,4,SD_D1,,SP3004 ch I/O3 clamp on SD_D1 (step 3: was SD_D0; the lane passes under the body)
 D1,5,+3V3,pwr,VCC — rail: SD-line ESD clamp ref = 3.3V
-D1,6,SD_D1,,I/O4 clamp on SD_D1
+D1,6,SD_CD,,SP3004 ch I/O4 clamp on SD_CD (step 3: was SD_D1; CD's lane runs west of the part)
 D2,1,SD_D2,,SP3004 ch I/O1 clamp on SD_D2
 D2,2,GND,gnd,GND — ground family
 D2,3,SD_D3,,I/O2 clamp on SD_D3
-D2,4,SD_CMD,,I/O3 clamp on SD_CMD (beside socket pad 3 and R6)
+D2,4,,,I/O3 — spare/NC — unused ESD channel (step 3: CMD moved to pin 6)
 D2,5,+3V3,pwr,VCC — rail: SD-line ESD clamp ref = 3.3V
-D2,6,,,I/O4 — spare/NC — unused ESD channel
+D2,6,SD_CMD,,SP3004 ch I/O4 clamp on SD_CMD (step 3: was spare; CMD's lane runs west of the part)
 R6,1,SD_CMD,,10k SD pull-up (bank pairing arbitrary)
 R6,2,+3V3,pwr,
 R7,1,SD_D0,,10k SD pull-up
@@ -374,12 +374,12 @@ FPC1,6,TOUCH_RST,,FT7311 RST -> T113 PE9
 FPC1,7,GND,gnd,connector is 6-pin (HDGC 1.0K-1.5-6PWB) but symbol shows 8 pins; assumed shield/mount tab -> GND. VERIFY symbol pin order/count.
 FPC1,8,GND,gnd,assumed shield/mount tab -> GND (see pin7). VERIFY symbol.
 U6,1,SYS,pwr,rail: #28 VIN from SYS/5V not 3.3V (REVIEW: SYS vs +5V)
-U6,2,BL_CTRL,,"CTRL brightness control -> T113 PE13 (PWM5: HW PWM 6.5–100 kHz, or EasyScale/GPIO); R51 100k pull-down. Cross-chip dictionary net."
+U6,2,BL_CTRL,,"CTRL brightness control -> T113 PE10 (PWM4: HW PWM 6.5–100 kHz, or EasyScale/GPIO); R51 100k pull-down. Cross-chip dictionary net."
 U6,3,BL_SW,,SW — boost switch node: to L2 (VIN side of inductor) and D3 anode. Section-local.
 U6,4,GND,gnd,GND — ground family
 U6,5,BL_COMP,,COMP error-amp output -> C47 to GND. Section-local.
 U6,6,BL_LED_N,,FB current-sense = LED string cathode = P1.1. Rset (5.1R) from FB to GND is MISSING as a placed part in netlist — see uncertainties.
-R51,1,BL_CTRL,,"100k pull-down at U6.2: holds CTRL < 0.4 V (V(CTRLl), tps61165.pdf p5) while PE13 is Hi-Z (reset; a disabled PWM channel, e.g. pwm_bl suspend) for pad leakage up to ~4 uA (internal pull-down alone: ~0.25 uA)"
+R51,1,BL_CTRL,,"100k pull-down at U6.2: holds CTRL < 0.4 V (V(CTRLl), tps61165.pdf p5) while PE10 is Hi-Z (reset; a disabled PWM channel, e.g. pwm_bl suspend) for pad leakage up to ~4 uA (internal pull-down alone: ~0.25 uA)"
 R51,2,GND,gnd,
 L2,1,SYS,pwr,"boost inductor VIN side (=U6 VIN rail, SYS). Inductor non-polar; orientation arbitrary."
 L2,2,BL_SW,,boost inductor SW-node side -> U6 SW + D3 anode.
@@ -394,12 +394,12 @@ C47,2,GND,gnd,COMP cap return to GND.
 U7,1,GND,gnd,SDO/SA0 strap → GND sets I2C addr 0x6A (BOM #39); must not float
 U7,2,GND,gnd,"SDX — SDx: Mode-1 unused aux, hard-tie to GND per DS Table 1 (no pull-R, must not float)"
 U7,3,GND,gnd,"SCX — SCx: Mode-1 unused aux, hard-tie to GND per DS Table 1 (no pull-R, must not float)"
-U7,4,IMU_INT1,,INT1 → T113 PE0; R13 10k pulldown on this net guarantees I2C-not-I3C at POR (must NOT pull to VDDIO)
+U7,4,IMU_INT1,,INT1 → T113 PE1; R13 10k pulldown on this net guarantees I2C-not-I3C at POR (must NOT pull to VDDIO)
 U7,5,+3V3,pwr,VDDIO — rail: IMU IO 3.3V (REVIEW)
 U7,6,GND,gnd,GND — ground family
 U7,7,GND,gnd,GND — ground family
 U7,8,+3V3,pwr,VDD — rail: IMU 3.3V (REVIEW: rail not explicit)
-U7,9,IMU_INT2,,"INT2 → T113 PE1 EINT (programmable, no tie)"
+U7,9,IMU_INT2,,"INT2 → T113 PE0 EINT (programmable, no tie)"
 U7,10,,,"OCS_Aux — [AUDIT] pin-name fix (was OSC_AUX). aux SPI CS, unused -> NC/GND per BOM #35"
 U7,11,,,"SDO_AUX — spare/NC: SDO_Aux, left unconnected (DS allows tie to VDDIO as alternative — either valid)"
 U7,12,+3V3,pwr,CS high selects I2C mode (BOM #38); ties to VDDIO = +3V3
@@ -456,7 +456,7 @@ U10,3,BAT,pwr,"BAT — battery+ / power-path (pins 2,3)"
 U10,4,GND,gnd,~{CE} — ~CE active-low chip-enable tied low = charger enabled (must not float)
 U10,5,CHG_EN2,,EN2 -> R18 0R strap -> SYS_SRC(OUT); EN2=1/EN1=0 selects ILIM-resistor mode
 U10,6,GND,gnd,EN1 low
-U10,7,CHG_PGOOD,,~{PGOOD} — /PGOOD open-drain; R28 pull-up to +3V3; goes to T113 PB4
+U10,7,CHG_PGOOD,,~{PGOOD} — /PGOOD open-drain; R28 pull-up to +3V3; goes to T113 PB6
 U10,8,GND,gnd,VSS — ground family
 U10,9,CHG_LED_K,,"~{CHG} — /CHG open-drain, sinks charge-status LED U14 cathode"
 U10,10,SYS_SRC,pwr,"charger OUT = supply/upstream side of INA226 shunt (SYS_SRC), before R27; distinct from post-shunt SYS distribution"
@@ -563,21 +563,21 @@ R28,2,+3V3,pwr,
 U16,1,EXP_INT,,~{INT} — PCA9555 ~INT open-drain -> EXP_INT (T113 PE7) + R29 pull-up to +3V3
 U16,2,GND,gnd,A1 strap=0 for I2C base addr 0x20
 U16,3,GND,gnd,A2 strap=0 for I2C base addr 0x20
-U16,4,BTN_UP,,"P00 input; D-pad SW2 (direction label nominal, set in gpio-keys keymap)"
-U16,5,BTN_DOWN,,P01 input; D-pad SW3 (label nominal)
-U16,6,BTN_LEFT,,P02 input; D-pad SW4 (label nominal)
-U16,7,BTN_RIGHT,,P03 input; D-pad SW5 (label nominal)
-U16,8,BTN_A,,P04 input; face SW6 (A/B/X/Y label nominal)
-U16,9,BTN_B,,P05 input; face SW7 (label nominal)
-U16,10,BTN_X,,P06 input; face SW8 (label nominal)
-U16,11,BTN_Y,,P07 input; face SW9 (label nominal)
+U16,4,BTN_R1,,"P00 input; R bumper SW16 (step 3: port 0 = right grip, in the order the strip lanes reach it)"
+U16,5,BTN_VOLUP,,P01 input; volume SW12
+U16,6,BTN_VOLDOWN,,P02 input; volume SW13
+U16,7,BTN_B,,P03 input; face SW7 (label nominal)
+U16,8,BTN_X,,P04 input; face SW8 (label nominal)
+U16,9,BTN_SELECT,,P05 input; SW11
+U16,10,BTN_Y,,P06 input; face SW9 (label nominal)
+U16,11,BTN_A,,P07 input; face SW6 (A/B/X/Y label nominal)
 U16,12,GND,gnd,GND — ground family
-U16,13,BTN_START,,P10 input; SW10
-U16,14,BTN_SELECT,,P11 input; SW11
-U16,15,BTN_VOLUP,,P12 input; volume SW12
-U16,16,BTN_VOLDOWN,,P13 input; volume SW13
-U16,17,BTN_L1,,P14 input; L bumper SW15
-U16,18,BTN_R1,,P15 input; R bumper SW16
+U16,13,BTN_UP,,"P10 input; D-pad SW2 (direction label nominal, set in gpio-keys keymap) (step 3: port 1 = left grip)"
+U16,14,BTN_DOWN,,P11 input; D-pad SW3 (label nominal)
+U16,15,BTN_LEFT,,P12 input; D-pad SW4 (label nominal)
+U16,16,BTN_RIGHT,,P13 input; D-pad SW5 (label nominal)
+U16,17,BTN_START,,P14 input; SW10
+U16,18,BTN_L1,,P15 input; L bumper SW15
 U16,19,,,"P16 spare/NC expander input (14 buttons on 16 pins); PCA9555 POR internal ~100k pull-up holds it, leave open"
 U16,20,,,"P17 spare/NC expander input; internal pull-up holds it, leave open"
 U16,21,GND,gnd,A0 strap=0 for I2C base addr 0x20
@@ -658,9 +658,9 @@ U17,2,,,#SR — STM6601 /SR Smart-Reset input unused -> leave open per BOM #94. 
 U17,3,STM_VREF,,1.5V VREF -> CREF cap C69 to GND (mandatory even though VREF unused)
 U17,4,PSHOLD,,PS_HOLD gpio-poweroff handshake -> T113 PE11 (PSHOLD)
 U17,5,,,C_SRD Smart-Reset delay cap input unused -> leave open per BOM #94
-U17,6,PWR_BTN,,#PB — /PB push-button input <- SW14 center + T113 PE10 (PWR_BTN). Has internal pull-up
+U17,6,PWR_BTN,,#PB — /PB push-button input <- SW14 center + T113 PE13 (PWR_BTN_3V3 side via /PB_OUT). Has internal pull-up
 U17,7,,,"#VCC_LO — /VCC_LO comparator output unused -> leave open per BOM #94 (open-drain, no pull-up needed)"
-U17,8,PWR_BTN_3V3,,#PB_OUT — [AUDIT] /PB_OUT open-drain -> PWR_BTN_3V3 (+#117 pull-up) -> T113 PE10
+U17,8,PWR_BTN_3V3,,#PB_OUT — [AUDIT] /PB_OUT open-drain -> PWR_BTN_3V3 (+#117 pull-up) -> T113 PE13
 U17,9,PWR_EN,,EN(#EN) — EN (active-high) -> PWR_EN master enable: TPS63021 U12.12 EN (the core buck runs from +3V3)
 U17,10,,,#RST — /RST reset output unused -> leave open per BOM #94 (open-drain)
 U17,11,,,#INT — /INT interrupt output unused -> leave open per BOM #94 (open-drain)
@@ -673,16 +673,20 @@ R30,1,I2C1_SCL,,I2C1 SCL pull-up (1.5k #97); joins bus SCL already assigned on p
 R30,2,+3V3,pwr,pull-up top to 3.3V
 R31,1,I2C1_SDA,,I2C1 SDA pull-up (1.5k #97); joins bus SDA
 R31,2,+3V3,pwr,pull-up top to 3.3V
-D4,1,USB_D+,,"USBLC6-2SC6 I/O1 (pins 1&6 = same internal node, pass-through); DP<->I/O1 channel choice is symmetric. VERIFY pin numbering vs ST datasheet (no DS in cad/docs)"
+D4,1,USB_D-,,"USBLC6-2SC6 I/O1 (pins 1&6 = same internal node, pass-through). Step 3: I/O1 carries D- so the outer receptacle pins B7 (D-) / B6 (D+) run straight to D4 and the pair reaches U1.115/114 without a further crossing"
 D4,2,GND,gnd,USBLC6 GND
-D4,3,USB_D-,,"USBLC6-2SC6 I/O2 (pins 3&4 = same internal node, pass-through)"
-D4,4,USB_D-,,USBLC6-2SC6 I/O2 (same net as pin3)
+D4,3,USB_D+,,"USBLC6-2SC6 I/O2 (pins 3&4 = same internal node, pass-through)"
+D4,4,USB_D+,,USBLC6-2SC6 I/O2 (same net as pin3)
 D4,5,+5V,pwr,USBLC6 VBUS rail-clamp = USB-C VBUS (+5V)
-D4,6,USB_D+,,USBLC6-2SC6 I/O1 (same net as pin1); ESD taps the DP line pass-through to T113
+D4,6,USB_D-,,USBLC6-2SC6 I/O1 (same net as pin1); ESD taps the DM line pass-through to T113
 C93,1,+5V,pwr,100nF VBUS HF cap at D4.5 (USBLC6 VBUS) - ST Fig 18 CBUS; not bulk: hard-started VBUS stays <10uF (USB 2.0 7.2.4.1)
 C93,2,GND,gnd,
 C94,1,USBC_CC_SENSE,,"100nF at U1.101 GPADC0 (≤ 5 mm): tau = 102k × 100nF = 10 ms (PD BMC bursts, noise) + charge reservoir for the ADC sample cap"
 C94,2,GND,gnd,
+C95,1,+3V3,pwr,"100nF return-path cap for the RGB via field (+3V3/GND: B.Cu traces reference In2 +3V3, F.Cu In1 GND)"
+C95,2,GND,gnd,
+C96,1,+3V3,pwr,100nF return-path cap for the RGB via field (south group)
+C96,2,GND,gnd,
 R52,1,USBC_CC1,,Rd 5.1k: CC1 -> GND (|| 405k sense path → 4.96–5.11k effective; Type-C 5.1k ±10%)
 R52,2,GND,gnd,
 R53,1,USBC_CC2,,Rd 5.1k: CC2 -> GND (|| 405k sense path)
@@ -698,7 +702,7 @@ U18,4,UART3_CTS,,~{UART_RTS} — BT UART_RTS (output) -> T113 UART3_CTS input (c
 U18,5,UART3_RX,,BT UART_TX (data out) -> T113 UART3_RX (crossed)
 U18,6,UART3_RTS,,~{UART_CTS} — BT UART_CTS (input) <- T113 UART3_RTS output (crossed HW flow control)
 U18,7,UART3_TX,,BT UART_RX (data in) <- T113 UART3_TX (crossed; matches dictionary example)
-U18,8,BT_EN_RST,,"VREG_EN_~{RST} — VREG_EN_RST# -> GPIO PB6 (boot low, hold >5ms, then high; do NOT strap via 10k)"
+U18,8,BT_EN_RST,,"VREG_EN_~{RST} — VREG_EN_RST# -> GPIO PB4 (boot low, hold >5ms, then high; do NOT strap via 10k)"
 U18,9,+3V3,pwr,rail: BT830 note: VREG_IN_HV=3.3V
 U18,10,BT_VREG18,,"VREG_OUT_HV = internal 1.8V HV-LDO output; own node with C70 (>=1.5uF mandatory), not a supply rail"
 U18,11,GND,gnd,GND — ground family
@@ -734,8 +738,8 @@ U19,2,PCM_CAPP,,charge-pump flying cap + terminal; C81 between CAPP and CAPM
 U19,3,GND,gnd,CPGND charge-pump ground
 U19,4,PCM_CAPM,,CAPM — charge-pump flying cap - terminal; C81 other side
 U19,5,PCM_VNEG,,"VNEG — -3.3V charge-pump rail; C82 reservoir to GND (mandatory, else dead output)"
-U19,6,DAC_OUTL,,OUTL — DAC left output -> R35 anti-imaging series
-U19,7,DAC_OUTR,,OUTR — DAC right output -> R36 anti-imaging series
+U19,6,DAC_OUTL,,OUTL — DAC left output -> R36 anti-imaging series (step 3: the north chain carries LEFT)
+U19,7,DAC_OUTR,,OUTR — DAC right output -> R35 anti-imaging series
 U19,8,+3V3,pwr,AVDD — rail: #105 3.3V
 U19,9,GND,gnd,AGND — ground family
 U19,10,GND,gnd,DEMP strap -> GND (de-emphasis off)
@@ -773,21 +777,21 @@ C81,1,PCM_CAPP,,2.2uF charge-pump flying cap CAPP<->CAPM
 C81,2,PCM_CAPM,,
 C82,1,PCM_VNEG,,2.2uF VNEG reservoir to GND
 C82,2,GND,gnd,
-R35,1,DAC_OUTL,,470R anti-imaging series from OUTL
-R35,2,DAC_OUTL_F,,filtered node (R+shunt-C junction) -> coupling cap C85
-R36,1,DAC_OUTR,,470R anti-imaging series from OUTR
-R36,2,DAC_OUTR_F,,filtered node -> coupling cap C86
-C83,1,DAC_OUTL_F,,2.2nF C0G shunt to AGND after R35 (fc~154kHz)
+R35,1,DAC_OUTR,,470R anti-imaging series from OUTR
+R35,2,DAC_OUTR_F,,filtered node -> coupling cap C85
+R36,1,DAC_OUTL,,"470R anti-imaging series from OUTL (step 3: the north chain R36/C86/C84 carries LEFT, so the two DAC outputs nest without crossing)"
+R36,2,DAC_OUTL_F,,filtered node (R+shunt-C junction) -> coupling cap C86
+C83,1,DAC_OUTR_F,,2.2nF C0G shunt to AGND after R35
 C83,2,GND,gnd,AGND
-C84,1,DAC_OUTR_F,,2.2nF C0G shunt to AGND after R36
+C84,1,DAC_OUTL_F,,2.2nF C0G shunt to AGND after R36 (fc~154kHz)
 C84,2,GND,gnd,AGND
 R44,1,DAC_XSMT,,10k XSMT pull-down: DAC boots soft-muted (T113 PB3 is IO-disable/Z at reset); un-mutes only when PB3 drives high. Place at U19 pin 17; no cap on XSMT
 R44,2,GND,gnd,
-U20,1,AMP_INL,,INL- inverting left input <- coupling cap C85
+U20,1,AMP_INR,,"INL- inverting input of amp channel L, used for the RIGHT signal <- coupling cap C85 (step 3 channel swap)"
 U20,2,GND,gnd,INL+ grounded (single-ended)
 U20,3,GND,gnd,INR+ grounded (single-ended)
-U20,4,AMP_INR,,INR- inverting right input <- coupling cap C86
-U20,5,HP_R,,"OUTR -> jack ring, direct (no cap)"
+U20,4,AMP_INL,,"INR- inverting input of amp channel R, used for the LEFT signal <- coupling cap C86 (step 3 channel swap; TPA6132A2 channels are identical, shared EN/gain)"
+U20,5,HP_L,,"OUTR -> jack tip (LEFT), direct (no cap) (step 3 channel swap)"
 U20,6,GND,gnd,G0 -> GND (-6dB gain)
 U20,7,GND,gnd,G1 -> GND (-6dB gain)
 U20,8,TPA_HPVSS,,charge-pump negative rail; C88 (1uF CHPVSS) to GND
@@ -798,12 +802,12 @@ U20,12,TPA_HPVDD,,"HPVDD — charge-pump output; C89 (2.2uF) to GND ONLY, never 
 U20,13,HP_EN,,"EN -> GPIO PB2 (+ R37 100k pulldown, boots off)"
 U20,14,+3V3,pwr,rail: #110 VDD 3.3V
 U20,15,GND,gnd,SGND — ground family
-U20,16,HP_L,,"OUTL -> jack tip, direct (no cap)"
+U20,16,HP_R,,"OUTL -> jack ring (RIGHT), direct (no cap) (step 3 channel swap)"
 U20,17,GND,gnd,EP — ground family
-C85,1,DAC_OUTL_F,,1uF input coupling (DC-block) from filtered DAC left
-C85,2,AMP_INL,,-> TPA INL-
-C86,1,DAC_OUTR_F,,1uF input coupling from filtered DAC right
-C86,2,AMP_INR,,-> TPA INR-
+C85,1,DAC_OUTR_F,,1uF input coupling from filtered DAC right
+C85,2,AMP_INR,,-> TPA INL- (amp channel L carries RIGHT)
+C86,1,DAC_OUTL_F,,1uF input coupling (DC-block) from filtered DAC left
+C86,2,AMP_INL,,-> TPA INR- (amp channel R carries LEFT)
 C87,1,TPA_CPP,,1uF charge-pump flying cap (CFLYING) between CPP and CPN
 C87,2,TPA_CPN,,
 C88,1,TPA_HPVSS,,"1uF CHPVSS decoupling (HPVSS pin8, CHPVSS>=CFLYING)"
@@ -817,11 +821,11 @@ C91,2,GND,gnd,
 R37,1,HP_EN,,100k EN pull-down (boots off until GPIO drives high)
 R37,2,GND,gnd,
 Audio1,1,GND,gnd,"[DS C145813.pdf: pad1 = maker pin 5] jack sleeve -> GND (pin1=sleeve, independent contact)"
-Audio1,2,HP_L,,"[DS C145813.pdf: pad2 = maker pin 4] tip = left = TPA OUTL (pin2=tip; {2,4}=tip+tip-switch are the one NC pair)"
-Audio1,3,HP_R,,"[DS C145813.pdf: pad3 = maker pin 6] ring = right = TPA OUTR (pin3=ring, independent contact)"
-Audio1,4,JACK_SW,,"[DS C145813.pdf: pad4 = maker pin 3] tip-switch, NC to tip (pad2 = HP_L = TPA6132 OUTL) when unplugged, opens on insert → R49 → JACK_DET (PE12). Unplugged = low (OUTL 20 Ω typ to GND in shutdown, tpa6132a2.pdf p5; 0 V DC when on); inserted = high (PE12 pull-up)"
-R49,1,JACK_SW,,"10k series R, jack side: caps PE12 clamp current at ≤0.1 mA while the ground-centred OUTL (≈±1.5 V) is on the closed tip switch; ESD current limit for PE12"
-R49,2,JACK_DET,,SoC side → U1.32 PE12; unplugged + amp off ≤0.5 V worst case incl. 10 µA leakage (VIL max 0.3·VCC = 0.99 V)
+Audio1,2,HP_L,,"[DS C145813.pdf: pad2 = maker pin 4] tip = left = TPA OUTR U20.5 after the step-3 channel swap (pin2=tip; {2,4}=tip+tip-switch are the one NC pair)"
+Audio1,3,HP_R,,"[DS C145813.pdf: pad3 = maker pin 6] ring = right = TPA OUTL U20.16 after the step-3 channel swap (pin3=ring, independent contact)"
+Audio1,4,JACK_SW,,"[DS C145813.pdf: pad4 = maker pin 3] tip-switch, NC to tip (pad2 = HP_L = TPA6132 OUTR) when unplugged, opens on insert → R49 → JACK_DET (PG14). Unplugged = low (OUTR 20 Ω typ to GND in shutdown)"
+R49,1,JACK_SW,,"10k series R, jack side: caps PG14 clamp current at ≤0.1 mA while the ground-centred OUTR / HP_L (≈±1.5 V) is on the closed tip switch; ESD current limit for PG14"
+R49,2,JACK_DET,,SoC side → U1.126 PG14; unplugged + amp off ≤0.5 V worst case incl. 10 µA leakage (VIL max 0.3·VCC = 0.99 V)
 R38,1,BL_LED_N,,"backlight Rset 5.1R (C137955) FB(BL_LED_N)->GND, 200mV/5.1R=39mA"
 R38,2,GND,gnd,
 R39,1,PANEL_DISP,,[AUDIT #116] 10k DISP pull-up -> +3V3 (BOM.md line 64 requires it)
