@@ -46,24 +46,30 @@ T("BT_EN_RST", "F", W, [(63.3, 85.9), (61.75, 85.9), (60.9, 86.75), (59.0, 86.75
 # (x - y = -9.0 / -9.6 / -10.2: 0.42 mm apart) to y 48.2 / 48.8 / 49.4, west, and north into the pads; TX takes its F
 # hop over RTS and RX there (the pads want TX west-most), RX its own from the SE (the lanes arrive CTS, TX, RTS, RX
 # and the pads need TX, RTS, RX, CTS W -> E)
-T("UART3_CTS", "B", W, [(51.4, 66.0), (51.4, 56.4), (47.4, 56.4), (39.2, 48.2), (P("U18.4")[0], 48.2), P("U18.4")])
-T("UART3_RTS", "B", W, [(50.6, 66.0), (50.6, 57.2), (47.0, 57.2), (39.2, 49.4), (P("U18.6")[0], 49.4), P("U18.6")])
-T("UART3_TX", "B", W, [(51.0, 66.0), (51.0, 56.8), (47.2, 56.8), (39.2, 48.8), (36.8, 48.8)]); VIA("UART3_TX", 36.8, 48.8)
-T("UART3_TX", "F", W, [(36.8, 48.8), (34.1, 46.1), (31.65, 46.1), (31.05, 46.7)]); VIA("UART3_TX", 31.05, 46.7)
-T("UART3_TX", "B", W, [(31.05, 46.7), (30.83, 46.48), P("U18.7")])
-T("UART3_RX", "B", W, [(50.2, 66.0), (34.2, 50.0)]); VIA("UART3_RX", 34.2, 50.0)
-T("UART3_RX", "F", W, [(34.2, 50.0), (33.35, 49.15), (32.45, 49.15), (32.45, 46.7)]); VIA("UART3_RX", 32.45, 46.7)
-T("UART3_RX", "B", W, [(32.45, 46.7), (32.45, 46.0), P("U18.5")])
+# step 8 (U18 3.5 mm south for the R20 corner): the fan's diagonals now stop at y 49.2 - 50.35 and the hops moved there:
+# CTS and RX stay on B (CTS jogs south round pad 29); RTS hops on F over CTS / RX at y 50.35; TX turns west between
+# CTS's and RTS's turns, takes its via there (0.2 clearance to each) and runs F at y 49.775 (between SW10's pad rows)
+# to a via south of pad 7
+T("UART3_CTS", "B", W, [(51.4, 66.0), (51.4, 56.4), (47.4, 56.4), (40.2, 49.2), (38.3, 49.2), (38.0, 49.5), (36.65, 49.5),
+                         (36.05, 50.1), (33.6, 50.1), (33.23, 49.73), P("U18.4")])
+T("UART3_RX", "B", W, [(50.2, 66.0), (34.65, 50.45), (33.15, 50.45), (32.43, 49.73), P("U18.5")])
+T("UART3_RTS", "B", W, [(50.6, 66.0), (50.6, 57.2), (47.0, 57.2), (40.15, 50.35), (36.6, 50.35)]); VIA("UART3_RTS", 36.6, 50.35)
+T("UART3_RTS", "F", W, [(36.6, 50.35), (32.25, 50.35)]); VIA("UART3_RTS", 32.25, 50.35)
+T("UART3_RTS", "B", W, [(32.25, 50.35), (31.63, 49.73), P("U18.6")])
+T("UART3_TX", "B", W, [(51.0, 66.0), (51.0, 56.8), (47.2, 56.8), (40.175, 49.775), (39.4, 49.775)]); VIA("UART3_TX", 39.4, 49.775)
+T("UART3_TX", "F", W, [(39.4, 49.775), (31.5, 49.775), (30.83, 50.445)]); VIA("UART3_TX", 30.83, 50.445)
+T("UART3_TX", "B", W, [(30.83, 50.445), P("U18.7")])
 
 # ---- the long legs, maze-routed (A1c / A1f are group 75's: kept clear)
 A1C = ("B", [(35.5, 86.6), (49.6, 86.6), (49.6, 113.8), (35.5, 113.8)])
 A1F = ("F", [(40.4, 99.8), (43.3, 99.8), (43.3, 108.9), (40.4, 108.9)])
-U18_BODY = ("B", [(30.05, 33.6), (36.45, 33.6), (36.45, 44.9), (30.05, 44.9)])       # inside U18's pad ring
+U18_BODY = ("B", [(30.05, 37.1), (36.45, 37.1), (36.45, 48.4), (30.05, 48.4)])       # inside U18's pad ring (step 8: +3.5 y)
 m = MAZE((22.0, 40.0, 66.0, 118.0), keepouts=[A1C, A1F, U18_BODY], limit=3000000)
 # BT_EN_RST: west north of A1c, up the left edge (x 23.2: between the board edge and H1's keep-out), into U18.8 from the
 # west between C72 and C73 (U18.8 is boxed in by U18.9 / U18.30 north and south and the body east)
 AUTOROUTE(m, "BT_EN_RST", (59.0, 86.75, "B"), "U18.8", w=W, layers="B",
-          through=[(55.0, 86.3, "B"), (30.0, 86.3, "B"), (23.2, 80.0, "B"), (23.2, 50.0, "B"), (24.5, 44.6, "B")])
+          through=[(55.0, 86.3, "B"), (30.0, 86.3, "B"), (23.2, 80.0, "B"), (23.2, 53.5, "B"), (24.5, 48.1, "B")])
+
 for n, pin, (vx, vy) in STAIR:                                 # the DAC branch: W4 south ends -> R34 / R32 / R33
     if n == "JACK_DET": continue
     r = {"I2S1_DOUT": "R34.1", "I2S1_BCLK": "R32.1", "I2S1_LRCK": "R33.1"}[n]

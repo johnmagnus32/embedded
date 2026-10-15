@@ -83,7 +83,8 @@ def area(fp): return yard_area(fp.GetReference())
 stats = {"silk": 0, "silk 0.8": 0, "fab": 0, "holes": 0, "outline": 0}
 
 # ---- 0. board-level marks (pre-fab, fab review 2026-10-15): a readable pin-1 / polarity mark where the footprint's own is
-# missing (moved to Fab here as it sat on a pad), too small to print or at the wrong end, and USBC1's pin-in-paste apertures
+# missing (moved to Fab here as it sat on a pad), too small to print or at the wrong end, USBC1's pin-in-paste apertures,
+# the F.Mask openings of the LCM ground contacts
 # (its four shell legs are the receptacle's only anchors; JLC prints paste only where the B.Paste layer has it). Rebuilt
 # every run in the group "route:marks"; the marks are obstacles for the references below.
 MARK_D = 0.5
@@ -128,6 +129,10 @@ for num, t in (("1", "+"), ("2", "-")):                             # CN1: BAT o
 for num in ("1", "2", "3", "4"):                                    # USBC1 shell legs: pin-in-paste on B, 0.2 over the pad
     b = pad_box("USBC1", num); front = num in ("2", "3")              # (pads 2 / 3 sit 0.35 from the edge: no overprint there)
     paste(b[0] - 0.2, b[1] - (0.0 if front else 0.2), b[2] + 0.2, b[3] + 0.2, pcbnew.B_Paste)
+for z in B.Zones():                         # the LCM ground contacts (footprint_keepouts.py): F pour exposed 0.3 inside each area
+    if z.GetIsRuleArea() and "LCM ground contact" in z.GetZoneName():
+        x0, y0, x1, y1 = box(z.GetBoundingBox(), -0.3)
+        paste(x0, y0, x1, y1, pcbnew.F_Mask); marks.append((pcbnew.F_Cu, (x0 - 0.1, y0 - 0.1, x1 + 0.1, y1 + 0.1)))
 WRONG = 0
 for fp in fps:                              # footprint marks that point the wrong way -> Fab
     ref = fp.GetReference()

@@ -90,7 +90,6 @@ SPECIAL = {
     "CN1": "**Battery JST-PH:** pin 1 = BAT (+). Check against the cell's leads (red = +) before the first plug-in; swap the crimps if reversed, no board change.",
     "X1": "24 MHz 3225 crystal: pins 1 / 3 are the crystal, 2 / 4 GND. Check the footprint's numbering against the datasheet (a 90 deg error shorts the oscillator).",
     "X2": "32.768 kHz SC-20S: no copper between the pads (rule area); pad 1 = RTC_IN.",
-    "U18": "BT830 (hand-fit, back): the antenna end in the top-left keep-out; pin 1; castellated pads, no copper under the body.",
     "P1": "Display FPC (40 pin): the flex's pin 1 (VLED-) lands on the west end (the silk dot; the footprint's own mark, at pad 40, is on Fab); the contact side against the ATM0500D27's flex as it folds behind the panel.",
     "FPC1": "Touch FFC (6 pin, 1.0 mm, B side): rotated 180 deg before fab, so the slot faces the board's bottom edge and the tail arrives round the notch edge (y 111). Pads are numbered 6..1 west to east: pad 6 = VDD = the tail's pin 1 (x 116), 5 GND, 4 SCL, 3 SDA, 2 INT, 1 RST (x 121). Before ordering: wrap the real tail (or a 53.4 mm paper strip from the glass edge) round a 1.6 mm board edge at the notch; its end must reach y 72.2 (4.1 inside the lid at y 76.3).",
     "U17": "STM6601 TDFN-12: pin 1; SR (pin 2) is tied to /PB and C_SRD (pin 5) to C97 (0.47 uF, F side) through the two 0.5 / 0.3 vias between its pad rows: holding the power button 3.5-7 s forces EN off.",
@@ -100,7 +99,8 @@ SPECIAL = {
     "D4": "USBLC6-2SC6: pin 1 orientation (I/O1 = D-, I/O2 = D+).",
     "Q1": "SOT-23 FET (the ILIM switch): G / S / D against the datasheet.",
     "J2": "LRA wire pads (an LRA has no polarity).", "J3": "Speaker wire pads: SPK_P on pad 1.",
-    "H1": "M2 mounting holes (NPTH, board-only): no part.",
+    "H1": "M2 mounting holes (NPTH, board-only, no part): H3 2.2 mm is the datum, H1 a 2.2 x 4.4 mm slot aimed at H3, H2 / H4 / H5 2.8 mm (they absorb the printed shell's scale error). Check H1's slot in JLC's drill preview.",
+    "U18": "BT830 (hand-fit, back): the antenna end in the top-left keep-out (moved 3.5 mm down in step 8 for the R20 corner); pin 1 (the silk dot below it); castellated pads, no copper under the body.",
     "U4": "microSD socket (A-MicroTF-1.85A): the card slot faces the board edge; its two prohibition bars are copper keep-outs.",
     "U5": "0603 LED: cathode mark against pad 1 (the footprint's polarity) in JLC's preview.",
 }
@@ -144,6 +144,10 @@ with open(os.path.join(HERE, "FOOTPRINT_CHECKLIST.md"), "w", encoding="utf-8") a
             "  min track / space 0.15 / 0.15 mm; vias 0.6 / 0.3 mm (0.5 / 0.3 at U1.27 and between U17's pad rows); **Via Covering:\n"
             "  Epoxy Filled & Capped, all vias** (39 exposed-pad vias sit in pad openings: U1 16, U12 8, U10 5, U9 4, U20 4, U13 2;\n"
             "  JLC fills 0.15-0.55 mm holes); ENIG (U1's 0.4 mm pitch, the 0.5 mm-pitch QFNs).\n"
+            "- **Mounting holes (NPTH):** H3 2.2 mm is the datum, H1 a 2.2 x 4.4 mm slot aimed at H3, H2 / H4 / H5 2.8 mm (they\n"
+            "  absorb the printed shell's scale error): check H1's slot in JLC's drill preview.\n"
+            "- **LCM ground contacts:** three 4 x 3 mm F-mask openings over the GND pour under the screen's top edge (bare ENIG,\n"
+            "  no paste): conductive foam to the LCM frame goes there at assembly.\n"
             "- **Panel:** the outline has cut-outs and parts over both long edges (USBC1, Audio1): let JLC add the rails, fiducials\n"
             "  and tooling holes (expect a DFM query), with a routed relief, not V-score, in front of USBC1 and Audio1.\n"
             "- **USBC1's shell legs** carry B.Paste apertures (pin-in-paste): ask JLC in the order notes to make sure the four legs\n"

@@ -13,7 +13,8 @@ A and B share the X=127.5 wall, so the result is ONE simply-connected polygon (n
 board is a left block (full height), a middle block (cut at the bottom), a top strip, and a right block,
 all joined.
 
-Every corner is filleted: R8 on the four original outer corners, R2 on the eight new ones. Concave
+Every corner is filleted: R18 on the outer corners (step 8, concentric with the console's Switch-like R20; was R8), R2 on
+the eight new ones. Concave
 corners fillet outward (material bulges into the cutout) exactly as a router bit leaves them, so R2 is
 also the min internal radius a 4mm bit needs.
 
@@ -28,7 +29,7 @@ PATH = os.path.join(os.path.dirname(__file__), "gb3.kicad_pcb")
 MM = pcbnew.FromMM; TO = pcbnew.ToMM
 def V(x, y): return pcbnew.VECTOR2I(int(round(x)), int(round(y)))
 
-R_OUT, R_CUT = 8.0, 2.0     # original outer corners / new cutout corners
+R_OUT, R_CUT = 18.0, 2.0    # outer corners (step 8: R18 = the console's R20 less the 2.0 wall + clearance; was R8) / cutout corners
 SEG_PER_90 = 16             # arc polygonization (matches the existing R8 corners)
 
 # Clockwise (screen coords, +Y down). (x, y, fillet radius). See the module docstring for the regions.

@@ -11,7 +11,7 @@ PATH = os.path.join(os.path.dirname(__file__), "gb3.kicad_pcb")
 MM = pcbnew.FromMM; TO = pcbnew.ToMM
 def V(x, y): return pcbnew.VECTOR2I(int(round(x)), int(round(y)))
 
-CONSOLE_W, CONSOLE_H, R = 194.7, 89.8, 7.1      # matches the "OUR DEVICE" console exactly (size + corner radius), mm
+CONSOLE_W, CONSOLE_H, R = 194.7, 89.8, 20.0     # the console (mm); R20 since step 8 (user, 2026-10-15: Switch-like; was 7.1)
 
 
 def main():

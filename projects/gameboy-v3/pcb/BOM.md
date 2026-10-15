@@ -541,3 +541,23 @@ A fab-readiness review (six reviewers, every blocker / major checked by an adver
 - **Smaller fixes:** U12's VIN feed widened from 0.25 to 0.6 mm (1.87 A); the status LEDs' GND pads get thermal reliefs (DRU); USBC1's shell legs get pin-in-paste apertures on B.Paste and 4 × 0.5 mm spokes; pin-1 / polarity silk where it was missing or at the wrong end (P1's flex pin 1, U18, U13, U17, CN1 + / −; J2's '+' removed, an LRA has no polarity), drawn by `route/silk.py`; the JLC BOM names the 100 nF line by its own part (it said "100 kΩ … + 100 nF").
 - **Left as is (documented):** U12's output caps return through In1 only (about 1 V of extra switch-node ringing in boost mode, inside the 7 V rating); the exposed pads print 100% paste; the inner planes reach 0.25 mm of the M2 holes; P1's 2.0 mm height is the enclosure's panel gap (2.3 mm), not a board change.
 - **Checks:** DRC 0 errors / 0 unconnected (32 warnings: the library pin-1 circles and the R45 / R46 silk overlap), ERC 0, sync zeros, planecheck / ipc_check / i2c_check clean.
+
+## Corners, holes and screen grounding, step 8 (2026-10-15 — user-approved)
+
+The enclosure review (`../enclosure/REVIEW.md`) raised board decisions for this order, and the user asked for
+Switch-like corners.
+- **R20 console corners:** the board's three outer corners are R18 (`draw_outline.py`, was R8), concentric with the
+  console's R20 less the 2.0 mm wall and clearance (`draw_console.py`). For them, U18 (BT830) and its caps C70 / C72 / C73
+  moved 3.5 mm south (its antenna-end corner sat outside the new corner; the antenna keep-out moved with it and still
+  runs to the board edge; H1 is 21.6 mm from the antenna, the datasheet asks for 20), and the jack Audio1 with R49 moved
+  2.5 mm east so its barrel leaves through the straight part of the bottom wall (`placement/step8.csv`). UART3's U18 end
+  is redrawn: CTS / RX on B, RTS and TX hop on F between SW10's pad rows.
+- **Mounting holes (review B2):** a printed shell scales by up to ±0.4 %, more than a 2.2 mm hole's 0.1 mm play over
+  182 mm. H3 (by the edge keys) stays 2.2 mm as the datum, H1 is a 2.2 × 4.4 mm slot aimed at H3 (2:1, JLC's slot
+  minimum), H2 / H4 / H5 are 2.8 mm; H5 moved 2.0 mm in for the corner (`route/footprint_keepouts.py`).
+- **LCM ground contacts (review M8):** three 4 × 3 mm openings in the F mask over the GND pour under the screen's top edge
+  (61.1 / 40.6, 89.1 / 40.6, 173.6 / 48.1), kept free of tracks and vias by rule areas; conductive foam bridges the
+  2.3 mm gap to the LCM frame, so a discharge through the screen gap reaches ground, not the panel.
+- **Screen backing (review B1):** edge-bonded to the shell walls (an enclosure change: no board effect).
+- **Checks:** DRC 0 errors / 0 unconnected (the same 32 cosmetic warnings), sync zeros, parity 388 (cosmetic),
+  planecheck / ipc_check / i2c_check clean, route audit unchanged (no backturns).

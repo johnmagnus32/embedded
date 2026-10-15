@@ -25,7 +25,7 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
 | ☐ | U15 | TI INA226AIDGSR ([C49851](https://www.lcsc.com/product-detail/C49851.html)) | `MSOP-10_L3.0-W3.0-P0.50-LS5.0-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U16 | PCA9555PWR ([C2864778](https://www.lcsc.com/product-detail/C2864778.html)) | `TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U17 | STM6601CA2BDM6F ([C109022](https://www.lcsc.com/product-detail/C109022.html)) | `TDFN-12_L3.0-W2.0-P0.50-BL` | bottom | JLC | STM6601 TDFN-12: pin 1; SR (pin 2) is tied to /PB and C_SRD (pin 5) to C97 (0.47 uF, F side) through the two 0.5 / 0.3 vias between its pad rows: holding the power button 3.5-7 s forces EN off. |
-| ☐ | U18 | Ezurio BT830-SA-01 (—) | `XCVR_BT830-SA-01-T_R` | bottom | Hand | BT830 (hand-fit, back): the antenna end in the top-left keep-out; pin 1; castellated pads, no copper under the body. |
+| ☐ | U18 | Ezurio BT830-SA-01 (—) | `XCVR_BT830-SA-01-T_R` | bottom | Hand | BT830 (hand-fit, back): the antenna end in the top-left keep-out (moved 3.5 mm down in step 8 for the R20 corner); pin 1 (the silk dot below it); castellated pads, no copper under the body. |
 | ☐ | U19 | TI PCM5102APWR ([C107671](https://www.lcsc.com/product-detail/C107671.html)) | `TSSOP-20_L6.5-W4.4-P0.65-LS6.4-BL` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | U20 | TI TPA6132A2RTER ([C69901](https://www.lcsc.com/product-detail/C69901.html)) | `WQFN-16_L3.0-W3.0-P0.50-TL-EP1.6` | bottom | JLC | IC: pin-1 corner + land pattern (pad size / pitch / EP) against the datasheet's recommended footprint |
 | ☐ | D1, D2 | Littelfuse SP3004-04XTG ×2 ([C207280](https://www.lcsc.com/product-detail/C207280.html)) | `SOT-563_L1.6-W1.2-P0.50-LS1.6-BR` | bottom | JLC | polarized / pinout-sensitive: pin numbering against the datasheet |
@@ -145,6 +145,10 @@ Highest risk first. LCSC links go to the part page (datasheet PDF linked there).
   min track / space 0.15 / 0.15 mm; vias 0.6 / 0.3 mm (0.5 / 0.3 at U1.27 and between U17's pad rows); **Via Covering:
   Epoxy Filled & Capped, all vias** (39 exposed-pad vias sit in pad openings: U1 16, U12 8, U10 5, U9 4, U20 4, U13 2;
   JLC fills 0.15-0.55 mm holes); ENIG (U1's 0.4 mm pitch, the 0.5 mm-pitch QFNs).
+- **Mounting holes (NPTH):** H3 2.2 mm is the datum, H1 a 2.2 x 4.4 mm slot aimed at H3, H2 / H4 / H5 2.8 mm (they
+  absorb the printed shell's scale error): check H1's slot in JLC's drill preview.
+- **LCM ground contacts:** three 4 x 3 mm F-mask openings over the GND pour under the screen's top edge (bare ENIG,
+  no paste): conductive foam to the LCM frame goes there at assembly.
 - **Panel:** the outline has cut-outs and parts over both long edges (USBC1, Audio1): let JLC add the rails, fiducials
   and tooling holes (expect a DFM query), with a routed relief, not V-score, in front of USBC1 and Audio1.
 - **USBC1's shell legs** carry B.Paste apertures (pin-in-paste): ask JLC in the order notes to make sure the four legs

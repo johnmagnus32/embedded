@@ -1,0 +1,7 @@
+ref,x,y,rot,side,why
+U18,29.000,49.500,90,B,[step8 R20 corners] BT830 3.5 mm south: its antenna-end corner sat outside the R18 board corner (the console's R20 less the 2.0 wall + clearance); the antenna end stays at the board's top-left edge (keep-out moved with it); H1 stays 21.6 mm from the antenna (datasheet >= 20)
+C70,26.500,45.400,180,B,[step8 R20 corners] BT830 VREG18 cap, moved with U18 (+3.5)
+C72,26.500,47.200,180,B,[step8 R20 corners] BT830 VREG_IN cap, moved with U18 (+3.5)
+C73,26.500,49.000,180,B,[step8 R20 corners] BT830 bulk cap, moved with U18 (+3.5)
+Audio1,40.000,110.600,180,F,[step8 R20 corners] jack 2.5 mm east: its barrel (D5.0) now leaves through the straight part of the bottom wall (the R20 arc ends at x 40)
+R49,36.990,107.780,180,B,[step8 R20 corners] the jack-detect series R, moved with the jack (+2.5)

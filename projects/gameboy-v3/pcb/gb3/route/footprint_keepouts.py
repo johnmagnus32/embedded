@@ -33,7 +33,15 @@ path = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(HERE,
 #   H2 right grip, top inner corner (step 3); H3 right grip, top outer corner by SW16; H4 under the ABXY corner
 #   H5 left grip, bottom-left corner, 11 mm from the jack (plug force)
 # (the first H1 at (102.0, 36.0) was dropped at step 3: its M2 head sat ~0.9 mm under the display module, y 37.0)
-HOLES = [("H1", 26.5, 58.0), ("H2", 180.5, 35.0), ("H3", 204.0, 37.5), ("H4", 208.0, 83.5), ("H5", 26.25, 110.75)]
+HOLES = [("H1", 26.5, 58.0), ("H2", 180.5, 35.0), ("H3", 204.0, 37.5), ("H4", 208.0, 83.5), ("H5", 27.83, 109.5)]
+# step 8 (user-approved 2026-10-15, the enclosure review's B2): MJF shells scale up to +/-0.4 %, more than a 2.2 mm hole's
+# 0.1 radial play over 182 mm, so H3 (by the edge keys and R) is the datum, H1 a slot aimed at it and the rest clearance
+# holes; H5 moved 2.0 mm in for the R18 board corner (a 1.0 mm web to the board edge, the insert >= 1 mm inside the shell)
+HOLE_DRILL = {"H3": None, "H1": ("slot", 4.4, 2.2), "H2": 2.8, "H4": 2.8, "H5": 2.8}   # H1: 2:1, JLC's minimum slot ratio
+# LCM ground contacts (step 8, the enclosure review's M8): the F GND pour exposed under the screen's back near its top
+# edge (4 x 3 mm, inboard of the ledge, free of parts, tracks and vias); conductive foam bridges the 2.3 mm gap to the
+# LCM frame. The rule areas keep tracks and vias off them; route/silk.py opens F.Mask over them (0.3 inside the area)
+LCM_CONTACTS = [(61.1, 40.6), (89.1, 40.6), (173.6, 48.1)]
 HOLE_LIB = os.path.join(HERE, "..", "..", "..", "..", "..", "cad", "symbols", "manual.pretty")
 _io = pcbnew.PCB_IO_MGR.FindPlugin(pcbnew.PCB_IO_MGR.KICAD_SEXP)      # footprints load BEFORE LoadBoard (KiCad 10 bug)
 _hole_fps = {ref: _io.FootprintLoad(HOLE_LIB, "MountingHole_2.2mm_M2") for ref, _, _ in HOLES}
@@ -44,7 +52,7 @@ ALL = [pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu]
 FIXED = [  # (name, layers, board-frame polygon, allow pour[, allow vias])
     ("X2 (SC-20S: no pattern under the crystal)", [pcbnew.F_Cu], [(67.20, 68.40), (67.90, 68.40), (67.90, 69.80), (67.20, 69.80)], False),
     ("X1 (no tracks over the 24 MHz crystal)", [pcbnew.F_Cu], [(66.90, 64.30), (70.60, 64.30), (70.60, 67.15), (66.90, 67.15)], True, True),
-    ("U18 antenna (BT830-SA, all layers)", ALL, [(21.5, 30.5), (36.1, 30.5), (36.1, 39.45), (21.5, 39.45)], False),
+    ("U18 antenna (BT830-SA, all layers)", ALL, [(21.5, 30.5), (36.1, 30.5), (36.1, 42.95), (21.5, 42.95)], False),   # step 8: U18 +3.5 y
     ("U4 centre bar (A-MicroTF-1.85A)", [pcbnew.B_Cu], [(50.0, 40.2), (59.6, 40.2), (59.6, 42.8), (50.0, 42.8)], False),
     ("U4 card-detect side bar (A-MicroTF-1.85A)", [pcbnew.B_Cu], [(48.3, 40.9), (49.7, 40.9), (49.7, 45.4), (48.3, 45.4)], False),
 ]
@@ -54,6 +62,9 @@ FIXED = [  # (name, layers, board-frame polygon, allow pour[, allow vias])
 for ref, cx, cy in HOLES:
     FIXED.append(("%s M2 mounting hole (r 2.75 mm, F+B)" % ref, [pcbnew.F_Cu, pcbnew.B_Cu],
                   [(cx + 2.75 * math.cos(k * math.pi / 16), cy + 2.75 * math.sin(k * math.pi / 16)) for k in range(32)], False))
+for k, (cx, cy) in enumerate(LCM_CONTACTS, 1):
+    FIXED.append(("LCM ground contact %d (exposed F pour, conductive foam to the LCM frame)" % k, [pcbnew.F_Cu],
+                  [(cx - 2.3, cy - 1.8), (cx + 2.3, cy - 1.8), (cx + 2.3, cy + 1.8), (cx - 2.3, cy + 1.8)], True))
 parts = [(f.GetReference(), math.radians(-f.GetOrientationDegrees()), TO(f.GetPosition().x), TO(f.GetPosition().y))
          for f in B.GetFootprints() if f.GetReference() in ("SW12", "SW13", "SW14", "SW15", "SW16")]
 # the step-2 board rule area is superseded by the datasheet one above; remove it with the old keep-outs (last:
@@ -109,6 +120,21 @@ for ref, cx, cy in HOLES:
     if f is None:
         f = _hole_fps[ref]; f.SetFPID(pcbnew.LIB_ID("manual", "MountingHole_2.2mm_M2")); f.SetReference(ref); B.Add(f)
     f.SetPosition(pcbnew.VECTOR2I(int(MM(cx)), int(MM(cy)))); f.SetAttributes(ATTR)
+    d = HOLE_DRILL[ref]; p = list(f.Pads())[0]
+    if d is None:                                    # the datum: the library's 2.2 mm hole
+        p.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_CIRCLE); p.SetDrillSize(pcbnew.VECTOR2I(int(MM(2.2)), int(MM(2.2))))
+        p.SetSize(pcbnew.F_Cu, pcbnew.VECTOR2I(int(MM(2.2)), int(MM(2.2)))); f.SetOrientationDegrees(0)
+        f.SetFPID(pcbnew.LIB_ID("manual", "MountingHole_2.2mm_M2"))
+    elif isinstance(d, tuple):                       # the slot, long axis at the datum
+        hx, hy = [(x, y) for r, x, y in HOLES if r == "H3"][0]
+        p.SetShape(pcbnew.F_Cu, pcbnew.PAD_SHAPE_OVAL); p.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_OBLONG)
+        p.SetDrillSize(pcbnew.VECTOR2I(int(MM(d[1])), int(MM(d[2])))); p.SetSize(pcbnew.F_Cu, pcbnew.VECTOR2I(int(MM(d[1])), int(MM(d[2]))))
+        f.SetOrientationDegrees(-math.degrees(math.atan2(hy - cy, hx - cx)))      # KiCad: + is CCW with y down
+        f.SetFPID(pcbnew.LIB_ID("", "MountingHole_2.2x4.4mm_M2_slot"))
+    else:                                            # clearance holes
+        p.SetDrillShape(pcbnew.PAD_DRILL_SHAPE_CIRCLE); p.SetDrillSize(pcbnew.VECTOR2I(int(MM(d)), int(MM(d))))
+        p.SetSize(pcbnew.F_Cu, pcbnew.VECTOR2I(int(MM(d)), int(MM(d)))); f.SetOrientationDegrees(0)
+        f.SetFPID(pcbnew.LIB_ID("", "MountingHole_%.1fmm_M2" % d))
 stale = [f for f in B.GetFootprints() if f.GetReference()[:1] == "H" and f.GetReference()[1:].isdigit()
          and f.GetAttributes() & pcbnew.FP_BOARD_ONLY and f.GetReference() not in {r for r, _, _ in HOLES}]
 for z in old: B.Remove(z)
