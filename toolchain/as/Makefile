@@ -21,7 +21,7 @@ TESTS := tests/m1_dp.s:.text tests/m2_dp.s:.text tests/m2_ldst.s:.text tests/m2_
 
 # Three layers, GNU-binutils-style: front-end (as.c) + machine-dependent backend (arm.c) + object
 # backend (elf.c). Swapping arm.c for another arch backend is the ONLY change a new target needs.
-OBJS := $(BUILD)/as.o $(BUILD)/arm.o $(BUILD)/thumb.o $(BUILD)/elf.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
+OBJS := $(BUILD)/as.o $(BUILD)/arm.o $(BUILD)/thumb.o $(BUILD)/dwline.o $(BUILD)/elf.o $(BUILD)/elfutil.o $(BUILD)/strmap.o
 
 $(BUILD)/as: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $(OBJS)
@@ -72,6 +72,9 @@ test: $(BUILD)/as
 	if $(GNU)ld -static -e _start --defsym __libc_start_main=0 -o $$t/crt0.elf $$t/crt0.S.ours.o 2>$$t/lderr; then \
 	  echo "PASS ld-accept — GNU ld links our crt0.o into $$($(GNU)readelf -h $$t/crt0.elf | sed -n 's/.*Type:[[:space:]]*//p')"; pass=$$((pass+1)); \
 	else echo "FAIL ld-accept — GNU ld rejected our crt0.o: $$(cat $$t/lderr)"; fail=$$((fail+1)); fi; \
+	if GNU=$(GNU) AS=$(BUILD)/as CC=../cc/build/cc CPP=../cpp/build/cpp LD=../ld/build/ld bash gastest/dwline.sh > $$t/dw 2>&1; then \
+	  echo "PASS $$(tail -1 $$t/dw)"; pass=$$((pass+1)); \
+	else echo "FAIL dwarf line table:"; grep -E '^FAIL|^      ' $$t/dw | head -6 | sed 's/^/    /'; fail=$$((fail+1)); fi; \
 	rm -rf $$t; \
 	echo "----- $$pass passed, $$fail failed -----"; \
 	[ $$fail -eq 0 ]
@@ -91,6 +94,13 @@ gas-suite: $(BUILD)/as
 	  python3 gastest/run.py --as gnu >/dev/null && python3 gastest/run.py --as gnu7 >/dev/null && python3 gastest/run.py --as ours >/dev/null && python3 gastest/score.py
 
 # Real kernel sources through OUR cc, assembled by our as AND GNU as: every object must match exactly.
+# The DWARF line table: byte-identical to GNU as, and an address really maps back to a line (gastest/dwline.sh).
+dwarf-line: $(BUILD)/as
+	@if [ ! -x "$(GNU)as" ]; then echo "SKIP: GNU as not found"; exit 0; fi
+	@$(MAKE) -s -C ../cc >/dev/null; $(MAKE) -s -C ../cpp >/dev/null; $(MAKE) -s -C ../ld >/dev/null
+	@GNU=$(abspath $(GNU)) AS=$(abspath $(BUILD)/as) CC=$(abspath ../cc/build/cc) CPP=$(abspath ../cpp/build/cpp) \
+	  LD=$(abspath ../ld/build/ld) bash gastest/dwline.sh
+
 kernel-parity: $(BUILD)/as
 	@GNU=$(abspath $(dir $(GNU)))/$(notdir $(GNU)) gastest/kernel_parity.sh
 

@@ -1364,7 +1364,32 @@ static void gen_asm_ops(Node *n) {
 	#undef ASM_MEM
 }
 
+/* ---- DWARF line table: the .file / .loc directives as turns into .debug_line (-g) ----------------------
+ * Every node carries the file and line it was parsed on (cpp's line markers put them there), so a statement
+ * is exactly the granularity gcc uses: one .loc per statement, before its code. as does the compression.
+ * Files are numbered as they are first seen, which is what `.file N "name"` wants. */
+static const char **dwfiles; static int ndwfiles;
+static int dwfile_of(const char *path) {
+	for (int i = 0; i < ndwfiles; i++) if (!strcmp(dwfiles[i], path)) return i + 1;
+	dwfiles = realloc(dwfiles, (size_t)(ndwfiles + 1) * sizeof *dwfiles);
+	dwfiles[ndwfiles++] = path;
+	fprintf(o, "\t.file %d \"%s\"\n", ndwfiles, path);
+	return ndwfiles;
+}
+static int dwlast_file, dwlast_line;
+static void gen_loc(Node *n) {
+	if (!debug_lines || !n || !n->file || !n->line) return;
+	/* A BLOCK is a container, not a statement: it generates no code of its own, and its line is whatever the
+	 * cursor happened to be on when it was built — which for the wrappers that later passes create is the end
+	 * of the file. Attributing a row to it put a .loc with no code after it ahead of the real first statement. */
+	if (n->kind == ND_BLOCK) return;
+	int f = dwfile_of(n->file);
+	if (f == dwlast_file && n->line == dwlast_line) return;   /* same place: as would drop the duplicate row anyway */
+	fprintf(o, "\t.loc %d %d 0\n", f, n->line);
+	dwlast_file = f; dwlast_line = n->line;
+}
 static void gen_stmt(Node *n) {
+	gen_loc(n);
 	switch (n->kind) {
 	case ND_RETURN: {   /* widen to the return type; lhs NULL for `return;` */
 		int rnel, rk = cur_vfp ? vfp_class(cur_ret, &rnel) : 0;

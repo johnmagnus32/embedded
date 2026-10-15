@@ -109,4 +109,12 @@ void md_req(const char *alias, const char *regname); void md_unreq(const char *a
 /* ---- OBJECT backend (elf.c) ---------------------------------------------------------------------- */
 void obj_write(const char *path);
 extern int file_front;                                   /* the .file symbol GAS puts first (-1: none) */
+
+/* ---- DWARF line table (dwline.c): `.file N "name"` / `.loc N LINE` -> .debug_line ---------------- */
+void dwline_file(int n, const char *name);
+void dwline_loc(int file, int line, int col, int sec, u32 off);
+int  dwline_have_files(void);     /* a numbered .file was seen, so `.file "x"` is the DWARF form, not a symbol */
+void dwline_emit(void);           /* build the section; call once, after every address is known */
+void dwinfo_emit(void);           /* a minimal CU so addr2line can find the line program at all */
+
 #endif

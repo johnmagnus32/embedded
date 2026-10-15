@@ -2,7 +2,7 @@
 # driver-opts.sh — os-cc's option handling against the real gcc's, for the families where a build system depends on
 # the exact answer: the -g family and -T (the linker script). -g is the one gcc's driver sorts into accepted /
 # warned-through / rejected, each with its own wording (`gcc -gfoo` → "unrecognized debug output level 'foo'"). We
-# produce no debug information yet,
+# produce line numbers but no variable or type information,
 # so a request for it is ACCEPTED with a warning — gcc's own answer when it can't give the format asked for
 # (`gcc -gstabs`: warning, exit 0, no .debug_* sections) — and a project that passes -g unconditionally, as U-Boot's
 # KBUILD_CFLAGS/AFLAGS do, builds. Malformed and out-of-range forms are errors in gcc's words.
@@ -50,15 +50,20 @@ for opt in -gstabs -gstabs+ -gcoff -gxcoff -gsplit-dwarf -gz -gcolumn-info -gno-
 	[ "${o%%|*}" != 0 ] && ok || no "$opt: we now accept it; decide whether that is honest and move it to list 1"
 done
 
-# 4. -g really produces nothing, and still produces a valid object
+# 4. -g produces a LINE TABLE (and the minimal CU that lets a consumer find it), and a valid object.
+# It used to produce nothing at all; the claim here changed with that.
 "${CC}" -g -c -o $t/g.o $t/a.c 2>/dev/null || no "-g: compile failed"
-n=$("${GNU}readelf" -SW $t/g.o 2>/dev/null | grep -c debug)
-[ "$n" = 0 ] && ok || no "-g: $n .debug_* sections emitted, but we claim none"
+for want in .debug_line .debug_info .debug_abbrev; do
+	"${GNU}readelf" -SW $t/g.o 2>/dev/null | grep -q "$want" && ok || no "-g: no $want section"
+done
+# the line table must actually resolve: pick the first row's address and ask addr2line
+a=$("${GNU}readelf" --debug-dump=decodedline $t/g.o 2>/dev/null | awk '$3 ~ /^0x/{print $3; exit}')
+case "$("${GNU}addr2line" -e $t/g.o "${a:-0}")" in *a.c:[0-9]*) ok ;; *) no "-g: addr2line could not resolve $a"; esac
 "${GNU}nm" $t/g.o | grep -q ' T f$' && ok || no "-g: the object lost its code"
 
 # 5. -g0 is silent; a request warns exactly once (gcc warns once per invocation too)
 [ -z "$("${CC}" -g0 -c -o $t/o.o $t/a.c 2>&1)" ] && ok || no "-g0 is not silent (it asks for nothing)"
-w=$("${CC}" -g -c -o $t/o.o $t/a.c 2>&1 | grep -c 'no debug information')
+w=$("${CC}" -g -c -o $t/o.o $t/a.c 2>&1 | grep -c 'line numbers only')
 [ "$w" = 1 ] && ok || no "-g warned $w times, want exactly 1"
 # ...and not during a capability probe, where a build system reads only the answer
 [ -z "$("${CC}" -g -print-file-name=include 2>&1 >/dev/null)" ] && ok || no "-g warns during a -print-* query"

@@ -938,11 +938,26 @@ static void do_directive(void) {
 			alias_of = grow(alias_of, nalias, &aliascap, sizeof *alias_of);
 			alias_of[nalias].sym = i; alias_of[nalias].target = strdup(toks[2]); nalias++;
 		} else die(".set: expected 'name, . [+ N]' or 'name, target'");
-	} else if (!strcmp(d, ".file")) {   /* .file "name": an STT_FILE symbol (GAS moves the first to the table's front) */
-		if (ntok != 2 || toks[1][0] != '"') die(".file: expected \"name\" (the DWARF `.file N \"name\"` form is not supported: no debug info)");
+	} else if (!strcmp(d, ".file")) {
+		/* Two forms. `.file "name"` is an STT_FILE symbol (GAS moves the first to the table's front).
+		 * `.file N "name"` is DWARF: it names entry N of the line table's file list — see dwline.c. */
+		if (ntok == 3 && toks[1][0] >= '0' && toks[1][0] <= '9' && toks[2][0] == '"') {
+			char *nm2 = decode_quoted(toks[2]);
+			dwline_file((int)strtol(toks[1], NULL, 10), nm2);
+			free(nm2);
+			return;
+		}
+		if (ntok != 2 || toks[1][0] != '"') die(".file: expected \"name\" or N \"name\"");
 		char *nm = decode_quoted(toks[1]);
 		int i = sym_add((Sym){ .name = nm, .sec = SEC_ABS, .value = 0, .type = STT_FILE, .defined = 1 });
 		if (file_front < 0) file_front = i;
+	} else if (!strcmp(d, ".loc")) {
+		/* .loc FILE LINE [COLUMN] [is_stmt N] [basic_block] ...: the code from here on comes from that place.
+		 * Only FILE and LINE affect the table we build; the rest is accepted and ignored, as it only refines
+		 * what a debugger shows (GAS accepts the same spellings). */
+		if (ntok < 3) die(".loc: expected FILE LINE [COLUMN]");
+		dwline_loc((int)strtol(toks[1], NULL, 10), (int)strtol(toks[2], NULL, 10),
+		           ntok > 3 ? (int)strtol(toks[3], NULL, 10) : 0, cursec, (u32)secs[cursec].len);
 	} else if (!strcmp(d, ".ident")) {   /* .ident "s": appended to .comment (merge strings, entsize 1), after one leading NUL */
 		if (ntok != 2 || toks[1][0] != '"') die(".ident: expected \"string\"");
 		int was2 = cursec, c = sec_find(".comment");
@@ -1575,6 +1590,8 @@ int main(int argc, char **argv) {
 	flush_padmaps();
 	for (int i = 0; i < nsec; i++) if (!secs[i].merged) section_symbol(i);   /* the sections still without one (.comment) get theirs now */
 	if (noexecstack && sec_find(".note.GNU-stack") < 0) sec_get(".note.GNU-stack", SHT_PROGBITS, 0);
+	dwline_emit();          /* .debug_line, now that every address is known */
+	dwinfo_emit();          /* ...and the minimal CU that lets a consumer find it */
 	md_emit_attributes();   /* GAS writes the build-attribute section last */
 	drop_end_mapsyms();   /* a mapping symbol at a section's end marks nothing */
 	obj_write(out);

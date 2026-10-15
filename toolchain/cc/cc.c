@@ -78,6 +78,7 @@ int diag_set(const char *name, int sev) {
 void diag_all(int sev) {                /* -Werror: promote every diagnostic that is ON; the off ones stay off */
 	for (int d = 0; d < D_COUNT; d++) if (diag_sev[d] != SEV_OFF) diag_sev[d] = (unsigned char)sev;
 }
+int debug_lines = 0;   /* -g: emit .file/.loc so as can build a DWARF line table (addresses -> file:line) */
 int pic = 0;   /* -fPIC: position-independent code — a preemptible symbol through the GOT, the rest PC-relative */
 int word_relocs = 0;   /* -mword-relocations: an address is a .word (R_ARM_ABS32), never movw/movt halves */
 int default_vis = 0;   /* -fvisibility= */
@@ -124,6 +125,12 @@ static void *compile(void *unused) {
 		else if (!strncmp(argv[i], "-Werror=", 8) && diag_set(argv[i] + 8, SEV_ERROR)) ;
 		else if (!strncmp(argv[i], "-Wno-", 5) && diag_set(argv[i] + 5, SEV_OFF)) ;
 		else if (argv[i][0] == '-' && argv[i][1] == 'W' && diag_set(argv[i] + 2, SEV_WARN)) ;
+		/* -g: the LINE TABLE only. cc emits .file/.loc, as turns them into .debug_line, and that is what
+		 * addr2line and a backtrace need. The variable/type description (.debug_info) is a separate and much
+		 * larger job, so -g here is honest about what it does rather than silently producing nothing. */
+		else if (!strcmp(argv[i], "-g") || !strcmp(argv[i], "-g1") || !strcmp(argv[i], "-g2") || !strcmp(argv[i], "-g3")
+		      || !strcmp(argv[i], "-gdwarf-2") || !strcmp(argv[i], "-gdwarf-3")) debug_lines = 1;
+		else if (!strcmp(argv[i], "-g0")) debug_lines = 0;
 		else if (!strcmp(argv[i], "-mword-relocations")) word_relocs = 1;
 		else if (!strncmp(argv[i], "-fvisibility=", 13)) {
 			const char *v = argv[i] + 13;

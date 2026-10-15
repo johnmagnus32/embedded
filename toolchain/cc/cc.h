@@ -314,6 +314,7 @@ void die_atl(const char *file, int line, const char *fmt, ...);    /* `file:line
 void warn_atl(const char *file, int line, const char *fmt, ...);
 #define die_at(t, ...)  die_atl((t) ? (t)->file : NULL, (t) ? (t)->line : 0, __VA_ARGS__)
 #define warn_at(t, ...) warn_atl((t) ? (t)->file : NULL, (t) ? (t)->line : 0, __VA_ARGS__)
+extern int debug_lines;                  /* -g: emit .file/.loc for the DWARF line table */
 extern int pic;                  /* -fPIC: global/string access goes through the GOT (position-independent) */
 extern int word_relocs;          /* -mword-relocations: addresses as literal words (U-Boot relocates only those) */
 
