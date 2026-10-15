@@ -87,7 +87,9 @@ WALL_MJF = _in("wall_mjf", 1.5, "thin report: JLC3DP MJF PA12 walls 1.5 (1.2-2.0
 WALL_FDM = _in("wall_fdm", 1.67, "thin report: FDM 4 perimeters 0.45 + 3 x 0.407 = 1.67")
 R_FRONT = _in("r_front", 2.0, "gb2 DESIGN.md: R2 front outer fillet")
 R_BACK = _in("r_back", 3.0, "gb2 DESIGN.md: R3 back outer fillet")
-OUTLINE_R = _in("outline_r", 7.1, "gb3.kicad_pcb Eco1.User 'CONSOLE outline ~195 x 90', corner r ~7.1")
+OUTLINE_R = _in("outline_r", float(os.environ.get("GB3_CORNER_R", "20.0")),
+                "user 2026-10-15: Switch-like R20 (was 7.1); the board's corners are R18 since its step 8, concentric "
+                "(GB3_CORNER_R: a styling study)")
 # transducers
 SPK_T = _in("spk_t", 5.1, "ces-2704-088l050.pdf p2: 4.9 +/-0.2")
 SPK_LIP_H = _in("spk_lip_h", 0.4, "CES-2704 STEP: front lip D23.4 stands 0.4 proud of the 4.5 frame")
@@ -148,6 +150,8 @@ DEFAULT_FLAGS = {"FRONT": "flush", "BACK": "flat", "CELL": "LP803860", "LCD_PLAT
 # exports and renders to out/variants/<slug>/ and build/variants/<slug>/, so the baseline's out/ is never overwritten
 VARIANT_SLUG = "_".join(f"{k.lower()}-{str(int(v) if isinstance(v, bool) else v).lower()}"
                         for k, v in FLAGS.items() if v != DEFAULT_FLAGS[k])
+if "GB3_CORNER_R" in os.environ:                       # the corner-radius study writes beside the flag variants
+    VARIANT_SLUG = "_".join(x for x in (VARIANT_SLUG, "corner-r" + os.environ["GB3_CORNER_R"]) if x)
 WALL = WALL_MJF if PROCESS == "mjf" else WALL_FDM
 
 
@@ -671,7 +675,7 @@ SHOULDERS = {"L": _edge("SW15", 12.0), "R": _edge("SW16", 12.0)}      # tips 6.2
 # ---------------------------------------------------------------- bosses: front.py builds the front bosses (tips at
 # SPLIT = the board datum, heat-set insert holes), back.py the back bosses + counterbored clearance holes. On-board
 # (H1-H5): the back boss stops BACK_BOSS_GAP under the board's bottom face, so the screw pulls the board onto the
-# front datum. Off-board seam screws (S1, S2, along the 184 mm bottom edge): the back boss rises to SPLIT and meets
+# front datum. Off-board seam screws (S1 on the bottom edge, S2 on the right edge above the speaker): the back boss rises to SPLIT and meets
 # the front boss tip (shell to shell).
 BOSS_D = 5.5                                         # fits the r 2.75 copper keep-outs
 # front.py merges each front boss into a wall with a BOSS_D-wide block (gusset) when its gap to the wall's inner face
@@ -684,7 +688,8 @@ INSERT = {"hole_d": 3.2, "depth": 4.0, "label": "M2 x 3 brass heat-set (CNC Kitc
 SCREW = {"d": 2.0, "clear_d": 2.4, "head_d": 3.8, "head_h": 2.0, "cbore_d": 4.2, "label": "DIN 912 M2"}
 BACK_BOSS_GAP = 0.2
 SEAM_SCREWS_K = {"S1": (136.0, 116.3),               # between the fold bay (x <= 133) and the cell buffer (x >= 139.2)
-                 "S2": (209.6, 115.6)}               # speaker cut-out corner, 0.3 off the speaker cup's 1.0 wall
+                 "S2": (211.4, 91.5)}                # right edge above the speaker, 0.6 off its cup's wall and 1.0 off
+                                                     # the board (the R20 corner put the old spot, 209.6 / 115.6, outside)
 BOSSES = {}
 for _n, _h in HOLES.items():
     BOSSES[_n] = {"at": _h["at"], "on_board": True, "front_z": (SPLIT, Z_PLATE_IN),

@@ -267,6 +267,17 @@ solid's volume and on the bed, and the STEP reads back with every part and conte
 19. Keep metal out of the top-left grip near the BT830 antenna: H1 is 23.6 mm from it (the datasheet asks for 20), so
     its brass insert passes; a nylon screw at H1 is optional.
 
+## 7b. R20 corners (2026-10-15, user): open items
+
+The console's corners are R20 (Switch-like; was R7.1) and the board's R18 (its step 8). Three checks fail until the
+controls and the speaker corner follow the new walls:
+- (a) the VOL+ edge cap (SW12, KiCad y 46) sits where the top-right arc starts: its notch and cap collide with the
+  front shell (10.7 mm3); (e) the front slab thins to 0.01-0.22 there;
+- (j) the L / R shoulder bumpers (SW15 x 35.5, SW16 x 197.5) are straight bars inside the curved top corners: make them
+  curved, guided bumpers that wrap the corner (the Switch's L / R), which also answers REVIEW.md M5;
+- (e) the speaker floor opens outside the grille at KiCad (205.6, 113.5): its cup meets the bottom-right arc.
+Seam screw S2 moved to the right edge above the speaker (211.4, 91.5); the old spot fell outside the outline.
+
 ## 8. Before the board order: FPC1 and the other board items
 
 **FPC1 (the touch FFC connector, B side) was a functional blocker; the board's step 7 (dd7c895) fixed it.** As first
