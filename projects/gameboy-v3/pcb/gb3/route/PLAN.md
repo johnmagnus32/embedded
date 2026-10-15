@@ -401,8 +401,21 @@ What changed against the trials:
   both thermal spokes) to R29 and U16.1. SPK_EN ends at x 101 for group 80.
 - A few trial segments were 1-16 deg off the 45 deg grid (route.py lint): redrawn.
 
-Open: 70_west, 75_audio, 80_highways (SPK_EN from x 101; the T0 vias for /PB and PWR_EN; the T1 drops group 10
-placed: CHG_TS, CHG_FAST, CHG_PGOOD, GAUGE_ALRT, I2C1_SDA), 85_grips, then fanout / pour / checks / silk.
+Then 70 and 75 (step 4b; unconnected 138 -> 92, DRC errors 4 -> 4):
+- **70:** UART3: CTS / RTS explicit on B (one NW 45 deg bundle south of the SD fan, straight into the pads); RX and TX
+  each take one F hop (the lanes arrive CTS, TX, RTS, RX and the pads need CTS, RX, RTS, TX); no copper under U18's
+  body. BT_EN_RST: an F hop below the S row (its vias between the neighbouring stubs, past U1.91's AGND via), B west
+  at y 86.3 north of A1c and U1's bulk caps C37 / C38, up the left edge (x 23.2, west of H1's keep-out), into U18.8
+  from the west between C72 / C73 (U18.8 is boxed in by U18.9 / U18.30). W4 staircase + the DAC branch to R32-R34.
+- **75:** U19 / U20 locals first (second review), C74.2 linked to C78.2; the trial's chain; DAC_XSMT south past C37 /
+  C38, west at y 92.9, up between R33 and C77 into U19.17, R44 off the corner (so C77.2 keeps two spokes); HP_EN west
+  north of C37 / C38 and one F hop over DAC_XSMT's lane (the pin order makes one crossing unavoidable); JACK_DET /
+  JACK_SW to R49 by maze (F / B).
+- 20 gained the F links to the bulk caps C35 (LDOB), C39 (+0V9), C92 (AVCC); 10 the power LED (R12 -> U5, one via).
+
+Open: 80_highways (SPK_EN from x 101; the T0 vias for /PB and PWR_EN; the T1 drops group 10 placed: CHG_TS,
+CHG_FAST, CHG_PGOOD, GAUGE_ALRT, I2C1_SDA; the I2C1 risers at y 63.0; the I2S U9-branch F ends at y 66.0), 85_grips,
+then fanout / pour / checks / silk.
 
 ## Second review (2026-10-14): items for step 4
 

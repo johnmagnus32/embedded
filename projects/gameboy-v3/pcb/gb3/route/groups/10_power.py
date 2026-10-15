@@ -118,6 +118,10 @@ VIA("CHG_FAST", 162.6, 48.6); T("CHG_FAST", "B", W, [P("R55.1"), (162.2, 48.6), 
 for net, a, b in (("/buck-boost/BB_PSYNC", "U12.13", "R23.1"), ("/buck-boost/BB_FB", "U12.3", "R22.1"), ("GAUGE_ALRT", "U13.5", "R43.1")):
     AUTOROUTE(m, net, a, b, w=W, layers="B")
 
+# ---- the power LED (U5, F, in its window) from its series R12 (B): one via beside R12.2
+VIA("/power-led/PWR_LED_A", 126.3, 36.3); T("/power-led/PWR_LED_A", "B", W, [P("R12.2"), (126.3, 36.3)])
+T("/power-led/PWR_LED_A", "F", W, [(126.3, 36.3), (126.3, 35.05), P("U5.2")])
+
 # ---- U2 core buck (FP6161, behind SW3; FP6161 p.10-11: SW node and the CIN/COUT loops short, FB away from SW)
 T("/core-buck/CORE_SW", "B", 0.6, [P("U2.3"), P("L1.1")])                         # SW node, 3.15 mm
 T("+3V3", "B", 0.6, [P("U2.4"), (P("U2.4")[0], 78.7), P("C33.1")])               # VIN -> CIN
