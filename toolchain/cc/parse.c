@@ -581,7 +581,14 @@ static Type *declspec(int *td, int *sc) {
 			if (is_typename()) { char d[IDMAX]; tagty = declarator(declspec(NULL, NULL), d); }
 			else {   /* unevaluated: type only; a function's name is its function type (not the address it decays to) */
 				KvSave ks = kv_arm(0); Node *e = assign(); kv_end(ks); add_type(e); tagty = e->type ? e->type : ty_int;
-				if (e->kind == ND_ADDR && e->lhs->kind == ND_GVAR && func_declared(e->lhs->name)) tagty = fn_type_of(e->lhs->name);
+				/* typeof(f) is f's FUNCTION type; typeof(&f) is a POINTER to it. Both are the same node
+				 * here because naming a function decays to its address, so the written `&` is what tells
+				 * them apart. Getting this wrong made `typeof(&f) x;` declare a FUNCTION rather than a
+				 * variable — so no local existed and the name became an undefined global. The kernel hits
+				 * it in asm/fncpy.h, whose `typeof(funcp) __result;` is called with &relocate_new_kernel:
+				 * vmlinux failed to link with "undefined symbol __result". */
+				if (e->kind == ND_ADDR && e->lhs->kind == ND_GVAR && func_declared(e->lhs->name))
+					tagty = e->explicit_addr ? pointer_to(fn_type_of(e->lhs->name)) : fn_type_of(e->lhs->name);
 			}
 			expect(")"); seen = 1; continue;
 		}
@@ -2013,7 +2020,10 @@ static Node *unary_expr(void) {
 		/* `&f` on a FUNCTION is the identity: naming a function already yields its address (6.3.2.1p4), and the
 		 * primary-expression path has done exactly that, so wrapping it again would build ND_ADDR(ND_ADDR(f)) —
 		 * a pointer to a pointer to the function. `(&f)()` then looked like a call through the wrong type. */
-		if (e->kind == ND_ADDR && e->lhs && e->lhs->kind == ND_GVAR && e->lhs->type && e->lhs->type->fn_ret) return e;
+		if (e->kind == ND_ADDR && e->lhs && e->lhs->kind == ND_GVAR && e->lhs->type && e->lhs->type->fn_ret) {
+			e->explicit_addr = 1;      /* so typeof(&f) is a pointer, where typeof(f) is the function type */
+			return e;
+		}
 		return unary(ND_ADDR, e);
 	}
 	if (consume("*")) return unary(ND_DEREF, unary_expr());  /* dereference */
@@ -3229,6 +3239,14 @@ static Node *stmt(void) {
 		expect(";"); return n; }
 	if (tk->kind == TK_IDENT && tk->next && tk->next->kind == TK_PUNCT && !strcmp(tk->next->text, ":")) {   /* label: */
 		Node *n = node(ND_LABEL); ident(n->name); int li = map_label(n->name); expect(":");
+		/* A LABEL ATTRIBUTE (`out: __attribute__((unused))`, the kernel's `__maybe_unused` after a label) is a
+		 * GNU extension and applies to the LABEL, not to what follows. Leaving it unconsumed made the next
+		 * statement parse as a declaration: `out: __maybe_unused sink(c);` became a declaration of sink taking
+		 * an identifier-list parameter, and the CALL WAS SILENTLY DROPPED -- gcc emits `bl sink`, we emitted
+		 * nothing. fs/ext4/super.c:5632 does exactly this; -Wimplicit-int turned the quiet miscompile into a
+		 * loud error, which is how it was found. Nothing here acts on the attributes themselves. */
+		while (consume("__attribute__")) attribute();
+		no_type_attrs();
 		if (li >= 0 && lscope[li].depth < fn_depth) die_at(tk, "parse: label '%s' is an enclosing function's __label__", lscope[li].from);
 		jump_note(&fn_labels, &nfn_labels, &fn_labels_cap, n); return labeled(n);
 	}

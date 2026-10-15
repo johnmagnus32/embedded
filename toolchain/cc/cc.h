@@ -185,6 +185,9 @@ typedef struct Node {
 	int twice;                   /* gen: the subtree makes a returns-twice call (setjmp, vfork) */
 	int imm_bad;                 /* ND_ASM immediate operand that isn't a constant: an error if the asm is emitted (a
 	                              * dead `if (__builtin_constant_p(x)) asm(... "i"(x))` branch is dropped first) */
+	int explicit_addr;           /* ND_ADDR: the source WROTE `&` on a function designator. Naming a function
+	                              * already decays to its address, so `f` and `&f` build the same node — but C
+	                              * gives typeof(f) the FUNCTION type and typeof(&f) a POINTER to it. */
 	int line;                    /* the line this node was parsed on, for a diagnostic raised after parsing */
 	const char *file;            /* and the file it came from (cpp's line markers), so that diagnostic has a place */
 	const char *diag; int diag_kind;   /* ND_CALL of a function declared __attribute__((error/warning("msg"))): the
