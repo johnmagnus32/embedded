@@ -95,10 +95,34 @@ def canonicalize_sch(cli, sch_path):
 # --------------------------------------------------------------------------- #
 # Symbol library parsing
 # --------------------------------------------------------------------------- #
+_EXTENT = ("lminx", "lmaxx", "lminy", "lmaxy", "dlminy", "dlmaxy", "dlminx", "dlmaxx")
+
+
+def _extent(block):
+    """Lib-space extent of a symbol block: pin tips + all body graphics (polylines/arcs/circles, not just
+    rects). d* = drawn graphics only (pins excluded), for centering ref/value on asymmetric bodies.
+    Returns {name: value} for the _EXTENT names."""
+    xs, ys, dxs, dys = [], [], [], []
+    for m in re.finditer(r"\(pin\s+\w+\s+\w+\s*\(at (-?[\d.]+) (-?[\d.]+)", block):
+        xs.append(float(m.group(1))); ys.append(float(m.group(2)))
+    for m in re.finditer(r"\((?:start|end|mid|xy) (-?[\d.]+) (-?[\d.]+)\)", block):
+        xs.append(float(m.group(1))); ys.append(float(m.group(2)))
+        dxs.append(float(m.group(1))); dys.append(float(m.group(2)))
+    for m in re.finditer(r"\(center (-?[\d.]+) (-?[\d.]+)\)\s*\(radius ([\d.]+)\)", block):
+        cx, cy, r = float(m.group(1)), float(m.group(2)), float(m.group(3))
+        xs += [cx - r, cx + r]; ys += [cy - r, cy + r]
+        dxs += [cx - r, cx + r]; dys += [cy - r, cy + r]
+    if not xs:                            # degenerate: assume a small part
+        xs, ys = [-2.54, 2.54], [-2.54, 2.54]
+    e = {"lminx": min(xs), "lmaxx": max(xs), "lminy": min(ys), "lmaxy": max(ys)}
+    e["dlminy"], e["dlmaxy"] = (min(dys), max(dys)) if dys else (e["lminy"], e["lmaxy"])
+    e["dlminx"], e["dlmaxx"] = (min(dxs), max(dxs)) if dxs else (e["lminx"], e["lmaxx"])
+    return e
+
+
 class Symbol:
     __slots__ = ("nick", "name", "block", "ref", "ref_found", "footprint",
-                 "value", "datasheet", "description",
-                 "lminx", "lmaxx", "lminy", "lmaxy", "dlminy", "dlmaxy", "dlminx", "dlmaxx")
+                 "value", "datasheet", "description", "subs", "units") + _EXTENT
 
     def __init__(self, nick, name, block):
         self.nick, self.name, self.block = nick, name, block
@@ -110,27 +134,17 @@ class Symbol:
         self.datasheet = self._prop("Datasheet") or ""
         self.description = (self._prop("Description")
                             or self._prop("ki_description") or "")
-        self._bbox()
+        # sub-symbols NAME_<unit>_<body style>; unit 0 = drawn on every unit
+        self.subs = {}
+        for m in re.finditer(r'\(symbol "%s_(\d+)_(\d+)"' % re.escape(name), block):
+            self.subs[(int(m.group(1)), int(m.group(2)))] = block[m.start():match_paren(block, m.start())]
+        self.units = sorted({u for u, _style in self.subs if u > 0}) or [1]
+        for k, v in _extent(block).items():
+            setattr(self, k, v)
 
-    def _bbox(self):
-        """Lib-space extent: pin tips + all body graphics (polylines/arcs/circles, not just rects).
-        d* = drawn graphics only (pins excluded), for centering ref/value on asymmetric bodies."""
-        xs, ys, dxs, dys = [], [], [], []
-        for m in re.finditer(r"\(pin\s+\w+\s+\w+\s*\(at (-?[\d.]+) (-?[\d.]+)", self.block):
-            xs.append(float(m.group(1))); ys.append(float(m.group(2)))
-        for m in re.finditer(r"\((?:start|end|mid|xy) (-?[\d.]+) (-?[\d.]+)\)", self.block):
-            xs.append(float(m.group(1))); ys.append(float(m.group(2)))
-            dxs.append(float(m.group(1))); dys.append(float(m.group(2)))
-        for m in re.finditer(r"\(center (-?[\d.]+) (-?[\d.]+)\)\s*\(radius ([\d.]+)\)", self.block):
-            cx, cy, r = float(m.group(1)), float(m.group(2)), float(m.group(3))
-            xs += [cx - r, cx + r]; ys += [cy - r, cy + r]
-            dxs += [cx - r, cx + r]; dys += [cy - r, cy + r]
-        if not xs:                            # degenerate: assume a small part
-            xs, ys = [-2.54, 2.54], [-2.54, 2.54]
-        self.lminx, self.lmaxx = min(xs), max(xs)
-        self.lminy, self.lmaxy = min(ys), max(ys)
-        self.dlminy, self.dlmaxy = (min(dys), max(dys)) if dys else (self.lminy, self.lmaxy)
-        self.dlminx, self.dlmaxx = (min(dxs), max(dxs)) if dxs else (self.lminx, self.lmaxx)
+    def unit_block(self, unit):
+        """What KiCad draws for `unit` (body style 1): its own sub-symbols + the shared unit-0 ones."""
+        return "\n".join(t for (u, s), t in sorted(self.subs.items()) if u in (0, unit) and s in (0, 1))
 
     def _prop(self, key):
         m = re.search(r'\(property\s+"%s"\s+"((?:[^"\\]|\\.)*)"' % re.escape(key), self.block)
@@ -143,6 +157,24 @@ class Symbol:
     def embedded_def(self):
         return self.block.replace(f'(symbol "{self.name}"',
                                   f'(symbol "{self.lib_id}"', 1)
+
+
+class SymUnit:
+    """One placeable unit of a Symbol. Quacks like Symbol for placement + wiring (block / extent /
+    fields), but `block` holds only that unit's drawing, so pins and bbox are the unit's own. The sheet's
+    lib_symbols still embeds the whole parent (`.sym`)."""
+
+    def __init__(self, sym, unit):
+        self.sym, self.unit = sym, unit
+        self.block = sym.unit_block(unit)
+        for a in ("nick", "name", "ref", "ref_found", "value", "footprint", "datasheet", "description"):
+            setattr(self, a, getattr(sym, a))
+        for k, v in _extent(self.block).items():
+            setattr(self, k, v)
+
+    @property
+    def lib_id(self):
+        return self.sym.lib_id
 
 
 def load_symbols(symbols_dir, cli):
@@ -178,36 +210,57 @@ def load_symbols(symbols_dir, cli):
 
 
 # --------------------------------------------------------------------------- #
-# Parts CSV (strict): required columns refdes, subcircuit, symbol
+# Parts CSV (strict): required columns refdes, subcircuit, symbol; optional unit
 # --------------------------------------------------------------------------- #
 def read_csv(path):
-    """Parse the parts CSV (required: refdes, subcircuit, symbol; extras ignored). Every row is a part;
-    refdes and subcircuit must be non-blank and refdes unique — all hard errors, no fallbacks."""
+    """Parse the parts CSV (required: refdes, subcircuit, symbol; optional unit; extras ignored). A row
+    places one part — or, with `unit` set, one unit of a multi-unit part, so the same refdes may repeat
+    once per unit. refdes and subcircuit must be non-blank and (refdes, unit) unique; a refdes split
+    across rows keeps one symbol/lcsc and may not also have a blank-unit row — all hard errors."""
     resolved = []
+    name = Path(path).name
     with open(path, newline="", encoding="utf-8") as f:
         rd = csvmod.DictReader(f)
         missing = {"refdes", "subcircuit", "symbol"} - set(rd.fieldnames or [])
         if missing:
-            sys.exit(f"ERROR: {Path(path).name} missing required column(s): "
+            sys.exit(f"ERROR: {name} missing required column(s): "
                      f"{', '.join(sorted(missing))} (header: {rd.fieldnames})")
         for r in rd:
+            unit = (r.get("unit") or "").strip()
+            if unit and not (unit.isdigit() and int(unit) > 0):
+                sys.exit(f"ERROR: {name}: {r.get('refdes')} has unit {unit!r} (must be a positive integer "
+                         "or blank = every unit)")
             resolved.append(dict(
                 refdes=(r.get("refdes") or "").strip(),
                 subcircuit=(r.get("subcircuit") or "").strip(),
                 lcsc=(r.get("lcsc") or ""),
                 symbol=(r.get("symbol") or "").strip(),
+                unit=int(unit) if unit else None,
                 note=(r.get("note") or ""),
             ))
     for col in ("refdes", "subcircuit"):
         bad = [r for r in resolved if not r[col]]
         if bad:
             detail = "; ".join((r["refdes"] or r["symbol"] or "?") for r in bad[:8])
-            sys.exit(f"ERROR: {Path(path).name}: {len(bad)} row(s) have a BLANK {col}. First: {detail}")
-    seen, dups = set(), set()
+            sys.exit(f"ERROR: {name}: {len(bad)} row(s) have a BLANK {col}. First: {detail}")
+    rows_of = defaultdict(list)
     for r in resolved:
-        (dups if r["refdes"] in seen else seen).add(r["refdes"])
-    if dups:
-        sys.exit(f"ERROR: {Path(path).name}: duplicate refdes {sorted(dups)[:8]} (each must be unique).")
+        rows_of[r["refdes"]].append(r)
+    for ref, rows in rows_of.items():
+        if len(rows) == 1:
+            continue
+        units = [r["unit"] for r in rows]
+        if None in units:
+            sys.exit(f"ERROR: {name}: {ref} appears {len(rows)} times but a row has a blank unit (blank "
+                     "already places every unit) — give every row of a split part a unit.")
+        if len(set(units)) != len(units):
+            sys.exit(f"ERROR: {name}: {ref} lists unit(s) "
+                     f"{sorted({u for u in units if units.count(u) > 1})} more than once.")
+        if len({r["symbol"] for r in rows}) > 1 or len({r["lcsc"] for r in rows if r["lcsc"]}) > 1:
+            sys.exit(f"ERROR: {name}: the rows of {ref} disagree on symbol/lcsc (one part, one of each).")
+        lcsc = next((r["lcsc"] for r in rows if r["lcsc"]), "")
+        for r in rows:
+            r["lcsc"] = lcsc
     return resolved
 
 
@@ -242,14 +295,14 @@ def _prop(name, value, x, y, hide=False, just=None, ang=0):
             f"\n\t\t\t\t)\n{just_line}\t\t\t)\n\t\t)\n")
 
 
-def _symbol_block(lib_id, x, y, rot, props, ref, inst_path, project_name, in_bom, uid):
+def _symbol_block(lib_id, x, y, rot, props, ref, inst_path, project_name, in_bom, uid, unit=1):
     """One placed (symbol ...): shared by parts (in_bom yes) and power/PWR_FLAG symbols (in_bom no)."""
     p = inst_path if inst_path.startswith("/") else "/" + inst_path
     return (f"\t(symbol\n\t\t(lib_id \"{lib_id}\")\n\t\t(at {x:.2f} {y:.2f} {rot})\n"
-            f"\t\t(unit 1)\n\t\t(exclude_from_sim no)\n\t\t(in_bom {in_bom})\n"
+            f"\t\t(unit {unit})\n\t\t(exclude_from_sim no)\n\t\t(in_bom {in_bom})\n"
             f"\t\t(on_board yes)\n\t\t(dnp no)\n\t\t(uuid \"{uid}\")\n{props}"
             f"\t\t(instances\n\t\t\t(project \"{project_name}\"\n\t\t\t\t(path \"{p}\"\n"
-            f"\t\t\t\t\t(reference \"{ref}\")\n\t\t\t\t\t(unit 1)\n"
+            f"\t\t\t\t\t(reference \"{ref}\")\n\t\t\t\t\t(unit {unit})\n"
             f"\t\t\t\t)\n\t\t\t)\n\t\t)\n\t)\n")
 
 
@@ -301,7 +354,8 @@ def disp_value(sym):
 
 
 def _instance_symbol(sym, refdes, lcsc, x, y, inst_path, project_name):
-    """A placed part symbol (rot 0, in_bom yes) with its ref/value + hidden fab fields."""
+    """A placed part symbol (rot 0, in_bom yes) with its ref/value + hidden fab fields. `sym` is a
+    SymUnit; every unit of a part carries the same fields (KiCad's ERC compares them across units)."""
     props = ref_value_props(refdes, disp_value(sym), x, y, 0,
                             bh=max(abs(sym.lminy), abs(sym.lmaxy)),
                             body_y=(sym.dlminy, sym.dlmaxy),
@@ -313,8 +367,9 @@ def _instance_symbol(sym, refdes, lcsc, x, y, inst_path, project_name):
         props += _prop("Description", sym.description, x, y, hide=True)
     if lcsc:
         props += _prop("LCSC", lcsc, x, y, hide=True)
+    key = refdes if sym.unit == 1 else f"{refdes}:{sym.unit}"     # unit 1 keeps the pre-unit UUID
     return _symbol_block(sym.lib_id, x, y, 0, props, refdes, inst_path, project_name, "yes",
-                         _det_uuid(project_name, "sym", refdes))
+                         _det_uuid(project_name, "sym", key), unit=sym.unit)
 
 
 def _sheet_block(name, fname, sheet_uuid, x, y, w, h, page, root_uuid, project_name):
@@ -466,14 +521,17 @@ class Nets:
         """Power/ground nets — each gets one PWR_FLAG driver (to satisfy ERC 'power not driven')."""
         return {n for n, k in self.kind.items() if k in ("gnd", "pwr")}
 
-    def global_nets(self, subcircuit):
+    def global_nets(self, pin_sheet, ref_sheet):
         """Nets whose pins span >1 subcircuit — need GLOBAL labels to cross child sheets. A net entirely
-        in one subcircuit stays LOCAL. `subcircuit` = {refdes: subcircuit}; an absent refdes is its own
-        singleton group (never folded with others, which would hide a real span)."""
+        in one subcircuit stays LOCAL. Decided per PIN, since the units of one part can sit on different
+        sheets: `pin_sheet` = {(refdes, pin): subcircuit} from the placed units, `ref_sheet` = {refdes:
+        subcircuit} for a pin the symbol doesn't have; an unplaced refdes is its own singleton group
+        (never folded with others, which would hide a real span)."""
         seen = {}
         for net, pins in self.pins_by_net.items():
-            for ref, _pin in pins:
-                seen.setdefault(net, set()).add(subcircuit.get(ref) or ("\x00" + ref))
+            for ref, pin in pins:
+                seen.setdefault(net, set()).add(pin_sheet.get((ref, pin)) or ref_sheet.get(ref)
+                                                 or ("\x00" + ref))
         return {n for n, s in seen.items() if len(s) > 1}
 
 
@@ -545,7 +603,7 @@ class _SheetWirer:
     """Wires ONE sheet: per pin, a power symbol (gnd/pwr), a net label (global if the net spans sheets),
     a no-connect, or a PWR_FLAG. Connectivity is by NAME — no routed wires. `insts` = the sheet's parts."""
 
-    def __init__(self, insts, nets, by_libid, project_name, pwr_path, global_nets, pwr_counter):
+    def __init__(self, insts, nets, project_name, pwr_path, global_nets, pwr_counter):
         self.nets, self.pn, self.global_nets = nets, project_name, global_nets
         self.pwr_path = pwr_path
         self.elems = []
@@ -553,10 +611,7 @@ class _SheetWirer:
         self._pwr = pwr_counter          # shared [n] across sheets so #PWR/#FLG refs are board-unique
         self.power_used = set()
         self.pinxy = {}                # (refdes, pin) -> (px,py,rot,lx,ly,ang)
-        for refdes, lib_id, px, py, rot in insts:
-            sym = by_libid.get(lib_id)
-            if not sym:
-                continue
+        for refdes, sym, px, py, rot in insts:     # sym = the placed SymUnit: only ITS pins are here
             for num, _name, lx, ly, ang in parse_pins(sym):
                 self.pinxy[(refdes, num)] = (px, py, rot, lx, ly, ang)
         self.allpins = {(round(x, 2), round(y, 2))
@@ -653,7 +708,7 @@ def _pack_group(parts, nets, inst_path, project_name):
         ox = round((shelf_x + GAP / 2 + L - sym.lminx) / 1.27) * 1.27
         oy = round((shelf_top + GAP / 2 + U + sym.lmaxy) / 1.27) * 1.27
         placed.append((sym, refdes, lcsc, ox, oy))
-        used[sym.lib_id] = sym
+        used[sym.lib_id] = sym.sym                       # lib_symbols embeds the whole multi-unit part
         max_x = max(max_x, shelf_x + w)
         shelf_x += w
         shelf_h = max(shelf_h, h)
@@ -668,19 +723,39 @@ def build(resolved, nets, by_libid, project_name, cli):
     (root_text, {fname: text}, sheets, root_uuid, n_parts, n_defs, unresolved)."""
     root_uuid = _det_uuid(project_name, "root")
 
+    # each row -> one placed unit per unit it names (blank unit = every unit of the symbol, which is
+    # just unit 1 for an ordinary part)
     order, groups, unresolved = [], {}, []
+    placed_units = defaultdict(set)          # refdes -> units placed so far
+    pin_sheet, ref_sheet = {}, {}
     for r in resolved:
         sym = by_libid.get(r["symbol"])
         if not sym:
             unresolved.append(r)                 # symbol not in the library
             continue
+        units = [r["unit"]] if r["unit"] else sym.units
+        bad = [u for u in units if u not in sym.units]
+        if bad:
+            sys.exit(f"ERROR: {r['refdes']} unit {bad[0]} does not exist — {r['symbol']} has units "
+                     f"{sym.units[0]}..{sym.units[-1]}.")
         grp = r["subcircuit"]
         if grp not in groups:
             groups[grp] = []; order.append(grp)
-        groups[grp].append((sym, r["refdes"], r["lcsc"]))
+        ref_sheet.setdefault(r["refdes"], grp)
+        for u in units:
+            su = SymUnit(sym, u)
+            groups[grp].append((su, r["refdes"], r["lcsc"]))
+            placed_units[r["refdes"]].add(u)
+            for num, *_ in parse_pins(su):
+                pin_sheet[(r["refdes"], num)] = grp
+    for r in resolved:                           # a split part must place ALL its units somewhere
+        sym = by_libid.get(r["symbol"])
+        missing = sym and sorted(set(sym.units) - placed_units[r["refdes"]])
+        if missing:
+            sys.exit(f"ERROR: {r['refdes']} ({r['symbol']}) never places unit(s) {missing} — add a row "
+                     "per unit (its pins would otherwise be undrawn).")
 
-    subcircuit = {r["refdes"]: r["subcircuit"] for r in resolved}
-    global_nets = nets.global_nets(subcircuit)
+    global_nets = nets.global_nets(pin_sheet, ref_sheet)
     flag_nets = nets.flag_nets()
     flag_host = order[0] if order else None       # all PWR_FLAGs on the first subcircuit's sheet
 
@@ -697,8 +772,8 @@ def build(resolved, nets, by_libid, project_name, cli):
         sym_elems = [_instance_symbol(s, ref, lcsc, ox, oy, inst_path, project_name)
                      for s, ref, lcsc, ox, oy in placed]
 
-        insts = [(ref, s.lib_id, ox, oy, 0) for s, ref, lcsc, ox, oy in placed]
-        w = _SheetWirer(insts, nets, by_libid, project_name, inst_path, global_nets, pwr_counter)
+        insts = [(ref, s, ox, oy, 0) for s, ref, lcsc, ox, oy in placed]
+        w = _SheetWirer(insts, nets, project_name, inst_path, global_nets, pwr_counter)
         for net, pins in nets.pins_by_net.items():   # wirer no-ops for pins not on this sheet
             emit = w.power if nets.is_power(net) else w.label
             for ref, pin in pins:

@@ -24,13 +24,14 @@ the CSVs back.
 
 | column | required | used by | meaning / allowed values |
 |---|---|---|---|
-| `refdes` | **yes** | tool (join key, symbol reference) | Schematic reference, e.g. `C1`, `U10`. **Unique, non-blank.** The stable key `nets.csv` joins on — the tool never invents it (a blank is a hard error). |
+| `refdes` | **yes** | tool (join key, symbol reference) | Schematic reference, e.g. `C1`, `U10`. **Non-blank, unique** — except that a multi-unit part repeats it once per unit (see `unit`). The stable key `nets.csv` joins on — the tool never invents it (a blank is a hard error). |
+| `unit` | no | tool (multi-unit placement) | Which unit of a multi-unit symbol this row places, `1`..N. **Blank = every unit** of the symbol, all on this row's subcircuit — which for an ordinary single-unit part is simply the part. See *Multi-unit parts* below. |
 | `subcircuit` | **yes** | tool (sheet grouping) | Which subcircuit (schematic page) the part goes on, e.g. `soc`, `core-buck`, `microsd`. One child sheet per distinct value. **Non-blank, no fallback** (a blank is a hard error). See *Designing subcircuits* below — this is your main lever for a readable schematic. |
 | `symbol` | **yes** | tool (placement) | Library id `nick:name` to place, e.g. `easyeda2kicad:T113-S3_C5197687`. Must resolve in the symbol libraries. |
 | `lcsc` | no | tool + fab | LCSC order code. Written as the placed symbol's `LCSC` field; also used by a fab/assembly BOM. |
 | `note` | no | human | Free-form. The single human-readable column — part description, role, provenance, etc. |
 
-Required columns (the tool errors if missing): **`refdes`, `subcircuit`, `symbol`.** There is no
+Required columns (the tool errors if missing): **`refdes`, `subcircuit`, `symbol`** (`unit` is optional). There is no
 `place` column — a part you don't want on the schematic simply isn't in this file. Footprints come from
 the symbol definition, not the CSV. Any other columns (e.g. `footprint`, `fit`) are ignored.
 
@@ -49,6 +50,26 @@ pull-ups, an IC with its decoupling — under one short, meaningful name (`core-
 `imu`). Keep each group focused (a handful up to a few dozen parts): too coarse and a page is an
 unreadable wall of parts; too fine and parts that belong together scatter across pages. Each part is in
 exactly one subcircuit.
+
+### Multi-unit parts
+
+A multi-unit symbol draws one physical part as several boxes (KiCad shows them as `U1A`, `U1B`, …) that
+share one refdes, footprint and BOM line. To spread one across pages, give it **one row per unit**, each
+with its own `subcircuit`:
+
+```
+refdes,unit,subcircuit,lcsc,symbol
+U1,1,soc-core,C3345225,manual:RK3568B2      <- Part A: core power
+U1,6,ddr,C3345225,manual:RK3568B2           <- Part F: DDR
+U1,8,soc-io,C3345225,manual:RK3568B2        <- Part H: VCCIO1
+U2,,ddr,C2831669,easyeda2kicad:MT41K512M16VRP-107IT_PTR   <- blank: both units on ddr
+```
+
+Rules (all hard errors): every unit of the symbol is placed exactly once; `(refdes, unit)` is unique; a
+split part's rows agree on `symbol` and `lcsc`; a refdes with a blank-unit row has no other rows.
+**`nets.csv` is unchanged** — pins are matched by number, which is unique across all of a part's units
+(e.g. BGA balls), and the tool reads each pin's unit from the symbol. Net labels are decided per pin, so a
+net between two units of one part on different pages correctly becomes a global label.
 
 ---
 
@@ -88,3 +109,7 @@ Pin electrical types (`passive`/`input`/`output`/`bidirectional`/`power_in`…) 
 **part**, so they live in the **symbol library** (`cad/symbols/…`), *not* in these CSVs — fix once, reuse on
 every board. Passives (R/C/L/D/SW) are `passive`; IC signal pins should be typed by function. (`kind` in
 `nets.csv` is different: it's a per-*net*, per-*design* property, so it correctly lives with the netlist.)
+The two meet at `power_in` pins: ERC only counts a `PWR_FLAG` as their driver, and the tool places one
+only on `gnd`/`pwr` nets — so **every net that reaches a `power_in` pin must be `kind` `gnd` or `pwr`**,
+including a filtered rail on the far side of a ferrite bead (`manual:RK3568B2` types all 294 of its power
+and ground balls `power_in`).
